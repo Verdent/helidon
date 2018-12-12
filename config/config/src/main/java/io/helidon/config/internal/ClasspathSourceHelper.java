@@ -43,7 +43,7 @@ class ClasspathSourceHelper {
         try {
             Path resourcePath = ClasspathSourceHelper.resourcePath(resourceName);
             if (resourcePath != null) {
-                return resourcePath.toString();
+                return resourcePath.toString().replace('\\', '/');
             }
         } catch (Exception ex) {
             //ignore it

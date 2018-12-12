@@ -233,9 +233,10 @@ public class GitConfigSource extends AbstractParsableConfigSource<byte[]> {
         LOGGER.log(Level.FINE, String.format("Getting content from '%s'. Last stamp is %s.", targetPath, lastModifiedTime));
 
         LOGGER.finest(FileSourceHelper.safeReadContent(targetPath));
+        Optional<byte[]> stamp = dataStamp();
         return ConfigParser.Content.create(new StringReader(FileSourceHelper.safeReadContent(targetPath)),
                                            mediaType(),
-                                           dataStamp());
+                                           stamp);
     }
 
     GitConfigSourceBuilder.GitEndpoint gitEndpoint() {
@@ -251,6 +252,9 @@ public class GitConfigSource extends AbstractParsableConfigSource<byte[]> {
     public void close() throws IOException {
         if (!isClosed) {
             try {
+                if (repository != null) {
+                    repository.close();
+                }
                 closeGits();
                 if (isTempDirectory) {
                     deleteTempDirectory();
@@ -270,6 +274,10 @@ public class GitConfigSource extends AbstractParsableConfigSource<byte[]> {
         Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (!Files.isWritable(file)) {
+                    file.toFile().setWritable(true);
+                }
+
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }

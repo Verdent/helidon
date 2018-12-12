@@ -123,6 +123,9 @@ public class TemporaryFolderExt implements BeforeEachCallback, AfterEachCallback
 
             @Override
             public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
+                if (!Files.isWritable(path)) {
+                    path.toFile().setWritable(true);
+                }
                 Files.delete(path);
                 return FileVisitResult.CONTINUE;
             }

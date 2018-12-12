@@ -67,6 +67,8 @@
             <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadFutureTest"/>
             <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchTest"/>
             <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.clientserver.ParrallelBulkheadTest"/>
+            <!-- BulkheadSynchRetryTest sometimes randomly fails -->
+            <!-- This random behavior should be fixed by: https://github.com/eclipse/microprofile-fault-tolerance/pull/244 -->
             <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchRetryTest"/>
             <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchConfigTest">
                 <methods>

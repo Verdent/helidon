@@ -22,6 +22,7 @@ import java.lang.annotation.Annotation;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.interfaces.RSAPublicKey;
@@ -546,8 +547,13 @@ public class JwtAuthProvider extends SynchronousProvider implements Authenticati
         }
 
         private JwkKeys loadJwkKeysFromLocation(String uri) {
-            Path path = Paths.get(uri);
-            if (Files.exists(path)) {
+            Path path;
+            try {
+                path = Paths.get(uri);
+            } catch (InvalidPathException e) {
+                path = null;
+            }
+            if (path != null && Files.exists(path)) {
                 try {
                     return loadJwkKeys(new String(Files.readAllBytes(path), UTF_8));
                 } catch (IOException e) {

@@ -216,8 +216,6 @@ public class ClientTracingFilter implements ClientRequestFilter, ClientResponseF
                 Tags.ERROR.set(span, true);
                 span.log(CollectionsHelper.mapOf("event",
                                                  "error",
-                                                 "message",
-                                                 "Response HTTP status: " + status,
                                                  "error.kind",
                                                  (status < HTTP_STATUS_SERVER_ERROR_THRESHOLD) ? "ClientError" : "ServerError"));
             }
@@ -270,7 +268,9 @@ public class ClientTracingFilter implements ClientRequestFilter, ClientResponseF
     private Span createSpan(ClientRequestContext requestContext, Tracer tracer, Optional<SpanContext> parentSpan) {
         Tracer.SpanBuilder spanBuilder = tracer.buildSpan(SPAN_OPERATION_NAME)
                 .withTag(Tags.HTTP_METHOD.getKey(), requestContext.getMethod())
-                .withTag(Tags.HTTP_URL.getKey(), requestContext.getUri().toString());
+                .withTag(Tags.HTTP_URL.getKey(), requestContext.getUri().toString())
+                .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
+                .withTag(Tags.COMPONENT.getKey(), "jaxrs");
 
         parentSpan.ifPresent(spanBuilder::asChildOf);
 

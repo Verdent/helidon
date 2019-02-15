@@ -15,7 +15,10 @@
  */
 package io.helidon.microprofile.tracing;
 
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Priority;
@@ -27,6 +30,12 @@ import javax.ws.rs.container.ContainerRequestContext;
 import io.helidon.tracing.jersey.AbstractTracingFilter;
 
 import io.opentracing.Tracer;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
+import org.eclipse.microprofile.opentracing.Traced;
+import org.glassfish.jersey.server.ExtendedUriInfo;
+import org.glassfish.jersey.server.model.Invocable;
+import org.glassfish.jersey.server.model.ResourceMethod;
 
 /**
  * Adds tracing of Jersey calls using a post-matching filter.
@@ -48,15 +57,24 @@ public class MpTracingFilter extends AbstractTracingFilter  {
 
     @Override
     protected boolean tracingEnabled(ContainerRequestContext context) {
+        //   openapi
         // first let us find if we should trace or not
-        // Optional<Traced> traced = findTraced(context);
-        Optional<Object> traced = Optional.empty();
-
-        if (traced.isPresent()) {
-            // this is handled by CDI extension for annotated resources
+        // this is handled by CDI extension for annotated resources
+        Config config = ConfigProvider.getConfig();
+        Optional<String> skipPatternConfig = config.getOptionalValue("mp.opentracing.server.skip-pattern", String.class);
+        boolean skip = false;
+        if (skipPatternConfig.isPresent()) {
+            Pattern pattern = Pattern.compile(skipPatternConfig.get());
+            String path = context.getUriInfo().getPath();
+            if (path.charAt(0) != '/') {
+                path = "/" + path;
+            }
+            skip = pattern.matcher(path).matches();
+        }
+        if (skip) {
             return false;
         }
-        return utils.tracingEnabled();
+        return findTraced(context).map(Traced::value).orElseGet(() -> utils.tracingEnabled());
     }
 
     @Override
@@ -69,8 +87,32 @@ public class MpTracingFilter extends AbstractTracingFilter  {
 
     }
 
-//    private Optional<Traced> findTraced(ContainerRequestContext requestContext) {
-//        // TODO all annotated by "Traced" must be handled by CDI extension
-//        return Optional.empty();
-//    }
+    private Optional<Traced> findTraced(ContainerRequestContext requestContext) {
+        requestContext.getRequest().getMethod();
+        Method m = getDefinitionMethod(requestContext);
+        Annotation[] tracedAnnotations = m.getDeclaredAnnotationsByType(Traced.class);
+        Traced traced = null;
+        if (tracedAnnotations.length == 0) {
+            Class<?> c = m.getDeclaringClass();
+            tracedAnnotations = c.getDeclaredAnnotationsByType(Traced.class);
+            if (tracedAnnotations.length > 0)  {
+                traced = (Traced) tracedAnnotations[0];
+            }
+        } else {
+            traced = (Traced) tracedAnnotations[0];
+        }
+        // TODO all annotated by "Traced" must be handled by CDI extension
+        return Optional.ofNullable(traced);
+    }
+
+    private Method getDefinitionMethod(ContainerRequestContext requestContext) {
+        if (!(requestContext.getUriInfo() instanceof ExtendedUriInfo)) {
+            throw new IllegalStateException("Could not get Extended Uri Info. Incompatible version of Jersey?");
+        }
+
+        ExtendedUriInfo uriInfo = (ExtendedUriInfo) requestContext.getUriInfo();
+        ResourceMethod matchedResourceMethod = uriInfo.getMatchedResourceMethod();
+        Invocable invocable = matchedResourceMethod.getInvocable();
+        return invocable.getDefinitionMethod();
+    }
 }

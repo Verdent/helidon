@@ -34,6 +34,7 @@ import io.helidon.common.CollectionsHelper;
 import io.helidon.microprofile.server.Server;
 import io.helidon.tracing.jersey.client.ClientTracingFilter;
 
+import org.eclipse.microprofile.opentracing.Traced;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -123,6 +124,7 @@ public class TracingTest {
     @Path("/hello")
     public static class HelloWorld {
         @GET
+        @Traced
         @Produces(MediaType.TEXT_PLAIN)
         public Response getIt(@Context HttpHeaders headers) {
             Response.ResponseBuilder builder = Response.ok("Hello World");
@@ -136,6 +138,7 @@ public class TracingTest {
     @Path("/test")
     public static class MyResource {
         @GET
+        @Traced
         public Response getIt(@Context HttpHeaders headers) {
 
             Response response = hellWorldTarget

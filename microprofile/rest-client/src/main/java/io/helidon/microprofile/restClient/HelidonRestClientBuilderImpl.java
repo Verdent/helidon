@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Configuration;
 
@@ -64,6 +65,8 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
     @Override
     public <T> T build(Class<T> clazz) throws IllegalStateException, RestClientDefinitionException {
 
+        InterfaceUtil.validateInterface(clazz);
+
         RegisterProviders registerProviders = clazz.getAnnotation(RegisterProviders.class);
         if (registerProviders != null) {
             List<Object> providerClasses = new ArrayList<>(Arrays.asList(registerProviders.value()));
@@ -74,11 +77,12 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
             register(new DefaultHelidonResponseExceptionMapper());
         }
 
-        WebTarget webTarget = new JerseyClientBuilder().build().target(uri);
+        Client client = jerseyClientBuilder.build();
+        WebTarget webTarget = client.target(uri);
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
-                                          new Class[] {clazz},
-                                          new ProxyInvocationHandler(webTarget)
+                new Class[]{clazz},
+                new ProxyInvocationHandler(client, webTarget)
         );
     }
 

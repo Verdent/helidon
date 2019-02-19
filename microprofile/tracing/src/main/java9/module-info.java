@@ -24,6 +24,7 @@ module io.helidon.microprofile.tracing {
     requires java.ws.rs;
     requires jersey.common;
     requires opentracing.api;
+    requires microprofile.opentracing.api;
 
     requires cdi.api;
     requires javax.inject;

@@ -1,9 +1,12 @@
 package io.helidon.microprofile.restClient;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.util.List;
 
 import javax.ws.rs.Path;
+import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
@@ -14,9 +17,13 @@ import javax.ws.rs.core.Response;
  */
 public class ProxyInvocationHandler implements InvocationHandler {
 
-    private WebTarget target;
+    private static final String INVOKED_METHOD = "org.eclipse.microprofile.rest.client.invokedMethod";
 
-    public ProxyInvocationHandler(WebTarget target) {
+    private final Client client;
+    private final WebTarget target;
+
+    public ProxyInvocationHandler(Client client, WebTarget target) {
+        this.client = client;
         this.target = target;
     }
 
@@ -29,10 +36,11 @@ public class ProxyInvocationHandler implements InvocationHandler {
         } else {
             methodWebTarget = target;
         }
-        Invocation.Builder invocationBuilder = methodWebTarget.request(MediaType.TEXT_PLAIN);
-        Response response = invocationBuilder.get();
-
-        return 42;
+        List<Class<?>> httpMethod = InterfaceUtil.getHttpAnnotations(method);
+        //client.property(INVOKED_METHOD, method);
+        return methodWebTarget
+                .request(MediaType.TEXT_PLAIN)
+                .method(httpMethod.get(0).getSimpleName(), method.getReturnType());
     }
 
 }

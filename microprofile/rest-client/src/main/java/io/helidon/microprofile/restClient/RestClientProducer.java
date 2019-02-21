@@ -6,10 +6,12 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Dependent;
@@ -132,23 +134,20 @@ class RestClientProducer implements Bean<Object> {
 
     //TODO upravit
     private Class<? extends Annotation> resolveScope() {
-        String configuredScope = config.getOptionalValue(interfaceType.getName() + CONFIG_SCOPE, String.class).orElse(null);
+        String configScope = config.getOptionalValue(interfaceType.getName() + CONFIG_SCOPE, String.class).orElse(null);
 
-        if (configuredScope != null) {
+        if (configScope != null) {
             try {
-                return (Class<? extends Annotation>) Class.forName(configuredScope);
+                return (Class<? extends Annotation>) Class.forName(configScope);
             } catch (Exception e) {
-                throw new IllegalArgumentException("Invalid scope: " + configuredScope, e);
+                throw new IllegalArgumentException("Invalid scope from config: " + configScope, e);
             }
         }
 
-        List<Annotation> possibleScopes = new ArrayList<>();
-        Annotation[] annotations = interfaceType.getDeclaredAnnotations();
-        for (Annotation annotation : annotations) {
-            if (beanManager.isScope(annotation.annotationType())) {
-                possibleScopes.add(annotation);
-            }
-        }
+        List<Annotation> possibleScopes = Arrays.stream(interfaceType.getDeclaredAnnotations())
+                .filter(annotation -> beanManager.isScope(annotation.annotationType()))
+                .collect(Collectors.toList());
+
         if (possibleScopes.isEmpty()) {
             return Dependent.class;
         } else if (possibleScopes.size() == 1) {

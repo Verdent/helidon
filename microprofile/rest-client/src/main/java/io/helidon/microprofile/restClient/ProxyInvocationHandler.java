@@ -10,6 +10,7 @@ import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
 /**
@@ -19,12 +20,14 @@ public class ProxyInvocationHandler implements InvocationHandler {
 
     private static final String INVOKED_METHOD = "org.eclipse.microprofile.rest.client.invokedMethod";
 
+    private final Class<?> iClass;
     private final Client client;
     private final WebTarget target;
 
-    public ProxyInvocationHandler(Client client, WebTarget target) {
+    public ProxyInvocationHandler(Class<?> iClass, Client client, WebTarget target) {
         this.client = client;
         this.target = target;
+        this.iClass = iClass;
     }
 
     @Override
@@ -40,6 +43,7 @@ public class ProxyInvocationHandler implements InvocationHandler {
         //client.property(INVOKED_METHOD, method);
         return methodWebTarget
                 .request(MediaType.TEXT_PLAIN)
+                .headers(InterfaceUtil.parseHeaders(iClass, method, args))
                 .method(httpMethod.get(0).getSimpleName(), method.getReturnType());
     }
 

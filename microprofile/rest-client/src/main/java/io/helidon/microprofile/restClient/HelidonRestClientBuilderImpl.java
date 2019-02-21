@@ -26,6 +26,7 @@ import org.glassfish.jersey.client.JerseyClientBuilder;
 public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
     private static final String CONFIG_DISABLE_DEFAULT_MAPPER = "microprofile.rest.client.disable.default.mapper";
+    private static final String CONFIG_PROVIDERS = "/mp-rest/providers:";
 
     private URI uri;
     private JerseyClientBuilder jerseyClientBuilder;
@@ -82,7 +83,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
                 new Class[]{clazz},
-                new ProxyInvocationHandler(client, webTarget)
+                new ProxyInvocationHandler(clazz, client, webTarget)
         );
     }
 

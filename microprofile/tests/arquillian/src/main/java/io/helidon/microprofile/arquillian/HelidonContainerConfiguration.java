@@ -39,7 +39,7 @@ public class HelidonContainerConfiguration implements ContainerConfiguration {
     private int port = 8080;
     private boolean deleteTmp = true;
     private boolean addResourcesToApps = false;
-    private boolean replaceConfigSourcesWithMp = false;
+    private boolean useClasspathMpConfig = true;
 
     public String getApp() {
         return appClassName;
@@ -81,12 +81,12 @@ public class HelidonContainerConfiguration implements ContainerConfiguration {
         this.addResourcesToApps = addResourcesToApps;
     }
 
-    public void setReplaceConfigSourcesWithMp(boolean replaceConfigSourcesWithMp) {
-        this.replaceConfigSourcesWithMp = replaceConfigSourcesWithMp;
+    public boolean getUseClasspathMpConfig() {
+        return useClasspathMpConfig;
     }
 
-    public boolean getReplaceConfigSourcesWithMp() {
-        return replaceConfigSourcesWithMp;
+    public void setUseClasspathMpConfig(boolean useClasspathMpConfig) {
+        this.useClasspathMpConfig = useClasspathMpConfig;
     }
 
     @Override

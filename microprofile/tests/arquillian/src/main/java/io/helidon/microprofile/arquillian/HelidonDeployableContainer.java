@@ -27,6 +27,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -75,6 +76,7 @@ import org.jboss.shrinkwrap.descriptor.api.Descriptor;
  */
 public class HelidonDeployableContainer implements DeployableContainer<HelidonContainerConfiguration> {
     private static final Logger LOGGER = Logger.getLogger(HelidonDeployableContainer.class.getName());
+    private static final String MP_CONFIG_FILE = "META-INF/microprofile-config.properties";
 
     /**
      * The configuration for this container.
@@ -189,27 +191,16 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         Thread.currentThread().setContextClassLoader(context.classLoader);
 
         List<Supplier<ConfigSource>> configSources = new LinkedList<>();
-        configSources.add(ConfigSources.file(context.deployDir.resolve("META-INF/microprofile-config.properties").toString())
+        if (containerConfig.getUseClasspathMpConfig()) {
+            addClasspathMpConfig(configSources, context);
+        }
+
+        configSources.add(ConfigSources.file(context.deployDir.resolve(MP_CONFIG_FILE).toString())
                                   .optional());
         configSources.add(ConfigSources.file(context.deployDir.resolve("arquillian.properties").toString()).optional());
         configSources.add(ConfigSources.file(context.deployDir.resolve("application.properties").toString()).optional());
         configSources.add(ConfigSources.file(context.deployDir.resolve("application.yaml").toString()).optional());
         configSources.add(ConfigSources.classpath("tck-application.yaml").optional());
-
-        // workaround for tck-fault-tolerance
-        if (containerConfig.getReplaceConfigSourcesWithMp()) {
-            URL mpConfigProps = context.classLoader.getResource("META-INF/microprofile-config.properties");
-            if (mpConfigProps != null) {
-                try {
-                    Properties props = new Properties();
-                    props.load(mpConfigProps.openStream());
-                    configSources.clear();
-                    configSources.add(ConfigSources.create(props));
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
 
         Config config = Config.builder()
                 .sources(configSources)
@@ -225,6 +216,28 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         context.runnerClass
                 .getDeclaredMethod("start", Config.class, HelidonContainerConfiguration.class, Set.class, ClassLoader.class)
                 .invoke(context.runner, config, containerConfig, classNames, context.classLoader);
+    }
+
+    private void addClasspathMpConfig(List<Supplier<ConfigSource>> configSources,
+                                      RunContext context) {
+
+        Enumeration<URL> propFiles;
+        try {
+            propFiles = context.classLoader.getResources(MP_CONFIG_FILE);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read MP config property files from classpath", e);
+        }
+
+        while (propFiles.hasMoreElements()) {
+            URL url = propFiles.nextElement();
+            try (InputStream in = url.openStream()){
+                Properties props = new Properties();
+                props.load(in);
+                configSources.add(ConfigSources.create(props));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     URL[] getServerClasspath(Path classesDir, Path libDir) throws IOException {

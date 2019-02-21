@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -17,7 +18,12 @@ import javax.ws.rs.core.Configuration;
 
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
+import org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+import org.eclipse.microprofile.rest.client.annotation.RegisterProvider;
 import org.eclipse.microprofile.rest.client.annotation.RegisterProviders;
+import org.eclipse.microprofile.rest.client.ext.ClientHeadersFactory;
+import org.eclipse.microprofile.rest.client.ext.DefaultClientHeadersFactoryImpl;
+import org.eclipse.microprofile.rest.client.spi.RestClientListener;
 import org.glassfish.jersey.client.JerseyClientBuilder;
 
 /**
@@ -68,9 +74,13 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
         InterfaceUtil.validateInterface(clazz);
 
-        RegisterProviders registerProviders = clazz.getAnnotation(RegisterProviders.class);
-        if (registerProviders != null) {
-            List<Object> providerClasses = new ArrayList<>(Arrays.asList(registerProviders.value()));
+        //Provider registration part
+        RegisterProvider[] registerProviders = clazz.getAnnotationsByType(RegisterProvider.class);
+        for (RegisterProvider registerProvider : registerProviders) {
+            register(registerProvider.value(), registerProvider.priority());
+        }
+        for (RestClientListener restClientListener : ServiceLoader.load(RestClientListener.class)) {
+            restClientListener.onNewClient(clazz, this);
         }
 
         Object disableDefaultMapper = jerseyClientBuilder.getConfiguration().getProperty(CONFIG_DISABLE_DEFAULT_MAPPER);
@@ -78,12 +88,17 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
             register(new DefaultHelidonResponseExceptionMapper());
         }
 
+        RegisterClientHeaders registerClientHeaders = clazz.getAnnotation(RegisterClientHeaders.class);
+        if (registerClientHeaders != null) {
+            register(registerClientHeaders.value());
+        }
+
         Client client = jerseyClientBuilder.build();
         WebTarget webTarget = client.target(uri);
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
-                new Class[]{clazz},
-                new ProxyInvocationHandler(clazz, client, webTarget)
+                                          new Class[] {clazz},
+                                          new ProxyInvocationHandler(clazz, client, webTarget)
         );
     }
 

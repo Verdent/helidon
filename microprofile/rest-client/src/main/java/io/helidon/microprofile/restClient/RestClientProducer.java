@@ -41,16 +41,24 @@ class RestClientProducer implements Bean<Object> {
     private static final String CONFIG_CONNECTION_TIMEOUT = "/mp-rest/connectTimeout";
     private static final String CONFIG_READ_TIMEOUT = "/mp-rest/readTimeout";
 
+    private final RestClientExtension.MpRestClientQualifier qualifier;
     private final BeanManager beanManager;
     private final Class<?> interfaceType;
     private final Config config;
     private final String baseUrl;
 
-    RestClientProducer(Class<?> interfaceType, BeanManager beanManager) {
+    RestClientProducer(RestClientExtension.MpRestClientQualifier qualifier,
+                       Class<?> interfaceType,
+                       BeanManager beanManager) {
+        this.qualifier = qualifier;
         this.interfaceType = interfaceType;
         this.beanManager = beanManager;
         this.config = ConfigProvider.getConfig();
         this.baseUrl = getBaseUrl(interfaceType);
+        /*if (baseUrl.isEmpty()) {
+            throw new DeploymentException("No base uri/url set! It has to be set by config or via @RegisterRestClient
+            annotation");
+        }*/
     }
 
     private String getBaseUrl(Class<?> interfaceType) {
@@ -107,7 +115,7 @@ class RestClientProducer implements Bean<Object> {
 
     @Override
     public Set<Annotation> getQualifiers() {
-        return CollectionsHelper.setOf(RestClient.LITERAL);
+        return CollectionsHelper.setOf(qualifier, RestClient.LITERAL);
     }
 
     @Override
@@ -155,5 +163,10 @@ class RestClientProducer implements Bean<Object> {
         } else {
             throw new IllegalArgumentException("Ambiguous scope definition on " + interfaceType + ": " + possibleScopes);
         }
+    }
+
+    @Override
+    public String toString() {
+        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName() + " ]";
     }
 }

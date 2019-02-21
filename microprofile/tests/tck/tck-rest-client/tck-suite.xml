@@ -7,6 +7,9 @@
             <package name="org.eclipse.microprofile.rest.client.tck.*">
             </package>
         </packages>
+        <!--<classes>
+            <class name="org.eclipse.microprofile.rest.client.tck.RestClientListenerTest"/>
+        </classes>-->
     </test>
 
 </suite>

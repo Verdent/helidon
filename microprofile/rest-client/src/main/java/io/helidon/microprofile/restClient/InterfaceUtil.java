@@ -89,7 +89,7 @@ class InterfaceUtil {
         }
     }
 
-    private static List<String> parseParameters(String template) {
+    public static List<String> parseParameters(String template) {
         List<String> allMatches = new ArrayList<>();
         Matcher m = PATTERN.matcher(template);
         while (m.find()) {
@@ -132,6 +132,27 @@ class InterfaceUtil {
                 }
             }
         }
+    }
+
+    static Method parseComputeMethod(Class<?> iClass, String[] headerValue) {
+        List<String> computeMethodNames = InterfaceUtil.parseParameters(Arrays.toString(headerValue));
+        /*if more than one string is specified as the value attribute, and one of the strings is a
+          compute method (surrounded by curly braces), then the implementation will throw a
+          RestClientDefinitionException*/
+        if (headerValue.length > 1 && computeMethodNames.size() > 0) {
+            throw new RestClientDefinitionException("@ClientHeaderParam annotation should not contain compute method "
+                                                            + "when multiple values are present in value attribute. "
+                                                            + "See " + iClass.getName());
+        }
+        if (computeMethodNames.size() == 1) {
+            String methodName = computeMethodNames.get(0);
+            List<Method> computeMethods = getAnnotationComputeMethod(iClass, methodName);
+            if (computeMethods.size() != 1) {
+                throw new RestClientDefinitionException("No valid compute method found for name: " + methodName);
+            }
+            return computeMethods.get(0);
+        }
+        return null;
     }
 
     private static List<Method> getAnnotationComputeMethod(Class<?> iClass, String methodName) {

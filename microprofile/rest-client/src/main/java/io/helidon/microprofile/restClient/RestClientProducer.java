@@ -1,34 +1,28 @@
 package io.helidon.microprofile.restClient;
 
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Type;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import io.helidon.common.CollectionsHelper;
+import io.helidon.common.OptionalHelper;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
+import org.eclipse.microprofile.rest.client.RestClientBuilder;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 
-import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.InjectionPoint;
-
-import io.helidon.common.CollectionsHelper;
-import io.helidon.common.OptionalHelper;
-
-import org.eclipse.microprofile.config.Config;
-import org.eclipse.microprofile.config.ConfigProvider;
-import org.eclipse.microprofile.rest.client.RestClientBuilder;
-import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
-import org.eclipse.microprofile.rest.client.inject.RestClient;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Type;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Created by David Kral.
@@ -62,8 +56,8 @@ class RestClientProducer implements Bean<Object> {
     }
 
     private String getBaseUrl(Class<?> interfaceType) {
-        return OptionalHelper.from(config.getOptionalValue(getName() + CONFIG_URL, String.class))
-                .or(() -> config.getOptionalValue(getName() + CONFIG_URI, String.class))
+        return OptionalHelper.from(config.getOptionalValue(getName() + CONFIG_URI, String.class))
+                .or(() -> config.getOptionalValue(getName() + CONFIG_URL, String.class))
                 .asOptional()
                 .orElseGet(() -> {
                     RegisterRestClient registerRestClient = interfaceType.getAnnotation(RegisterRestClient.class);

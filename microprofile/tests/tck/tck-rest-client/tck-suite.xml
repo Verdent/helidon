@@ -3,13 +3,13 @@
 <suite name="microprofile-rest-client-TCK" verbose="2" configfailurepolicy="continue" >
 
     <test name="microprofile-rest-client TCK">
-        <packages>
-            <package name="org.eclipse.microprofile.rest.client.tck.*">
-            </package>
-        </packages>
-        <!--<classes>
-            <class name="org.eclipse.microprofile.rest.client.tck.RestClientListenerTest"/>
-        </classes>-->
+        <!--<packages>-->
+            <!--<package name="org.eclipse.microprofile.rest.client.tck.*">-->
+            <!--</package>-->
+        <!--</packages>-->
+        <classes>
+            <class name="org.eclipse.microprofile.rest.client.tck.ClientHeaderParamTest"/>
+        </classes>
     </test>
 
 </suite>

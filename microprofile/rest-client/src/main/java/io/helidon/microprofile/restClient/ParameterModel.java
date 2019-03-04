@@ -3,32 +3,29 @@ package io.helidon.microprofile.restClient;
 import java.lang.reflect.Parameter;
 import java.util.Optional;
 
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PathParam;
+import javax.ws.rs.client.Invocation;
 
 /**
  * Created by David Kral.
  */
-public class ParameterModel {
+public abstract class ParameterModel<T> {
 
+    protected final ClassModel classModel;
     private final Parameter parameter;
-    private final String pathParamName;
-    //private final String headerName;
     private final int paramPosition;
     private final boolean entity;
 
-    private ParameterModel(Builder builder) {
+    protected ParameterModel(Builder builder) {
+        this.classModel = builder.classModel;
         this.parameter = builder.parameter;
-        this.pathParamName = builder.pathParamName;
         this.entity = builder.entity;
         this.paramPosition = builder.paramPosition;
     }
 
     public Parameter getParameter() {
         return parameter;
-    }
-
-    public Optional<String> getPathParamName() {
-        return Optional.ofNullable(pathParamName);
     }
 
     public int getParamPosition() {
@@ -39,21 +36,27 @@ public class ParameterModel {
         return entity;
     }
 
-    static ParameterModel from(Parameter parameter, int position) {
-        return new Builder(parameter)
+    public abstract T handleParameter(T requestPart, Object[] args);
+
+    static ParameterModel from(ClassModel classModel, Parameter parameter, int position) {
+        return new Builder(classModel, parameter)
                 .pathParamName(parameter.getAnnotation(PathParam.class))
+                .headerParamName(parameter.getAnnotation(HeaderParam.class))
                 .paramPosition(position)
                 .build();
     }
 
-    private static class Builder implements io.helidon.common.Builder<ParameterModel> {
+    protected static class Builder implements io.helidon.common.Builder<ParameterModel> {
 
+        private ClassModel classModel;
         private Parameter parameter;
-        private String pathParamName;
+        protected String pathParamName;
+        protected String headerParamName;
         private boolean entity;
         private int paramPosition;
 
-        private Builder(Parameter parameter) {
+        private Builder(ClassModel classModel, Parameter parameter) {
+            this.classModel = classModel;
             this.parameter = parameter;
         }
 
@@ -65,6 +68,17 @@ public class ParameterModel {
          */
         public Builder pathParamName(PathParam pathParam) {
             this.pathParamName = pathParam == null ? null : pathParam.value();
+            return this;
+        }
+
+        /**
+         * Header parameter name.
+         *
+         * @param headerParam {@link HeaderParam} annotation
+         * @return updated Builder instance
+         */
+        public Builder headerParamName(HeaderParam headerParam) {
+            this.headerParamName = headerParam == null ? null : headerParam.value();
             return this;
         }
 
@@ -82,7 +96,17 @@ public class ParameterModel {
         @Override
         public ParameterModel build() {
             entity = pathParamName == null;
-            return new ParameterModel(this);
+            if (pathParamName != null) {
+                return new PathParamModel(this);
+            } else if (headerParamName != null) {
+                return new HeaderParamModel(this);
+            }
+            return new ParameterModel(this) {
+                @Override
+                public Object handleParameter(Object requestPart, Object[] args) {
+                    return null;
+                }
+            };
         }
     }
 

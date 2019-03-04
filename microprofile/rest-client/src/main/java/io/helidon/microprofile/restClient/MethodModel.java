@@ -6,11 +6,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.Consumes;
@@ -22,12 +19,7 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.MultivaluedHashMap;
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
-import javax.ws.rs.ext.ParamConverter;
-import javax.ws.rs.ext.ParamConverterProvider;
+import javax.ws.rs.core.*;
 
 import io.helidon.common.CollectionsHelper;
 
@@ -50,7 +42,7 @@ public class MethodModel {
     private final String[] produces;
     private final String[] consumes;
     private final List<ParameterModel> parameterModels;
-    private List<ClientHeaderParamModel> clientHeaders;
+    private final List<ClientHeaderParamModel> clientHeaders;
 
     private MethodModel(Builder builder) {
         this.classModel = builder.classModel;
@@ -65,29 +57,31 @@ public class MethodModel {
 
     public Object invokeMethod(WebTarget classLevelTarget, Method method, Object[] args) throws Throwable {
         WebTarget methodLevelTarget = classLevelTarget.path(path);
-        Object entity = null;
-        Map<String, Object> parametersToResolve = new HashMap<>();
-        for (ParameterModel parameterModel : parameterModels) {
-            if (parameterModel.getPathParamName().isPresent()) {
-                Object paramValue = resolveParamValue(args[parameterModel.getParamPosition()], parameterModel.getParameter());
-                parametersToResolve.put(parameterModel.getPathParamName().get(), paramValue);
-            } else if (parameterModel.isEntity()) {
-                entity = args[parameterModel.getParamPosition()];
-            }
-        }
-        methodLevelTarget = methodLevelTarget.resolveTemplates(parametersToResolve);
-        Invocation.Builder builder = methodLevelTarget
+
+        AtomicReference<Object> entity = new AtomicReference<>();
+        AtomicReference<WebTarget> webTargetAtomicReference = new AtomicReference<>(methodLevelTarget);
+        parameterModels.stream()
+                .filter(parameterModel -> parameterModel instanceof PathParamModel)
+                .forEach(parameterModel -> webTargetAtomicReference
+                        .set((WebTarget) parameterModel.handleParameter(webTargetAtomicReference.get(), args)));
+
+        parameterModels.stream()
+                .filter(ParameterModel::isEntity)
+                .findFirst()
+                .ifPresent(parameterModel -> entity.set(args[parameterModel.getParamPosition()]));
+
+        Invocation.Builder builder = webTargetAtomicReference.get()
                 .request(produces)
                 .property(INVOKED_METHOD, method)
                 .headers(addCustomHeaders(args));
 
         Response response;
 
-        if (entity != null
+        if (entity.get() != null
                 && !httpMethod.equals(GET.class.getSimpleName())
                 && !httpMethod.equals(DELETE.class.getSimpleName())) {
             //TODO upravit
-            response = builder.method(httpMethod, Entity.entity(entity, consumes[0]));//CONSUMES
+            response = builder.method(httpMethod, Entity.entity(entity.get(), consumes[0]));//CONSUMES
         } else {
             response = builder.method(httpMethod);
         }
@@ -102,28 +96,38 @@ public class MethodModel {
         return response.readEntity(method.getReturnType());
     }
 
-    private Object resolveParamValue(Object arg, Parameter parameter) {
-        for (ParamConverterProvider paramConverterProvider : classModel.getParamConverterProviders()) {
-            ParamConverter<Object> converter = paramConverterProvider
-                    .getConverter((Class<Object>) parameter.getType(), null, parameter.getAnnotations());
-            if (converter != null) {
-                return converter.toString(arg);
-            }
+    private MultivaluedMap<String, Object> addCustomHeaders(Object[] args) throws Throwable {
+        MultivaluedMap<String, Object> result = new MultivaluedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : resolveCustomHeaders(args).entrySet()) {
+            result.add(entry.getKey(), entry.getValue());
         }
-        return arg;
+        result.add(HttpHeaders.ACCEPT, produces);
+        //TODO check this. Added because of ProducersConsumesTest.java
+        result.add(HttpHeaders.CONTENT_TYPE, consumes[0]);
+        return result;
     }
 
-    private MultivaluedMap<String, Object> addCustomHeaders(Object[] args)
+    private MultivaluedMap<String, String> resolveCustomHeaders(Object[] args)
             throws Throwable {
-        MultivaluedMap<String, Object> customHeaders = new MultivaluedHashMap<>();
+        MultivaluedMap<String, String> customHeaders = new MultivaluedHashMap<>();
         customHeaders.putAll(createMultivaluedHeadersMap(classModel.getClientHeaders()));
         customHeaders.putAll(createMultivaluedHeadersMap(clientHeaders));
-        return customHeaders;
+        parameterModels.stream()
+                .filter(parameterModel -> parameterModel instanceof HeaderParamModel)
+                .forEach(parameterModel -> parameterModel.handleParameter(customHeaders, args));
+
+        MultivaluedMap<String, String> inbound = new MultivaluedHashMap<>();
+        HeadersContext.get().ifPresent(headersContext -> inbound.putAll(headersContext.inboundHeaders()));
+
+        AtomicReference<MultivaluedMap<String, String>> toReturn = new AtomicReference<>(customHeaders);
+        classModel.getClientHeadersFactory().ifPresent(clientHeadersFactory -> toReturn
+                .set(clientHeadersFactory.update(inbound, customHeaders)));
+        return toReturn.get();
     }
 
-    private <T> MultivaluedMap<String, Object> createMultivaluedHeadersMap(List<ClientHeaderParamModel> clientHeaders)
+    private <T> MultivaluedMap<String, String> createMultivaluedHeadersMap(List<ClientHeaderParamModel> clientHeaders)
             throws Throwable {
-        MultivaluedMap<String, Object> customHeaders = new MultivaluedHashMap<>();
+        MultivaluedMap<String, String> customHeaders = new MultivaluedHashMap<>();
         for (ClientHeaderParamModel clientHeaderParamModel : clientHeaders) {
             if (clientHeaderParamModel.getComputeMethod() == null) {
                 customHeaders
@@ -177,12 +181,13 @@ public class MethodModel {
         return customHeaders;
     }
 
-    private static List<Object> createList(Object value) {
+    private static List<String> createList(Object value) {
         if (value instanceof String[]) {
             String[] array = (String[]) value;
             return Arrays.asList(array);
         }
-        return CollectionsHelper.listOf(value);
+        String s = (String) value;
+        return CollectionsHelper.listOf(s);
     }
 
     private void evaluateResponse(Response response, Method method) throws Throwable {
@@ -190,7 +195,9 @@ public class MethodModel {
         Throwable throwable = null;
         for (ResponseExceptionMapper responseExceptionMapper : classModel.getResponseExceptionMappers()) {
             if (responseExceptionMapper.handles(response.getStatus(), response.getHeaders())) {
-                if (lowestMapper == null || lowestMapper.getPriority() > responseExceptionMapper.getPriority()) {
+                if (lowestMapper == null
+                        || throwable == null
+                        || lowestMapper.getPriority() > responseExceptionMapper.getPriority()) {
                     lowestMapper = responseExceptionMapper;
                     Throwable tmp = lowestMapper.toThrowable(response);
                     if (tmp != null) {
@@ -218,7 +225,7 @@ public class MethodModel {
                 .pathValue(method.getAnnotation(Path.class))
                 .produces(method.getAnnotation(Produces.class))
                 .consumes(method.getAnnotation(Consumes.class))
-                .parameters(parameterModels(method))
+                .parameters(parameterModels(classModel, method))
                 .clientHeaders(method.getAnnotationsByType(ClientHeaderParam.class))
                 .build();
     }
@@ -233,11 +240,11 @@ public class MethodModel {
         return httpAnnotations.get(0).getSimpleName();
     }
 
-    private static List<ParameterModel> parameterModels(Method method) {
+    private static List<ParameterModel> parameterModels(ClassModel classModel, Method method) {
         ArrayList<ParameterModel> parameterModels = new ArrayList<>();
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
-            parameterModels.add(ParameterModel.from(parameters[i], i));
+            parameterModels.add(ParameterModel.from(classModel, parameters[i], i));
         }
         return parameterModels;
     }
@@ -290,6 +297,8 @@ public class MethodModel {
          */
         public Builder pathValue(Path path) {
             this.pathValue = path != null ? path.value() : "";
+            //if only / is added to path like this "localhost:80/test" it makes invalid path "localhost:80/test/"
+            this.pathValue = pathValue.equals("/") ? "" : pathValue;
             return this;
         }
 
@@ -352,8 +361,8 @@ public class MethodModel {
             UriBuilder uriBuilder = UriBuilder.fromUri(classModel.getPath()).path(pathValue);
             List<String> parameters = InterfaceUtil.parseParameters(uriBuilder.toTemplate());
             List<String> methodPathParameters = parameterModels.stream()
-                    .filter(parameterModel -> !parameterModel.isEntity())
-                    .map(parameterModel -> parameterModel.getPathParamName().get())
+                    .filter(parameterModel -> parameterModel instanceof PathParamModel)
+                    .map(parameterModel -> ((PathParamModel) parameterModel).getPathParamName())
                     .collect(Collectors.toList());
             for (String parameterName : methodPathParameters) {
                 if (!parameters.contains(parameterName)) {

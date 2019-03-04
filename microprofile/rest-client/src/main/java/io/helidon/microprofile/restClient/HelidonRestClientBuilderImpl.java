@@ -13,6 +13,7 @@ import javax.ws.rs.Priorities;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Configuration;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.ext.ParamConverterProvider;
 
@@ -25,6 +26,8 @@ import org.eclipse.microprofile.rest.client.annotation.RegisterProvider;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 import org.eclipse.microprofile.rest.client.spi.RestClientListener;
 import org.glassfish.jersey.client.JerseyClientBuilder;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.process.internal.RequestScoped;
 
 /**
  * Created by David Kral.
@@ -81,6 +84,10 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
         RestClientModel restClientModel = RestClientModel.from(clazz);
 
+        if (uri == null) {
+            throw new IllegalStateException("Base uri/url cannot be null!");
+        }
+
         //InterfaceUtil.validateInterface(clazz);
 
         //Provider registration part
@@ -129,19 +136,8 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
             }
         }
 
-        RegisterClientHeaders registerClientHeaders = clazz.getAnnotation(RegisterClientHeaders.class);
-        if (registerClientHeaders != null) {
-            register(registerClientHeaders.value());
-        }
-
-        URI uri = this.uri;
-        Path path = clazz.getAnnotation(Path.class);
-        if (path != null && !path.value().equals("/")) {
-            uri = UriBuilder.fromUri(uri.toString() + path.value()).build();
-        }
-
         Client client = jerseyClientBuilder.build();
-        WebTarget webTarget = client.target(uri);
+        WebTarget webTarget = client.target(this.uri);
 
         restClientModel.getClassModel().getResponseExceptionMappers().addAll(responseExceptionMappers);
         restClientModel.getClassModel().getParamConverterProviders().addAll(paramConverterProviders);
@@ -149,8 +145,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
                                           new Class[] {clazz},
-                                          new ProxyInvocationHandler(clazz, client, webTarget, responseExceptionMappers,
-                                                                     paramConverterProviders, restClientModel)
+                                          new ProxyInvocationHandler(webTarget, restClientModel)
         );
     }
 
@@ -167,28 +162,28 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
     @Override
     public RestClientBuilder register(Class<?> aClass) {
-        register(createInstance(aClass));
+        register(ReflectionUtil.createInstance(aClass));
         //jerseyClientBuilder.register(aClass);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, int i) {
-        register(createInstance(aClass), i);
+        register(ReflectionUtil.createInstance(aClass), i);
         //jerseyClientBuilder.register(aClass, i);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Class<?>... classes) {
-        register(createInstance(aClass), classes);
+        register(ReflectionUtil.createInstance(aClass), classes);
         //jerseyClientBuilder.register(aClass, classes);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Map<Class<?>, Integer> map) {
-        register(createInstance(aClass), map);
+        register(ReflectionUtil.createInstance(aClass), map);
         //jerseyClientBuilder.register(aClass, map);
         return this;
     }
@@ -245,13 +240,5 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
         }
         jerseyClientBuilder.register(o, map);
         return this;
-    }
-
-    private <T> T createInstance(Class<T> tClass) {
-        try {
-            return tClass.newInstance();
-        } catch (Throwable t) {
-            throw new RuntimeException("No default constructor in class " + tClass + " present. Class cannot be registered!", t);
-        }
     }
 }

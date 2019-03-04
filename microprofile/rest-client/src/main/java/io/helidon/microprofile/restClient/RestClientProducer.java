@@ -10,10 +10,8 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
-import javax.enterprise.inject.spi.Bean;
-import javax.enterprise.inject.spi.BeanManager;
-import javax.enterprise.inject.spi.DeploymentException;
-import javax.enterprise.inject.spi.InjectionPoint;
+import javax.enterprise.inject.spi.*;
+import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.net.MalformedURLException;
@@ -27,7 +25,7 @@ import java.util.stream.Collectors;
 /**
  * Created by David Kral.
  */
-class RestClientProducer implements Bean<Object> {
+class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     private static final String CONFIG_URL = "/mp-rest/url";
     private static final String CONFIG_URI = "/mp-rest/uri";
@@ -161,6 +159,11 @@ class RestClientProducer implements Bean<Object> {
 
     @Override
     public String toString() {
-        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName() + " ]";
+        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName() + " ] with Qualifiers [" + getQualifiers() + "]";
+    }
+
+    @Override
+    public String getId() {
+        return interfaceType.getName();
     }
 }

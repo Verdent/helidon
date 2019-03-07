@@ -94,8 +94,6 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
             throw new IllegalStateException("Base uri/url cannot be null!");
         }
 
-        //InterfaceUtil.validateInterface(clazz);
-
         //Provider registration part
         Object providersFromJerseyConfig = jerseyClientBuilder.getConfiguration().getProperty(clazz.getName() + CONFIG_PROVIDERS);
         if (providersFromJerseyConfig instanceof String && !((String) providersFromJerseyConfig).isEmpty()) {
@@ -215,6 +213,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
         if (o instanceof ResponseExceptionMapper) {
             ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
             jerseyClientBuilder.register(mapper, mapper.getPriority());
+            registerCustomProvider(o);
         } else {
             jerseyClientBuilder.register(o);
         }
@@ -226,6 +225,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
         if (o instanceof ResponseExceptionMapper) {
             ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
             jerseyClientBuilder.register(mapper, mapper.getPriority());
+            registerCustomProvider(o);
         } else {
             jerseyClientBuilder.register(o, i);
         }

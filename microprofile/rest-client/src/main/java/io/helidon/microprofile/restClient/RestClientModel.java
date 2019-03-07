@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
+import javax.ws.rs.Path;
 import javax.ws.rs.client.WebTarget;
 
 /**
@@ -40,8 +41,10 @@ public class RestClientModel {
     private static Map<Method, MethodModel> parseMethodModels(InterfaceModel classModel) {
         Map<Method, MethodModel> methodMap = new HashMap<>();
         for (Method method : classModel.getRestClientClass().getMethods()) {
-            if (InterfaceUtil.getHttpAnnotations(method).size() > 0) {
+            if (InterfaceUtil.getHttpAnnotations(method).size() > 0 ||
+                    method.getAnnotation(Path.class) != null) {
                 //Skip method processing if method does not have HTTP annotation
+                //and is not sub resource (does not have Path annotation)
                 methodMap.put(method, MethodModel.from(classModel, method));
             }
         }

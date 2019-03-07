@@ -55,6 +55,7 @@ public class MethodModel {
     private final String[] consumes;
     private final List<ParamModel> parameterModels;
     private final List<ClientHeaderParamModel> clientHeaders;
+    private final RestClientModel subResourceModel;
 
     private MethodModel(Builder builder) {
         this.classModel = builder.classModel;
@@ -65,6 +66,14 @@ public class MethodModel {
         this.consumes = builder.consumes;
         this.parameterModels = builder.parameterModels;
         this.clientHeaders = builder.clientHeaders;
+        if (httpMethod.isEmpty()) {
+            subResourceModel = RestClientModel.from(returnType);
+            InterfaceModel subResourceClassModel = subResourceModel.getClassModel();
+            subResourceClassModel.getResponseExceptionMappers().addAll(classModel.getResponseExceptionMappers());
+            subResourceClassModel.getParamConverterProviders().addAll(classModel.getParamConverterProviders());
+        } else {
+            subResourceModel = null;
+        }
     }
 
     public Object invokeMethod(WebTarget classLevelTarget, Method method, Object[] args) throws Throwable {
@@ -76,9 +85,11 @@ public class MethodModel {
                 .filter(parameterModel -> parameterModel.handles(PathParam.class))
                 .forEach(parameterModel ->
                                  webTargetAtomicReference.set((WebTarget)
-                                                                      parameterModel.handleParameter(webTargetAtomicReference.get(),
-                                                                                                     PathParam.class,
-                                                                                                     args[parameterModel.getParamPosition()])));
+                                                                      parameterModel
+                                                                              .handleParameter(webTargetAtomicReference.get(),
+                                                                                               PathParam.class,
+                                                                                               args[parameterModel
+                                                                                                       .getParamPosition()])));
 
         parameterModels.stream()
                 .filter(ParamModel::isEntity)
@@ -86,6 +97,10 @@ public class MethodModel {
                 .ifPresent(parameterModel -> entity.set(args[parameterModel.getParamPosition()]));
 
         WebTarget webTarget = webTargetAtomicReference.get();
+        if (httpMethod.isEmpty()) {
+            //sub resource method
+            return subResourceProxy(webTarget, returnType);
+        }
         webTarget = addQueryParams(webTarget, args);
 
         Invocation.Builder builder = webTarget
@@ -112,6 +127,13 @@ public class MethodModel {
             return response;
         }
         return response.readEntity(method.getReturnType());
+    }
+
+    private <T>T subResourceProxy(WebTarget webTarget, Class<T> subResourceType) {
+        return (T) Proxy.newProxyInstance(subResourceType.getClassLoader(),
+                                          new Class[] {subResourceType},
+                                          new ProxyInvocationHandler(webTarget, subResourceModel)
+        );
     }
 
     private WebTarget addQueryParams(WebTarget webTarget, Object[] args) {
@@ -288,6 +310,9 @@ public class MethodModel {
             throw new RestClientDefinitionException("Method can't have more then one annotation of @HttpMethod type. " +
                                                             "See " + classModel.getRestClientClass().getName() +
                                                             "::" + method.getName());
+        } else if (httpAnnotations.isEmpty()) {
+            //Sub resource method
+            return "";
         }
         return httpAnnotations.get(0).getSimpleName();
     }

@@ -11,7 +11,7 @@ import javax.ws.rs.client.WebTarget;
  */
 public class RestClientModel {
 
-    private final ClassModel classModel;
+    private final InterfaceModel classModel;
     private final Map<Method, MethodModel> methodModels;
 
     private RestClientModel(Builder builder) {
@@ -19,7 +19,7 @@ public class RestClientModel {
         this.methodModels = builder.methodModels;
     }
 
-    public ClassModel getClassModel() {
+    public InterfaceModel getClassModel() {
         return classModel;
     }
 
@@ -30,14 +30,14 @@ public class RestClientModel {
     }
 
     public static RestClientModel from(Class<?> restClientClass) {
-        ClassModel classModel = ClassModel.from(restClientClass);
+        InterfaceModel classModel = InterfaceModel.from(restClientClass);
         return new Builder()
                 .classModel(classModel)
                 .methodModels(parseMethodModels(classModel))
                 .build();
     }
 
-    private static Map<Method, MethodModel> parseMethodModels(ClassModel classModel) {
+    private static Map<Method, MethodModel> parseMethodModels(InterfaceModel classModel) {
         Map<Method, MethodModel> methodMap = new HashMap<>();
         for (Method method : classModel.getRestClientClass().getMethods()) {
             if (InterfaceUtil.getHttpAnnotations(method).size() > 0) {
@@ -50,19 +50,19 @@ public class RestClientModel {
 
     private static class Builder implements io.helidon.common.Builder<RestClientModel> {
 
-        private ClassModel classModel;
+        private InterfaceModel classModel;
         private Map<Method, MethodModel> methodModels;
 
         private Builder() {
         }
 
         /**
-         * Rest client class converted to {@link ClassModel}
+         * Rest client class converted to {@link InterfaceModel}
          *
-         * @param classModel {@link ClassModel} instance
+         * @param classModel {@link InterfaceModel} instance
          * @return Updated Builder instance
          */
-        public Builder classModel(ClassModel classModel) {
+        public Builder classModel(InterfaceModel classModel) {
             this.classModel = classModel;
             return this;
         }

@@ -8,7 +8,7 @@
             <!--</package>-->
         <!--</packages>-->
         <classes>
-            <class name="org.eclipse.microprofile.rest.client.tck.ClientHeadersFactoryTest"/>
+            <class name="org.eclipse.microprofile.rest.client.tck.BeanParamTest"/>
         </classes>
     </test>
 

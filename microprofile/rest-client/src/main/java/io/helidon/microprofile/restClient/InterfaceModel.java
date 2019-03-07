@@ -1,6 +1,8 @@
 package io.helidon.microprofile.restClient;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -23,7 +25,7 @@ import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 /**
  * Created by David Kral.
  */
-public class ClassModel {
+public class InterfaceModel {
 
     private final Class<?> restClientClass;
     private final String[] produces;
@@ -35,7 +37,7 @@ public class ClassModel {
     private final List<ResponseExceptionMapper> responseExceptionMappers;
     private final List<ParamConverterProvider> paramConverterProviders;
 
-    private ClassModel(Builder builder) {
+    private InterfaceModel(Builder builder) {
         this.restClientClass = builder.restClientClass;
         this.path = builder.pathValue;
         this.produces = builder.produces;
@@ -78,10 +80,10 @@ public class ClassModel {
         return paramConverterProviders;
     }
 
-    Object resolveParamValue(Object arg, Parameter parameter) {
+    Object resolveParamValue(Object arg, Type type, Annotation[] annotations) {
         for (ParamConverterProvider paramConverterProvider : paramConverterProviders) {
             ParamConverter<Object> converter = paramConverterProvider
-                    .getConverter((Class<Object>) parameter.getType(), null, parameter.getAnnotations());
+                    .getConverter((Class<Object>) type, null, annotations);
             if (converter != null) {
                 return converter.toString(arg);
             }
@@ -89,7 +91,7 @@ public class ClassModel {
         return arg;
     }
 
-    static ClassModel from(Class<?> restClientClass) {
+    static InterfaceModel from(Class<?> restClientClass) {
         return new Builder(restClientClass)
                 .pathValue(restClientClass.getAnnotation(Path.class))
                 .produces(restClientClass.getAnnotation(Produces.class))
@@ -99,7 +101,7 @@ public class ClassModel {
                 .build();
     }
 
-    private static class Builder implements io.helidon.common.Builder<ClassModel> {
+    private static class Builder implements io.helidon.common.Builder<InterfaceModel> {
 
         private final Class<?> restClientClass;
 
@@ -171,9 +173,9 @@ public class ClassModel {
         }
 
         @Override
-        public ClassModel build() {
+        public InterfaceModel build() {
             validateHeaderDuplicityNames();
-            return new ClassModel(this);
+            return new InterfaceModel(this);
         }
 
         private void validateHeaderDuplicityNames() {

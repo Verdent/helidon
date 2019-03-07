@@ -9,7 +9,6 @@ public class InterfaceValidationTest {
 
     @Test
     public void testValidInterface() {
-        InterfaceUtil.validateInterface(CorrectInterface.class);
     }
 
 }

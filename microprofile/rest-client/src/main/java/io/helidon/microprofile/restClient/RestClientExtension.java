@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.DeploymentException;
@@ -44,7 +45,7 @@ public class RestClientExtension implements Extension {
         }
     }
 
-    public void collectClaimProducer(@Observes ProcessInjectionPoint<?, ?> pip) {
+    public void collectClientProducer(@Observes ProcessInjectionPoint<?, ?> pip) {
         RestClient restClient = pip.getInjectionPoint().getAnnotated().getAnnotation(RestClient.class);
         if (restClient != null) {
             InjectionPoint ip = pip.getInjectionPoint();
@@ -58,6 +59,7 @@ public class RestClientExtension implements Extension {
 
     public void restClientRegistration(@Observes AfterBeanDiscovery abd, BeanManager bm) {
         interfaces.forEach(type -> abd.addBean(new RestClientProducer(new RestClientLiteral(type), type, bm)));
+        interfaces.forEach(type -> abd.addBean(new RestClientProducer(null, type, bm)));
     }
 
     @Qualifier

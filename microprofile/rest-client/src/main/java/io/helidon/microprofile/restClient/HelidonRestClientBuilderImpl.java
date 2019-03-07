@@ -4,29 +4,35 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.*;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import javax.ws.rs.Path;
+import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.ws.rs.Priorities;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Configuration;
+import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.ext.ParamConverterProvider;
 
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
-import org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
 import org.eclipse.microprofile.rest.client.annotation.RegisterProvider;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 import org.eclipse.microprofile.rest.client.spi.RestClientListener;
 import org.glassfish.jersey.client.JerseyClientBuilder;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.internal.inject.ReferencingFactory;
+import org.glassfish.jersey.internal.util.collection.Ref;
 import org.glassfish.jersey.process.internal.RequestScoped;
 
 /**
@@ -136,12 +142,28 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
             }
         }
 
+        //Support for HttpHeaders injection
+        register(ClientHeaderFilter.class, 1);
+        register(new AbstractBinder() {
+            @Override
+            protected void configure() {
+                bindFactory(HeadersRefFactory.class)
+                        .to(HttpHeaders.class)
+                        .proxy(true)
+                        .proxyForSameScope(false)
+                        .in(RequestScoped.class);
+
+                bindFactory(ReferencingFactory.<HttpHeaders>referenceFactory())
+                        .to(new GenericType<Ref<HttpHeaders>>() { })
+                        .in(RequestScoped.class);
+            }
+        });
+
         Client client = jerseyClientBuilder.build();
         WebTarget webTarget = client.target(this.uri);
 
         restClientModel.getClassModel().getResponseExceptionMappers().addAll(responseExceptionMappers);
         restClientModel.getClassModel().getParamConverterProviders().addAll(paramConverterProviders);
-
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
                                           new Class[] {clazz},
@@ -162,29 +184,29 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
     @Override
     public RestClientBuilder register(Class<?> aClass) {
-        register(ReflectionUtil.createInstance(aClass));
-        //jerseyClientBuilder.register(aClass);
+        registerCustomClassProvider(aClass);
+        jerseyClientBuilder.register(aClass);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, int i) {
-        register(ReflectionUtil.createInstance(aClass), i);
-        //jerseyClientBuilder.register(aClass, i);
+        registerCustomClassProvider(aClass);
+        jerseyClientBuilder.register(aClass, i);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Class<?>... classes) {
-        register(ReflectionUtil.createInstance(aClass), classes);
-        //jerseyClientBuilder.register(aClass, classes);
+        registerCustomClassProvider(aClass);
+        jerseyClientBuilder.register(aClass, classes);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Map<Class<?>, Integer> map) {
-        register(ReflectionUtil.createInstance(aClass), map);
-        //jerseyClientBuilder.register(aClass, map);
+        registerCustomClassProvider(aClass);
+        jerseyClientBuilder.register(aClass, map);
         return this;
     }
 
@@ -192,11 +214,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
     public RestClientBuilder register(Object o) {
         if (o instanceof ResponseExceptionMapper) {
             ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
-            responseExceptionMappers.add(mapper);
             jerseyClientBuilder.register(mapper, mapper.getPriority());
-        } else if (o instanceof ParamConverterProvider) {
-            paramConverterProviders.add((ParamConverterProvider) o);
-            jerseyClientBuilder.register(o);
         } else {
             jerseyClientBuilder.register(o);
         }
@@ -207,11 +225,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
     public RestClientBuilder register(Object o, int i) {
         if (o instanceof ResponseExceptionMapper) {
             ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
-            responseExceptionMappers.add(mapper);
             jerseyClientBuilder.register(mapper, mapper.getPriority());
-        } else if (o instanceof ParamConverterProvider) {
-            paramConverterProviders.add((ParamConverterProvider) o);
-            jerseyClientBuilder.register(o, i);
         } else {
             jerseyClientBuilder.register(o, i);
         }
@@ -220,25 +234,39 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
     @Override
     public RestClientBuilder register(Object o, Class<?>... classes) {
-        if (o instanceof ResponseExceptionMapper) {
-            ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
-            responseExceptionMappers.add(mapper);
-        } else if (o instanceof ParamConverterProvider) {
-            paramConverterProviders.add((ParamConverterProvider) o);
-        }
+        registerCustomProvider(o);
         jerseyClientBuilder.register(o, classes);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Object o, Map<Class<?>, Integer> map) {
-        if (o instanceof ResponseExceptionMapper) {
-            ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
-            responseExceptionMappers.add(mapper);
-        } else if (o instanceof ParamConverterProvider) {
-            paramConverterProviders.add((ParamConverterProvider) o);
-        }
+        registerCustomProvider(o);
         jerseyClientBuilder.register(o, map);
         return this;
     }
+
+    private void registerCustomClassProvider(Class<?> providerClass) {
+        if (ResponseExceptionMapper.class.isAssignableFrom(providerClass)
+                || ParamConverterProvider.class.isAssignableFrom(providerClass)) {
+            registerCustomProvider(ReflectionUtil.createInstance(providerClass));
+        }
+    }
+
+    private void registerCustomProvider(Object instance) {
+        if (instance instanceof ResponseExceptionMapper) {
+            responseExceptionMappers.add((ResponseExceptionMapper) instance);
+        } else if (instance instanceof ParamConverterProvider) {
+            paramConverterProviders.add((ParamConverterProvider) instance);
+        }
+    }
+
+    private static class HeadersRefFactory extends ReferencingFactory<HttpHeaders> {
+
+        @Inject
+        HeadersRefFactory(Provider<Ref<HttpHeaders>> referenceFactory) {
+            super(referenceFactory);
+        }
+    }
+
 }

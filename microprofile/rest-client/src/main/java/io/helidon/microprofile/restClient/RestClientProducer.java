@@ -2,6 +2,7 @@ package io.helidon.microprofile.restClient;
 
 import io.helidon.common.CollectionsHelper;
 import io.helidon.common.OptionalHelper;
+
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
@@ -10,7 +11,9 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
+import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.*;
+
 import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
@@ -107,6 +110,9 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<Annotation> getQualifiers() {
+        if (qualifier == null) {
+            return CollectionsHelper.setOf(Default.Literal.INSTANCE);
+        }
         return CollectionsHelper.setOf(qualifier, RestClient.LITERAL);
     }
 
@@ -118,6 +124,9 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public String getName() {
+        if (qualifier == null) {
+            return interfaceType.getName()+"RestClient";
+        }
         return interfaceType.getName();
     }
 
@@ -159,7 +168,8 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public String toString() {
-        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName() + " ] with Qualifiers [" + getQualifiers() + "]";
+        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName() +
+                " ] with Qualifiers [" + getQualifiers() + "]";
     }
 
     @Override

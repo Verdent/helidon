@@ -6,20 +6,33 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.BeanParam;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.CookieParam;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.*;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MultivaluedHashMap;
+import javax.ws.rs.core.MultivaluedMap;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.common.CollectionsHelper;
 
@@ -34,14 +47,14 @@ public class MethodModel {
 
     private static final String INVOKED_METHOD = "org.eclipse.microprofile.rest.client.invokedMethod";
 
-    private final ClassModel classModel;
+    private final InterfaceModel classModel;
 
     private final Class<?> returnType;
     private final String httpMethod;
     private final String path;
     private final String[] produces;
     private final String[] consumes;
-    private final List<ParameterModel> parameterModels;
+    private final List<ParamModel> parameterModels;
     private final List<ClientHeaderParamModel> clientHeaders;
 
     private MethodModel(Builder builder) {
@@ -61,27 +74,47 @@ public class MethodModel {
         AtomicReference<Object> entity = new AtomicReference<>();
         AtomicReference<WebTarget> webTargetAtomicReference = new AtomicReference<>(methodLevelTarget);
         parameterModels.stream()
-                .filter(parameterModel -> parameterModel instanceof PathParamModel)
-                .forEach(parameterModel -> webTargetAtomicReference
-                        .set((WebTarget) parameterModel.handleParameter(webTargetAtomicReference.get(), args)));
+                .filter(parameterModel -> parameterModel.handles(PathParam.class))
+                .forEach(parameterModel -> {
+                    try {
+                        webTargetAtomicReference.set((WebTarget) parameterModel
+                                .handleParameter(webTargetAtomicReference.get(), PathParam.class, args));
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
 
         parameterModels.stream()
-                .filter(ParameterModel::isEntity)
+                .filter(parameterModel -> parameterModel.handles(BeanParam.class))
+                .forEach(parameterModel -> {
+                    try {
+                        webTargetAtomicReference.set((WebTarget) parameterModel
+                                .handleParameter(webTargetAtomicReference.get(), PathParam.class, args));
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        parameterModels.stream()
+                .filter(ParamModel::isEntity)
                 .findFirst()
                 .ifPresent(parameterModel -> entity.set(args[parameterModel.getParamPosition()]));
 
-        Invocation.Builder builder = webTargetAtomicReference.get()
+        WebTarget webTarget = webTargetAtomicReference.get();
+        webTarget = addQueryParams(webTarget, args);
+
+        Invocation.Builder builder = webTarget
                 .request(produces)
                 .property(INVOKED_METHOD, method)
                 .headers(addCustomHeaders(args));
+        builder = addCookies(builder, args);
 
         Response response;
 
         if (entity.get() != null
                 && !httpMethod.equals(GET.class.getSimpleName())
                 && !httpMethod.equals(DELETE.class.getSimpleName())) {
-            //TODO upravit
-            response = builder.method(httpMethod, Entity.entity(entity.get(), consumes[0]));//CONSUMES
+            response = builder.method(httpMethod, Entity.entity(entity.get(), consumes[0]));
         } else {
             response = builder.method(httpMethod);
         }
@@ -96,13 +129,55 @@ public class MethodModel {
         return response.readEntity(method.getReturnType());
     }
 
+    private WebTarget addQueryParams(WebTarget webTarget, Object[] args) {
+        Map<String, Object[]> queryParams = new HashMap<>();
+        WebTarget toReturn = webTarget;
+        parameterModels.stream()
+                .filter(parameterModel -> parameterModel instanceof QueryParamModel
+                        || parameterModel instanceof BeanParamModel)
+                .forEach(parameterModel -> {
+                    try {
+                        parameterModel.handleParameter(queryParams, QueryParam.class, args);
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        for (Map.Entry<String, Object[]> entry : queryParams.entrySet()) {
+            toReturn = toReturn.queryParam(entry.getKey(), entry.getValue());
+        }
+        return toReturn;
+    }
+
+    private Invocation.Builder addCookies(Invocation.Builder builder, Object[] args) {
+        Map<String, String> cookies = new HashMap<>();
+        Invocation.Builder toReturn = builder;
+        parameterModels.stream()
+                .filter(parameterModel -> parameterModel instanceof CookieParamModel
+                        || parameterModel instanceof BeanParamModel)
+                .forEach(parameterModel -> {
+                    try {
+                        parameterModel.handleParameter(cookies, CookieParam.class, args);
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        for (Map.Entry<String, String> entry : cookies.entrySet()) {
+            toReturn = toReturn.cookie(entry.getKey(), entry.getValue());
+        }
+        return toReturn;
+    }
+
     private MultivaluedMap<String, Object> addCustomHeaders(Object[] args) throws Throwable {
         MultivaluedMap<String, Object> result = new MultivaluedHashMap<>();
         for (Map.Entry<String, List<String>> entry : resolveCustomHeaders(args).entrySet()) {
             result.add(entry.getKey(), entry.getValue());
         }
-        result.add(HttpHeaders.ACCEPT, produces);
-        //TODO check this. Added because of ProducersConsumesTest.java
+        for (String produce : produces) {
+            result.add(HttpHeaders.ACCEPT, produce);
+        }
+        //TODO check this. Added because of ProducesConsumesTest.java
         result.add(HttpHeaders.CONTENT_TYPE, consumes[0]);
         return result;
     }
@@ -113,8 +188,15 @@ public class MethodModel {
         customHeaders.putAll(createMultivaluedHeadersMap(classModel.getClientHeaders()));
         customHeaders.putAll(createMultivaluedHeadersMap(clientHeaders));
         parameterModels.stream()
-                .filter(parameterModel -> parameterModel instanceof HeaderParamModel)
-                .forEach(parameterModel -> parameterModel.handleParameter(customHeaders, args));
+                .filter(parameterModel -> parameterModel instanceof HeaderParamModel
+                        || parameterModel instanceof BeanParamModel)
+                .forEach(parameterModel -> {
+                    try {
+                        parameterModel.handleParameter(customHeaders, HeaderParam.class, args);
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
 
         MultivaluedMap<String, String> inbound = new MultivaluedHashMap<>();
         HeadersContext.get().ifPresent(headersContext -> inbound.putAll(headersContext.inboundHeaders()));
@@ -218,7 +300,7 @@ public class MethodModel {
         }
     }
 
-    static MethodModel from(ClassModel classModel, Method method) {
+    static MethodModel from(InterfaceModel classModel, Method method) {
         return new Builder(classModel, method)
                 .returnType(method.getReturnType())
                 .httpMethod(parseHttpMethod(classModel, method))
@@ -230,7 +312,7 @@ public class MethodModel {
                 .build();
     }
 
-    private static String parseHttpMethod(ClassModel classModel, Method method) {
+    private static String parseHttpMethod(InterfaceModel classModel, Method method) {
         List<Class<?>> httpAnnotations = InterfaceUtil.getHttpAnnotations(method);
         if (httpAnnotations.size() > 1) {
             throw new RestClientDefinitionException("Method can't have more then one annotation of @HttpMethod type. " +
@@ -240,18 +322,18 @@ public class MethodModel {
         return httpAnnotations.get(0).getSimpleName();
     }
 
-    private static List<ParameterModel> parameterModels(ClassModel classModel, Method method) {
-        ArrayList<ParameterModel> parameterModels = new ArrayList<>();
+    private static List<ParamModel> parameterModels(InterfaceModel classModel, Method method) {
+        ArrayList<ParamModel> parameterModels = new ArrayList<>();
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
-            parameterModels.add(ParameterModel.from(classModel, parameters[i], i));
+            parameterModels.add(ParamModel.from(classModel, parameters[i].getType(), parameters[i], i));
         }
         return parameterModels;
     }
 
     private static class Builder implements io.helidon.common.Builder<MethodModel> {
 
-        private final ClassModel classModel;
+        private final InterfaceModel classModel;
         private final Method method;
 
         private Class<?> returnType;
@@ -259,10 +341,10 @@ public class MethodModel {
         private String pathValue;
         private String[] produces;
         private String[] consumes;
-        private List<ParameterModel> parameterModels;
+        private List<ParamModel> parameterModels;
         private List<ClientHeaderParamModel> clientHeaders;
 
-        private Builder(ClassModel classModel, Method method) {
+        private Builder(InterfaceModel classModel, Method method) {
             this.classModel = classModel;
             this.method = method;
         }
@@ -304,7 +386,7 @@ public class MethodModel {
 
         /**
          * Extracts MediaTypes from {@link Produces} annotation.
-         * If annotation is null, value from {@link ClassModel} is set.
+         * If annotation is null, value from {@link InterfaceModel} is set.
          *
          * @param produces {@link Produces} annotation
          * @return updated Builder instance
@@ -316,7 +398,7 @@ public class MethodModel {
 
         /**
          * Extracts MediaTypes from {@link Consumes} annotation.
-         * If annotation is null, value from {@link ClassModel} is set.
+         * If annotation is null, value from {@link InterfaceModel} is set.
          *
          * @param consumes {@link Consumes} annotation
          * @return updated Builder instance
@@ -332,7 +414,7 @@ public class MethodModel {
          * @param parameterModels {@link List} of parameters
          * @return updated Builder instance
          */
-        Builder parameters(List<ParameterModel> parameterModels) {
+        Builder parameters(List<ParamModel> parameterModels) {
             this.parameterModels = parameterModels;
             return this;
         }

@@ -3,7 +3,6 @@ package io.helidon.microprofile.restClient;
 import java.lang.annotation.Annotation;
 import java.util.Map;
 
-import javax.ws.rs.BeanParam;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PathParam;
@@ -20,27 +19,29 @@ class BeanParamModel extends ParamModel<Object> {
 
     BeanParamModel(Builder builder) {
         super(builder);
-        beanClassModel = BeanClassModel.fromClass(getParameter().getType());
+        beanClassModel = BeanClassModel.fromClass(interfaceModel, (Class<?>) getType());
     }
 
     @Override
-    public Object handleParameter(Object requestPart, Class<?> annotationClass, Object[] args) throws IllegalAccessException {
-        Object instance = args[getParamPosition()];
+    public Object handleParameter(Object requestPart, Class<?> annotationClass, Object instance) {
         if (PathParam.class.equals(annotationClass)) {
-            return beanClassModel.resolvePath(interfaceModel, (WebTarget) requestPart, instance);
+            return beanClassModel.resolvePath((WebTarget) requestPart, instance);
         } else if (HeaderParam.class.equals(annotationClass)) {
-            return beanClassModel.resolveHeaders(interfaceModel, (MultivaluedMap<String, Object>) requestPart, instance);
+            return beanClassModel.resolveHeaders((MultivaluedMap<String, Object>) requestPart, instance);
         } else if (CookieParam.class.equals(annotationClass)) {
-            return beanClassModel.resolveCookies(interfaceModel, (Map<String, String>) requestPart, instance);
+            return beanClassModel.resolveCookies((Map<String, String>) requestPart, instance);
         } else if (QueryParam.class.equals(annotationClass)) {
-            return beanClassModel.resolveQuery(interfaceModel, (Map<String, Object[]>) requestPart, instance);
+            return beanClassModel.resolveQuery((Map<String, Object[]>) requestPart, instance);
         }
         return null;
     }
 
     @Override
     public boolean handles(Class<Annotation> annotation) {
-        return BeanParam.class.equals(annotation);
+        return PathParam.class.equals(annotation)
+                || HeaderParam.class.equals(annotation)
+                || CookieParam.class.equals(annotation)
+                || QueryParam.class.equals(annotation);
     }
 
 }

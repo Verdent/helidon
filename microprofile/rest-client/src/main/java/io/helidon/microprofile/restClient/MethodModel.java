@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import javax.ws.rs.BeanParam;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.DELETE;
@@ -75,25 +74,11 @@ public class MethodModel {
         AtomicReference<WebTarget> webTargetAtomicReference = new AtomicReference<>(methodLevelTarget);
         parameterModels.stream()
                 .filter(parameterModel -> parameterModel.handles(PathParam.class))
-                .forEach(parameterModel -> {
-                    try {
-                        webTargetAtomicReference.set((WebTarget) parameterModel
-                                .handleParameter(webTargetAtomicReference.get(), PathParam.class, args));
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
-
-        parameterModels.stream()
-                .filter(parameterModel -> parameterModel.handles(BeanParam.class))
-                .forEach(parameterModel -> {
-                    try {
-                        webTargetAtomicReference.set((WebTarget) parameterModel
-                                .handleParameter(webTargetAtomicReference.get(), PathParam.class, args));
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
+                .forEach(parameterModel ->
+                                 webTargetAtomicReference.set((WebTarget)
+                                                                      parameterModel.handleParameter(webTargetAtomicReference.get(),
+                                                                                                     PathParam.class,
+                                                                                                     args[parameterModel.getParamPosition()])));
 
         parameterModels.stream()
                 .filter(ParamModel::isEntity)
@@ -133,15 +118,10 @@ public class MethodModel {
         Map<String, Object[]> queryParams = new HashMap<>();
         WebTarget toReturn = webTarget;
         parameterModels.stream()
-                .filter(parameterModel -> parameterModel instanceof QueryParamModel
-                        || parameterModel instanceof BeanParamModel)
-                .forEach(parameterModel -> {
-                    try {
-                        parameterModel.handleParameter(queryParams, QueryParam.class, args);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
+                .filter(parameterModel -> parameterModel.handles(QueryParam.class))
+                .forEach(parameterModel -> parameterModel.handleParameter(queryParams,
+                                                                          QueryParam.class,
+                                                                          args[parameterModel.getParamPosition()]));
 
         for (Map.Entry<String, Object[]> entry : queryParams.entrySet()) {
             toReturn = toReturn.queryParam(entry.getKey(), entry.getValue());
@@ -153,15 +133,10 @@ public class MethodModel {
         Map<String, String> cookies = new HashMap<>();
         Invocation.Builder toReturn = builder;
         parameterModels.stream()
-                .filter(parameterModel -> parameterModel instanceof CookieParamModel
-                        || parameterModel instanceof BeanParamModel)
-                .forEach(parameterModel -> {
-                    try {
-                        parameterModel.handleParameter(cookies, CookieParam.class, args);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
+                .filter(parameterModel -> parameterModel.handles(CookieParam.class))
+                .forEach(parameterModel -> parameterModel.handleParameter(cookies,
+                                                                          CookieParam.class,
+                                                                          args[parameterModel.getParamPosition()]));
 
         for (Map.Entry<String, String> entry : cookies.entrySet()) {
             toReturn = toReturn.cookie(entry.getKey(), entry.getValue());
@@ -188,15 +163,10 @@ public class MethodModel {
         customHeaders.putAll(createMultivaluedHeadersMap(classModel.getClientHeaders()));
         customHeaders.putAll(createMultivaluedHeadersMap(clientHeaders));
         parameterModels.stream()
-                .filter(parameterModel -> parameterModel instanceof HeaderParamModel
-                        || parameterModel instanceof BeanParamModel)
-                .forEach(parameterModel -> {
-                    try {
-                        parameterModel.handleParameter(customHeaders, HeaderParam.class, args);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
+                .filter(parameterModel -> parameterModel.handles(HeaderParam.class))
+                .forEach(parameterModel -> parameterModel.handleParameter(customHeaders,
+                                                                          HeaderParam.class,
+                                                                          args[parameterModel.getParamPosition()]));
 
         MultivaluedMap<String, String> inbound = new MultivaluedHashMap<>();
         HeadersContext.get().ifPresent(headersContext -> inbound.putAll(headersContext.inboundHeaders()));

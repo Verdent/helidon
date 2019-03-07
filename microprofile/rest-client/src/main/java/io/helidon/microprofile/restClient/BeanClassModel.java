@@ -1,11 +1,10 @@
 package io.helidon.microprofile.restClient;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import javax.ws.rs.CookieParam;
@@ -21,21 +20,15 @@ import javax.ws.rs.core.MultivaluedMap;
 public class BeanClassModel {
 
     private final Class<?> beanClass;
-    private final Map<String, Field> pathFields;
-    private final Map<String, Field> headerFields;
-    private final Map<String, Field> cookieFields;
-    private final Map<String, Field> queryFields;
+    private final List<ParamModel> parameterModels;
 
     public BeanClassModel(Builder builder) {
         this.beanClass = builder.beanClass;
-        this.pathFields = builder.pathFields;
-        this.headerFields = builder.headerFields;
-        this.cookieFields = builder.cookieFields;
-        this.queryFields = builder.queryFields;
+        this.parameterModels = builder.parameterModels;
     }
 
-    public static BeanClassModel fromClass(Class<?> beanClass) {
-        return new Builder(beanClass)
+    public static BeanClassModel fromClass(InterfaceModel interfaceModel, Class<?> beanClass) {
+        return new Builder(interfaceModel, beanClass)
                 .processPathFields()
                 .processHeaderFields()
                 .processCookieFields()
@@ -43,84 +36,78 @@ public class BeanClassModel {
                 .build();
     }
 
-
-    public WebTarget resolvePath(InterfaceModel interfaceModel, WebTarget webTarget, Object instance)
-            throws IllegalAccessException {
-        WebTarget toReturn = webTarget;
-        for (Map.Entry<String, Field> entry : pathFields.entrySet()) {
-            Field field = entry.getValue();
-            field.setAccessible(true);
-            Object resolvedValue = interfaceModel.resolveParamValue(field.get(instance),
-                                                                    field.getType(),
-                                                                    field.getAnnotations());
-            toReturn = webTarget.resolveTemplate(entry.getKey(), resolvedValue);
-            field.setAccessible(false);
-        }
-        return toReturn;
+    public WebTarget resolvePath(WebTarget webTarget, Object instance) {
+        AtomicReference<WebTarget> toReturn = new AtomicReference<>(webTarget);
+        parameterModels.stream()
+                .filter(paramModel -> paramModel.handles(PathParam.class))
+                .forEach(parameterModel -> {
+                    Field field = (Field) parameterModel.getAnnotatedElement();
+                    toReturn.set((WebTarget) parameterModel.handleParameter(webTarget,
+                                                                            PathParam.class,
+                                                                            resolveValueFromField(field, instance)));
+                });
+        return toReturn.get();
     }
 
-    public MultivaluedMap<String, Object> resolveHeaders(InterfaceModel interfaceModel,
-                                                         MultivaluedMap<String, Object> headers,
-                                                         Object instance) throws IllegalAccessException {
-        MultivaluedMap<String, Object> toReturn = headers;
-        for (Map.Entry<String, Field> entry : headerFields.entrySet()) {
-            Field field = entry.getValue();
-            field.setAccessible(true);
-            Object resolvedValue = interfaceModel.resolveParamValue(field.get(instance),
-                                                                    field.getType(),
-                                                                    field.getAnnotations());
-            toReturn.add(entry.getKey(), resolvedValue);
-            field.setAccessible(false);
-        }
-        return toReturn;
+    public MultivaluedMap<String, Object> resolveHeaders(MultivaluedMap<String, Object> headers,
+                                                         Object instance) {
+        parameterModels.stream()
+                .filter(paramModel -> paramModel.handles(HeaderParam.class))
+                .forEach(parameterModel -> {
+                    Field field = (Field) parameterModel.getAnnotatedElement();
+                    parameterModel.handleParameter(headers,
+                                                   HeaderParam.class,
+                                                   resolveValueFromField(field, instance));
+                });
+        return headers;
     }
 
-    public Map<String, String> resolveCookies(InterfaceModel interfaceModel,
-                                                         Map<String, String> cookies,
-                                                         Object instance) throws IllegalAccessException {
-        Map<String, String> toReturn = cookies;
-        for (Map.Entry<String, Field> entry : cookieFields.entrySet()) {
-            Field field = entry.getValue();
-            field.setAccessible(true);
-            Object resolvedValue = interfaceModel.resolveParamValue(field.get(instance),
-                                                                    field.getType(),
-                                                                    field.getAnnotations());
-            toReturn.put(entry.getKey(), (String) resolvedValue);
-            field.setAccessible(false);
-        }
-        return toReturn;
+    public Map<String, String> resolveCookies(Map<String, String> cookies,
+                                              Object instance) {
+        parameterModels.stream()
+                .filter(paramModel -> paramModel.handles(CookieParam.class))
+                .forEach(parameterModel -> {
+                    Field field = (Field) parameterModel.getAnnotatedElement();
+                    parameterModel.handleParameter(cookies,
+                                                   CookieParam.class,
+                                                   resolveValueFromField(field, instance));
+                });
+        return cookies;
     }
 
-    public Map<String, Object[]> resolveQuery(InterfaceModel interfaceModel,
-                                              Map<String, Object[]> query,
-                                              Object instance) throws IllegalAccessException {
-        Map<String, Object[]> toReturn = query;
-        for (Map.Entry<String, Field> entry : queryFields.entrySet()) {
-            Field field = entry.getValue();
-            field.setAccessible(true);
-            Object resolvedValue = interfaceModel.resolveParamValue(field.get(instance),
-                                                                    field.getType(),
-                                                                    field.getAnnotations());
-            if (resolvedValue instanceof Object[]) {
-                toReturn.put(entry.getKey(), (Object[]) resolvedValue);
-            } else {
-                toReturn.put(entry.getKey(), new Object[] {resolvedValue});
-            }
-            field.setAccessible(false);
-        }
-        return toReturn;
+    public Map<String, Object[]> resolveQuery(Map<String, Object[]> query,
+                                              Object instance) {
+        parameterModels.stream()
+                .filter(paramModel -> paramModel.handles(QueryParam.class))
+                .forEach(parameterModel -> {
+                    Field field = (Field) parameterModel.getAnnotatedElement();
+                    parameterModel.handleParameter(query,
+                                                   QueryParam.class,
+                                                   resolveValueFromField(field, instance));
+                });
+        return query;
     }
 
+    private Object resolveValueFromField(Field field, Object instance) {
+        try {
+            Object toReturn;
+            field.setAccessible(true);
+            toReturn = field.get(instance);
+            field.setAccessible(false);
+            return toReturn;
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private static class Builder implements io.helidon.common.Builder<BeanClassModel> {
 
+        private final InterfaceModel interfaceModel;
         private final Class<?> beanClass;
-        private Map<String, Field> pathFields = new HashMap<>();
-        private Map<String, Field> headerFields = new HashMap<>();
-        private Map<String, Field> cookieFields = new HashMap<>();
-        private Map<String, Field> queryFields = new HashMap<>();
+        private ArrayList<ParamModel> parameterModels = new ArrayList<>();
 
-        private Builder(Class<?> beanClass) {
+        private Builder(InterfaceModel interfaceModel, Class<?> beanClass) {
+            this.interfaceModel = interfaceModel;
             this.beanClass = beanClass;
         }
 
@@ -130,9 +117,9 @@ public class BeanClassModel {
          * @return updated builder instance
          */
         public Builder processPathFields() {
-            pathFields = Stream.of(beanClass.getDeclaredFields())
+            Stream.of(beanClass.getDeclaredFields())
                     .filter(field -> field.isAnnotationPresent(PathParam.class))
-                    .collect(Collectors.toMap(field -> field.getAnnotation(PathParam.class).value(), Function.identity()));
+                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
             return this;
         }
 
@@ -142,9 +129,9 @@ public class BeanClassModel {
          * @return updated builder instance
          */
         public Builder processHeaderFields() {
-            headerFields = Stream.of(beanClass.getDeclaredFields())
+            Stream.of(beanClass.getDeclaredFields())
                     .filter(field -> field.isAnnotationPresent(HeaderParam.class))
-                    .collect(Collectors.toMap(field -> field.getAnnotation(HeaderParam.class).value(), Function.identity()));
+                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
             return this;
         }
 
@@ -154,9 +141,9 @@ public class BeanClassModel {
          * @return updated builder instance
          */
         public Builder processCookieFields() {
-            cookieFields = Stream.of(beanClass.getDeclaredFields())
+            Stream.of(beanClass.getDeclaredFields())
                     .filter(field -> field.isAnnotationPresent(CookieParam.class))
-                    .collect(Collectors.toMap(field -> field.getAnnotation(CookieParam.class).value(), Function.identity()));
+                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
             return this;
         }
 
@@ -166,9 +153,9 @@ public class BeanClassModel {
          * @return updated builder instance
          */
         public Builder processQueryFields() {
-            queryFields = Stream.of(beanClass.getDeclaredFields())
+            Stream.of(beanClass.getDeclaredFields())
                     .filter(field -> field.isAnnotationPresent(QueryParam.class))
-                    .collect(Collectors.toMap(field -> field.getAnnotation(QueryParam.class).value(), Function.identity()));
+                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
             return this;
         }
 
@@ -177,7 +164,5 @@ public class BeanClassModel {
             return new BeanClassModel(this);
         }
     }
-
-
 
 }

@@ -18,8 +18,8 @@ class CookieParamModel extends ParamModel<Map<String, String>> {
     }
 
     @Override
-    public Map<String, String> handleParameter(Map<String, String> requestPart, Class<?> annotationClass, Object[] args) {
-        requestPart.put(cookieParamName, (String) args[getParamPosition()]);
+    public Map<String, String> handleParameter(Map<String, String> requestPart, Class<?> annotationClass, Object instance) {
+        requestPart.put(cookieParamName, (String) instance);
         return requestPart;
     }
 

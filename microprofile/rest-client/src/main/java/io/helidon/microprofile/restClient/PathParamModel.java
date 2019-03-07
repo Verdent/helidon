@@ -22,10 +22,10 @@ class PathParamModel extends ParamModel<WebTarget> {
     }
 
     @Override
-    public WebTarget handleParameter(WebTarget requestPart, Class<?> annotationClass, Object[] args) {
-        Object resolvedValue = interfaceModel.resolveParamValue(args[getParamPosition()],
-                                                                getParameter().getType(),
-                                                                getParameter().getAnnotations());
+    public WebTarget handleParameter(WebTarget requestPart, Class<?> annotationClass, Object instance) {
+        Object resolvedValue = interfaceModel.resolveParamValue(instance,
+                                                                getType(),
+                                                                getAnnotatedElement().getAnnotations());
         return requestPart.resolveTemplate(pathParamName, resolvedValue);
     }
 

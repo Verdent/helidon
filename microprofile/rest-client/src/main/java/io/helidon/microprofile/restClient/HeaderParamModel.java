@@ -4,6 +4,7 @@ import javax.ws.rs.HeaderParam;
 import javax.ws.rs.core.MultivaluedMap;
 
 import java.lang.annotation.Annotation;
+import java.util.Collections;
 
 /**
  * @author David Kral
@@ -19,12 +20,11 @@ class HeaderParamModel extends ParamModel<MultivaluedMap<String, Object>> {
 
     @Override
     public MultivaluedMap<String, Object> handleParameter(MultivaluedMap<String, Object> requestPart,
-                                                          Class<?> annotationClass, Object[] args) {
-        Object resolvedValue = interfaceModel.resolveParamValue(args[getParamPosition()],
-                                                                getParameter().getType(),
-                                                                getParameter().getAnnotations());
-        //requestPart.add(headerParamName, Collections.singletonList(resolvedValue));
-        requestPart.add(headerParamName, resolvedValue);
+                                                          Class<?> annotationClass, Object instance) {
+        Object resolvedValue = interfaceModel.resolveParamValue(instance,
+                                                                getType(),
+                                                                getAnnotatedElement().getAnnotations());
+        requestPart.put(headerParamName, Collections.singletonList(resolvedValue));
         return requestPart;
     }
 

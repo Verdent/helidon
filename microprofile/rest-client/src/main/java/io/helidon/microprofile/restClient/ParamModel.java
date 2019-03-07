@@ -4,7 +4,6 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
-import java.util.Objects;
 
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.CookieParam;
@@ -53,7 +52,7 @@ public abstract class ParamModel<T> {
         return methodParam;
     }
 
-    public abstract T handleParameter(T requestPart, Class<?> annotationClass, Object[] args) throws IllegalAccessException;
+    public abstract T handleParameter(T requestPart, Class<?> annotationClass, Object instance);
 
     public abstract boolean handles(Class<Annotation> annotation);
 
@@ -181,13 +180,13 @@ public abstract class ParamModel<T> {
                 return new BeanParamModel(this);
             } else if (cookieParamName != null) {
                 return new CookieParamModel(this);
-            } else if (cookieParamName != null) {
-                return new CookieParamModel(this);
+            } else if (queryParamName != null) {
+                return new QueryParamModel(this);
             }
             entity = true;
             return new ParamModel(this) {
                 @Override
-                public Object handleParameter(Object requestPart, Class annotationClass, Object[] args) {
+                public Object handleParameter(Object requestPart, Class annotationClass, Object instance) {
                     return requestPart;
                 }
 

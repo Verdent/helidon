@@ -24,10 +24,10 @@ class QueryParamModel extends ParamModel<Map<String, Object[]>> {
     @Override
     public Map<String, Object[]> handleParameter(Map<String, Object[]> requestPart,
                                                  Class<?> annotationClass,
-                                                 Object[] args) throws IllegalAccessException {
-        Object resolvedValue = interfaceModel.resolveParamValue(args[getParamPosition()],
-                                                                getParameter().getType(),
-                                                                getParameter().getAnnotations());
+                                                 Object instance) {
+        Object resolvedValue = interfaceModel.resolveParamValue(instance,
+                                                                getType(),
+                                                                getAnnotatedElement().getAnnotations());
         if (resolvedValue instanceof Object[]) {
             requestPart.put(queryParamName, (Object[]) resolvedValue);
         } else {

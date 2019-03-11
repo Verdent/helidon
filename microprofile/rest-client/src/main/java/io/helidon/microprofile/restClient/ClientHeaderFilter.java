@@ -1,5 +1,6 @@
 package io.helidon.microprofile.restClient;
 
+import java.io.IOException;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -7,6 +8,8 @@ import java.util.Map;
 
 import javax.ws.rs.client.ClientRequestContext;
 import javax.ws.rs.client.ClientRequestFilter;
+import javax.ws.rs.client.ClientResponseContext;
+import javax.ws.rs.client.ClientResponseFilter;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Cookie;
 import javax.ws.rs.core.GenericType;
@@ -20,7 +23,7 @@ import org.glassfish.jersey.internal.util.collection.Ref;
 /**
  * Created by David Kral.
  */
-public class ClientHeaderFilter implements ClientRequestFilter {
+public class ClientHeaderFilter implements ClientRequestFilter, ClientResponseFilter {
 
     @Context
     private InjectionManager injectionManager;
@@ -31,6 +34,14 @@ public class ClientHeaderFilter implements ClientRequestFilter {
         injectionManager.<Ref<HttpHeaders>>getInstance((new GenericType<Ref<HttpHeaders>>() { }).getType())
                 .set(new HelidonHttpHeaders(requestContext.getStringHeaders()));
 
+    }
+
+    @Override
+    public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) throws IOException {
+        if (!responseContext.getHeaders().containsKey(HttpHeaders.CONTENT_TYPE)) {
+            List<MediaType> mediaTypes = requestContext.getAcceptableMediaTypes();
+            responseContext.getHeaders().putSingle(HttpHeaders.CONTENT_TYPE, MediaType.WILDCARD);
+        }
     }
 
     private static class HelidonHttpHeaders implements HttpHeaders {

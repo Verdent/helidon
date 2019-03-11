@@ -1,5 +1,6 @@
 package io.helidon.microprofile.restClient;
 
+import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.lang.reflect.Type;
@@ -41,7 +42,7 @@ public class RestClientExtension implements Extension {
             interfaces.add(typeDef);
         } else {
             throw new DeploymentException("RegisterRestClient annotation has to be on interface! " + typeDef + " is not "
-                                                  + "interface.");
+                    + "interface.");
         }
     }
 

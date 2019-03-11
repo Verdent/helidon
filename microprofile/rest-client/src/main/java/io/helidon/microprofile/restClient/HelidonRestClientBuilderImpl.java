@@ -4,11 +4,7 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -81,6 +77,9 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
     @Override
     public RestClientBuilder executorService(ExecutorService executor) {
+        if (executor == null) {
+            throw new IllegalArgumentException("ExecutorService cannot be null.");
+        }
         jerseyClientBuilder.executorService(executor);
         return this;
     }
@@ -152,7 +151,8 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
                         .in(RequestScoped.class);
 
                 bindFactory(ReferencingFactory.<HttpHeaders>referenceFactory())
-                        .to(new GenericType<Ref<HttpHeaders>>() { })
+                        .to(new GenericType<Ref<HttpHeaders>>() {
+                        })
                         .in(RequestScoped.class);
             }
         });
@@ -164,8 +164,8 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
         restClientModel.getClassModel().getParamConverterProviders().addAll(paramConverterProviders);
 
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
-                                          new Class[] {clazz},
-                                          new ProxyInvocationHandler(webTarget, restClientModel)
+                new Class[]{clazz},
+                new ProxyInvocationHandler(webTarget, restClientModel)
         );
     }
 

@@ -1,19 +1,16 @@
 package io.helidon.microprofile.restClient;
 
 import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
-import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import javax.json.JsonValue;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.DELETE;
@@ -26,18 +23,18 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
+import javax.ws.rs.client.InvocationCallback;
 import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MultivaluedHashMap;
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
+import javax.ws.rs.core.*;
+
+import com.sun.xml.internal.ws.util.CompletedFuture;
 
 import io.helidon.common.CollectionsHelper;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
+import org.glassfish.jersey.message.internal.CompletableReader;
 
 /**
  * Created by David Kral.
@@ -76,7 +73,7 @@ public class MethodModel {
         }
     }
 
-    public Object invokeMethod(WebTarget classLevelTarget, Method method, Object[] args) throws Throwable {
+    public Object invokeMethod(WebTarget classLevelTarget, Method method, Object[] args) {
         WebTarget methodLevelTarget = classLevelTarget.path(path);
 
         AtomicReference<Object> entity = new AtomicReference<>();
@@ -109,27 +106,76 @@ public class MethodModel {
                 .headers(addCustomHeaders(args));
         builder = addCookies(builder, args);
 
+        Object response;
+
+        if (CompletionStage.class.isAssignableFrom(method.getReturnType())) {
+            response = asynchronousCall(builder, entity.get(), method);
+        } else {
+            response = synchronousCall(builder, entity.get(), method);
+        }
+        return response;
+    }
+
+    private Object synchronousCall(Invocation.Builder builder, Object entity, Method method) {
         Response response;
 
-        if (entity.get() != null
+        if (entity != null
                 && !httpMethod.equals(GET.class.getSimpleName())
                 && !httpMethod.equals(DELETE.class.getSimpleName())) {
-            response = builder.method(httpMethod, Entity.entity(entity.get(), consumes[0]));
+            response = builder.method(httpMethod, Entity.entity(entity, consumes[0]));
         } else {
             response = builder.method(httpMethod);
         }
 
         evaluateResponse(response, method);
 
-        if (method.getReturnType().equals(Void.class)) {
+        if (returnType.equals(Void.class)) {
             return null;
-        } else if (method.getReturnType().equals(Response.class)) {
+        } else if (returnType.equals(Response.class)) {
             return response;
         }
-        return response.readEntity(method.getReturnType());
+        return response.readEntity(returnType);
     }
 
-    private <T>T subResourceProxy(WebTarget webTarget, Class<T> subResourceType) {
+    private Future asynchronousCall(Invocation.Builder builder, Object entity, Method method) {
+        ParameterizedType type = (ParameterizedType) method.getGenericReturnType();
+        Type actualTypeArgument = type.getActualTypeArguments()[0]; //completionStage<actualTypeArgument>
+        CompletableFuture<Object> result = new CompletableFuture<>();
+        InvocationCallback<Response> callback = new InvocationCallback<Response>() {
+            @Override
+            public void completed(Response response) {
+                try {
+                    evaluateResponse(response, method);
+                    if (returnType.equals(Void.class)) {
+                        result.complete(null);
+                    } else if (returnType.equals(Response.class)) {
+                        result.complete(response);
+                    } else {
+                        result.complete(response.readEntity(new GenericType<>(actualTypeArgument)));
+                    }
+                } catch (Exception e) {
+                    result.completeExceptionally(e);
+                }
+            }
+
+            @Override
+            public void failed(Throwable throwable) {
+                result.completeExceptionally(throwable);
+            }
+        };
+        if (entity != null
+                && !httpMethod.equals(GET.class.getSimpleName())
+                && !httpMethod.equals(DELETE.class.getSimpleName())) {
+            builder.async().method(httpMethod, Entity.entity(entity, consumes[0]),
+                                   callback);
+        } else {
+            builder.async().method(httpMethod, callback);
+        }
+
+        return result;
+    }
+
+    private <T> T subResourceProxy(WebTarget webTarget, Class<T> subResourceType) {
         return (T) Proxy.newProxyInstance(subResourceType.getClassLoader(),
                                           new Class[] {subResourceType},
                                           new ProxyInvocationHandler(webTarget, subResourceModel)
@@ -166,7 +212,7 @@ public class MethodModel {
         return toReturn;
     }
 
-    private MultivaluedMap<String, Object> addCustomHeaders(Object[] args) throws Throwable {
+    private MultivaluedMap<String, Object> addCustomHeaders(Object[] args) {
         MultivaluedMap<String, Object> result = new MultivaluedHashMap<>();
         for (Map.Entry<String, List<String>> entry : resolveCustomHeaders(args).entrySet()) {
             result.add(entry.getKey(), entry.getValue());
@@ -179,8 +225,7 @@ public class MethodModel {
         return result;
     }
 
-    private MultivaluedMap<String, String> resolveCustomHeaders(Object[] args)
-            throws Throwable {
+    private MultivaluedMap<String, String> resolveCustomHeaders(Object[] args) {
         MultivaluedMap<String, String> customHeaders = new MultivaluedHashMap<>();
         customHeaders.putAll(createMultivaluedHeadersMap(classModel.getClientHeaders()));
         customHeaders.putAll(createMultivaluedHeadersMap(clientHeaders));
@@ -199,8 +244,7 @@ public class MethodModel {
         return toReturn.get();
     }
 
-    private <T> MultivaluedMap<String, String> createMultivaluedHeadersMap(List<ClientHeaderParamModel> clientHeaders)
-            throws Throwable {
+    private <T> MultivaluedMap<String, String> createMultivaluedHeadersMap(List<ClientHeaderParamModel> clientHeaders) {
         MultivaluedMap<String, String> customHeaders = new MultivaluedHashMap<>();
         for (ClientHeaderParamModel clientHeaderParamModel : clientHeaders) {
             if (clientHeaderParamModel.getComputeMethod() == null) {
@@ -212,19 +256,7 @@ public class MethodModel {
                     if (method.isDefault()) {
                         //method is interface default
                         //we need to create instance of the interface to be able to call default method
-                        T instance = (T) Proxy.newProxyInstance(
-                                Thread.currentThread().getContextClassLoader(),
-                                new Class[] {classModel.getRestClientClass()},
-                                (proxy, m, args) -> {
-                                    Constructor<MethodHandles.Lookup> constructor = MethodHandles.Lookup.class
-                                            .getDeclaredConstructor(Class.class);
-                                    constructor.setAccessible(true);
-                                    return constructor.newInstance(classModel.getRestClientClass())
-                                            .in(classModel.getRestClientClass())
-                                            .unreflectSpecial(m, classModel.getRestClientClass())
-                                            .bindTo(proxy)
-                                            .invokeWithArguments(args);
-                                });
+                        T instance = (T) createInstance(classModel.getRestClientClass());
                         if (method.getParameterCount() > 0) {
                             customHeaders.put(clientHeaderParamModel.getHeaderName(),
                                               createList(method.invoke(instance, clientHeaderParamModel.getHeaderName())));
@@ -243,16 +275,34 @@ public class MethodModel {
                         }
                     }
                 } catch (IllegalAccessException e) {
-                    //TODO what kind of exception to throw?
-                    e.printStackTrace();
+                    throw new RuntimeException(e);
                 } catch (InvocationTargetException e) {
                     if (clientHeaderParamModel.isRequired()) {
-                        throw e.getCause();
+                        if (e.getCause() instanceof RuntimeException) {
+                            throw (RuntimeException) e.getCause();
+                        }
+                        throw new RuntimeException(e.getCause());
                     }
                 }
             }
         }
         return customHeaders;
+    }
+
+    private <T> T createInstance(Class<T> restClientClass) {
+        return (T) Proxy.newProxyInstance(
+                Thread.currentThread().getContextClassLoader(),
+                new Class[] {restClientClass},
+                (proxy, m, args) -> {
+                    Constructor<MethodHandles.Lookup> constructor = MethodHandles.Lookup.class
+                            .getDeclaredConstructor(Class.class);
+                    constructor.setAccessible(true);
+                    return constructor.newInstance(restClientClass)
+                            .in(restClientClass)
+                            .unreflectSpecial(m, restClientClass)
+                            .bindTo(proxy)
+                            .invokeWithArguments(args);
+                });
     }
 
     private static List<String> createList(Object value) {
@@ -264,7 +314,7 @@ public class MethodModel {
         return CollectionsHelper.listOf(s);
     }
 
-    private void evaluateResponse(Response response, Method method) throws Throwable {
+    private void evaluateResponse(Response response, Method method) {
         ResponseExceptionMapper lowestMapper = null;
         Throwable throwable = null;
         for (ResponseExceptionMapper responseExceptionMapper : classModel.getResponseExceptionMappers()) {
@@ -281,8 +331,10 @@ public class MethodModel {
             }
         }
         if (throwable != null) {
-            if (throwable instanceof RuntimeException || throwable instanceof Error) {
-                throw throwable;
+            if (throwable instanceof RuntimeException) {
+                throw (RuntimeException) throwable;
+            } else if (throwable instanceof Error) {
+                throw (Error) throwable;
             }
             for (Class<?> exception : method.getExceptionTypes()) {
                 if (throwable.getClass().isAssignableFrom(exception)) {
@@ -294,7 +346,7 @@ public class MethodModel {
 
     static MethodModel from(InterfaceModel classModel, Method method) {
         return new Builder(classModel, method)
-                .returnType(method.getReturnType())
+                .returnType(method.getGenericReturnType())
                 .httpMethod(parseHttpMethod(classModel, method))
                 .pathValue(method.getAnnotation(Path.class))
                 .produces(method.getAnnotation(Produces.class))
@@ -350,8 +402,12 @@ public class MethodModel {
          * @param returnType Method return type
          * @return updated Builder instance
          */
-        public Builder returnType(Class<?> returnType) {
-            this.returnType = returnType;
+        public Builder returnType(Type returnType) {
+            if (returnType instanceof ParameterizedType) {
+                this.returnType = (Class<?>) ((ParameterizedType) returnType).getActualTypeArguments()[0];
+            } else {
+                this.returnType = (Class<?>) returnType;
+            }
             return this;
         }
 
@@ -431,6 +487,16 @@ public class MethodModel {
         public MethodModel build() {
             validateParameters();
             validateHeaderDuplicityNames();
+            //TODO uklidit
+            Optional<ParamModel> entity = parameterModels.stream()
+                    .filter(ParamModel::isEntity)
+                    .findFirst();
+            if (JsonValue.class.isAssignableFrom(returnType)
+                    || (
+                    entity.isPresent() && entity.get().getType() instanceof Class
+                            && JsonValue.class.isAssignableFrom((Class<?>) entity.get().getType()))) {
+                this.consumes = new String[] {MediaType.APPLICATION_JSON};
+            }
             return new MethodModel(this);
         }
 

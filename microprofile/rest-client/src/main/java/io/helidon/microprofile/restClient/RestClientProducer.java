@@ -57,8 +57,8 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     }
 
     private String getBaseUrl(Class<?> interfaceType) {
-        return OptionalHelper.from(config.getOptionalValue(getName() + CONFIG_URI, String.class))
-                .or(() -> config.getOptionalValue(getName() + CONFIG_URL, String.class))
+        return OptionalHelper.from(config.getOptionalValue(interfaceType.getName() + CONFIG_URI, String.class))
+                .or(() -> config.getOptionalValue(interfaceType.getName() + CONFIG_URL, String.class))
                 .asOptional()
                 .orElseGet(() -> {
                     RegisterRestClient registerRestClient = interfaceType.getAnnotation(RegisterRestClient.class);

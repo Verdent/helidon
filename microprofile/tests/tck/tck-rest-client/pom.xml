@@ -5,11 +5,12 @@
     <parent>
         <artifactId>tck-project</artifactId>
         <groupId>io.helidon.microprofile.tests</groupId>
-        <version>0.11.1-SNAPSHOT</version>
+        <version>1.0.1-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>tck-rest-client</artifactId>
+    <name>Helidon Microprofile Tests TCK Rest Client</name>
 
     <properties>
         <microprofile.rest.client.version>1.2.1</microprofile.rest.client.version>

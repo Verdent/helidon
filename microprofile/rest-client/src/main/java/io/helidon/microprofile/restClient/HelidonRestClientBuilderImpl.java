@@ -141,6 +141,7 @@ public class HelidonRestClientBuilderImpl implements RestClientBuilder {
 
         //Support for HttpHeaders injection
         register(ClientHeaderFilter.class, 1);
+        register(TestFilter.class, 2);
         register(new AbstractBinder() {
             @Override
             protected void configure() {

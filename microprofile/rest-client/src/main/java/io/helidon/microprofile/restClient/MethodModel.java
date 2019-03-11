@@ -1,7 +1,6 @@
 package io.helidon.microprofile.restClient;
 
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -27,14 +26,11 @@ import javax.ws.rs.client.InvocationCallback;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.*;
 
-import com.sun.xml.internal.ws.util.CompletedFuture;
-
 import io.helidon.common.CollectionsHelper;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
-import org.glassfish.jersey.message.internal.CompletableReader;
 
 /**
  * Created by David Kral.

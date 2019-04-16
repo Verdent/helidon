@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.httpauth;
 
+import java.security.SecureRandom;
 import java.util.Random;
 
 import javax.crypto.Cipher;
@@ -63,9 +64,11 @@ public class HttpAuthUtilTest {
     @Test
     public void cipher() throws Exception {
         byte[] salt = new byte[16];
-        Random r = new Random();
+        byte[] aesNonce = new byte[12];
+        Random r = new SecureRandom();
         r.nextBytes(salt);
-        Cipher cipher = HttpAuthUtil.cipher("pwd".toCharArray(), salt, Cipher.ENCRYPT_MODE);
+        r.nextBytes(aesNonce);
+        Cipher cipher = HttpAuthUtil.cipher("pwd".toCharArray(), salt, aesNonce, Cipher.ENCRYPT_MODE);
 
         assertThat(cipher, notNullValue());
     }
@@ -73,9 +76,12 @@ public class HttpAuthUtilTest {
     @Test
     public void cipherWrongSalt() throws Exception {
         byte[] salt = new byte[4];
-        Random r = new Random();
+        byte[] aesNonce = new byte[12];
+        Random r = new SecureRandom();
         r.nextBytes(salt);
-        assertThrows(HttpAuthException.class, () -> HttpAuthUtil.cipher("pwd".toCharArray(), salt, Cipher.ENCRYPT_MODE));
+        r.nextBytes(aesNonce);
+        assertThrows(HttpAuthException.class, () -> HttpAuthUtil.cipher("pwd".toCharArray(), salt, aesNonce,
+                                                                        Cipher.ENCRYPT_MODE));
     }
 
 }

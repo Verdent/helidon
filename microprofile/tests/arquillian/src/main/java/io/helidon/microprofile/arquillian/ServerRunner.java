@@ -46,7 +46,8 @@ class ServerRunner {
         if (null == path) {
             return null;
         }
-        return path.value();
+        String value = path.value();
+        return value.startsWith("/") ? value : "/" + value;
     }
 
     void start(Config config, HelidonContainerConfiguration containerConfig, Set<String> classNames, ClassLoader cl) {
@@ -87,7 +88,7 @@ class ServerRunner {
                 if (Application.class.isAssignableFrom(c)) {
                     LOGGER.finest(() -> "Adding application class: " + c.getName());
                     applicationClasses.add(c);
-                } else if (c.isAnnotationPresent(Path.class)) {
+                } else if (c.isAnnotationPresent(Path.class) && !c.isInterface()) {
                     LOGGER.finest(() -> "Adding resource class: " + c.getName());
                     resourceClasses.add(c);
                 } else {

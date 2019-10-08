@@ -19,21 +19,19 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
-        <groupId>io.helidon.media</groupId>
-        <artifactId>helidon-media-project</artifactId>
+        <groupId>io.helidon.examples</groupId>
+        <artifactId>helidon-examples-project</artifactId>
         <version>1.3.2-SNAPSHOT</version>
     </parent>
 
+    <groupId>io.helidon.examples.webclient</groupId>
+    <artifactId>helidon-examples-webclient</artifactId>
+
     <packaging>pom</packaging>
-    <groupId>io.helidon.media.jsonp</groupId>
-    <artifactId>helidon-media-jsonp-project</artifactId>
-    <name>Helidon Media JSON-P</name>
 
     <modules>
-        <module>common</module>
-        <module>server</module>
-        <module>client</module>
+        <module>standalone</module>
+        <module>webserver</module>
     </modules>
 </project>

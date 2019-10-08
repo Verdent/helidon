@@ -51,6 +51,7 @@
         <module>webserver</module>
         <module>integrations</module>
         <module>employee-app</module>
+        <module>webclient</module>
     </modules>
 
     <build>

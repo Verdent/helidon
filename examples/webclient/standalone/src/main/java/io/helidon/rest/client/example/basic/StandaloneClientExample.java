@@ -15,9 +15,13 @@
  */
 package io.helidon.rest.client.example.basic;
 
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.json.Json;
+import javax.json.JsonObject;
 
 import io.helidon.config.Config;
 import io.helidon.metrics.RegistryFactory;
@@ -25,7 +29,7 @@ import io.helidon.metrics.rest.client.ClientMetrics;
 import io.helidon.security.Security;
 import io.helidon.security.rest.client.ClientSecurity;
 import io.helidon.tracing.rest.client.ClientTracing;
-import io.helidon.webclient.Proxy;
+import io.helidon.webclient.ClientResponse;
 import io.helidon.webclient.WebClient;
 
 import io.opentracing.SpanContext;
@@ -38,11 +42,17 @@ public class StandaloneClientExample {
     private static final Logger LOGGER = Logger.getLogger(StandaloneClientExample.class.getName());
 
     // todo how to handle entity processors (e.g. how to add JSON-P, JSON-B support)
-    public static void main(String[] args) throws ExecutionException, InterruptedException {
+    public static void main(String[] args) throws ExecutionException, InterruptedException, IOException {
+        //LogManager.getLogManager().readConfiguration(StandaloneClientExample.class.getResourceAsStream("/logging.properties"));
+        //LOGGER.finest("It works");
         /*
          * Prepare helidon stuff
          */
         Config config = Config.create();
+        //        Config config = Config.builder().disableEnvironmentVariablesSource()
+        //                .disableSystemPropertiesSource()
+        //                .sources(ConfigSources.classpath("application.yaml"))
+        //                .build();
         Security security = Security.create(config.get("security"));
         RegistryFactory seMetricFactory = RegistryFactory.create(config);
 
@@ -60,13 +70,7 @@ public class StandaloneClientExample {
                 // default configuration of client security - invokes outbound provider(s) and updates headers
                 // REQUIRES: security and security context configured on request context (injected by WebSecurity)
                 .register(ClientSecurity.create(security))
-                .proxy(Proxy.builder()
-                               .type(Proxy.ProxyType.HTTP)
-                               .host("proxy-host")
-                               .port(80)
-                               .addNoProxy("localhost")
-                               .addNoProxy(".oracle.com")
-                               .build())
+                .config(config)
                 .build();
 
         SpanContext spanContext = null;
@@ -99,17 +103,138 @@ public class StandaloneClientExample {
         //                .toCompletableFuture()
         //                .join();
 
-        client.get()
-                .uri("http://localhost:8080/greet")
-                .request(String.class)
-                .thenAccept(System.out::println)
+        //        client.get()
+        //                .uri("http://localhost:8080/greet")
+        //                .header("test", "testValue")
+        //                .queryParam("query", "value")
+        //                .queryParam("query2", "value2", "value3")
+        //                .request(String.class)
+        //                .thenAccept(System.out::println)
+        //                .exceptionally(throwable -> {
+        //                    // handle client error
+        //                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+        //                    return null;
+        //                })
+        //                // this is to make sure the VM does not exit before finishing the call
+        //                .toCompletableFuture()
+        //                .get();
+
+        //        client.get()
+        //                        .uri("https://www.google.com/search")
+        //                        .queryParam("q", "ahoj")
+        //                        .request(String.class)
+        //                        .thenAccept(System.out::println)
+        //        //                .thenCompose(nothing -> client.get()
+        //        //                        .uri("https://www.google.com/search?q=test")
+        //        //                        .request(String.class))
+        //        //                .thenAccept(System.out::println)
+        //                        .exceptionally(throwable -> {
+        //                            // handle client error
+        //                            LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+        //                            return null;
+        //                        })
+        //                        // this is to make sure the VM does not exit before finishing the call
+        //                        .toCompletableFuture()
+        //                        .get();
+
+        //        client.get()
+        //                .uri("https://www.google.com/search")
+        //                .queryParam("q", "ahoj")
+        //                .request()
+        //                .thenCompose(it -> {
+        //                    CompletableFuture<String> result = new CompletableFuture<>();
+        //                    it.content().subscribe(new Flow.Subscriber<DataChunk>() {
+        //                        private Flow.Subscription subscription;
+        //
+        //                        @Override
+        //                        public void onSubscribe(Flow.Subscription subscription) {
+        //                            this.subscription = subscription;
+        //
+        //                            subscription.request(1);
+        //                        }
+        //
+        //                        @Override
+        //                        public void onNext(DataChunk item) {
+        //                            System.out.println(new String(item.bytes()));
+        //                            subscription.request(1);
+        //                        }
+        //
+        //                        @Override
+        //                        public void onError(Throwable throwable) {
+        //                            throwable.printStackTrace();
+        //                            result.completeExceptionally(throwable);
+        //                        }
+        //
+        //                        @Override
+        //                        public void onComplete() {
+        //                            System.out.println("Completed");
+        //                            result.complete("Hotot");
+        //                        }
+        //                    });
+        //
+        //                    return result;
+        //                })
+        //                .exceptionally(throwable -> {
+        //                    // handle client error
+        //                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+        //                    return null;
+        //                })
+        //                // this is to make sure the VM does not exit before finishing the call
+        //                .toCompletableFuture()
+        //                .get();
+
+        JsonObject json = Json.createObjectBuilder()
+                .add("greeting", "Hi small")
+                .build();
+        client.put()
+                .uri("http://localhost:8080/greet/greeting")
+                .submit(json)
+                .thenAccept(clientResponse -> System.out.println(clientResponse.status()))
+                .thenCompose(nothing -> client.get()
+                        .uri("http://localhost:8080/greet")
+                        .request(JsonObject.class)
+                        .thenAccept(System.out::println))
                 .exceptionally(throwable -> {
                     // handle client error
                     LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
                     return null;
                 })
-                // this is to make sure the VM does not exit before finishing the call
                 .toCompletableFuture()
                 .get();
+//        System.out.println(clientResponse.status());
+
+        //        client.get()
+        //                .uri("http://localhost:8080/greet")
+        //                //                        .uri("https://www.google.com")
+        //                .request(JsonObject.class)
+        //                .thenAccept(System.out::println)
+        //                //                .thenCompose(nothing -> client.get()
+        //                //                        .uri("https://www.google.com/search")
+        //                //                        .queryParam("q", "ahoj")
+        //                //                        .request(String.class))
+        //                //                .thenAccept(System.out::println)
+        //                .exceptionally(throwable -> {
+        //                    // handle client error
+        //                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+        //                    return null;
+        //                })
+        //                // this is to make sure the VM does not exit before finishing the call
+        //                .toCompletableFuture()
+        //                .get();
+        //                client.get()
+        //                        .uri("https://www.google.com/search")
+        //                        .queryParam("q", "ahoj")
+        //                        .request()
+        //                        .thenApply(ClientResponse::content)
+        //                        .thenCompose(FileSubscriber.create(Paths.get("D:\\test.txt"))::subscribeTo)
+        //                        .thenAccept(path -> System.out.println("Download completed: " + path))
+        //                        .exceptionally(throwable -> {
+        //                            // handle client error
+        //                            LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+        //                            return null;
+        //                        })
+        //                        // this is to make sure the VM does not exit before finishing the call
+        //                        .toCompletableFuture()
+        //                        .get();
     }
 }

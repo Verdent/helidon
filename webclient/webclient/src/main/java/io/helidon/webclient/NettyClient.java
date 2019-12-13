@@ -49,11 +49,12 @@ final class NettyClient implements WebClient {
     private static final HostnameVerifier DEFAULT_SSL_HOSTNAME_VERIFIER = DefaultHostnameVerifier.create();
 
     // shared by all client instances
-    private static final LazyValue<NioEventLoopGroup> EVENT_GROUP = LazyValue.create();
+    // TODO JAK JINAK?
+    static final LazyValue<NioEventLoopGroup> EVENT_GROUP = LazyValue.create();
     private static final AtomicBoolean DEFAULTS_CONFIGURED = new AtomicBoolean();
 
     private static final ClientConfiguration DEFAULT_CONFIGURATION =
-            new ClientConfiguration.Builder()
+            ClientConfiguration.builder()
                     .connectTimeout(DEFAULT_CONNECT_TIMEOUT)
                     .readTimeout(DEFAULT_READ_TIMEOUT)
                     .followRedirects(DEFAULT_FOLLOW_REDIRECTS)
@@ -90,7 +91,8 @@ final class NettyClient implements WebClient {
 
     @Override
     public ClientRequestBuilder method(String method) {
-        return null;
+        //TODO je to ok?
+        return ClientRequestBuilderImpl.create(EVENT_GROUP, configuration, Http.Method.valueOf(method));
     }
 
     static void configureDefaults(Config globalConfig) {

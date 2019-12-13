@@ -15,8 +15,8 @@
  */
 package io.helidon.webclient;
 
-import io.helidon.common.http.Content;
 import io.helidon.common.http.Http;
+import io.helidon.media.common.MessageBodyReadableContent;
 
 /**
  * Response from a server that was created for our request.
@@ -39,7 +39,7 @@ public interface ClientResponse {
      *
      * @return content
      */
-    Content content();
+    MessageBodyReadableContent content();
 
     /**
      * Headers of the HTTP response.
@@ -47,4 +47,6 @@ public interface ClientResponse {
      * @return headers that were present in the response from server
      */
     ClientResponseHeaders headers();
+
+    Http.Version version();
 }

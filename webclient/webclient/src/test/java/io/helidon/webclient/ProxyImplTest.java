@@ -16,7 +16,7 @@
 
 package io.helidon.webclient;
 
-import java.net.InetSocketAddress;
+import java.net.URI;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -41,7 +41,7 @@ class ProxyImplTest {
                                                       ".0.0.1",
                                                       "[::1]");
 
-        Function<InetSocketAddress, Boolean> fun = ProxyImpl.prepareNoProxy(noProxy);
+        Function<URI, Boolean> fun = ProxyImpl.prepareNoProxy(noProxy);
 
         assertThat("[::1]:80", fun.apply(address("[::1]", 80)), is(true));
         assertThat("localhost:8080", fun.apply(address("localhost", 8080)), is(true));
@@ -66,7 +66,7 @@ class ProxyImplTest {
 
     }
 
-    private InetSocketAddress address(String host, int port) {
-        return new InetSocketAddress(host, port);
+    private URI address(String host, int port) {
+        return URI.create("http://" + host + ":" + port);
     }
 }

@@ -15,7 +15,7 @@
  */
 package io.helidon.webclient;
 
-import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -30,10 +30,12 @@ import io.netty.handler.logging.LoggingHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 
 class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
+
     private final RequestConfiguration configuration;
     private final CompletableFuture<ClientResponse> future;
 
-    NettyClientInitializer(RequestConfiguration configuration, CompletableFuture<ClientResponse> future) {
+    NettyClientInitializer(RequestConfiguration configuration,
+                           CompletableFuture<ClientResponse> future) {
         this.configuration = configuration;
         this.future = future;
     }
@@ -42,7 +44,7 @@ class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
     protected void initChannel(SocketChannel channel) {
         ChannelPipeline pipeline = channel.pipeline();
 
-        InetSocketAddress address = channel.remoteAddress();
+        URI address = configuration.requestURI();
 
         // read timeout (we also want to timeout waiting on a proxy)
         Duration readTimeout = configuration.readTimout();
@@ -54,13 +56,15 @@ class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
                 .ifPresent(pipeline::addLast);
 
         // SSL configuration
-        configuration.sslContext().ifPresent(ctx -> {
-            pipeline.addLast(ctx.newHandler(channel.alloc()));
-        });
+        if (configuration.requestURI().toString().startsWith("https://")
+                && configuration.clientSslEnabled()) {
+            configuration.sslContext().ifPresent(ctx -> pipeline.addLast("ssl", ctx.newHandler(channel.alloc())));
+        }
 
         pipeline.addLast("logger", new LoggingHandler(LogLevel.TRACE));
         pipeline.addLast("httpCodec", new HttpClientCodec());
         pipeline.addLast("httpDecompressor", new HttpContentDecompressor());
+        //        pipeline.addLast("objectEncoder", new ObjectEncoder());
         pipeline.addLast("helidonHandler", new NettyClientHandler(future));
     }
 }

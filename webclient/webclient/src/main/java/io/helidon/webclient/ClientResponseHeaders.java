@@ -29,6 +29,11 @@ import io.helidon.common.http.Parameters;
  * Headers that may be available on response from server.
  */
 public interface ClientResponseHeaders extends Headers {
+
+    static ClientResponseHeaders create(Parameters parameters) {
+        return create(parameters.toMap());
+    }
+
     static ClientResponseHeaders create(Map<String, List<String>> headers) {
         return new ClientResponseHeaders() {
             @Override

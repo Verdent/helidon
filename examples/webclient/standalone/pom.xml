@@ -27,5 +27,9 @@
             <artifactId>helidon-config-yaml</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.helidon.security.providers</groupId>
+            <artifactId>helidon-security-providers-abac</artifactId>
+        </dependency>
     </dependencies>
 </project>

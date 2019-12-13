@@ -366,7 +366,7 @@ public final class Subject implements AbacSupport {
          * If {@link #principal(Principal)} was not invoked prior to this method, it will also set the "main" principal.
          *
          * @param principal principal to add to this subject
-         * @return udpated builder instance
+         * @return updated builder instance
          */
         public Builder addPrincipal(Principal principal) {
             if (null == this.principal) {

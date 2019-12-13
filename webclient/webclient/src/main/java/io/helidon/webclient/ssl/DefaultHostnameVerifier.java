@@ -15,30 +15,11 @@
  */
 package io.helidon.webclient.ssl;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateParsingException;
-import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
-import java.util.NoSuchElementException;
 import java.util.logging.Logger;
 
-import javax.naming.InvalidNameException;
-import javax.naming.NamingException;
-import javax.naming.directory.Attribute;
-import javax.naming.directory.Attributes;
-import javax.naming.ldap.LdapName;
-import javax.naming.ldap.Rdn;
 import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.SSLException;
-import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSession;
-import javax.security.auth.x500.X500Principal;
 
 /**
  * Default {@link javax.net.ssl.HostnameVerifier} implementation.
@@ -65,7 +46,9 @@ public final class DefaultHostnameVerifier implements HostnameVerifier {
 
     @Override
     public boolean verify(String s, SSLSession sslSession) {
-        return false;
+        //TODO like that?
+        HostnameVerifier defaultHostnameVerifier = HttpsURLConnection.getDefaultHostnameVerifier();
+        return defaultHostnameVerifier.verify(s, sslSession);
     }
 
     //    private final PublicSuffixMatcher publicSuffixMatcher;

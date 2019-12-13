@@ -15,22 +15,43 @@
  */
 package io.helidon.webclient;
 
-import io.helidon.common.Builder;
+import java.net.URI;
+
+import io.helidon.common.GenericType;
 
 /**
  * TODO javadoc.
  */
 class RequestConfiguration extends ClientConfiguration {
-    RequestConfiguration(Builder builder) {
+
+    private final URI requestURI;
+    private final GenericType<?> genericType;
+
+    private RequestConfiguration(Builder builder) {
         super(builder);
+        requestURI = builder.requestURI;
+        genericType = builder.genericType;
     }
-    
-    static Builder builder() {
-        return new Builder();
+
+    URI requestURI() {
+        return requestURI;
+    }
+
+    GenericType<?> genericType() {
+        return genericType;
+    }
+
+    static Builder builder(URI requestURI) {
+        return new Builder(requestURI);
     }
 
     static class Builder extends ClientConfiguration.Builder<Builder, RequestConfiguration> {
-        private Builder() {
+
+        public GenericType<?> genericType;
+        private URI requestURI;
+
+        public Builder(URI requestURI) {
+            this.requestURI = requestURI;
         }
 
         @Override

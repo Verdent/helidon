@@ -19,8 +19,9 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,6 +36,7 @@ import io.helidon.common.reactive.Flow;
 public final class FileSubscriber implements Flow.Subscriber<DataChunk> {
     private static final Logger LOGGER = Logger.getLogger(FileSubscriber.class.getName());
 
+    private final CompletableFuture<Path> resultFuture = new CompletableFuture<>();
     private final Path filePath;
     private final Path tempPath;
     private final FileChannel channel;
@@ -47,8 +49,9 @@ public final class FileSubscriber implements Flow.Subscriber<DataChunk> {
         this.channel = channel;
     }
 
-    public void subscribeTo(Flow.Publisher<DataChunk> publisher) {
+    public CompletionStage<Path> subscribeTo(Flow.Publisher<DataChunk> publisher) {
         publisher.subscribe(this);
+        return resultFuture;
     }
 
     /**
@@ -83,8 +86,9 @@ public final class FileSubscriber implements Flow.Subscriber<DataChunk> {
     @Override
     public void onNext(DataChunk item) {
         try {
+            //TODO nonblocking file io
             channel.write(item.data());
-            // TODO not sure I can request this in onNext
+
             subscription.request(1);
         } catch (IOException e) {
             throw new ClientException("Failed to write data to temporary file: " + tempPath.toAbsolutePath(), e);
@@ -98,13 +102,16 @@ public final class FileSubscriber implements Flow.Subscriber<DataChunk> {
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Received an onError", e);
         }
+
+        resultFuture.completeExceptionally(throwable);
     }
 
     @Override
     public void onComplete() {
         try {
             channel.close();
-            Files.move(tempPath, filePath, StandardCopyOption.ATOMIC_MOVE);
+            Files.move(tempPath, filePath);
+            resultFuture.complete(filePath);
         } catch (IOException e) {
             throw new ClientException("Failed to move file from temp to final. Temp: " + tempPath
                     .toAbsolutePath() + ", final: " + filePath.toAbsolutePath(), e);

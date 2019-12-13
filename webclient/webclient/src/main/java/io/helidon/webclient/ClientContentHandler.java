@@ -19,8 +19,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import io.helidon.common.http.DataChunk;
-import io.helidon.common.http.Reader;
 import io.helidon.common.reactive.Flow;
+import io.helidon.media.common.MessageBodyReader;
 
 /**
  * TODO javadoc.
@@ -31,7 +31,7 @@ public interface ClientContentHandler<T> {
      *
      * @return
      */
-    Optional<Reader<T>> reader(ClientRequestBuilder.ClientRequest originalRequest, ClientResponse response);
+    Optional<MessageBodyReader<T>> reader(ClientRequestBuilder.ClientRequest originalRequest, ClientResponse response);
 
     /**
      * Writer to be used when sending request to remote site.

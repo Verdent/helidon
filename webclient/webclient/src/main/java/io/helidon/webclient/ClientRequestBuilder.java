@@ -18,12 +18,14 @@ package io.helidon.webclient;
 import java.net.URI;
 import java.net.URL;
 import java.time.ZonedDateTime;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.context.Context;
 import io.helidon.common.http.DataChunk;
 import io.helidon.common.http.Headers;
+import io.helidon.common.http.Http;
 import io.helidon.common.http.HttpRequest;
 import io.helidon.common.http.MediaType;
 import io.helidon.common.http.Parameters;
@@ -105,7 +107,7 @@ public interface ClientRequestBuilder {
      * Copy all query parameters from supplied {@link Parameters} instance.
      *
      * @param queryParams to copy
-     * @return udpated builder instance
+     * @return updated builder instance
      */
     ClientRequestBuilder queryParams(Parameters queryParams);
 
@@ -113,9 +115,19 @@ public interface ClientRequestBuilder {
      * Register an entity handler.
      *
      * @param handler
-     * @return
+     * @return updated builder instance
      */
     ClientRequestBuilder register(ClientContentHandler<?> handler);
+
+    /**
+     * Sets http version.
+     *
+     * @param httpVersion http version
+     * @return updated builder instance
+     */
+    ClientRequestBuilder httpVersion(Http.Version httpVersion);
+
+    ClientRequestBuilder fragment(String fragment);
 
     ClientRequestBuilder path(HttpRequest.Path path);
 
@@ -129,55 +141,39 @@ public interface ClientRequestBuilder {
 
     ClientRequestBuilder accept(MediaType... mediaTypes);
 
+    CompletionStage<ClientResponse> redirect();
+
     <T> CompletionStage<T> request(Class<T> responseType);
 
     <T> CompletionStage<T> request(GenericType<T> responseType);
 
     default CompletionStage<ClientResponse> request() {
-        return submit();
+        return request(ClientResponse.class);
     }
 
     CompletionStage<ClientResponse> submit();
 
     // TODO this must work with multipart
     // send multiple files from client to server -> memory, threads
-    <T> CompletionStage<T> submit(Flow.Publisher<?> requestEntity, Class<T> responseType);
+    <T> CompletionStage<T> submit(Flow.Publisher<DataChunk> requestEntity, Class<T> responseType);
 
     <T> CompletionStage<T> submit(Object requestEntity, Class<T> responseType);
 
-    CompletionStage<ClientResponse> submit(Flow.Publisher<?> requestEntity);
+    CompletionStage<ClientResponse> submit(Flow.Publisher<DataChunk> requestEntity);
 
     CompletionStage<ClientResponse> submit(Object requestEntity);
 
     interface ClientRequest extends HttpRequest {
+
         ClientRequestHeaders headers();
 
-        /**
-         * Build the request and send it to the server.
-         *
-         * @return a completion stage that is completed when we receive response from the server (entity may not be yet fully
-         * received)
-         */
-        CompletionStage<ClientResponse> send();
+        RequestConfiguration configuration();
 
-        /**
-         * Build the request and send it with an entity to the server.
-         *
-         * @param entity entity of a type supported by one of configured {@link ClientContentHandler}
-         * @param <E>
-         * @return a completion stage that is completed when we receive response from the server (entity may not be yet fully
-         * received)
-         */
-        <E> CompletionStage<ClientResponse> send(E entity);
+        Map<String, Object> properties();
 
-        /**
-         * Build the request and send it with an entity to the server.
-         *
-         * @param content publisher of entity {@link DataChunk DataChunks}
-         * @return a completion stage that is completed when we receive response from the server (entity may not be yet fully
-         * received)
-         */
-        CompletionStage<ClientResponse> send(Flow.Publisher<DataChunk> content);
+        Proxy proxy();
+
+        int redirectionCount();
 
     }
 }

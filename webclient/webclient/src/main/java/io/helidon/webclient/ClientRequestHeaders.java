@@ -26,14 +26,6 @@ import io.helidon.common.http.MediaType;
  * outbound request.
  */
 public interface ClientRequestHeaders extends Headers {
-    /**
-     * Set a header. This will override the existing values
-     * of the header (if any).
-     *
-     * @param name   header name
-     * @param values header value(s)
-     */
-    void setHeader(String name, String... values);
 
     /**
      * Remove a header if set.

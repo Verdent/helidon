@@ -6,19 +6,18 @@ client:
   event-loop:
     name-prefix: client-thread-
     workers: 1
-  connect-timeout-millis: 2000 #DONE
-  read-timeout-millis: 2000000 #DONE
-  follow-redirects: true #DONE
-  max-redirects: 5 #DONE
+  connect-timeout-millis: 2000
+  read-timeout-millis: 2000
+  follow-redirects: true
   user-agent: "Helidon"
-  cookies: #DONE
-    automatic-store-enabled: true #DONE
-    default-cookies: #DONE
-      - name: "env" #DONE
-        value: "dev" #DONE
-  headers: #DONE
-    - name: "Accept" #DONE
-      value: ["application/json","text/plain"] #DONE
+  cookies:
+    automatic-store-enabled: true
+    default-cookies:
+      - name: "env"
+        value: "dev"
+  headers:
+    - name: "Accept"
+      value: ["application/json","text/plain"]
   services:
     exclude: ["io.helidon.webclient.DefaultServiceRegistry"]
     config:
@@ -30,15 +29,18 @@ client:
         - name: "@default"
           mapping:
             # any number of maps of protocol, host and port to another value
-            - source: "http:#localhost:8080/greet"
-              target: "http:#localhost:8081/jinejGreet:D"
+            - source: "http://localhost:8080/greet"
+              target: "http://localhost:8081/jinejGreet:D"
       metrics:
       tracing:
   proxy:
-    use-system-selector: false #DONE
-    host: "change.this.value" #DONE
-    port: 80 #DONE
-    no-proxy: ["localhost:8080", ".helidon.io", "www.oracle.com", "192.168.1.1"] #DONE
+    use-system-selector: false
+    type: "socks4"
+    host: "proxy.com"
+    port: 8989
+    no-proxy: ["localhost:8080", ".helidon.io", "www.oracle.com", "192.168.1.1"]
+    username: jarda
+    password: novak
   ssl:
     #
     enabled: true
@@ -61,20 +63,14 @@ client:
       password: "heslo"
       type: "PKCS12"
   targets:
-    - name: "greet" #pouze jmeno a neni to identifikator endpointu
+    - name: "greet" //pouze jmeno a neni to identifikator endpointu
       # only for https
-      transports: ["https"] #pokud je protocol https
-      hosts: ["localhost"] #a pokud je host localhost
-      paths: ["/greet"] # a cesta je greet
-      read-timeout-millis: 4000 #tak nastav read.... na 4k
+      transports: ["https"] //pokud je protocol https
+      hosts: ["localhost"] //a pokud je host localhost
+      paths: ["/greet"] // a cesta je greet
+      read-timeout-millis: 4000 //tak nastav read.... na 4k
       ssl:
-        hostname-verifier: "@none" # a hostname ver na none
+        hostname-verifier: "@none" // a hostname ver na none
       services:
         metrics:
           enabled: false
-        service-registry:
-          - name: "@default"
-            mapping:
-              # any number of maps of protocol, host and port to another value
-              - source: "http:#localhost:8080/greet"
-                target: "http:#localhost:8081/jinejGreet:D"

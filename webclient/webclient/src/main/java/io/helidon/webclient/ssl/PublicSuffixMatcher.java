@@ -15,10 +15,7 @@
  */
 package io.helidon.webclient.ssl;
 
-import java.net.IDN;
 import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;

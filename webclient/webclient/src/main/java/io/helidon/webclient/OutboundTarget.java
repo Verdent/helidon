@@ -26,7 +26,6 @@ import java.util.regex.Pattern;
 
 import io.helidon.common.CollectionsHelper;
 import io.helidon.config.Config;
-import io.helidon.security.ClassToInstanceStore;
 
 /**
  * Configuration of outbound target.

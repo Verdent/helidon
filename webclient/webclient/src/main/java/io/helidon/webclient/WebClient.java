@@ -20,6 +20,8 @@ import java.net.URL;
 import java.security.KeyStore;
 import java.time.Duration;
 import java.time.temporal.TemporalUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.net.ssl.HostnameVerifier;
 
@@ -63,6 +65,9 @@ public interface WebClient {
     final class Builder implements io.helidon.common.Builder<WebClient> {
         private final ClientConfiguration.Builder configuration = NettyClient.SHARED_CONFIGURATION.get().derive();
 
+        private ClientService service;
+        private List<ClientContentHandler<?>> clientContentHandlers = new ArrayList<>();
+
         private Builder() {
         }
 
@@ -72,19 +77,23 @@ public interface WebClient {
         }
 
         public Builder register(ClientService service) {
+            this.service = service;
             return this;
         }
 
         public Builder proxy(Proxy proxy) {
+            this.configuration.proxy(proxy);
             return this;
         }
 
         public Builder register(ClientContentHandler<?> contentHandler) {
-            return null;
+            clientContentHandlers.add(contentHandler);
+            return this;
         }
 
         public Builder config(Config config) {
-            configuration.config(config);
+            //TODO takhle?
+            configuration.config(config.get("client"));
             return this;
         }
 
@@ -159,6 +168,14 @@ public interface WebClient {
 
         public ClientConfiguration configuration() {
             return configuration.build();
+        }
+
+        public ClientService service() {
+            return service;
+        }
+
+        public List<ClientContentHandler<?>> clientContentHandlers() {
+            return clientContentHandlers;
         }
     }
 }

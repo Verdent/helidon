@@ -15,8 +15,8 @@
  */
 package io.helidon.webclient;
 
-import java.net.InetSocketAddress;
 import java.net.ProxySelector;
+import java.net.URI;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -51,7 +51,7 @@ public interface Proxy {
 
     // we use netty everywhere - can we do this? Otherwise
     // we must do this in each component using netty
-    Optional<ChannelHandler> handler(InetSocketAddress address);
+    Optional<ChannelHandler> handler(URI address);
 
     /**
      * Create a new proxy instance from configuration.

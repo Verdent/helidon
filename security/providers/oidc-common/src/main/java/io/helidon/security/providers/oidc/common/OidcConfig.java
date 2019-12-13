@@ -1026,7 +1026,7 @@ public final class OidcConfig {
          * Set {@link JwkKeys} to use for JWT validation.
          *
          * @param jwk JwkKeys instance to get public keys used to sign JWT
-         * @return udpated builder instance
+         * @return updated builder instance
          */
         public Builder signJwk(JwkKeys jwk) {
             validateJwtWithJwk(true);
@@ -1039,7 +1039,7 @@ public final class OidcConfig {
          * containing endpoints to various identity services, as well as information about the identity server.
          *
          * @param resource resource pointing to the JSON structure
-         * @return udpated builder instance
+         * @return updated builder instance
          */
         public Builder oidcMetadata(Resource resource) {
             this.oidcMetadata = JSON.createReader(resource.stream()).readObject();

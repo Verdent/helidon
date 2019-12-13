@@ -15,6 +15,7 @@
  */
 package io.helidon.webclient;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import io.helidon.common.http.DataChunk;
@@ -25,7 +26,10 @@ import io.helidon.common.reactive.Flow;
  * TODO move to common/reactive?
  */
 public final class FilePublisher implements Flow.Publisher<DataChunk> {
-    private FilePublisher() {
+    private final Path filePath;
+
+    private FilePublisher(Path filePath) {
+        this.filePath = filePath;
     }
 
     /**
@@ -35,7 +39,13 @@ public final class FilePublisher implements Flow.Publisher<DataChunk> {
      * @return publisher of {@link DataChunk}
      */
     public static FilePublisher create(Path filePath) {
-        return new FilePublisher();
+        if (!Files.exists(filePath)) {
+            throw new ClientException("Path " + filePath.toAbsolutePath() + " does not exist, cannot read from it");
+        } else if (Files.isDirectory(filePath)) {
+            throw new ClientException("Path " + filePath.toAbsolutePath() + " needs to be file");
+        }
+
+        return new FilePublisher(filePath);
     }
 
     @Override

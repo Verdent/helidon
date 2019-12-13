@@ -52,7 +52,7 @@ class ProxyImpl implements Proxy {
     private final ProxyType type;
     private final String host;
     private final int port;
-    private final Function<InetSocketAddress, Boolean> noProxy;
+    private final Function<URI, Boolean> noProxy;
     private final Optional<String> username;
     private final Optional<char[]> password;
     private final ProxySelector systemSelector;
@@ -76,7 +76,7 @@ class ProxyImpl implements Proxy {
     }
 
     @Override
-    public Optional<ChannelHandler> handler(InetSocketAddress address) {
+    public Optional<ChannelHandler> handler(URI address) {
         if (type == NONE) {
             return Optional.empty();
         }
@@ -92,7 +92,7 @@ class ProxyImpl implements Proxy {
         return Optional.of(handler());
     }
 
-    static Function<InetSocketAddress, Boolean> prepareNoProxy(Set<String> noProxyHosts) {
+    static Function<URI, Boolean> prepareNoProxy(Set<String> noProxyHosts) {
         if (noProxyHosts.isEmpty()) {
             // if no exceptions, then simple
             return address -> false;
@@ -108,8 +108,8 @@ class ProxyImpl implements Proxy {
         }
 
         if (simple) {
-            return address -> noProxyHosts.contains(address.getHostString()) || noProxyHosts
-                    .contains(address.getHostString() + ":" + address.getPort());
+            return address -> noProxyHosts.contains(address.getHost()) || noProxyHosts
+                    .contains(address.getHost() + ":" + address.getPort());
         }
 
         List<BiFunction<String, Integer, Boolean>> hostMatchers = new LinkedList<>();
@@ -148,7 +148,7 @@ class ProxyImpl implements Proxy {
 
         // complicated - must check for . prefixes
         return address -> {
-            String host = address.getHostString();
+            String host = address.getHost();
             int port = address.getPort();
 
             // first need to make sure whether I have an IP address or a hostname
@@ -218,10 +218,10 @@ class ProxyImpl implements Proxy {
                 || IP_V6_HEX_HOST.matcher(host).matches();
     }
 
-    private Optional<ChannelHandler> systemSelectorHandler(InetSocketAddress address) {
+    private Optional<ChannelHandler> systemSelectorHandler(URI address) {
         // this is hardcoded to http protocol and no path - a bit limited use case, though better than none
         List<java.net.Proxy> selected = systemSelector
-                .select(URI.create("http://" + address.getHostString() + ":" + address.getPort()));
+                .select(URI.create("http://" + address.getHost() + ":" + address.getPort()));
 
         if (selected.isEmpty()) {
             return Optional.empty();

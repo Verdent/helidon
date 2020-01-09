@@ -20,9 +20,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.json.Json;
-import javax.json.JsonObject;
-
 import io.helidon.config.Config;
 import io.helidon.metrics.RegistryFactory;
 import io.helidon.metrics.rest.client.ClientMetrics;
@@ -119,23 +116,23 @@ public class StandaloneClientExample {
         //                .toCompletableFuture()
         //                .get();
 
-        //        client.get()
-        //                        .uri("https://www.google.com/search")
-        //                        .queryParam("q", "ahoj")
-        //                        .request(String.class)
-        //                        .thenAccept(System.out::println)
-        //        //                .thenCompose(nothing -> client.get()
-        //        //                        .uri("https://www.google.com/search?q=test")
-        //        //                        .request(String.class))
-        //        //                .thenAccept(System.out::println)
-        //                        .exceptionally(throwable -> {
-        //                            // handle client error
-        //                            LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
-        //                            return null;
-        //                        })
-        //                        // this is to make sure the VM does not exit before finishing the call
-        //                        .toCompletableFuture()
-        //                        .get();
+                client.get()
+                                .uri("http://www.google.com:443")
+                                .queryParam("q", "ahoj")
+                                .request(String.class)
+                                .thenAccept(System.out::println)
+                //                .thenCompose(nothing -> client.get()
+                //                        .uri("https://www.google.com/search?q=test")
+                //                        .request(String.class))
+                //                .thenAccept(System.out::println)
+                                .exceptionally(throwable -> {
+                                    // handle client error
+                                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+                                    return null;
+                                })
+                                // this is to make sure the VM does not exit before finishing the call
+                                .toCompletableFuture()
+                                .get();
 
         //        client.get()
         //                .uri("https://www.google.com/search")
@@ -183,24 +180,25 @@ public class StandaloneClientExample {
         //                .toCompletableFuture()
         //                .get();
 
-        JsonObject json = Json.createObjectBuilder()
-                .add("greeting", "Hi small")
-                .build();
-        client.put()
-                .uri("http://localhost:8080/greet/greeting")
-                .submit(json)
-                .thenAccept(clientResponse -> System.out.println(clientResponse.status()))
-                .thenCompose(nothing -> client.get()
-                        .uri("http://localhost:8080/greet")
-                        .request(JsonObject.class)
-                        .thenAccept(System.out::println))
-                .exceptionally(throwable -> {
-                    // handle client error
-                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
-                    return null;
-                })
-                .toCompletableFuture()
-                .get();
+//        JsonObject json = Json.createObjectBuilder()
+//                .add("greeting", "Hi small")
+//                .build();
+//        client.put()
+//                .uri("http://localhost:8080/greet/greeting")
+//                //.headers(clientRequestHeaders -> clientRequestHeaders.ifNoneMatch("asdasd"))
+//                .submit(json)
+//                .thenAccept(clientResponse -> System.out.println(clientResponse.status()))
+//                .thenCompose(nothing -> client.get()
+//                        .uri("http://localhost:8080/greet")
+//                        .request(JsonObject.class)
+//                        .thenAccept(System.out::println))
+//                .exceptionally(throwable -> {
+//                    // handle client error
+//                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+//                    return null;
+//                })
+//                .toCompletableFuture()
+//                .get();
 //        System.out.println(clientResponse.status());
 
         //        client.get()

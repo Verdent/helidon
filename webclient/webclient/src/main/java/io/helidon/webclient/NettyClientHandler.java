@@ -53,6 +53,11 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
     private final CompletableFuture<ClientResponse> responseFuture;
     private HttpResponsePublisher publisher;
 
+    /**
+     * Creates new instance.
+     *
+     * @param responseFuture response future
+     */
     NettyClientHandler(CompletableFuture<ClientResponse> responseFuture) {
         this.responseFuture = responseFuture;
         this.clientResponse = ClientResponseImpl.builder();
@@ -82,7 +87,6 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
                 if (interceptor.shouldIntercept(response.status(), clientRequest.configuration())) {
                     interceptor.handleInterception(response, clientRequest, responseFuture);
                     if (!interceptor.continueAfterInterception()) {
-                        //TODO Is this proper way how to do that without leaving request hanging?
                         publisher.complete();
                         ctx.close();
                         return;
@@ -186,10 +190,7 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
         public long tryAcquire() {
             try {
                 lock.lock();
-                long l = super.tryAcquire();
-                if (l <= 0) {
-                }
-                return l;
+                return super.tryAcquire();
             } finally {
                 lock.unlock();
             }

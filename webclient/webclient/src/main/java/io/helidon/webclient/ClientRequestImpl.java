@@ -24,7 +24,7 @@ import io.helidon.common.http.Parameters;
 import io.helidon.common.http.ReadOnlyParameters;
 
 /**
- * TODO Javadoc
+ * Implementation of client request.
  */
 class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
 
@@ -49,8 +49,7 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
         queryParams = new ReadOnlyParameters(builder.queryParams());
         query = builder.query();
         fragment = builder.fragment();
-        //TODO path jak?
-        path = null;
+        path = builder.path();
         requestConfiguration = builder.requestConfiguration();
         properties = new HashMap<>(builder.properties());
         proxy = builder.proxy();

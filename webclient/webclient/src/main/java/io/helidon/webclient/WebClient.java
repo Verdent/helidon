@@ -29,13 +29,14 @@ import io.helidon.config.Config;
 import io.helidon.webclient.spi.ClientService;
 
 /**
- * TODO javadoc.
+ *
  */
 public interface WebClient {
+
     /**
      * Create a new rest client.
      *
-     * @return
+     * @return client
      */
     static WebClient create() {
         return builder().build();
@@ -44,7 +45,7 @@ public interface WebClient {
     /**
      * Fluent API builder for client.
      *
-     * @return
+     * @return client builder
      */
     static Builder builder() {
         return new Builder();
@@ -53,19 +54,30 @@ public interface WebClient {
     /**
      * Create a request builder for a put method.
      *
-     * @return
+     * @return client request builder
      */
     ClientRequestBuilder put();
 
+    /**
+     * Create a request builder for a get method.
+     *
+     * @return client request builder
+     */
     ClientRequestBuilder get();
 
+    /**
+     * Create a request builder for a method based on method parameter.
+     *
+     * @param method request method
+     * @return client request builder
+     */
     ClientRequestBuilder method(String method);
 
 
     final class Builder implements io.helidon.common.Builder<WebClient> {
         private final ClientConfiguration.Builder configuration = NettyClient.SHARED_CONFIGURATION.get().derive();
 
-        private ClientService service;
+        private List<ClientService> services = new ArrayList<>();
         private List<ClientContentHandler<?>> clientContentHandlers = new ArrayList<>();
 
         private Builder() {
@@ -77,7 +89,7 @@ public interface WebClient {
         }
 
         public Builder register(ClientService service) {
-            this.service = service;
+            this.services.add(service);
             return this;
         }
 
@@ -92,8 +104,7 @@ public interface WebClient {
         }
 
         public Builder config(Config config) {
-            //TODO takhle?
-            configuration.config(config.get("client"));
+            configuration.config(config);
             return this;
         }
 
@@ -107,16 +118,8 @@ public interface WebClient {
             return this;
         }
 
-        public Builder sslHostnameVerifier(HostnameVerifier verifier) {
-            configuration.sslHostnameVerifier(verifier);
-            return this;
-        }
-
-        public Builder sslTruststore(KeyStore keystore) {
-            return this;
-        }
-
-        public Builder sslKeystore(KeyStore keystore, char[] keyPassword) {
+        public Builder ssl(Ssl ssl) {
+            configuration.ssl(ssl);
             return this;
         }
 
@@ -170,8 +173,8 @@ public interface WebClient {
             return configuration.build();
         }
 
-        public ClientService service() {
-            return service;
+        public List<ClientService> services() {
+            return services;
         }
 
         public List<ClientContentHandler<?>> clientContentHandlers() {

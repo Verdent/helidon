@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  */
 package io.helidon.webclient;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import io.helidon.common.http.Headers;
+import io.helidon.common.http.Http;
 import io.helidon.common.http.MediaType;
 
 /**
@@ -46,7 +48,6 @@ public interface ClientRequestHeaders extends Headers {
      * Set a content type. This method is optional if you use
      * a writer for a specific type.
      * If the content type is explicitly defined, writer will NOT override it.
-     * TODO reference the method that supports this
      *
      * @param contentType content type of the request
      */
@@ -69,6 +70,20 @@ public interface ClientRequestHeaders extends Headers {
     void addAccept(MediaType mediaType);
 
     /**
+     * Sets {@link Http.Header#IF_MODIFIED_SINCE} header to specific time.
+     *
+     * @param time time
+     */
+    void ifModifiedSince(ZonedDateTime time);
+
+    /**
+     * Sets {@link Http.Header#IF_NONE_MATCH} header to specific etags.
+     *
+     * @param etags etags
+     */
+    ClientRequestHeaders ifNoneMatch(String... etags);
+
+    /**
      * Returns a list of acceptedTypes ({@value io.helidon.common.http.Http.Header#ACCEPT} header) content types in quality
      * factor order.
      * Never {@code null}.
@@ -77,7 +92,41 @@ public interface ClientRequestHeaders extends Headers {
      */
     List<MediaType> acceptedTypes();
 
-    Optional<MediaType> mediaType();
+    /**
+     * Returns content type of the request.
+     *
+     * If there is no explicit content set, then {@link MediaType#WILDCARD} is returned.
+     *
+     * @return content type of the request
+     */
+    MediaType contentType();
+
+    /**
+     * Returns content length if known.
+     *
+     * @return content length
+     */
+    Optional<Long> contentLength();
+
+    /**
+     * Returns value of header {@value Http.Header#IF_MODIFIED_SINCE}.
+     *
+     * @return if modified since
+     */
+    Optional<ZonedDateTime> ifModifiedSince();
+
+    /**
+     * Returns value of header {@value Http.Header#IF_NONE_MATCH}.
+     *
+     * Empty {@link List} is returned if this header is not set.
+     *
+     * @return if none match
+     */
+    List<String> ifNoneMatch();
+
+    void clear();
 
     // TODO add the rest of known request headers
+    //https://en.wikipedia.org/wiki/List_of_HTTP_header_fields ????
+    //EDIT: Dodelat pouze pro ty co maji special format data/uvozovky etc
 }

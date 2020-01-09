@@ -7,7 +7,7 @@ client:
     name-prefix: client-thread-
     workers: 1
   connect-timeout-millis: 2000 #DONE
-  read-timeout-millis: 2000000 #DONE
+  read-timeout-millis: 2000 #DONE
   follow-redirects: true #DONE
   max-redirects: 5 #DONE
   user-agent: "Helidon"
@@ -31,21 +31,33 @@ client:
           mapping:
             # any number of maps of protocol, host and port to another value
             - source: "http:#localhost:8080/greet"
-              target: "http:#localhost:8081/jinejGreet:D"
+              target: "http:#localhost:8081/jinejGreet"
       metrics:
       tracing:
-  proxy:
-    use-system-selector: false #DONE
-    host: "change.this.value" #DONE
-    port: 80 #DONE
-    no-proxy: ["localhost:8080", ".helidon.io", "www.oracle.com", "192.168.1.1"] #DONE
+#  proxy:
+#    use-system-selector: false #DONE
+#    host: "change.this.value" #DONE
+#    port: 80 #DONE
+#    no-proxy: ["localhost:8080", ".helidon.io", "www.oracle.com", "192.168.1.1"] #DONE
   ssl:
-    #
-    enabled: true
-    # service loader based to prevent reflection
-    hostname-verifier: "@default"
+    server:
+      # service loader based to prevent reflection
+      disable-hostname-verification: false #DONE
+      truststore:
+        trust-all: false #Partially
+        location:
+          # or path:
+          # or url:
+          # or content: (base64)
+          #Pouzit KeyConfig. SSL context
+          classpath: "trustore.jks"
+        password: "heslo"
+        type: "PKCS12"
     client:
+      # ClientAuth
+      client-auth: "OPTIONAL" #DONE
       # use same as security - based on targets
+      # key store pro private key
       keystore:
         location:
           # TODO requires change in the Resource class
@@ -55,11 +67,6 @@ client:
           classpath: "something.jks"
         password: "heslo"
         type: "JKS"
-    truststore:
-      location:
-        classpath: "trustore.jks"
-      password: "heslo"
-      type: "PKCS12"
   targets:
     - name: "greet" #pouze jmeno a neni to identifikator endpointu
       # only for https

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,10 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLParameters;
+
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -27,13 +31,24 @@ import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpContentDecompressor;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.util.concurrent.FutureListener;
 
+/**
+ * Helidon web client initializer which is used for netty channel initialization.
+ */
 class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
 
     private final RequestConfiguration configuration;
     private final CompletableFuture<ClientResponse> future;
 
+    /**
+     * Creates new instance.
+     *
+     * @param configuration request configuration
+     * @param future        response completable future
+     */
     NettyClientInitializer(RequestConfiguration configuration,
                            CompletableFuture<ClientResponse> future) {
         this.configuration = configuration;
@@ -56,15 +71,35 @@ class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
                 .ifPresent(pipeline::addLast);
 
         // SSL configuration
-        if (configuration.requestURI().toString().startsWith("https://")
-                && configuration.clientSslEnabled()) {
-            configuration.sslContext().ifPresent(ctx -> pipeline.addLast("ssl", ctx.newHandler(channel.alloc())));
+        if (address.toString().startsWith("https")) {
+            //&& configuration.clientSslEnabled()
+            //EDIT: client a server odstranit v prvni verzi
+            configuration.sslContext().ifPresent(ctx -> {
+                SslHandler sslHandler = ctx.newHandler(channel.alloc(), address.getHost(), address.getPort());
+
+                //This is how to enable hostname verification in netty
+                if (!configuration.ssl().disableHostnameVerification()) {
+                    SSLEngine sslEngine = sslHandler.engine();
+                    SSLParameters sslParameters = sslEngine.getSSLParameters();
+                    sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
+                    sslEngine.setSSLParameters(sslParameters);
+                }
+
+                pipeline.addLast("ssl", sslHandler);
+                sslHandler.handshakeFuture().addListener((FutureListener<Channel>) channelFuture -> {
+                    //Check if ssl handshake has been successful. Without this check will this exception be replaced by
+                    //netty and therefore it will be lost.
+                    if (channelFuture.cause() != null) {
+                        future.completeExceptionally(channelFuture.cause());
+                        channel.close();
+                    }
+                });
+            });
         }
 
         pipeline.addLast("logger", new LoggingHandler(LogLevel.TRACE));
         pipeline.addLast("httpCodec", new HttpClientCodec());
         pipeline.addLast("httpDecompressor", new HttpContentDecompressor());
-        //        pipeline.addLast("objectEncoder", new ObjectEncoder());
         pipeline.addLast("helidonHandler", new NettyClientHandler(future));
     }
 }

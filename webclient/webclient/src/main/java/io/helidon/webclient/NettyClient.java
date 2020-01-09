@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.net.ssl.HostnameVerifier;
-
 import io.helidon.common.Version;
 import io.helidon.common.http.Http;
 import io.helidon.config.Config;
-import io.helidon.webclient.ssl.DefaultHostnameVerifier;
 
 import io.netty.channel.nio.NioEventLoopGroup;
 
@@ -44,12 +41,11 @@ final class NettyClient implements WebClient {
     private static final LazyValue<String> DEFAULT_USER_AGENT = LazyValue
             .create(() -> "Helidon/" + Version.VERSION + " (java " + System.getProperty("java.runtime.version") + ")");
     private static final Proxy DEFAULT_PROXY = Proxy.noProxy();
-    private static final boolean DEFAULT_SERVER_SSL_ENABLED = true;
-    private static final boolean DEFAULT_CLIENT_SSL_ENABLED = true;
-    private static final HostnameVerifier DEFAULT_SSL_HOSTNAME_VERIFIER = DefaultHostnameVerifier.create();
+    private static final Ssl DEFAULT_SSL = Ssl.builder().build();
 
     // shared by all client instances
-    // TODO JAK JINAK?
+    //EDIT: prozkoumat jak funguji event loop grupy v netty?
+    //Jedna sdilena ci pro kazdeho clienta zvlast?
     static final LazyValue<NioEventLoopGroup> EVENT_GROUP = LazyValue.create();
     private static final AtomicBoolean DEFAULTS_CONFIGURED = new AtomicBoolean();
 
@@ -60,9 +56,7 @@ final class NettyClient implements WebClient {
                     .followRedirects(DEFAULT_FOLLOW_REDIRECTS)
                     .userAgent(DEFAULT_USER_AGENT)
                     .proxy(DEFAULT_PROXY)
-                    .serverSslEnabled(DEFAULT_SERVER_SSL_ENABLED)
-                    .clientSslEnabled(DEFAULT_CLIENT_SSL_ENABLED)
-                    .sslHostnameVerifier(DEFAULT_SSL_HOSTNAME_VERIFIER)
+                    .ssl(DEFAULT_SSL)
                     .build();
 
     // configurable per client instance
@@ -71,6 +65,11 @@ final class NettyClient implements WebClient {
     // this instance configuration
     private final ClientConfiguration configuration;
 
+    /**
+     * Creates new instance.
+     *
+     * @param builder client builder
+     */
     NettyClient(Builder builder) {
         this.configuration = builder.configuration();
 
@@ -91,8 +90,7 @@ final class NettyClient implements WebClient {
 
     @Override
     public ClientRequestBuilder method(String method) {
-        //TODO je to ok?
-        return ClientRequestBuilderImpl.create(EVENT_GROUP, configuration, Http.Method.valueOf(method));
+        return ClientRequestBuilderImpl.create(EVENT_GROUP, configuration, Http.RequestMethod.create(method));
     }
 
     static void configureDefaults(Config globalConfig) {

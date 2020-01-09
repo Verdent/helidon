@@ -60,7 +60,7 @@ public class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
     @Override
     public void onSubscribe(Flow.Subscription subscription) {
         this.subscription = subscription;
-        subscription.request(1);
+        subscription.request(10);
         LOGGER.finest(() -> "Writing sending request and its content to the server.");
     }
 

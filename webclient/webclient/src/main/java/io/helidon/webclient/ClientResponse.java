@@ -48,5 +48,10 @@ public interface ClientResponse {
      */
     ClientResponseHeaders headers();
 
+    /**
+     * Http version of this response.
+     *
+     * @return http version
+     */
     Http.Version version();
 }

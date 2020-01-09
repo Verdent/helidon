@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,15 @@
  */
 package io.helidon.webclient;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -34,9 +38,15 @@ import io.netty.handler.codec.http.cookie.ClientCookieEncoder;
 import io.netty.handler.codec.http.cookie.DefaultCookie;
 
 /**
- * TODO Javadoc
+ * Client request header implementation.
  */
 class ClientRequestHeadersImpl implements ClientRequestHeaders {
+
+    //If-Modified-Since is required to be in following format
+    //<day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
+            .withLocale(Locale.US)
+            .withZone(ZoneId.of("GMT"));
 
     private final Map<String, List<String>> headers = new HashMap<>();
 
@@ -73,6 +83,34 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     @Override
+    public void ifModifiedSince(ZonedDateTime time) {
+        put(Http.Header.IF_MODIFIED_SINCE, time.format(FORMATTER));
+    }
+
+    @Override
+    public ClientRequestHeaders ifNoneMatch(String... etags) {
+        //EDIT: pokracovat tady s navratovejma
+
+//        if (etags.length > 0) {
+//            StringBuilder noneMatch = new StringBuilder();
+//            if (etags.length == 1 && etags[0].equals("*")) {
+//                noneMatch.append("*");
+//            } else {
+//                for (String etag : etags) {
+//                    if (noneMatch.length() == 0) {
+//                        noneMatch.append("\"").append(etag).append("\"");
+//                    } else {
+//                        noneMatch.append(", \"").append(etag).append("\"");
+//                    }
+//                }
+//            }
+//
+//        }
+        put(Http.Header.IF_NONE_MATCH, etags);
+        return this;
+    }
+
+    @Override
     public List<MediaType> acceptedTypes() {
         List<MediaType> mediaTypes = new ArrayList<>();
         headers.computeIfAbsent(Http.Header.ACCEPT, k -> new ArrayList<>())
@@ -81,9 +119,30 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     @Override
-    public Optional<MediaType> mediaType() {
+    public MediaType contentType() {
         List<String> contentType = headers.computeIfAbsent(Http.Header.CONTENT_TYPE, k -> new ArrayList<>());
-        return Optional.ofNullable(contentType.size() == 0 ? MediaType.WILDCARD : MediaType.parse(contentType.get(0)));
+        return contentType.size() == 0 ? MediaType.WILDCARD : MediaType.parse(contentType.get(0));
+    }
+
+    @Override
+    public Optional<Long> contentLength() {
+        return Optional.ofNullable(headers.get(Http.Header.CONTENT_LENGTH)).map(list -> Long.parseLong(list.get(0)));
+    }
+
+    @Override
+    public Optional<ZonedDateTime> ifModifiedSince() {
+        return Optional.ofNullable(headers.get(Http.Header.IF_MODIFIED_SINCE))
+                .map(list -> ZonedDateTime.parse(list.get(0), FORMATTER));
+    }
+
+    @Override
+    public List<String> ifNoneMatch() {
+        return all(Http.Header.IF_NONE_MATCH);
+    }
+
+    @Override
+    public void clear() {
+        this.headers.clear();
     }
 
     @Override

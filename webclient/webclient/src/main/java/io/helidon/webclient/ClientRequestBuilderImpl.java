@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -29,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.context.Context;
@@ -64,21 +64,24 @@ import io.netty.util.AttributeKey;
 import static io.helidon.webclient.NettyClient.EVENT_GROUP;
 
 /**
- * TODO Javadoc
+ * Implementation of {@link ClientRequestBuilder}.
  */
 class ClientRequestBuilderImpl implements ClientRequestBuilder {
-    private static final Map<String, Integer> SUPPORTED_PROTOCOLS = new HashMap<>();
     static final AttributeKey<ClientRequest> REQUEST = AttributeKey.valueOf("request");
 
+    private static final String DEFAULT_TRANSPORT_PROTOCOL = "http";
+    private static final Map<String, Integer> DEFAULT_SUPPORTED_PROTOCOLS = new HashMap<>();
     static {
-        SUPPORTED_PROTOCOLS.put("http", 80);
-        SUPPORTED_PROTOCOLS.put("https", 443);
+        DEFAULT_SUPPORTED_PROTOCOLS.put(DEFAULT_TRANSPORT_PROTOCOL, 80);
+        DEFAULT_SUPPORTED_PROTOCOLS.put("https", 443);
     }
 
+    //TODO jak se maji pouzit? Co to je?
+    //EDIT: Smazat!
     private final Map<String, Object> properties;
     private final LazyValue<NioEventLoopGroup> eventGroup;
     private final ClientConfiguration configuration;
-    private final Http.Method method;
+    private final Http.RequestMethod method;
     private final ClientRequestHeaders headers;
     private final Parameters queryParams;
     private final List<ClientContentHandler> clientContentHandlers;
@@ -90,10 +93,11 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     private String fragment;
     private int redirectionCount;
     private RequestConfiguration requestConfiguration;
+    private HttpRequest.Path path;
 
     private ClientRequestBuilderImpl(LazyValue<NioEventLoopGroup> eventGroup,
                                      ClientConfiguration configuration,
-                                     Http.Method method) {
+                                     Http.RequestMethod method) {
         this.properties = new HashMap<>();
         this.eventGroup = eventGroup;
         this.configuration = configuration;
@@ -104,24 +108,27 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         this.httpVersion = Http.Version.V1_1;
         this.fragment = "";
         this.redirectionCount = 0;
+        //TODO path... jak udelat?
+        //EDIT: okopirovat impl ze serveru
     }
 
     public static ClientRequestBuilder create(LazyValue<NioEventLoopGroup> eventGroup,
                                               ClientConfiguration configuration,
-                                              Http.Method method) {
+                                              Http.RequestMethod method) {
         return new ClientRequestBuilderImpl(eventGroup, configuration, method);
     }
 
     public static ClientRequestBuilder create(ClientRequestBuilder.ClientRequest clientRequest) {
         ClientRequestBuilderImpl builder = new ClientRequestBuilderImpl(EVENT_GROUP,
                                                                         clientRequest.configuration(),
-                                                                        (Http.Method) clientRequest.method());
+                                                                        clientRequest.method());
         builder.headers(clientRequest.headers());
         builder.queryParams(clientRequest.queryParams());
         builder.properties.putAll(clientRequest.properties());
         builder.uri = clientRequest.uri();
         builder.httpVersion = clientRequest.version();
         builder.proxy = clientRequest.proxy();
+        builder.path = clientRequest.path();
         builder.fragment = clientRequest.fragment();
         builder.redirectionCount = clientRequest.redirectionCount() + 1;
         int maxRedirects = builder.configuration.maxRedirects();
@@ -166,12 +173,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     }
 
     @Override
-    public ClientRequestBuilder header(String header, String... values) {
-        headers.put(header, values);
-        return this;
-    }
-
-    @Override
     public ClientRequestHeaders headers() {
         return headers;
     }
@@ -190,7 +191,17 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public ClientRequestBuilder headers(Headers headers) {
+        this.headers.clear();
         this.headers.putAll(headers);
+        return this;
+    }
+
+    @Override
+    public ClientRequestBuilder headers(Function<ClientRequestHeaders, Headers> headers) {
+        Headers newHeaders = headers.apply(this.headers);
+        if (!newHeaders.equals(this.headers)) {
+            headers(newHeaders);
+        }
         return this;
     }
 
@@ -221,40 +232,23 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public ClientRequestBuilder path(HttpRequest.Path path) {
-        return null;
-    }
-
-    @Override
-    public ClientRequestBuilder contentType(MediaType mediaType) {
-        this.headers.contentType(mediaType);
+        this.path = path;
         return this;
     }
 
     @Override
-    public ClientRequestBuilder contentLength(long length) {
-        this.headers.contentLength(length);
+    public ClientRequestBuilder contentType(MediaType contentType) {
+        this.headers.contentType(contentType);
         return this;
     }
 
-    @Override
-    public ClientRequestBuilder ifModifiedSince(ZonedDateTime time) {
-        return null;
-    }
-
-    @Override
-    public ClientRequestBuilder ifNoneMatch(String... etags) {
-        return null;
-    }
+    //TODO tady se daji pres metody settovat headery, mam sem dat ty same metody co jsou u normal headeru?
+    //EDIT: pouze ty nejcastejsi
 
     @Override
     public ClientRequestBuilder accept(MediaType... mediaTypes) {
         Arrays.stream(mediaTypes).forEach(headers::addAccept);
         return this;
-    }
-
-    @Override
-    public CompletionStage<ClientResponse> redirect() {
-        return request(ClientResponse.class);
     }
 
     @Override
@@ -269,7 +263,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public CompletionStage<ClientResponse> submit() {
-        return submit((Object) null);
+        return request();
     }
 
     @Override
@@ -280,6 +274,11 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     @Override
     public <T> CompletionStage<T> submit(Object requestEntity, Class<T> responseType) {
         MessageBodyWriteableContent writeableContent = MessageBodyWriteableContent.create(requestEntity, this.headers);
+
+        //TODO co s navratovym typem?
+        //EDIT: MessageBodyWriter navratovej typ a dal ... you know the drill
+        clientContentHandlers.forEach(clientContentHandler -> clientContentHandler.writer(this));
+
         writeableContent.registerWriter(JsonProcessing.create().newWriter());
         Flow.Publisher<DataChunk> dataChunkPublisher = writeableContent.toPublisher(null);
         return invoke(dataChunkPublisher, GenericType.create(responseType));
@@ -295,7 +294,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return submit(requestEntity, ClientResponse.class);
     }
 
-    Http.Method method() {
+    Http.RequestMethod method() {
         return method;
     }
 
@@ -326,6 +325,10 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return fragment;
     }
 
+    HttpRequest.Path path() {
+        return path;
+    }
+
     RequestConfiguration requestConfiguration() {
         return requestConfiguration;
     }
@@ -344,8 +347,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @SuppressWarnings("unchecked")
     private <T> CompletionStage<T> invoke(Flow.Publisher<DataChunk> requestEntity, GenericType<T> responseType) {
-        //TODO co s navratovym typem?
-        clientContentHandlers.forEach(clientContentHandler -> clientContentHandler.writer(this));
         URI uri = prepareFinalURI();
 
         DefaultHttpRequest request = new DefaultHttpRequest(toNettyHttpVersion(httpVersion),
@@ -392,6 +393,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         headers.set(HttpHeaderNames.HOST, uri.getHost());
         headers.set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         headers.set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
+        headers.set(HttpHeaderNames.USER_AGENT, configuration.userAgent());
         try {
             Map<String, List<String>> cookieHeaders = this.configuration.cookieManager().get(uri, new HashMap<>());
             List<String> cookies = new ArrayList<>(cookieHeaders.get(Http.Header.COOKIE));
@@ -402,21 +404,27 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         } catch (IOException e) {
             throw new ClientException("An error occurred while setting cookies.", e);
         }
+        //TODO Co to udelat pres special metodu na headerech? Tam by se s tim dalo cvicit.
+        //EDIT: defaultni pridavat do klasickych
         this.configuration.headers().toMap().forEach(headers::add);
         this.headers.toMap().forEach(headers::add);
     }
 
     private URI prepareFinalURI() {
         String base = resolveURIBase();
+        String path = resolvePath();
         String queries = query();
-        return URI.create(base + (queries.isEmpty() ? "" : "?" + queries)
+        return URI.create(base + path
+                                  + (queries.isEmpty() ? "" : "?" + queries)
                                   + (fragment.isEmpty() ? "" : "#" + fragment));
     }
 
     private String resolveURIBase() {
-        String scheme = Optional.ofNullable(this.uri.getScheme())
-                .orElseThrow(() -> new ClientException("URI: " + uri + " does not have schema specified."));
-        Integer port = uri.getPort() > -1 ? uri.getPort() : SUPPORTED_PROTOCOLS.get(scheme);
+        String scheme = Optional.ofNullable(this.uri.getScheme()).orElse(DEFAULT_TRANSPORT_PROTOCOL);
+        if (!DEFAULT_SUPPORTED_PROTOCOLS.containsKey(scheme)) {
+            throw new ClientException(scheme + " transport protocol is not supported!");
+        }
+        Integer port = uri.getPort() > -1 ? uri.getPort() : DEFAULT_SUPPORTED_PROTOCOLS.get(scheme);
         if (port == null) {
             throw new ClientException("Client could not get port for schema " + scheme + ". "
                                               + "Please specify correct port to use.");
@@ -424,7 +432,15 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return scheme + "://" + uri.getHost() + ":" + port + uri.getPath();
     }
 
-    private HttpMethod toNettyMethod(Http.Method method) {
+    private String resolvePath() {
+        if (this.path != null) {
+            return this.path.toRawString();
+        }
+        return "";
+    }
+
+    private HttpMethod toNettyMethod(Http.RequestMethod method) {
+        //This method creates also new netty HttpMethod.
         return HttpMethod.valueOf(method.name());
     }
 
@@ -438,6 +454,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         content.registerReader(JsonProcessing.create().newReader());
 
         //TODO neudelat to radeji jako generic misto class?
+        //EDIT: zmenit supports na generic type
         clientContentHandlers.stream()
                 .filter(clientContentHandler -> clientContentHandler.supports(responseType))
                 .forEach(clientContentHandler -> {

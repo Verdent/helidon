@@ -21,6 +21,8 @@ import java.util.function.Supplier;
 /**
  * TODO javadoc.
  */ // graal vm workaround - until called, not referencing anything
+
+    //EDIT: pouzit to co je v io.helidon.common -> LazyValue
 final class LazyValue<T> {
     private final AtomicReference<T> value = new AtomicReference<>();
     private volatile Supplier<T> supplier;

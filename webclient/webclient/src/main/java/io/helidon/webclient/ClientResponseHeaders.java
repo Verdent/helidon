@@ -30,10 +30,22 @@ import io.helidon.common.http.Parameters;
  */
 public interface ClientResponseHeaders extends Headers {
 
+    /**
+     * Creates {@link ClientResponseHeaders} instance which contains data from {@link Parameters} instance.
+     *
+     * @param parameters headers in parameters instance
+     * @return response headers instance
+     */
     static ClientResponseHeaders create(Parameters parameters) {
         return create(parameters.toMap());
     }
 
+    /**
+     * Creates {@link ClientResponseHeaders} instance which contains data from {@link Map}.
+     *
+     * @param headers response headers in map
+     * @return response headers instance
+     */
     static ClientResponseHeaders create(Map<String, List<String>> headers) {
         return new ClientResponseHeaders() {
             @Override
@@ -119,6 +131,7 @@ public interface ClientResponseHeaders extends Headers {
     //
     //    Optional<ZonedDateTime> lastModified();
     //    // TODO add other response headers
+    //    // dodelat gettery na vsechny co jsou caste
     //
     //    Optional<MediaType> contentType();
 }

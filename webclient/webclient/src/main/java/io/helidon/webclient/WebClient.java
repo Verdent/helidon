@@ -17,16 +17,18 @@ package io.helidon.webclient;
 
 import java.net.URI;
 import java.net.URL;
-import java.security.KeyStore;
 import java.time.Duration;
 import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.ServiceLoader;
+import java.util.stream.Collectors;
 
-import javax.net.ssl.HostnameVerifier;
-
+import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
 import io.helidon.webclient.spi.ClientService;
+import io.helidon.webclient.spi.ClientServiceProvider;
 
 /**
  *
@@ -73,11 +75,11 @@ public interface WebClient {
      */
     ClientRequestBuilder method(String method);
 
-
     final class Builder implements io.helidon.common.Builder<WebClient> {
         private final ClientConfiguration.Builder configuration = NettyClient.SHARED_CONFIGURATION.get().derive();
 
-        private List<ClientService> services = new ArrayList<>();
+        private HelidonServiceLoader.Builder<ClientServiceProvider> services = HelidonServiceLoader
+                .builder(ServiceLoader.load(ClientServiceProvider.class));
         private List<ClientContentHandler<?>> clientContentHandlers = new ArrayList<>();
 
         private Builder() {
@@ -89,7 +91,18 @@ public interface WebClient {
         }
 
         public Builder register(ClientService service) {
-            this.services.add(service);
+            //EDIT: pro svou zajimavost prozkoumat JavaServiceLoader
+            services.addService(new ClientServiceProvider() {
+                @Override
+                public String configKey() {
+                    return "ignored";
+                }
+
+                @Override
+                public ClientService create(Config config) {
+                    return service;
+                }
+            });
             return this;
         }
 
@@ -129,6 +142,7 @@ public interface WebClient {
 
         /**
          * Add a default cookie.
+         *
          * @param name
          * @param value
          * @return
@@ -139,6 +153,7 @@ public interface WebClient {
 
         /**
          * Add a default header (such as accept)
+         *
          * @param header
          * @param value
          * @return
@@ -173,8 +188,21 @@ public interface WebClient {
             return configuration.build();
         }
 
+        //EDIT: premistit do clientconfigurace
         public List<ClientService> services() {
-            return services;
+            //EDIT: dodelat config
+            Config config = this.configuration == null ? Config.empty() : this.configuration.config();
+            Config servicesConfig = config.get("services");
+            servicesConfig.get("excludes").asList(String.class).orElse(Collections.emptyList())
+                    .forEach(services::addExcludedClassName);
+
+            Config serviceConfig = servicesConfig.get("config");
+
+            return services.build()
+                    .asList()
+                    .stream()
+                    .map(it -> it.create(serviceConfig.get(it.configKey())))
+                    .collect(Collectors.toList());
         }
 
         public List<ClientContentHandler<?>> clientContentHandlers() {

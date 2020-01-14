@@ -67,14 +67,21 @@ public interface ClientRequestHeaders extends Headers {
      *
      * @param mediaType media type to accept, with optional quality factor
      */
-    void addAccept(MediaType mediaType);
+    ClientRequestHeaders addAccept(MediaType mediaType);
 
     /**
      * Sets {@link Http.Header#IF_MODIFIED_SINCE} header to specific time.
      *
-     * @param time time
+     * @param time zoned date time
      */
-    void ifModifiedSince(ZonedDateTime time);
+    ClientRequestHeaders ifModifiedSince(ZonedDateTime time);
+
+    /**
+     * Sets {@link Http.Header#IF_UNMODIFIED_SINCE} header to specific time.
+     *
+     * @param time zoned date time
+     */
+    ClientRequestHeaders ifUnmodifiedSince(ZonedDateTime time);
 
     /**
      * Sets {@link Http.Header#IF_NONE_MATCH} header to specific etags.
@@ -82,6 +89,15 @@ public interface ClientRequestHeaders extends Headers {
      * @param etags etags
      */
     ClientRequestHeaders ifNoneMatch(String... etags);
+
+
+    ClientRequestHeaders ifMatch(String... etags);
+
+
+    ClientRequestHeaders ifRange(ZonedDateTime time);
+
+
+    ClientRequestHeaders ifRange(String etag);
 
     /**
      * Returns a list of acceptedTypes ({@value io.helidon.common.http.Http.Header#ACCEPT} header) content types in quality
@@ -111,22 +127,52 @@ public interface ClientRequestHeaders extends Headers {
     /**
      * Returns value of header {@value Http.Header#IF_MODIFIED_SINCE}.
      *
-     * @return if modified since
+     * @return IF_MODIFIED_SINCE header value.
      */
     Optional<ZonedDateTime> ifModifiedSince();
+
+    /**
+     * Returns value of header {@value Http.Header#IF_UNMODIFIED_SINCE}.
+     *
+     * @return IF_UNMODIFIED_SINCE header value.
+     */
+    Optional<ZonedDateTime> ifUnmodifiedSince();
 
     /**
      * Returns value of header {@value Http.Header#IF_NONE_MATCH}.
      *
      * Empty {@link List} is returned if this header is not set.
      *
-     * @return if none match
+     * @return A list of etags.
      */
     List<String> ifNoneMatch();
 
+    /**
+     * Returns value of header {@value Http.Header#IF_MATCH}.
+     *
+     * Empty {@link List} is returned if this header is not set.
+     *
+     * @return A list of etags.
+     */
+    List<String> ifMatch();
+
+    /**
+     * Returns value of header {@value Http.Header#IF_RANGE} as a {@link ZonedDateTime}.
+     *
+     * @return formatted header IF_RANGE as ZonedDateTime
+     */
+    Optional<ZonedDateTime> ifRangeDate();
+
+    /**
+     * Returns value of header {@value Http.Header#IF_RANGE} as a {@link String}.
+     *
+     * @return formatted header IF_RANGE as String
+     */
+    Optional<String> ifRangeString();
+
+    /**
+     * Clears all currently set headers.
+     */
     void clear();
 
-    // TODO add the rest of known request headers
-    //https://en.wikipedia.org/wiki/List_of_HTTP_header_fields ????
-    //EDIT: Dodelat pouze pro ty co maji special format data/uvozovky etc
 }

@@ -26,7 +26,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.X509ExtendedTrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import io.helidon.config.Config;
 
@@ -426,6 +429,11 @@ class ClientConfiguration {
                     .ifPresent(headers -> headers
                             .forEach(header -> defaultCookie(header.get("name").asString().get(),
                                                              header.get("value").asString().get())));
+        }
+
+        //EDIT: dodelat
+        public Config config() {
+            return null;
         }
     }
 }

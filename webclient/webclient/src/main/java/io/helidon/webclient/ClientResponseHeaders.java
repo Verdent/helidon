@@ -15,6 +15,8 @@
  */
 package io.helidon.webclient;
 
+import java.net.URI;
+import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +25,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import io.helidon.common.http.Headers;
+import io.helidon.common.http.MediaType;
 import io.helidon.common.http.Parameters;
+import io.helidon.common.http.SetCookie;
 
 /**
  * Headers that may be available on response from server.
@@ -46,92 +50,17 @@ public interface ClientResponseHeaders extends Headers {
      * @param headers response headers in map
      * @return response headers instance
      */
-    static ClientResponseHeaders create(Map<String, List<String>> headers) {
-        return new ClientResponseHeaders() {
-            @Override
-            public List<String> all(String headerName) {
-                List<String> response = headers.get(headerName);
-
-                if (null == response) {
-                    return Collections.emptyList();
-                }
-                return response;
-            }
-
-            @Override
-            public Optional<String> first(String name) {
-                return all(name).stream().findFirst();
-            }
-
-            @Override
-            public List<String> put(String key, String... values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> put(String key, Iterable<String> values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> putIfAbsent(String key, String... values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> putIfAbsent(String key, Iterable<String> values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> computeIfAbsent(String key, Function<String, Iterable<String>> values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> computeSingleIfAbsent(String key, Function<String, String> value) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public void putAll(Parameters parameters) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public void add(String key, String... values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public void add(String key, Iterable<String> values) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public void addAll(Parameters parameters) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public List<String> remove(String key) {
-                throw new UnsupportedOperationException("Response headers cannot be modified");
-            }
-
-            @Override
-            public Map<String, List<String>> toMap() {
-                return new HashMap<>(headers);
-            }
-        };
+    static ClientResponseHeadersImpl create(Map<String, List<String>> headers) {
+        return new ClientResponseHeadersImpl(headers);
     }
-    //
-    //    List<SetCookie> setCookies();
-    //
-    //    Optional<URI> location();
-    //
-    //    Optional<ZonedDateTime> lastModified();
-    //    // TODO add other response headers
-    //    // dodelat gettery na vsechny co jsou caste
-    //
-    //    Optional<MediaType> contentType();
+
+        List<SetCookie> setCookies();
+
+        Optional<URI> location();
+
+        Optional<ZonedDateTime> lastModified();
+        // TODO add other response headers
+        // dodelat gettery na vsechny co jsou caste
+
+        Optional<MediaType> contentType();
 }

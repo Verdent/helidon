@@ -18,9 +18,11 @@ package io.helidon.webclient;
 import java.util.Optional;
 import java.util.function.Function;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.http.DataChunk;
 import io.helidon.common.reactive.Flow;
 import io.helidon.media.common.MessageBodyReader;
+import io.helidon.media.common.MessageBodyWriter;
 
 /**
  * TODO javadoc.
@@ -38,7 +40,7 @@ public interface ClientContentHandler<T> {
      *
      * @return
      */
-    Optional<Function<T, Flow.Publisher<DataChunk>>> writer(ClientRequestBuilder clientRequestBuilder);
+    Optional<MessageBodyWriter<T>> writer(ClientRequestBuilder clientRequestBuilder);
 
     /**
      * Whether this content handler supports entities of the class specified.
@@ -46,5 +48,5 @@ public interface ClientContentHandler<T> {
      * @param clazz class to check support
      * @return true if supported and should be used to process write/read of such an entity, false if not supported
      */
-    boolean supports(Class<?> clazz);
+    boolean supports(GenericType<?> clazz);
 }

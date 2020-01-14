@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,25 +16,56 @@
  */
 package io.helidon.tracing.rest.client;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
+import io.helidon.config.Config;
 import io.helidon.webclient.ClientServiceRequest;
 import io.helidon.webclient.spi.ClientService;
+
+import io.opentracing.Span;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMapInjectAdapter;
+import io.opentracing.util.GlobalTracer;
 
 /**
  * TODO javadoc.
  */
 public class ClientTracing implements ClientService {
-    public static final String PARENT_SPAN = "io.helidon.rest.client.tracing.parentSpan";
-    public static final String SPAN_NAME = "io.helidon.rest.client.tracing.spanName";
+
+    private ClientTracing() {
+
+    }
 
     public static ClientTracing create() {
-        return null;
+        return new ClientTracing();
     }
 
     @Override
     public CompletionStage<ClientServiceRequest> request(ClientServiceRequest request) {
+        Tracer tracer = request.context().get(Tracer.class).orElseGet(GlobalTracer::get);
+
+        //EDIT: podivat jak to je udelany v integraci s jersey clientem -> tracing/jersey
+        Tracer.SpanBuilder spanBuilder = tracer.buildSpan(request.method() + "-" + request.path());
+        request.context().get(SpanContext.class).ifPresent(spanBuilder::asChildOf);
+
+        Span span = spanBuilder.start();
+        request.context().register(span.context());
+
+        Map<String, String> tracerHeaders = new HashMap<>();
+
+        tracer.inject(span.context(),
+                      Format.Builtin.HTTP_HEADERS,
+                      new TextMapInjectAdapter(tracerHeaders));
+
+        tracerHeaders.forEach((name, value) -> request.headers().put(name, value));
+
+        request.whenComplete().thenRun(span::finish);
+
         return CompletableFuture.completedFuture(request);
     }
 }

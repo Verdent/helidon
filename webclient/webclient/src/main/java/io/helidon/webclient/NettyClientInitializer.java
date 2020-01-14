@@ -72,8 +72,6 @@ class NettyClientInitializer extends ChannelInitializer<SocketChannel> {
 
         // SSL configuration
         if (address.toString().startsWith("https")) {
-            //&& configuration.clientSslEnabled()
-            //EDIT: client a server odstranit v prvni verzi
             configuration.sslContext().ifPresent(ctx -> {
                 SslHandler sslHandler = ctx.newHandler(channel.alloc(), address.getHost(), address.getPort());
 

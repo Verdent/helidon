@@ -28,10 +28,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.context.Context;
+import io.helidon.common.context.Contexts;
 import io.helidon.common.http.DataChunk;
 import io.helidon.common.http.HashParameters;
 import io.helidon.common.http.Headers;
@@ -44,6 +46,7 @@ import io.helidon.common.reactive.Single;
 import io.helidon.media.common.MessageBodyReadableContent;
 import io.helidon.media.common.MessageBodyReader;
 import io.helidon.media.common.MessageBodyWriteableContent;
+import io.helidon.media.common.MessageBodyWriter;
 import io.helidon.media.jsonp.common.JsonProcessing;
 
 import io.netty.bootstrap.Bootstrap;
@@ -69,16 +72,15 @@ import static io.helidon.webclient.NettyClient.EVENT_GROUP;
 class ClientRequestBuilderImpl implements ClientRequestBuilder {
     static final AttributeKey<ClientRequest> REQUEST = AttributeKey.valueOf("request");
 
+    private static final AtomicLong REQUEST_NUMBER = new AtomicLong(0);
     private static final String DEFAULT_TRANSPORT_PROTOCOL = "http";
     private static final Map<String, Integer> DEFAULT_SUPPORTED_PROTOCOLS = new HashMap<>();
+
     static {
         DEFAULT_SUPPORTED_PROTOCOLS.put(DEFAULT_TRANSPORT_PROTOCOL, 80);
         DEFAULT_SUPPORTED_PROTOCOLS.put("https", 443);
     }
 
-    //TODO jak se maji pouzit? Co to je?
-    //EDIT: Smazat!
-    private final Map<String, Object> properties;
     private final LazyValue<NioEventLoopGroup> eventGroup;
     private final ClientConfiguration configuration;
     private final Http.RequestMethod method;
@@ -88,6 +90,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     private URI uri;
     private Http.Version httpVersion;
+    //EDIT: pridat context
     private Context context;
     private Proxy proxy;
     private String fragment;
@@ -98,16 +101,29 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     private ClientRequestBuilderImpl(LazyValue<NioEventLoopGroup> eventGroup,
                                      ClientConfiguration configuration,
                                      Http.RequestMethod method) {
-        this.properties = new HashMap<>();
         this.eventGroup = eventGroup;
         this.configuration = configuration;
         this.method = method;
-        this.headers = new ClientRequestHeadersImpl();
+        //Default headers added to the current headers of the request
+        this.headers = new ClientRequestHeadersImpl(this.configuration.headers());
         this.queryParams = new HashParameters();
         this.clientContentHandlers = new ArrayList<>();
         this.httpVersion = Http.Version.V1_1;
         this.fragment = "";
         this.redirectionCount = 0;
+
+        //configurace pridat parent context
+        Context.Builder contextBuilder = Context.builder().id("webclient-" + REQUEST_NUMBER.incrementAndGet());
+        //configration.context().ifPresentOrElse(it-> contextBuilder.parent(it), () -> Contexts.context().ifPresent
+        // (contextBuilder::parent))
+        Contexts.context().ifPresent(contextBuilder::parent);
+        context = contextBuilder.build();
+
+        //EDIT: update na 11
+
+        //EDIT: takhle vykonavat servicy
+        Contexts.runInContext(context, () -> System.out.println());
+
         //TODO path... jak udelat?
         //EDIT: okopirovat impl ze serveru
     }
@@ -124,7 +140,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
                                                                         clientRequest.method());
         builder.headers(clientRequest.headers());
         builder.queryParams(clientRequest.queryParams());
-        builder.properties.putAll(clientRequest.properties());
         builder.uri = clientRequest.uri();
         builder.httpVersion = clientRequest.version();
         builder.proxy = clientRequest.proxy();
@@ -157,12 +172,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     @Override
     public ClientRequestBuilder uri(URI uri) {
         this.uri = uri;
-        return this;
-    }
-
-    @Override
-    public ClientRequestBuilder property(String propertyName, Object propertyValue) {
-        properties.put(propertyName, propertyValue);
         return this;
     }
 
@@ -242,9 +251,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return this;
     }
 
-    //TODO tady se daji pres metody settovat headery, mam sem dat ty same metody co jsou u normal headeru?
-    //EDIT: pouze ty nejcastejsi
-
     @Override
     public ClientRequestBuilder accept(MediaType... mediaTypes) {
         Arrays.stream(mediaTypes).forEach(headers::addAccept);
@@ -273,15 +279,19 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public <T> CompletionStage<T> submit(Object requestEntity, Class<T> responseType) {
+        GenericType<T> responseGenericType = GenericType.create(responseType);
         MessageBodyWriteableContent writeableContent = MessageBodyWriteableContent.create(requestEntity, this.headers);
 
-        //TODO co s navratovym typem?
-        //EDIT: MessageBodyWriter navratovej typ a dal ... you know the drill
-        clientContentHandlers.forEach(clientContentHandler -> clientContentHandler.writer(this));
+        clientContentHandlers.stream()
+                .filter(clientContentHandler -> clientContentHandler.supports(responseGenericType))
+                .forEach(clientContentHandler -> {
+                    Optional<MessageBodyWriter<T>> writer = clientContentHandler.writer(this);
+                    writer.ifPresent(writeableContent::registerWriter);
+                });
 
         writeableContent.registerWriter(JsonProcessing.create().newWriter());
         Flow.Publisher<DataChunk> dataChunkPublisher = writeableContent.toPublisher(null);
-        return invoke(dataChunkPublisher, GenericType.create(responseType));
+        return invoke(dataChunkPublisher, responseGenericType);
     }
 
     @Override
@@ -333,10 +343,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return requestConfiguration;
     }
 
-    Map<String, Object> properties() {
-        return properties;
-    }
-
     Proxy proxy() {
         return proxy;
     }
@@ -382,7 +388,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         if (responseType.rawType().equals(ClientResponse.class)) {
             return (CompletionStage<T>) result;
         } else {
-            return result.thenApply(clientResponse -> getContentFromClientResponse(responseType.rawType(),
+            return result.thenApply(clientResponse -> getContentFromClientResponse(responseType,
                                                                                    clientRequest,
                                                                                    clientResponse))
                     .thenCompose(content -> content.as(responseType));
@@ -404,9 +410,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         } catch (IOException e) {
             throw new ClientException("An error occurred while setting cookies.", e);
         }
-        //TODO Co to udelat pres special metodu na headerech? Tam by se s tim dalo cvicit.
-        //EDIT: defaultni pridavat do klasickych
-        this.configuration.headers().toMap().forEach(headers::add);
         this.headers.toMap().forEach(headers::add);
     }
 
@@ -448,13 +451,11 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return HttpVersion.valueOf(version.value());
     }
 
-    private <T> MessageBodyReadableContent getContentFromClientResponse(Class<T> responseType, ClientRequest clientRequest,
+    private <T> MessageBodyReadableContent getContentFromClientResponse(GenericType<T> responseType, ClientRequest clientRequest,
                                                                         ClientResponse clientResponse) {
         MessageBodyReadableContent content = clientResponse.content();
         content.registerReader(JsonProcessing.create().newReader());
 
-        //TODO neudelat to radeji jako generic misto class?
-        //EDIT: zmenit supports na generic type
         clientContentHandlers.stream()
                 .filter(clientContentHandler -> clientContentHandler.supports(responseType))
                 .forEach(clientContentHandler -> {
@@ -463,4 +464,110 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
                 });
         return content;
     }
+
+    //    /**
+    //     * {@link HttpRequest.Path} implementation.
+    //     */
+    //    static class ClientPath implements HttpRequest.Path {
+    //
+    //        private final String path;
+    //        private final String rawPath;
+    //        private final Map<String, String> params;
+    //        private final Request.Path absolutePath;
+    //        private List<String> segments;
+    //
+    //        /**
+    //         * Creates new instance.
+    //         *
+    //         * @param path actual relative URI path.
+    //         * @param rawPath actual relative URI path without any decoding.
+    //         * @param params resolved path parameters.
+    //         * @param absolutePath absolute path.
+    //         */
+    //        ClientPath(String path, String rawPath, Map<String, String> params,
+    //             Request.Path absolutePath) {
+    //
+    //            this.path = path;
+    //            this.rawPath = rawPath;
+    //            this.params = params == null ? Collections.emptyMap() : params;
+    //            this.absolutePath = absolutePath;
+    //        }
+    //
+    //        @Override
+    //        public String param(String name) {
+    //            return params.get(name);
+    //        }
+    //
+    //        @Override
+    //        public List<String> segments() {
+    //            List<String> result = segments;
+    //            // No synchronisation needed, worth case is multiple splitting.
+    //            if (result == null) {
+    //                StringTokenizer stok = new StringTokenizer(path, "/");
+    //                result = new ArrayList<>();
+    //                while (stok.hasMoreTokens()) {
+    //                    result.add(stok.nextToken());
+    //                }
+    //                this.segments = result;
+    //            }
+    //            return result;
+    //        }
+    //
+    //        @Override
+    //        public String toString() {
+    //            return path;
+    //        }
+    //
+    //        @Override
+    //        public String toRawString() {
+    //            return rawPath;
+    //        }
+    //
+    //        @Override
+    //        public Request.Path absolute() {
+    //            return absolutePath == null ? this : absolutePath;
+    //        }
+    //
+    //        static Request.Path create(Request.Path contextual, String path,
+    //                                   Map<String, String> params) {
+    //
+    //            return create(contextual, path, path, params);
+    //        }
+    //
+    //        static Request.Path create(Request.Path contextual, String path, String rawPath,
+    //                                   Map<String, String> params) {
+    //
+    //            if (contextual == null) {
+    //                return new Request.Path(path, rawPath, params, null);
+    //            } else {
+    //                return contextual.createSubpath(path, rawPath, params);
+    //            }
+    //        }
+    //
+    //        Request.Path createSubpath(String path, String rawPath,
+    //                                   Map<String, String> params) {
+    //
+    //            if (params == null) {
+    //                params = Collections.emptyMap();
+    //            }
+    //            if (absolutePath == null) {
+    //                HashMap<String, String> map =
+    //                        new HashMap<>(this.params.size() + params.size());
+    //                map.putAll(this.params);
+    //                map.putAll(params);
+    //                return new Request.Path(path, rawPath, params,
+    //                                        new Request.Path(this.path, this.rawPath, map, null));
+    //            } else {
+    //                int size = this.params.size() + params.size()
+    //                        + absolutePath.params.size();
+    //                HashMap<String, String> map = new HashMap<>(size);
+    //                map.putAll(absolutePath.params);
+    //                map.putAll(this.params);
+    //                map.putAll(params);
+    //                return new Request.Path(path, rawPath, params,
+    //                                        new Request.Path(absolutePath.path, absolutePath.rawPath, map,
+    //                                                /* absolute path */ null));
+    //            }
+    //        }
+    //    }
 }

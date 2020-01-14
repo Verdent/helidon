@@ -22,10 +22,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -42,7 +44,7 @@ import io.netty.handler.codec.http.cookie.DefaultCookie;
  */
 class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
-    //If-Modified-Since is required to be in following format
+    //Dates are required to be in following format
     //<day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
             .withLocale(Locale.US)
@@ -78,35 +80,44 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     @Override
-    public void addAccept(MediaType mediaType) {
+    public ClientRequestHeaders addAccept(MediaType mediaType) {
         add(Http.Header.ACCEPT, mediaType.toString());
+        return this;
     }
 
     @Override
-    public void ifModifiedSince(ZonedDateTime time) {
+    public ClientRequestHeaders ifModifiedSince(ZonedDateTime time) {
         put(Http.Header.IF_MODIFIED_SINCE, time.format(FORMATTER));
+        return this;
+    }
+
+    @Override
+    public ClientRequestHeaders ifUnmodifiedSince(ZonedDateTime time) {
+        put(Http.Header.IF_UNMODIFIED_SINCE, time.format(FORMATTER));
+        return this;
     }
 
     @Override
     public ClientRequestHeaders ifNoneMatch(String... etags) {
-        //EDIT: pokracovat tady s navratovejma
+        put(Http.Header.IF_NONE_MATCH, processEtags(etags));
+        return this;
+    }
 
-//        if (etags.length > 0) {
-//            StringBuilder noneMatch = new StringBuilder();
-//            if (etags.length == 1 && etags[0].equals("*")) {
-//                noneMatch.append("*");
-//            } else {
-//                for (String etag : etags) {
-//                    if (noneMatch.length() == 0) {
-//                        noneMatch.append("\"").append(etag).append("\"");
-//                    } else {
-//                        noneMatch.append(", \"").append(etag).append("\"");
-//                    }
-//                }
-//            }
-//
-//        }
-        put(Http.Header.IF_NONE_MATCH, etags);
+    @Override
+    public ClientRequestHeaders ifMatch(String... etags) {
+        put(Http.Header.IF_MATCH, processEtags(etags));
+        return this;
+    }
+
+    @Override
+    public ClientRequestHeaders ifRange(ZonedDateTime time) {
+        put(Http.Header.IF_RANGE, time.format(FORMATTER));
+        return this;
+    }
+
+    @Override
+    public ClientRequestHeaders ifRange(String etag) {
+        put(Http.Header.IF_RANGE, processEtags(etag));
         return this;
     }
 
@@ -131,13 +142,38 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
     @Override
     public Optional<ZonedDateTime> ifModifiedSince() {
-        return Optional.ofNullable(headers.get(Http.Header.IF_MODIFIED_SINCE))
-                .map(list -> ZonedDateTime.parse(list.get(0), FORMATTER));
+        return convertToDate(Http.Header.IF_MODIFIED_SINCE);
+    }
+
+    @Override
+    public Optional<ZonedDateTime> ifUnmodifiedSince() {
+        return convertToDate(Http.Header.IF_UNMODIFIED_SINCE);
     }
 
     @Override
     public List<String> ifNoneMatch() {
-        return all(Http.Header.IF_NONE_MATCH);
+        return all(Http.Header.IF_NONE_MATCH)
+                .stream()
+                .map(this::unquoteETag)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<String> ifMatch() {
+        return all(Http.Header.IF_MATCH)
+                .stream()
+                .map(this::unquoteETag)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<ZonedDateTime> ifRangeDate() {
+        return convertToDate(Http.Header.IF_RANGE);
+    }
+
+    @Override
+    public Optional<String> ifRangeString() {
+        return first(Http.Header.IF_RANGE).map(this::unquoteETag);
     }
 
     @Override
@@ -232,5 +268,37 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
         return StreamSupport
                 .stream(iterable.spliterator(), false)
                 .collect(Collectors.toList());
+    }
+
+    private Optional<ZonedDateTime> convertToDate(String header) {
+        return first(header).map(date -> ZonedDateTime.parse(date, FORMATTER));
+    }
+
+    private Iterable<String> processEtags(String... etags) {
+        Set<String> set = new HashSet<>();
+        if (etags.length > 0) {
+            if (etags.length == 1 && etags[0].equals("*")) {
+                set.add(etags[0]);
+            } else {
+                for (String etag : etags) {
+                    set.add('"' + etag + '"');
+                }
+            }
+        }
+        return set;
+    }
+
+    //TODO potrebuju to presunout do nejakyho common util....
+    private String unquoteETag(String etag) {
+        if (etag == null || etag.isEmpty()) {
+            return etag;
+        }
+        if (etag.startsWith("W/") || etag.startsWith("w/")) {
+            etag = etag.substring(2);
+        }
+        if (etag.startsWith("\"") && etag.endsWith("\"")) {
+            etag = etag.substring(1, etag.length() - 1);
+        }
+        return etag;
     }
 }

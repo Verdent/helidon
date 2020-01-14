@@ -34,15 +34,13 @@ import io.helidon.webserver.HashRequestHeaders;
  */
 final class ClientResponseImpl implements ClientResponse {
 
-    //TODO Je to ok pouzit HashRequestHeaders??? tohle je response a tamto je request
-    //EDIT: ClientResponseHeaders tu!
-    private final HashRequestHeaders headers;
+    private final ClientResponseHeadersImpl headers;
     private final Flow.Publisher<DataChunk> publisher;
     private final Http.ResponseStatus status;
     private final Http.Version version;
 
     private ClientResponseImpl(Builder builder) {
-        headers = new HashRequestHeaders(builder.headers);
+        headers = ClientResponseHeaders.create(builder.headers);
         publisher = builder.publisher;
         status = builder.status;
         version = builder.version;
@@ -80,7 +78,7 @@ final class ClientResponseImpl implements ClientResponse {
 
     @Override
     public ClientResponseHeaders headers() {
-        return ClientResponseHeaders.create(headers);
+        return headers;
     }
 
     /**

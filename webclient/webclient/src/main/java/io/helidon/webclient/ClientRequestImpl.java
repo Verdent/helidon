@@ -16,8 +16,6 @@
 package io.helidon.webclient;
 
 import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
 
 import io.helidon.common.http.Http;
 import io.helidon.common.http.Parameters;
@@ -33,7 +31,6 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
     private final ClientRequestHeaders clientRequestHeaders;
     private final Http.RequestMethod requestMethod;
     private final Http.Version httpVersion;
-    private final Map<String, Object> properties;
     private final Parameters queryParams;
     private final Path path;
     private final Proxy proxy;
@@ -51,7 +48,6 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
         fragment = builder.fragment();
         path = builder.path();
         requestConfiguration = builder.requestConfiguration();
-        properties = new HashMap<>(builder.properties());
         proxy = builder.proxy();
         redirectionCount = builder.redirectionCount();
     }
@@ -64,11 +60,6 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
     @Override
     public RequestConfiguration configuration() {
         return requestConfiguration;
-    }
-
-    @Override
-    public Map<String, Object> properties() {
-        return properties;
     }
 
     @Override
@@ -115,6 +106,5 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
     public String fragment() {
         return fragment;
     }
-
 
 }

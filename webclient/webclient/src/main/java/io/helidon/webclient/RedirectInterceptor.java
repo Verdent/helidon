@@ -31,6 +31,8 @@ class RedirectInterceptor implements HttpInterceptor {
 
     private static final Logger LOGGER = Logger.getLogger(RedirectInterceptor.class.getName());
 
+    //TODO WAT s POSTem?
+
     @Override
     public void handleInterception(HttpResponse httpResponse,
                                    ClientRequestBuilder.ClientRequest clientRequest,
@@ -51,7 +53,7 @@ class RedirectInterceptor implements HttpInterceptor {
             });
         } else {
             throw new ClientException("There is no " + Http.Header.LOCATION + " header present in response! "
-                                                 + "I don't know where to redirect.");
+                                                 + "It is not clear where to redirect.");
         }
     }
 

@@ -20,6 +20,8 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.net.ssl.SSLContext;
+
 import io.helidon.common.pki.KeyConfig;
 import io.helidon.config.Config;
 
@@ -127,17 +129,29 @@ public class Ssl {
         private PrivateKey clientPrivateKey;
         private List<X509Certificate> certificates = new ArrayList<>();
         private List<X509Certificate> clientCertificateChain = new ArrayList<>();
+        private SSLContext sslContext;
 
         private Builder() {
         }
 
+        /**
+         * Sets if hostname verification should be disabled.
+         *
+         * @param disableHostnameVerification disabled verification
+         * @return updated builder instance
+         */
         public Builder disableHostnameVerification(boolean disableHostnameVerification) {
             this.disableHostnameVerification = disableHostnameVerification;
             return this;
         }
 
-        //EDIT: this behavior is currently disabling also hostname verification
-        public Builder trustAllCertificates(boolean trustAll) {
+        /**
+         * Sets if all certificates should be trusted to.
+         *
+         * @param trustAll trust all certificates
+         * @return updated builder instance
+         */
+        public Builder trustAll(boolean trustAll) {
             this.trustAll = trustAll;
             return this;
         }
@@ -163,13 +177,17 @@ public class Ssl {
             return this;
         }
 
+        //TODO ssl zmenit jak se vytvari context pro netty
+        public Builder sslContext(SSLContext sslContext) {
+            this.sslContext = sslContext;
+            return this;
+        }
+
         public Builder config(Config config) {
             Config serverConfig = config.get("server");
             serverConfig.get("disable-hostname-verification").asBoolean().ifPresent(this::disableHostnameVerification);
-
-            Config truststore = serverConfig.get("truststore");
-            truststore.get("trust-all").asBoolean().ifPresent(this::trustAllCertificates);
-            truststore.as(KeyConfig::create).ifPresent(this::certificateTrustStore);
+            serverConfig.get("trust-all").asBoolean().ifPresent(this::trustAll);
+            serverConfig.get("truststore").as(KeyConfig::create).ifPresent(this::certificateTrustStore);
 
             Config clientConfig = config.get("client");
             clientConfig.get("client-auth").asString().ifPresent(this::clientAuthentication);

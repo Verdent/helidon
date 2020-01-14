@@ -3,9 +3,9 @@ security:
     - abac:
 
 client:
-  event-loop:
-    name-prefix: client-thread-
-    workers: 1
+  event-loop: #DONE
+    name-prefix: client-thread- #DONE
+    workers: 1 #DONE
   connect-timeout-millis: 2000 #DONE
   read-timeout-millis: 2000 #DONE
   follow-redirects: true #DONE
@@ -23,7 +23,7 @@ client:
     exclude: ["io.helidon.webclient.DefaultServiceRegistry"]
     config:
       # type of service
-      service-registry:
+      service-registry: #Ne do jednicky
         # name is optional - only needed if more than one implementation exists
         # and we need different configuration options for each
         # this also supports running the same implementation twice with different config}
@@ -43,8 +43,8 @@ client:
     server:
       # service loader based to prevent reflection
       disable-hostname-verification: false #DONE
+      trust-all: false #DONE
       truststore:
-        trust-all: false #Partially
         location:
           # or path:
           # or url:

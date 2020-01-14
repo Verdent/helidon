@@ -119,8 +119,7 @@ public class ClientSecurity implements ClientService {
             default:
                 break;
             }
-            // TODO check response status - maybe entity was updated?
-
+            //EDIT: HTTP basic authentikace example omrknout
             Map<String, List<String>> newHeaders = providerResponse.requestHeaders();
 
             LOGGER.finest(() -> "Client filter header(s). SIZE: " + newHeaders.size());

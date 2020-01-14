@@ -2,7 +2,7 @@ package io.helidon.webclient;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -15,10 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * TODO Javadoc
@@ -80,17 +78,73 @@ public class ClientRequestHeadersImplTest {
     }
 
     @Test
-    public void testIfNoneMatch() {
-        //TODO https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
-        //EDIT: prima metoda vraci unquoted, jinak s
-//        List<String> noneMatchTemplate = CollectionsHelper.listOf("test", "test2");
-//        //List<String> noneMatchTemplate = CollectionsHelper.listOf("\"test\"", "test2");
-//
-//        assertThat(clientRequestHeaders.ifNoneMatch(), is(Collections.emptyList()));
-//
-//        clientRequestHeaders.ifNoneMatch(noneMatchTemplate.toArray(new String[0]));
-//        assertThat(clientRequestHeaders.ifNoneMatch(), is(noneMatchTemplate));
+    public void testIfUnmodifiedSince() {
+        String template = "Mon, 30 Nov 2015 22:45:59 GMT";
+        ZonedDateTime zonedDateTemplate =
+                ZonedDateTime.of(2015, 11, 30, 22, 45, 59, 0, ZoneId.of("GMT"));
+        ZonedDateTime ifUnmodifiedSince =
+                ZonedDateTime.of(2015, 11, 30, 23, 45, 59, 1234, ZoneId.of("UTC+1"));
+
+        assertThat(clientRequestHeaders.ifUnmodifiedSince(), is(Optional.empty()));
+
+        clientRequestHeaders.ifUnmodifiedSince(ifUnmodifiedSince);
+
+        assertThat(clientRequestHeaders.first(Http.Header.IF_UNMODIFIED_SINCE), is(Optional.of(template)));
+        assertThat(clientRequestHeaders.ifUnmodifiedSince(), is(Optional.of(zonedDateTemplate)));
     }
 
+    @Test
+    public void testIfNoneMatch() {
+        List<String> unquotedTemplate = CollectionsHelper.listOf("test", "test2");
+        List<String> quotedTemplate = CollectionsHelper.listOf("\"test\"", "\"test2\"");
+        List<String> star = CollectionsHelper.listOf("*");
+
+        assertThat(clientRequestHeaders.ifNoneMatch(), is(Collections.emptyList()));
+
+        clientRequestHeaders.ifNoneMatch(unquotedTemplate.toArray(new String[0]));
+        assertThat(clientRequestHeaders.ifNoneMatch(), is(unquotedTemplate));
+        assertThat(clientRequestHeaders.all(Http.Header.IF_NONE_MATCH), is(quotedTemplate));
+
+        clientRequestHeaders.ifNoneMatch(star.toArray(new String[0]));
+        assertThat(clientRequestHeaders.ifNoneMatch(), is(star));
+        assertThat(clientRequestHeaders.all(Http.Header.IF_NONE_MATCH), is(star));
+    }
+
+    @Test
+    public void testIfMatch() {
+        List<String> unquotedTemplate = CollectionsHelper.listOf("test", "test2");
+        List<String> quotedTemplate = CollectionsHelper.listOf("\"test\"", "\"test2\"");
+        List<String> star = CollectionsHelper.listOf("*");
+
+        assertThat(clientRequestHeaders.ifMatch(), is(Collections.emptyList()));
+
+        clientRequestHeaders.ifMatch(unquotedTemplate.toArray(new String[0]));
+        assertThat(clientRequestHeaders.ifMatch(), is(unquotedTemplate));
+        assertThat(clientRequestHeaders.all(Http.Header.IF_MATCH), is(quotedTemplate));
+
+        clientRequestHeaders.ifMatch(star.toArray(new String[0]));
+        assertThat(clientRequestHeaders.ifMatch(), is(star));
+        assertThat(clientRequestHeaders.all(Http.Header.IF_MATCH), is(star));
+    }
+
+    @Test
+    public void testIfRange() {
+        String template = "Mon, 30 Nov 2015 22:45:59 GMT";
+        String templateString = "testString";
+        ZonedDateTime zonedDateTemplate =
+                ZonedDateTime.of(2015, 11, 30, 22, 45, 59, 0, ZoneId.of("GMT"));
+
+        assertThat(clientRequestHeaders.ifRangeDate(), is(Optional.empty()));
+        assertThat(clientRequestHeaders.ifRangeString(), is(Optional.empty()));
+
+        clientRequestHeaders.ifRange(zonedDateTemplate);
+
+        assertThat(clientRequestHeaders.ifRangeString(), is(Optional.of(template)));
+        assertThat(clientRequestHeaders.ifRangeDate(), is(Optional.of(zonedDateTemplate)));
+
+        clientRequestHeaders.ifRange(templateString);
+        assertThat(clientRequestHeaders.ifRangeString(), is(Optional.of(templateString)));
+        assertThrows(DateTimeParseException.class, () -> clientRequestHeaders.ifRangeDate());
+    }
 
 }

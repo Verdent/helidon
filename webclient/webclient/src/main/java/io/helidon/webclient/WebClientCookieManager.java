@@ -34,8 +34,6 @@ class WebClientCookieManager extends CookieManager {
         addAllDefaultHeaders(toReturn);
         if (acceptCookies) {
             super.get(uri, requestHeaders).get(Http.Header.COOKIE).forEach(s -> toReturn.get(Http.Header.COOKIE).add(s));
-            //TODO Co kdyz tam budou 2 stringy cookie se stejným ID? nahrazovat ci nechat na serveru, který si vybere?
-            //EDIT: pokud je to legalni to poslat, tak cajk jinak nahradit.
         }
         return Collections.unmodifiableMap(toReturn);
     }

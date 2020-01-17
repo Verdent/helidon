@@ -28,11 +28,12 @@ import java.util.Set;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
-import javax.net.ssl.X509ExtendedTrustManager;
-import javax.net.ssl.X509TrustManager;
 
+import io.helidon.common.context.Context;
 import io.helidon.config.Config;
 
+import io.netty.handler.ssl.IdentityCipherSuiteFilter;
+import io.netty.handler.ssl.JdkSslContext;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
@@ -42,6 +43,9 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
  * Configuration of the Helidon web client.
  */
 class ClientConfiguration {
+
+    private final Config config;
+    private final Context context;
     private final Duration connectTimeout;
     private final Duration readTimeout;
     private final LazyValue<String> userAgent;
@@ -69,6 +73,8 @@ class ClientConfiguration {
         this.clientHeaders = builder.clientHeaders;
         this.cookiePolicy = builder.cookiePolicy;
         this.cookieManager = WebClientCookieManager.create(builder.defaultCookies, builder.enableAutomaticCookieStore);
+        this.config = builder.config;
+        this.context = builder.context;
     }
 
     /**
@@ -92,29 +98,38 @@ class ClientConfiguration {
     Optional<SslContext> sslContext() {
         SslContext sslContext;
         try {
-            //            KeyConfig.create().certs()
-            //client private key (client ssl) ClientAuth. -> KeyManager
-            SslContextBuilder sslContextBuilder = SslContextBuilder
-                    .forClient()
-                    .sslProvider(SslProvider.JDK)
-                    .clientAuth(ssl.clientAuthentication());
-            if (ssl.certificates().size() > 0) {
-                sslContextBuilder.trustManager(ssl.certificates().toArray(new X509Certificate[0]));
-            }
-            if (ssl.clientPrivateKey() != null) {
-                sslContextBuilder.keyManager(ssl.clientPrivateKey(),
-                                             ssl.clientCertificateChain().toArray(new X509Certificate[0]));
-            }
+            if (ssl.sslContext().isPresent()) {
+                sslContext = nettySslFromJavaNet(ssl.sslContext().get());
+            } else {
+                SslContextBuilder sslContextBuilder = SslContextBuilder
+                        .forClient()
+                        .sslProvider(SslProvider.JDK)
+                        .clientAuth(ssl.clientAuthentication());
+                if (ssl.certificates().size() > 0) {
+                    sslContextBuilder.trustManager(ssl.certificates().toArray(new X509Certificate[0]));
+                }
+                if (ssl.clientPrivateKey() != null) {
+                    sslContextBuilder.keyManager(ssl.clientPrivateKey(),
+                                                 ssl.clientCertificateChain().toArray(new X509Certificate[0]));
+                }
 
-            if (ssl.trustAll()) {
-                sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
-            }
+                if (ssl.trustAll()) {
+                    sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
+                }
 
-            sslContext = sslContextBuilder.build();
+                sslContext = sslContextBuilder.build();
+            }
         } catch (SSLException e) {
             throw new ClientException("An error occurred while creating ssl context.", e);
         }
         return Optional.of(sslContext);
+    }
+
+    private SslContext nettySslFromJavaNet(SSLContext javaNetContext) {
+        return new JdkSslContext(
+                javaNetContext, true, null,
+                IdentityCipherSuiteFilter.INSTANCE, null,
+                ssl.clientAuthentication(), null, false);
     }
 
     /**
@@ -185,12 +200,16 @@ class ClientConfiguration {
      *
      * @return user agent
      */
-    public String userAgent() {
+    String userAgent() {
         return userAgent.get();
     }
 
-    public Ssl ssl() {
+    Ssl ssl() {
         return ssl;
+    }
+
+    Optional<Context> context() {
+        return Optional.ofNullable(context);
     }
 
     /**
@@ -201,6 +220,8 @@ class ClientConfiguration {
 
         private final ClientRequestHeaders clientHeaders;
 
+        private Config config;
+        private Context context;
         private int maxRedirects;
         private Duration connectTimeout;
         private Duration readTimeout;
@@ -368,6 +389,7 @@ class ClientConfiguration {
          * @return updated builder instance
          */
         public B config(Config config) {
+            this.config = config;
             // now for other options
             config.get("connect-timeout-millis").asLong().ifPresent(timeout -> connectTimeout(Duration.ofMillis(timeout)));
             config.get("read-timeout-millis").asLong().ifPresent(timeout -> readTimeout(Duration.ofMillis(timeout)));
@@ -411,6 +433,7 @@ class ClientConfiguration {
             cookieStore(configuration.cookieManager.getCookieStore());
             cookiePolicy(configuration.cookiePolicy);
             configuration.cookieManager.defaultCookies().forEach(this::defaultCookie);
+            config = configuration.config;
 
             return me;
         }
@@ -431,9 +454,8 @@ class ClientConfiguration {
                                                              header.get("value").asString().get())));
         }
 
-        //EDIT: dodelat
-        public Config config() {
-            return null;
+        Config config() {
+            return config;
         }
     }
 }

@@ -19,6 +19,7 @@ import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import javax.net.ssl.SSLContext;
 
@@ -38,6 +39,7 @@ public class Ssl {
     private final PrivateKey clientPrivateKey;
     private final List<X509Certificate> certificates;
     private final List<X509Certificate> clientCertificateChain;
+    private final SSLContext sslContext;
 
     private Ssl(Builder builder) {
         this.trustAll = builder.trustAll;
@@ -46,6 +48,7 @@ public class Ssl {
         this.certificates = builder.certificates;
         this.clientPrivateKey = builder.clientPrivateKey;
         this.clientCertificateChain = builder.clientCertificateChain;
+        this.sslContext = builder.sslContext;
     }
 
     /**
@@ -118,9 +121,18 @@ public class Ssl {
     }
 
     /**
+     * Instance of {@link SSLContext}.
+     *
+     * @return ssl context
+     */
+    public Optional<SSLContext> sslContext() {
+        return Optional.ofNullable(sslContext);
+    }
+
+    /**
      * Fluent API builder for {@link Ssl} instance.
      */
-    public static class Builder implements io.helidon.common.Builder<Ssl> {
+    public static final class Builder implements io.helidon.common.Builder<Ssl> {
 
         private boolean clientAuthenticationNotSet = true;
         private boolean trustAll = false;
@@ -177,7 +189,7 @@ public class Ssl {
             return this;
         }
 
-        //TODO ssl zmenit jak se vytvari context pro netty
+        //EDIT: ssl zmenit jak se vytvari context pro netty
         public Builder sslContext(SSLContext sslContext) {
             this.sslContext = sslContext;
             return this;

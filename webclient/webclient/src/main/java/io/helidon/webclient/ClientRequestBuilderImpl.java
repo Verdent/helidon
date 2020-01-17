@@ -21,11 +21,13 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.StringTokenizer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
@@ -90,7 +92,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     private URI uri;
     private Http.Version httpVersion;
-    //EDIT: pridat context
     private Context context;
     private Proxy proxy;
     private String fragment;
@@ -114,15 +115,10 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
         //configurace pridat parent context
         Context.Builder contextBuilder = Context.builder().id("webclient-" + REQUEST_NUMBER.incrementAndGet());
-        //configration.context().ifPresentOrElse(it-> contextBuilder.parent(it), () -> Contexts.context().ifPresent
-        // (contextBuilder::parent))
+        configuration.context().ifPresentOrElse(contextBuilder::parent,
+                                                () -> Contexts.context().ifPresent(contextBuilder::parent));
         Contexts.context().ifPresent(contextBuilder::parent);
         context = contextBuilder.build();
-
-        //EDIT: update na 11
-
-        //EDIT: takhle vykonavat servicy
-        Contexts.runInContext(context, () -> System.out.println());
 
         //TODO path... jak udelat?
         //EDIT: okopirovat impl ze serveru
@@ -264,7 +260,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public <T> CompletionStage<T> request(GenericType<T> responseType) {
-        return invoke(Single.empty(), responseType);
+        return Contexts.runInContext(context, () -> invoke(Single.empty(), responseType));
     }
 
     @Override
@@ -274,7 +270,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public <T> CompletionStage<T> submit(Flow.Publisher<DataChunk> requestEntity, Class<T> responseType) {
-        return invoke(requestEntity, GenericType.create(responseType));
+        return Contexts.runInContext(context, () -> invoke(requestEntity, GenericType.create(responseType)));
     }
 
     @Override
@@ -291,7 +287,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
         writeableContent.registerWriter(JsonProcessing.create().newWriter());
         Flow.Publisher<DataChunk> dataChunkPublisher = writeableContent.toPublisher(null);
-        return invoke(dataChunkPublisher, responseGenericType);
+        return Contexts.runInContext(context, () -> invoke(dataChunkPublisher, responseGenericType));
     }
 
     @Override
@@ -465,109 +461,107 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return content;
     }
 
-    //    /**
-    //     * {@link HttpRequest.Path} implementation.
-    //     */
-    //    static class ClientPath implements HttpRequest.Path {
-    //
-    //        private final String path;
-    //        private final String rawPath;
-    //        private final Map<String, String> params;
-    //        private final Request.Path absolutePath;
-    //        private List<String> segments;
-    //
-    //        /**
-    //         * Creates new instance.
-    //         *
-    //         * @param path actual relative URI path.
-    //         * @param rawPath actual relative URI path without any decoding.
-    //         * @param params resolved path parameters.
-    //         * @param absolutePath absolute path.
-    //         */
-    //        ClientPath(String path, String rawPath, Map<String, String> params,
-    //             Request.Path absolutePath) {
-    //
-    //            this.path = path;
-    //            this.rawPath = rawPath;
-    //            this.params = params == null ? Collections.emptyMap() : params;
-    //            this.absolutePath = absolutePath;
-    //        }
-    //
-    //        @Override
-    //        public String param(String name) {
-    //            return params.get(name);
-    //        }
-    //
-    //        @Override
-    //        public List<String> segments() {
-    //            List<String> result = segments;
-    //            // No synchronisation needed, worth case is multiple splitting.
-    //            if (result == null) {
-    //                StringTokenizer stok = new StringTokenizer(path, "/");
-    //                result = new ArrayList<>();
-    //                while (stok.hasMoreTokens()) {
-    //                    result.add(stok.nextToken());
-    //                }
-    //                this.segments = result;
-    //            }
-    //            return result;
-    //        }
-    //
-    //        @Override
-    //        public String toString() {
-    //            return path;
-    //        }
-    //
-    //        @Override
-    //        public String toRawString() {
-    //            return rawPath;
-    //        }
-    //
-    //        @Override
-    //        public Request.Path absolute() {
-    //            return absolutePath == null ? this : absolutePath;
-    //        }
-    //
-    //        static Request.Path create(Request.Path contextual, String path,
-    //                                   Map<String, String> params) {
-    //
-    //            return create(contextual, path, path, params);
-    //        }
-    //
-    //        static Request.Path create(Request.Path contextual, String path, String rawPath,
-    //                                   Map<String, String> params) {
-    //
-    //            if (contextual == null) {
-    //                return new Request.Path(path, rawPath, params, null);
-    //            } else {
-    //                return contextual.createSubpath(path, rawPath, params);
-    //            }
-    //        }
-    //
-    //        Request.Path createSubpath(String path, String rawPath,
-    //                                   Map<String, String> params) {
-    //
-    //            if (params == null) {
-    //                params = Collections.emptyMap();
-    //            }
-    //            if (absolutePath == null) {
-    //                HashMap<String, String> map =
-    //                        new HashMap<>(this.params.size() + params.size());
-    //                map.putAll(this.params);
-    //                map.putAll(params);
-    //                return new Request.Path(path, rawPath, params,
-    //                                        new Request.Path(this.path, this.rawPath, map, null));
-    //            } else {
-    //                int size = this.params.size() + params.size()
-    //                        + absolutePath.params.size();
-    //                HashMap<String, String> map = new HashMap<>(size);
-    //                map.putAll(absolutePath.params);
-    //                map.putAll(this.params);
-    //                map.putAll(params);
-    //                return new Request.Path(path, rawPath, params,
-    //                                        new Request.Path(absolutePath.path, absolutePath.rawPath, map,
-    //                                                /* absolute path */ null));
-    //            }
-    //        }
-    //    }
+    /**
+     * {@link HttpRequest.Path} implementation.
+     */
+    static class ClientPath implements HttpRequest.Path {
+
+        private final String path;
+        private final String rawPath;
+        private final Map<String, String> params;
+        private final ClientPath absolutePath;
+        private List<String> segments;
+
+        /**
+         * Creates new instance.
+         *
+         * @param path         actual relative URI path.
+         * @param rawPath      actual relative URI path without any decoding.
+         * @param params       resolved path parameters.
+         * @param absolutePath absolute path.
+         */
+        ClientPath(String path, String rawPath, Map<String, String> params,
+                   ClientPath absolutePath) {
+
+            this.path = path;
+            this.rawPath = rawPath;
+            this.params = params == null ? Collections.emptyMap() : params;
+            this.absolutePath = absolutePath;
+        }
+
+        @Override
+        public String param(String name) {
+            return params.get(name);
+        }
+
+        @Override
+        public List<String> segments() {
+            List<String> result = segments;
+            // No synchronisation needed, worth case is multiple splitting.
+            if (result == null) {
+                StringTokenizer stok = new StringTokenizer(path, "/");
+                result = new ArrayList<>();
+                while (stok.hasMoreTokens()) {
+                    result.add(stok.nextToken());
+                }
+                this.segments = result;
+            }
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return path;
+        }
+
+        @Override
+        public String toRawString() {
+            return rawPath;
+        }
+
+        @Override
+        public HttpRequest.Path absolute() {
+            return absolutePath == null ? this : absolutePath;
+        }
+
+        static HttpRequest.Path create(ClientPath contextual, String path,
+                                       Map<String, String> params) {
+
+            return create(contextual, path, path, params);
+        }
+
+        static HttpRequest.Path create(ClientPath contextual, String path, String rawPath,
+                                       Map<String, String> params) {
+
+            if (contextual == null) {
+                return new ClientPath(path, rawPath, params, null);
+            } else {
+                return contextual.createSubpath(path, rawPath, params);
+            }
+        }
+
+        HttpRequest.Path createSubpath(String path, String rawPath,
+                                       Map<String, String> params) {
+
+            if (params == null) {
+                params = Collections.emptyMap();
+            }
+            if (absolutePath == null) {
+                HashMap<String, String> map =
+                        new HashMap<>(this.params.size() + params.size());
+                map.putAll(this.params);
+                map.putAll(params);
+                return new ClientPath(path, rawPath, params, new ClientPath(this.path, this.rawPath, map, null));
+            } else {
+                int size = this.params.size() + params.size()
+                        + absolutePath.params.size();
+                HashMap<String, String> map = new HashMap<>(size);
+                map.putAll(absolutePath.params);
+                map.putAll(this.params);
+                map.putAll(params);
+                return new ClientPath(path, rawPath, params, new ClientPath(absolutePath.path, absolutePath.rawPath, map,
+                                                /* absolute path */ null));
+            }
+        }
+    }
 }

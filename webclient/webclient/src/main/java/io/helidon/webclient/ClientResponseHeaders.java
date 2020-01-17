@@ -17,12 +17,9 @@ package io.helidon.webclient;
 
 import java.net.URI;
 import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 import io.helidon.common.http.Headers;
 import io.helidon.common.http.MediaType;
@@ -54,13 +51,21 @@ public interface ClientResponseHeaders extends Headers {
         return new ClientResponseHeadersImpl(headers);
     }
 
-        List<SetCookie> setCookies();
+    List<SetCookie> setCookies();
 
-        Optional<URI> location();
+    Optional<URI> location();
 
-        Optional<ZonedDateTime> lastModified();
-        // TODO add other response headers
-        // dodelat gettery na vsechny co jsou caste
+    Optional<ZonedDateTime> lastModified();
 
-        Optional<MediaType> contentType();
+    Optional<ZonedDateTime> expires();
+
+    Optional<ZonedDateTime> date();
+    // TODO add other response headers
+    // dodelat gettery na vsechny co jsou caste
+
+    Optional<MediaType> contentType();
+
+    Optional<String> etag();
+
+
 }

@@ -49,12 +49,17 @@ public class ClientSecurity implements ClientService {
 
     private Security security;
 
+    private ClientSecurity() {
+    }
+
     public static ClientSecurity create() {
-        return null;
+        return new ClientSecurity();
     }
 
     public static ClientSecurity create(Security security) {
-        return null;
+        ClientSecurity clientSecurity = create();
+        clientSecurity.security = security;
+        return clientSecurity;
     }
 
     @Override

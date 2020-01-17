@@ -289,6 +289,7 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     //TODO potrebuju to presunout do nejakyho common util....
+    //EDIT: request i response
     private String unquoteETag(String etag) {
         if (etag == null || etag.isEmpty()) {
             return etag;

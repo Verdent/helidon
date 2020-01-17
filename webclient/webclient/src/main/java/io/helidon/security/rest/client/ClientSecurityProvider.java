@@ -1,20 +1,21 @@
-package io.helidon.tracing.rest.client;
+package io.helidon.security.rest.client;
 
 import io.helidon.config.Config;
+import io.helidon.tracing.rest.client.ClientTracing;
 import io.helidon.webclient.spi.ClientService;
 import io.helidon.webclient.spi.ClientServiceProvider;
 
 /**
- * Client tracing SPI provider.
+ * Client security SPI provider.
  */
-public class ClientTracingProvider implements ClientServiceProvider {
+public class ClientSecurityProvider implements ClientServiceProvider {
     @Override
     public String configKey() {
-        return "tracing";
+        return "security";
     }
 
     @Override
     public ClientService create(Config config) {
-        return ClientTracing.create();
+        return ClientSecurity.create();
     }
 }

@@ -190,7 +190,6 @@ public interface WebClient {
 
         //EDIT: premistit do clientconfigurace
         public List<ClientService> services() {
-            //EDIT: dodelat config
             Config config = this.configuration == null ? Config.empty() : this.configuration.config();
             Config servicesConfig = config.get("services");
             servicesConfig.get("excludes").asList(String.class).orElse(Collections.emptyList())

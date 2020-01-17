@@ -54,7 +54,7 @@ public class ClientMetrics implements ClientService {
     }
 
     //EDIT: retezeni. Zavolam prvni, cekam na dokonceni, pak ClientServiceRequest predam druhe...... na konci tohle predam k vykonani requestu
-    //EDIT: zatim nechat
+    //EDIT: zatim nechat byt
     @Override
     public CompletionStage<ClientServiceRequest> request(ClientServiceRequest request) {
         Counter counter = getCounter(request);

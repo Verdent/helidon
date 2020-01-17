@@ -103,7 +103,14 @@ public interface ClientRequestBuilder {
      */
     ClientRequestBuilder headers(Headers headers);
 
-    //TODO EDIT:
+    /**
+     * Function from parameter is executed on top of stored headers.
+     *
+     *  This approach is here to allow as to add any header via specialized method while using builder pattern.
+     *
+     * @param headers function which adds headers
+     * @return updated builder instance
+     */
     ClientRequestBuilder headers(Function<ClientRequestHeaders, Headers> headers);
 
     /**
@@ -172,7 +179,6 @@ public interface ClientRequestBuilder {
      * @param <T> response type
      * @return request completion stage
      */
-    //EDIT: zabezpecit to, ze pobezim v mem contextu
     <T> CompletionStage<T> request(Class<T> responseType);
     /**
      * Performs prepared request and transforms response to requested type.

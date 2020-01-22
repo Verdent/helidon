@@ -20,8 +20,11 @@ import java.net.CookiePolicy;
 import java.net.CookieStore;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -31,6 +34,8 @@ import javax.net.ssl.SSLException;
 
 import io.helidon.common.context.Context;
 import io.helidon.config.Config;
+import io.helidon.webclient.spi.ClientService;
+import io.helidon.webclient.spi.ClientServiceProvider;
 
 import io.netty.handler.ssl.IdentityCipherSuiteFilter;
 import io.netty.handler.ssl.JdkSslContext;
@@ -49,6 +54,8 @@ class ClientConfiguration {
     private final Duration connectTimeout;
     private final Duration readTimeout;
     private final LazyValue<String> userAgent;
+    private final List<ClientServiceProvider> clientServiceProviders;
+    private final List<ClientContentHandler> clientContentHandlers;
     private final Proxy proxy;
     private final boolean followRedirects;
     private final int maxRedirects;
@@ -75,6 +82,8 @@ class ClientConfiguration {
         this.cookieManager = WebClientCookieManager.create(builder.defaultCookies, builder.enableAutomaticCookieStore);
         this.config = builder.config;
         this.context = builder.context;
+        this.clientServiceProviders = Collections.unmodifiableList(builder.clientServiceProviders);
+        this.clientContentHandlers = Collections.unmodifiableList(builder.clientContentHandlers);
     }
 
     /**
@@ -212,6 +221,18 @@ class ClientConfiguration {
         return Optional.ofNullable(context);
     }
 
+    Config config() {
+        return config;
+    }
+
+    public List<ClientServiceProvider> clientServiceProviders() {
+        return clientServiceProviders;
+    }
+
+    public List<ClientContentHandler> clientContentHandlers() {
+        return clientContentHandlers;
+    }
+
     /**
      * A fluent API builder for {@link ClientConfiguration}.
      */
@@ -234,6 +255,8 @@ class ClientConfiguration {
         private Ssl ssl;
         private Map<String, String> defaultCookies;
         private Set<OutboundTarget> outboundTargets;
+        private List<ClientContentHandler> clientContentHandlers = new ArrayList<>();
+        private List<ClientServiceProvider> clientServiceProviders = new ArrayList<>();
         @SuppressWarnings("unchecked")
         private B me = (B) this;
 
@@ -368,17 +391,33 @@ class ClientConfiguration {
             return me;
         }
 
+        public B defaultCookie(String key, String value) {
+            defaultCookies.put(key, value);
+            return me;
+        }
+
+        public B defaultHeader(String key, List<String> values) {
+            clientHeaders.put(key, values);
+            return me;
+        }
+
+        public B clientServiceProvider(ClientServiceProvider provider) {
+            clientServiceProviders.add(provider);
+            return me;
+        }
+
         private B enableAutomaticCookieStore(Boolean enableAutomaticCookieStore) {
             this.enableAutomaticCookieStore = enableAutomaticCookieStore;
             return me;
         }
 
-        private B defaultCookie(String key, String value) {
-            defaultCookies.put(key, value);
+        B clientServices(List<ClientServiceProvider> clientServiceProviders) {
+            this.clientServiceProviders = clientServiceProviders;
             return me;
         }
 
-        private B target(OutboundTarget target) {
+        B clientContentHandlers(List<ClientContentHandler> clientContentHandlers) {
+            this.clientContentHandlers = clientContentHandlers;
             return me;
         }
 
@@ -432,6 +471,8 @@ class ClientConfiguration {
             clientHeaders(configuration.clientHeaders);
             cookieStore(configuration.cookieManager.getCookieStore());
             cookiePolicy(configuration.cookiePolicy);
+            clientServices(new ArrayList<>(configuration.clientServiceProviders));
+            clientContentHandlers(new ArrayList<>(configuration.clientContentHandlers));
             configuration.cookieManager.defaultCookies().forEach(this::defaultCookie);
             config = configuration.config;
 
@@ -441,8 +482,8 @@ class ClientConfiguration {
         private void headers(Config configHeaders) {
             configHeaders.asNodeList()
                     .ifPresent(headers -> headers
-                            .forEach(header -> clientHeaders.put(header.get("name").asString().get(),
-                                                                 header.get("value").asList(String.class).get())));
+                            .forEach(header -> defaultHeader(header.get("name").asString().get(),
+                                                             header.get("value").asList(String.class).get())));
         }
 
         private void cookies(Config cookies) {

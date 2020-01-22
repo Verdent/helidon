@@ -71,4 +71,5 @@ public interface ClientServiceRequest extends HttpRequest {
      * @return configuration of your service
      */
     Config serviceConfig();
+
 }

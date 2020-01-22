@@ -189,7 +189,6 @@ public class Ssl {
             return this;
         }
 
-        //EDIT: ssl zmenit jak se vytvari context pro netty
         public Builder sslContext(SSLContext sslContext) {
             this.sslContext = sslContext;
             return this;

@@ -27,11 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.StringTokenizer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.context.Context;
@@ -45,11 +47,15 @@ import io.helidon.common.http.MediaType;
 import io.helidon.common.http.Parameters;
 import io.helidon.common.reactive.Flow;
 import io.helidon.common.reactive.Single;
+import io.helidon.common.serviceloader.HelidonServiceLoader;
+import io.helidon.config.Config;
 import io.helidon.media.common.MessageBodyReadableContent;
 import io.helidon.media.common.MessageBodyReader;
 import io.helidon.media.common.MessageBodyWriteableContent;
 import io.helidon.media.common.MessageBodyWriter;
 import io.helidon.media.jsonp.common.JsonProcessing;
+import io.helidon.webclient.spi.ClientService;
+import io.helidon.webclient.spi.ClientServiceProvider;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
@@ -83,6 +89,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         DEFAULT_SUPPORTED_PROTOCOLS.put("https", 443);
     }
 
+    private final Map<String, Object> properties;
     private final LazyValue<NioEventLoopGroup> eventGroup;
     private final ClientConfiguration configuration;
     private final Http.RequestMethod method;
@@ -98,30 +105,36 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     private int redirectionCount;
     private RequestConfiguration requestConfiguration;
     private HttpRequest.Path path;
+    private List<ClientService> services;
 
     private ClientRequestBuilderImpl(LazyValue<NioEventLoopGroup> eventGroup,
                                      ClientConfiguration configuration,
                                      Http.RequestMethod method) {
+        this.properties = new HashMap<>();
         this.eventGroup = eventGroup;
         this.configuration = configuration;
         this.method = method;
         //Default headers added to the current headers of the request
         this.headers = new ClientRequestHeadersImpl(this.configuration.headers());
         this.queryParams = new HashParameters();
-        this.clientContentHandlers = new ArrayList<>();
+        this.clientContentHandlers = configuration.clientContentHandlers();
         this.httpVersion = Http.Version.V1_1;
         this.fragment = "";
         this.redirectionCount = 0;
 
+
         //configurace pridat parent context
         Context.Builder contextBuilder = Context.builder().id("webclient-" + REQUEST_NUMBER.incrementAndGet());
-        configuration.context().ifPresentOrElse(contextBuilder::parent,
-                                                () -> Contexts.context().ifPresent(contextBuilder::parent));
+        //EDIT: prepsat az bude 11
+        if (configuration.context().isPresent()) {
+            configuration.context().ifPresent(contextBuilder::parent);
+        } else {
+            Contexts.context().ifPresent(contextBuilder::parent);
+        }
+        //        configuration.context().ifPresentOrElse(contextBuilder::parent,
+        //                                                () -> Contexts.context().ifPresent(contextBuilder::parent));
         Contexts.context().ifPresent(contextBuilder::parent);
         context = contextBuilder.build();
-
-        //TODO path... jak udelat?
-        //EDIT: okopirovat impl ze serveru
     }
 
     public static ClientRequestBuilder create(LazyValue<NioEventLoopGroup> eventGroup,
@@ -151,23 +164,28 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     @Override
     public ClientRequestBuilder uri(String uri) {
-        this.uri = URI.create(uri);
-        return this;
+        return uri(URI.create(uri));
     }
 
     @Override
     public ClientRequestBuilder uri(URL url) {
         try {
-            this.uri = url.toURI();
+            return uri(url.toURI());
         } catch (URISyntaxException e) {
             throw new ClientException("Failed to create URI from URL", e);
         }
-        return this;
     }
 
     @Override
     public ClientRequestBuilder uri(URI uri) {
         this.uri = uri;
+        this.path = ClientPath.create(null, uri.getPath(), new HashMap<>());
+        return this;
+    }
+
+    @Override
+    public ClientRequestBuilder property(String propertyName, Object propertyValue) {
+        properties.put(propertyName, propertyValue);
         return this;
     }
 
@@ -339,6 +357,10 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return requestConfiguration;
     }
 
+    Map<String, Object> properties() {
+        return properties;
+    }
+
     Proxy proxy() {
         return proxy;
     }
@@ -347,13 +369,25 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return redirectionCount;
     }
 
+    Context context() {
+        return context;
+    }
+
     @SuppressWarnings("unchecked")
     private <T> CompletionStage<T> invoke(Flow.Publisher<DataChunk> requestEntity, GenericType<T> responseType) {
-        URI uri = prepareFinalURI();
+        this.uri = prepareFinalURI();
 
         DefaultHttpRequest request = new DefaultHttpRequest(toNettyHttpVersion(httpVersion),
                                                             toNettyMethod(method),
                                                             uri.toASCIIString());
+        ClientServiceRequest serviceRequest = new ClientServiceRequestImpl(this);
+
+        //EDIT: Jak ma tohle presne fungovat?
+        services = services();
+        services.forEach(clientService -> {
+            CompletionStage<ClientServiceRequest> completionStage = clientService.request(serviceRequest);
+        });
+
         setRequestHeaders(request.headers());
 
         requestConfiguration = RequestConfiguration.builder(uri).update(configuration).build();
@@ -411,7 +445,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
     private URI prepareFinalURI() {
         String base = resolveURIBase();
-        String path = resolvePath();
+        String path = this.path.toRawString();
         String queries = query();
         return URI.create(base + path
                                   + (queries.isEmpty() ? "" : "?" + queries)
@@ -428,14 +462,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
             throw new ClientException("Client could not get port for schema " + scheme + ". "
                                               + "Please specify correct port to use.");
         }
-        return scheme + "://" + uri.getHost() + ":" + port + uri.getPath();
-    }
-
-    private String resolvePath() {
-        if (this.path != null) {
-            return this.path.toRawString();
-        }
-        return "";
+        return scheme + "://" + uri.getHost() + ":" + port;
     }
 
     private HttpMethod toNettyMethod(Http.RequestMethod method) {
@@ -461,10 +488,33 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return content;
     }
 
+    private List<ClientService> services() {
+        HelidonServiceLoader.Builder<ClientServiceProvider> services = HelidonServiceLoader
+                .builder(ServiceLoader.load(ClientServiceProvider.class));
+        Config config;
+        if (configuration != null) {
+            config = this.configuration.config();
+            configuration.clientServiceProviders().forEach(services::addService);
+        } else {
+            config = Config.empty();
+        }
+        Config servicesConfig = config.get("services");
+        servicesConfig.get("excludes").asList(String.class).orElse(Collections.emptyList())
+                .forEach(services::addExcludedClassName);
+
+        Config serviceConfig = servicesConfig.get("config");
+
+        return services.build()
+                .asList()
+                .stream()
+                .map(it -> it.create(serviceConfig.get(it.configKey())))
+                .collect(Collectors.toList());
+    }
+
     /**
-     * {@link HttpRequest.Path} implementation.
+     * {@link HttpRequest.Path} client implementation.
      */
-    static class ClientPath implements HttpRequest.Path {
+    private static class ClientPath implements HttpRequest.Path {
 
         private final String path;
         private final String rawPath;
@@ -560,7 +610,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
                 map.putAll(this.params);
                 map.putAll(params);
                 return new ClientPath(path, rawPath, params, new ClientPath(absolutePath.path, absolutePath.rawPath, map,
-                                                /* absolute path */ null));
+                        /* absolute path */ null));
             }
         }
     }

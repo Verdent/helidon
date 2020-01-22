@@ -15,9 +15,15 @@
  */
 package io.helidon.webclient;
 
+import io.helidon.common.context.Context;
+
 /**
  * TODO javadoc.
  */
 public interface ClientServiceResponse {
+
+    ClientResponseHeaders headers();
+
+    Context context();
 
 }

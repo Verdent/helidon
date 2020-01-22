@@ -62,6 +62,16 @@ public interface ClientRequestBuilder {
     ClientRequestBuilder uri(URI uri);
 
     /**
+     * Add a property to be used by a {@link io.helidon.webclient.spi.ClientService}.
+     *
+     * @param propertyName property name
+     * @param propertyValue property value
+     * @return updated builder instance
+     */
+    ClientRequestBuilder property(String propertyName, Object propertyValue);
+
+
+    /**
      * Explicitly configure a context to use.
      * This method is not needed when running within a scope of a Helidon server, such as
      *  Web Server, gRPC Server, MicroProfile Server, or when processing a Helidon message consumer.
@@ -275,6 +285,8 @@ public interface ClientRequestBuilder {
          * @return request configuration
          */
         RequestConfiguration configuration();
+
+        Map<String, Object> properties();
 
         /**
          * Proxy used by current request.

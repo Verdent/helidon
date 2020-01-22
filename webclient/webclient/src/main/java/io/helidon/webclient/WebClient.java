@@ -20,6 +20,7 @@ import java.net.URL;
 import java.time.Duration;
 import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.ServiceLoader;
@@ -75,6 +76,7 @@ public interface WebClient {
      */
     ClientRequestBuilder method(String method);
 
+    //EDIT: projit builder a dodelat implementace fieldu
     final class Builder implements io.helidon.common.Builder<WebClient> {
         private final ClientConfiguration.Builder configuration = NettyClient.SHARED_CONFIGURATION.get().derive();
 
@@ -143,22 +145,24 @@ public interface WebClient {
         /**
          * Add a default cookie.
          *
-         * @param name
-         * @param value
+         * @param name cookie name
+         * @param value cookie value
          * @return
          */
         public Builder addCookie(String name, String value) {
+            configuration.defaultCookie(name, value);
             return this;
         }
 
         /**
          * Add a default header (such as accept)
          *
-         * @param header
-         * @param value
+         * @param header header name
+         * @param value header values
          * @return
          */
         public Builder addHeader(String header, String... value) {
+            configuration.defaultHeader(header, Arrays.asList(value));
             return this;
         }
 
@@ -185,10 +189,13 @@ public interface WebClient {
         }
 
         public ClientConfiguration configuration() {
+            configuration.clientServices(services());
             return configuration.build();
         }
 
         //EDIT: premistit do clientconfigurace
+        //EDIT: Napadlo me to udelat tak, ze tohle hodim do client configurace a budu udrzovat jen list provideru, kteri byli registrovani pres clienta
+        // a vsechno co vytahuju tady, budu delat pro kazdy request, ale nejsem si jisty co na to performance.
         public List<ClientService> services() {
             Config config = this.configuration == null ? Config.empty() : this.configuration.config();
             Config servicesConfig = config.get("services");

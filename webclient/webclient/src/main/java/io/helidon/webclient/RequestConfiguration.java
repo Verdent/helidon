@@ -16,8 +16,11 @@
 package io.helidon.webclient;
 
 import java.net.URI;
+import java.util.Collections;
+import java.util.List;
 
 import io.helidon.common.GenericType;
+import io.helidon.webclient.spi.ClientService;
 
 /**
  * TODO javadoc.
@@ -25,20 +28,20 @@ import io.helidon.common.GenericType;
 class RequestConfiguration extends ClientConfiguration {
 
     private final URI requestURI;
-    private final GenericType<?> genericType;
+    private final ClientServiceRequest clientServiceRequest;
 
     private RequestConfiguration(Builder builder) {
         super(builder);
         requestURI = builder.requestURI;
-        genericType = builder.genericType;
+        clientServiceRequest = builder.clientServiceRequest;
     }
 
-    URI requestURI() {
+    public URI requestURI() {
         return requestURI;
     }
 
-    GenericType<?> genericType() {
-        return genericType;
+    public ClientServiceRequest clientServiceRequest() {
+        return clientServiceRequest;
     }
 
     static Builder builder(URI requestURI) {
@@ -47,11 +50,16 @@ class RequestConfiguration extends ClientConfiguration {
 
     static class Builder extends ClientConfiguration.Builder<Builder, RequestConfiguration> {
 
-        public GenericType<?> genericType;
+        private ClientServiceRequest clientServiceRequest;
         private URI requestURI;
 
         public Builder(URI requestURI) {
             this.requestURI = requestURI;
+        }
+
+        public Builder clientServiceRequest(ClientServiceRequest clientServiceRequest) {
+            this.clientServiceRequest = clientServiceRequest;
+            return this;
         }
 
         @Override

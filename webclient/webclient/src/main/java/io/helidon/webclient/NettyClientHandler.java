@@ -117,8 +117,11 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
         }
 
         if (msg instanceof LastHttpContent) {
+            ClientRequestBuilder.ClientRequest clientRequest = ctx.channel().attr(REQUEST).get();
             publisher.complete();
             ctx.close();
+            ClientServiceRequest serviceRequest = clientRequest.configuration().clientServiceRequest();
+            serviceRequest.whenComplete().toCompletableFuture().complete(serviceRequest);
         }
     }
 

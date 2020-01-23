@@ -1,0 +1,25 @@
+ssl:
+  server:
+    disable-hostname-verification: true #DONE
+    trust-all: true #DONE
+    truststore:
+      keystore: "clientkeystore.jks"
+      location:
+        # or path:
+        # or url:
+        # or content: (base64)
+        #Pouzit KeyConfig. SSL context
+        classpath: "trustore.jks"
+      password: "heslo"
+      type: "PKCS12"
+  client:
+    client-auth: "REQUIRE"
+    keystore:
+      location:
+        # TODO requires change in the Resource class
+        # or path:
+        # or url:
+        # or content: (base64)
+        classpath: "test.pem"
+      password: "heslo"
+      type: "JKS"

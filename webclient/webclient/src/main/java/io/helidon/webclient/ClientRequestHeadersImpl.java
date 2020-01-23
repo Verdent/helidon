@@ -46,7 +46,7 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
     //Dates are required to be in following format
     //<day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.RFC_1123_DATE_TIME
             .withLocale(Locale.US)
             .withZone(ZoneId.of("GMT"));
 

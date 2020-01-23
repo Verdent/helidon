@@ -33,6 +33,8 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 
+import static io.helidon.webclient.ClientRequestBuilderImpl.REQUEST;
+
 /**
  * TODO Javadoc
  */
@@ -113,6 +115,10 @@ public class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
         channel.writeAndFlush(LAST_HTTP_CONTENT)
                 .addListener(completeOnFailureListener("An exception occurred when writing last http content."))
                 .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+
+        ClientRequestBuilder.ClientRequest clientRequest = channel.attr(REQUEST).get();
+        ClientServiceRequest serviceRequest = clientRequest.configuration().clientServiceRequest();
+        serviceRequest.whenComplete().toCompletableFuture().complete(serviceRequest);
     }
 
     private void sendData(DataChunk data) {

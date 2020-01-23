@@ -17,7 +17,7 @@ package io.helidon.webclient;
 
 import java.net.URI;
 import java.net.URL;
-import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -68,7 +68,7 @@ public interface ClientRequestBuilder {
      * @param propertyValue property value
      * @return updated builder instance
      */
-    ClientRequestBuilder property(String propertyName, Object propertyValue);
+    ClientRequestBuilder property(String propertyName, String... propertyValue);
 
 
     /**
@@ -286,7 +286,7 @@ public interface ClientRequestBuilder {
          */
         RequestConfiguration configuration();
 
-        Map<String, Object> properties();
+        Map<String, List<String>> properties();
 
         /**
          * Proxy used by current request.

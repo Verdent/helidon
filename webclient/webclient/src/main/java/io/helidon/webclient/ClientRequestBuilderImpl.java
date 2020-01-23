@@ -49,10 +49,12 @@ import io.helidon.common.reactive.Flow;
 import io.helidon.common.reactive.Single;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
+import io.helidon.media.common.MediaSupport;
 import io.helidon.media.common.MessageBodyReadableContent;
 import io.helidon.media.common.MessageBodyReader;
 import io.helidon.media.common.MessageBodyWriteableContent;
 import io.helidon.media.common.MessageBodyWriter;
+import io.helidon.media.common.MessageBodyWriterContext;
 import io.helidon.media.jsonp.common.JsonProcessing;
 import io.helidon.webclient.spi.ClientService;
 import io.helidon.webclient.spi.ClientServiceProvider;
@@ -89,7 +91,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         DEFAULT_SUPPORTED_PROTOCOLS.put("https", 443);
     }
 
-    private final Map<String, Object> properties;
+    private final Map<String, List<String>> properties;
     private final LazyValue<NioEventLoopGroup> eventGroup;
     private final ClientConfiguration configuration;
     private final Http.RequestMethod method;
@@ -184,8 +186,8 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     }
 
     @Override
-    public ClientRequestBuilder property(String propertyName, Object propertyValue) {
-        properties.put(propertyName, propertyValue);
+    public ClientRequestBuilder property(String propertyName, String... propertyValue) {
+        properties.put(propertyName, Arrays.asList(propertyValue));
         return this;
     }
 
@@ -296,6 +298,12 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         GenericType<T> responseGenericType = GenericType.create(responseType);
         MessageBodyWriteableContent writeableContent = MessageBodyWriteableContent.create(requestEntity, this.headers);
 
+        MessageBodyWriterContext writerContext = MediaSupport.builder().build().writerContext();
+
+        //EDIT: upravit
+        Flow.Publisher<DataChunk> sendPublisher = writerContext.marshall(
+                Single.just(content), GenericType.create(content), null);
+
         clientContentHandlers.stream()
                 .filter(clientContentHandler -> clientContentHandler.supports(responseGenericType))
                 .forEach(clientContentHandler -> {
@@ -303,7 +311,6 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
                     writer.ifPresent(writeableContent::registerWriter);
                 });
 
-        writeableContent.registerWriter(JsonProcessing.create().newWriter());
         Flow.Publisher<DataChunk> dataChunkPublisher = writeableContent.toPublisher(null);
         return Contexts.runInContext(context, () -> invoke(dataChunkPublisher, responseGenericType));
     }
@@ -357,7 +364,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return requestConfiguration;
     }
 
-    Map<String, Object> properties() {
+    Map<String, List<String>> properties() {
         return properties;
     }
 
@@ -382,7 +389,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
                                                             uri.toASCIIString());
         ClientServiceRequest serviceRequest = new ClientServiceRequestImpl(this);
 
-        //EDIT: Jak ma tohle presne fungovat?
+        //EDIT: Jak ma tohle presne fungovat? Na co je tady ta completion?
         services = services();
         services.forEach(clientService -> {
             CompletionStage<ClientServiceRequest> completionStage = clientService.request(serviceRequest);
@@ -390,7 +397,9 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
 
         setRequestHeaders(request.headers());
 
-        requestConfiguration = RequestConfiguration.builder(uri).update(configuration).build();
+        requestConfiguration = RequestConfiguration.builder(uri)
+                .clientServiceRequest(serviceRequest)
+                .update(configuration).build();
         ClientRequestImpl clientRequest = new ClientRequestImpl(this);
 
         CompletableFuture<ClientResponse> result = new CompletableFuture<>();

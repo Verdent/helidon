@@ -1,6 +1,7 @@
 package io.helidon.webclient;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -26,8 +27,8 @@ class ClientServiceRequestImpl implements ClientServiceRequest {
     private final Path path;
     private final String fragment;
     private final HashParameters parameters;
-    private final CompletableFuture<ClientServiceRequest> sent;
-    private final CompletableFuture<ClientServiceRequest> complete;
+    private final CompletionStage<ClientServiceRequest> sent;
+    private final CompletionStage<ClientServiceRequest> complete;
 
     ClientServiceRequestImpl(ClientRequestBuilderImpl requestBuilder) {
         headers = requestBuilder.headers();
@@ -39,7 +40,7 @@ class ClientServiceRequestImpl implements ClientServiceRequest {
         queryParams = queryParams();
         path = requestBuilder.path();
         fragment = requestBuilder.fragment();
-        parameters = requestBuilder.properties();
+        parameters = new HashParameters(requestBuilder.properties());
         sent = new CompletableFuture<>();
         complete = new CompletableFuture<>();
     }

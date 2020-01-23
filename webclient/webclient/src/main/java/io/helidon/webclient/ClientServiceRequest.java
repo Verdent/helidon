@@ -58,7 +58,7 @@ public interface ClientServiceRequest extends HttpRequest {
      * Properties configured by user when creating this client request.
      *
      * @return properties that were configured
-     * @see ClientRequestBuilder#property(String, Object)
+     * @see ClientRequestBuilder#property(String, String...)
      */
     Parameters properties();
 

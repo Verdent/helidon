@@ -16,6 +16,7 @@
 package io.helidon.webclient;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 import io.helidon.common.http.Http;
@@ -38,7 +39,7 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
     private final String query;
     private final String fragment;
     private final int redirectionCount;
-    private final Map<String, Object> properties;
+    private final Map<String, List<String>> properties;
 
     ClientRequestImpl(ClientRequestBuilderImpl builder) {
         clientRequestHeaders = new ClientRequestHeadersImpl(builder.headers());
@@ -66,7 +67,7 @@ class ClientRequestImpl implements ClientRequestBuilder.ClientRequest {
     }
 
     @Override
-    public Map<String, Object> properties() {
+    public Map<String, List<String>> properties() {
         return properties;
     }
 

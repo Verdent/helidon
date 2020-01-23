@@ -20,7 +20,7 @@ import io.helidon.common.http.SetCookie;
 class ClientResponseHeadersImpl extends ReadOnlyParameters implements ClientResponseHeaders {
 
     //EDIT: jinak
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.RFC_1123_DATE_TIME
             .withLocale(Locale.US)
             .withZone(ZoneId.of("GMT"));
 

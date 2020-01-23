@@ -32,7 +32,7 @@ import io.helidon.common.reactive.Flow;
  * A file writer that subscribes to chunks of data.
  * TODO move to common/reactive?
  */
-// TODO we have this in media common
+// TODO we have this in media common -> FileBodyWriter
 public final class FileSubscriber implements Flow.Subscriber<DataChunk> {
     private static final Logger LOGGER = Logger.getLogger(FileSubscriber.class.getName());
 

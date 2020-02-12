@@ -1,13 +1,11 @@
 package io.helidon.webclient;
 
 import java.net.URI;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import io.helidon.common.http.Http;
 import io.helidon.common.http.MediaType;
@@ -19,23 +17,16 @@ import io.helidon.common.http.SetCookie;
  */
 class ClientResponseHeadersImpl extends ReadOnlyParameters implements ClientResponseHeaders {
 
-    //EDIT: jinak
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.RFC_1123_DATE_TIME
-            .withLocale(Locale.US)
-            .withZone(ZoneId.of("GMT"));
-
     ClientResponseHeadersImpl(Map<String, List<String>> headers) {
         super(headers);
     }
 
     @Override
     public List<SetCookie> setCookies() {
-        //EDIT: SetCookie.... jak udelat?
-
-//        return all(Http.Header.SET_COOKIE).stream()
-//                .map(s -> s.s);
-        System.out.println();
-        return null;
+        return all(Http.Header.SET_COOKIE)
+                .stream()
+                .map(SetCookie::parse)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -45,17 +36,17 @@ class ClientResponseHeadersImpl extends ReadOnlyParameters implements ClientResp
 
     @Override
     public Optional<ZonedDateTime> lastModified() {
-        return first(Http.Header.LAST_MODIFIED).map(date -> ZonedDateTime.parse(date, FORMATTER));
+        return first(Http.Header.LAST_MODIFIED).map(Http.DateTime::parse);
     }
 
     @Override
     public Optional<ZonedDateTime> expires() {
-        return first(Http.Header.EXPIRES).map(date -> ZonedDateTime.parse(date, FORMATTER));
+        return first(Http.Header.EXPIRES).map(Http.DateTime::parse);
     }
 
     @Override
     public Optional<ZonedDateTime> date() {
-        return first(Http.Header.DATE).map(date -> ZonedDateTime.parse(date, FORMATTER));
+        return first(Http.Header.DATE).map(Http.DateTime::parse);
     }
 
     @Override

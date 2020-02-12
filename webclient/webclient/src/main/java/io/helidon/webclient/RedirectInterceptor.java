@@ -31,8 +31,6 @@ class RedirectInterceptor implements HttpInterceptor {
 
     private static final Logger LOGGER = Logger.getLogger(RedirectInterceptor.class.getName());
 
-    //TODO WAT s POSTem?
-
     @Override
     public void handleInterception(HttpResponse httpResponse,
                                    ClientRequestBuilder.ClientRequest clientRequest,

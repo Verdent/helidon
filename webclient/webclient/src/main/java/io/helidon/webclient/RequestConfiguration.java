@@ -16,10 +16,14 @@
 package io.helidon.webclient;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import io.helidon.common.GenericType;
+import io.helidon.media.common.MessageBodyReader;
 import io.helidon.webclient.spi.ClientService;
 
 /**
@@ -29,11 +33,13 @@ class RequestConfiguration extends ClientConfiguration {
 
     private final URI requestURI;
     private final ClientServiceRequest clientServiceRequest;
+    private final List<ClientService> services;
 
     private RequestConfiguration(Builder builder) {
         super(builder);
         requestURI = builder.requestURI;
         clientServiceRequest = builder.clientServiceRequest;
+        services = builder.services;
     }
 
     public URI requestURI() {
@@ -44,6 +50,10 @@ class RequestConfiguration extends ClientConfiguration {
         return clientServiceRequest;
     }
 
+    public List<ClientService> services() {
+        return services;
+    }
+
     static Builder builder(URI requestURI) {
         return new Builder(requestURI);
     }
@@ -52,6 +62,7 @@ class RequestConfiguration extends ClientConfiguration {
 
         private ClientServiceRequest clientServiceRequest;
         private URI requestURI;
+        private List<ClientService> services = new ArrayList<>();
 
         public Builder(URI requestURI) {
             this.requestURI = requestURI;
@@ -62,9 +73,16 @@ class RequestConfiguration extends ClientConfiguration {
             return this;
         }
 
+        public Builder services(List<ClientService> services) {
+            this.services = Collections.unmodifiableList(services);
+            return this;
+        }
+
         @Override
         public RequestConfiguration build() {
             return new RequestConfiguration(this);
         }
+
+
     }
 }

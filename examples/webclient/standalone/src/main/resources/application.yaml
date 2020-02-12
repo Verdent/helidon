@@ -7,7 +7,7 @@ client:
     name-prefix: client-thread- #DONE
     workers: 1 #DONE
   connect-timeout-millis: 2000 #DONE
-  read-timeout-millis: 2000 #DONE
+  read-timeout-millis: 200000 #DONE
   follow-redirects: true #DONE
   max-redirects: 5 #DONE
   user-agent: "Helidon"
@@ -45,28 +45,19 @@ client:
       disable-hostname-verification: false #DONE
       trust-all: false #DONE
       truststore:
-        location:
-          # or path:
-          # or url:
-          # or content: (base64)
-          #Pouzit KeyConfig. SSL context
-          classpath: "trustore.jks"
-        password: "heslo"
-        type: "PKCS12"
+#        keystore-resource-path: "clientkeystore.jks"
+        keystore-type: "JKS"
+        keystore-passphrase: "password"
+        trust-store: true
     client:
       # ClientAuth
-      client-auth: "OPTIONAL" #DONE
+      client-auth: "NONE" #DONE
       # use same as security - based on targets
       # key store pro private key
       keystore:
-        location:
-          # TODO requires change in the Resource class
-          # or path:
-          # or url:
-          # or content: (base64)
-          classpath: "something.jks"
-        password: "heslo"
-        type: "JKS"
+        #        keystore-resource-path: "client.p12"
+        keystore-passphrase: "badssl.com"
+        trust-store: true
   targets:
     - name: "greet" #pouze jmeno a neni to identifikator endpointu
       # only for https

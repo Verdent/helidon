@@ -18,6 +18,7 @@ package io.helidon.webclient;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.CookieStore;
+import java.net.URI;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import javax.net.ssl.SSLException;
 
 import io.helidon.common.context.Context;
 import io.helidon.config.Config;
+import io.helidon.media.common.MediaSupport;
 import io.helidon.webclient.spi.ClientService;
 import io.helidon.webclient.spi.ClientServiceProvider;
 
@@ -49,20 +51,22 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
  */
 class ClientConfiguration {
 
-    private final Config config;
-    private final Context context;
-    private final Duration connectTimeout;
-    private final Duration readTimeout;
-    private final LazyValue<String> userAgent;
-    private final List<ClientServiceProvider> clientServiceProviders;
-    private final List<ClientContentHandler> clientContentHandlers;
-    private final Proxy proxy;
-    private final boolean followRedirects;
-    private final int maxRedirects;
     private final ClientRequestHeaders clientHeaders;
     private final WebClientCookieManager cookieManager;
     private final CookiePolicy cookiePolicy;
+    private final Config config;
+    private final Context context;
+    private final Duration connectTimeout;
+    private final boolean enableAutomaticCookieStore;
+    private final Duration readTimeout;
+    private final LazyValue<String> userAgent;
+    private final List<ClientServiceProvider> clientServiceProviders;
+    private final Proxy proxy;
+    private final boolean followRedirects;
+    private final int maxRedirects;
+    private final MediaSupport mediaSupport;
     private final Ssl ssl;
+    private final URI uri;
 
     /**
      * Creates a new instance of client configuration.
@@ -79,11 +83,16 @@ class ClientConfiguration {
         this.maxRedirects = builder.maxRedirects;
         this.clientHeaders = builder.clientHeaders;
         this.cookiePolicy = builder.cookiePolicy;
-        this.cookieManager = WebClientCookieManager.create(builder.defaultCookies, builder.enableAutomaticCookieStore);
+        this.enableAutomaticCookieStore = builder.enableAutomaticCookieStore;
+        this.cookieManager = WebClientCookieManager.create(cookiePolicy,
+                                                           builder.cookieStore,
+                                                           builder.defaultCookies,
+                                                           enableAutomaticCookieStore);
         this.config = builder.config;
         this.context = builder.context;
+        this.mediaSupport = builder.mediaSupport;
         this.clientServiceProviders = Collections.unmodifiableList(builder.clientServiceProviders);
-        this.clientContentHandlers = Collections.unmodifiableList(builder.clientContentHandlers);
+        this.uri = builder.uri;
     }
 
     /**
@@ -114,6 +123,7 @@ class ClientConfiguration {
                         .forClient()
                         .sslProvider(SslProvider.JDK)
                         .clientAuth(ssl.clientAuthentication());
+                //EDIT: prepinac jestli byl zadany truststore...
                 if (ssl.certificates().size() > 0) {
                     sslContextBuilder.trustManager(ssl.certificates().toArray(new X509Certificate[0]));
                 }
@@ -164,7 +174,7 @@ class ClientConfiguration {
      *
      * @return proxy
      */
-    public Optional<Proxy> proxy() {
+    Optional<Proxy> proxy() {
         return Optional.ofNullable(proxy);
     }
 
@@ -225,12 +235,16 @@ class ClientConfiguration {
         return config;
     }
 
-    public List<ClientServiceProvider> clientServiceProviders() {
+    List<ClientServiceProvider> clientServiceProviders() {
         return clientServiceProviders;
     }
 
-    public List<ClientContentHandler> clientContentHandlers() {
-        return clientContentHandlers;
+    MediaSupport mediaSupport() {
+        return mediaSupport;
+    }
+
+    URI uri() {
+        return uri;
     }
 
     /**
@@ -243,6 +257,8 @@ class ClientConfiguration {
 
         private Config config;
         private Context context;
+        private CookieStore cookieStore;
+        private CookiePolicy cookiePolicy;
         private int maxRedirects;
         private Duration connectTimeout;
         private Duration readTimeout;
@@ -250,12 +266,11 @@ class ClientConfiguration {
         private LazyValue<String> userAgent;
         private Proxy proxy;
         private boolean enableAutomaticCookieStore;
-        private CookieStore cookieStore;
-        private CookiePolicy cookiePolicy;
         private Ssl ssl;
+        private URI uri;
         private Map<String, String> defaultCookies;
         private Set<OutboundTarget> outboundTargets;
-        private List<ClientContentHandler> clientContentHandlers = new ArrayList<>();
+        private MediaSupport mediaSupport;
         private List<ClientServiceProvider> clientServiceProviders = new ArrayList<>();
         @SuppressWarnings("unchecked")
         private B me = (B) this;
@@ -340,6 +355,12 @@ class ClientConfiguration {
             return me;
         }
 
+        /**
+         * New SSL configuration.
+         *
+         * @param ssl ssl configuration
+         * @return updated builder instance
+         */
         public B ssl(Ssl ssl) {
             this.ssl = ssl;
             return me;
@@ -391,18 +412,48 @@ class ClientConfiguration {
             return me;
         }
 
+        /**
+         * Adds default cookie to every request.
+         *
+         * @param key cookie name
+         * @param value cookie value
+         * @return updated builder instance
+         */
         public B defaultCookie(String key, String value) {
             defaultCookies.put(key, value);
             return me;
         }
 
+        /**
+         * Adds default header to every request.
+         *
+         * @param key header name
+         * @param values header value
+         * @return updated builder instance
+         */
         public B defaultHeader(String key, List<String> values) {
             clientHeaders.put(key, values);
             return me;
         }
 
+        /**
+         * Adds client service provider.
+         *
+         * @param provider client service provider
+         * @return updated builder instance
+         */
         public B clientServiceProvider(ClientServiceProvider provider) {
             clientServiceProviders.add(provider);
+            return me;
+        }
+
+        public B mediaSupport(MediaSupport mediaSupport) {
+            this.mediaSupport = mediaSupport;
+            return me;
+        }
+
+        public B context(Context context) {
+            this.context = context;
             return me;
         }
 
@@ -411,13 +462,13 @@ class ClientConfiguration {
             return me;
         }
 
-        B clientServices(List<ClientServiceProvider> clientServiceProviders) {
+        public B clientServices(List<ClientServiceProvider> clientServiceProviders) {
             this.clientServiceProviders = clientServiceProviders;
             return me;
         }
 
-        B clientContentHandlers(List<ClientContentHandler> clientContentHandlers) {
-            this.clientContentHandlers = clientContentHandlers;
+        public B uri(URI uri) {
+            this.uri = uri;
             return me;
         }
 
@@ -446,8 +497,6 @@ class ClientConfiguration {
                     .map(Proxy.Builder::build)
                     .ifPresent(this::proxy);
 
-            //TODO targets s tomasem
-
             //            config.get("targets").asNodeList()
             //                    .ifPresent(configs -> configs.forEach(tarConf -> target(OutboundTarget.create(tarConf))));
             // TODO add all configurable options
@@ -469,10 +518,12 @@ class ClientConfiguration {
             ssl(configuration.ssl);
             maxRedirects(configuration.maxRedirects);
             clientHeaders(configuration.clientHeaders);
+            enableAutomaticCookieStore(configuration.enableAutomaticCookieStore);
             cookieStore(configuration.cookieManager.getCookieStore());
             cookiePolicy(configuration.cookiePolicy);
             clientServices(new ArrayList<>(configuration.clientServiceProviders));
-            clientContentHandlers(new ArrayList<>(configuration.clientContentHandlers));
+            mediaSupport(configuration.mediaSupport);
+            context(configuration.context);
             configuration.cookieManager.defaultCookies().forEach(this::defaultCookie);
             config = configuration.config;
 
@@ -495,8 +546,5 @@ class ClientConfiguration {
                                                              header.get("value").asString().get())));
         }
 
-        Config config() {
-            return config;
-        }
     }
 }

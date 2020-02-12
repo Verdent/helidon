@@ -16,6 +16,7 @@
 package io.helidon.webclient;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.time.Duration;
 import java.time.temporal.TemporalUnit;
@@ -26,8 +27,10 @@ import java.util.List;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 
+import io.helidon.common.context.Context;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
+import io.helidon.media.common.MediaSupport;
 import io.helidon.webclient.spi.ClientService;
 import io.helidon.webclient.spi.ClientServiceProvider;
 
@@ -80,10 +83,6 @@ public interface WebClient {
     final class Builder implements io.helidon.common.Builder<WebClient> {
         private final ClientConfiguration.Builder configuration = NettyClient.SHARED_CONFIGURATION.get().derive();
 
-        private HelidonServiceLoader.Builder<ClientServiceProvider> services = HelidonServiceLoader
-                .builder(ServiceLoader.load(ClientServiceProvider.class));
-        private List<ClientContentHandler<?>> clientContentHandlers = new ArrayList<>();
-
         private Builder() {
         }
 
@@ -93,8 +92,7 @@ public interface WebClient {
         }
 
         public Builder register(ClientService service) {
-            //EDIT: pro svou zajimavost prozkoumat JavaServiceLoader
-            services.addService(new ClientServiceProvider() {
+            configuration.clientServiceProvider(new ClientServiceProvider() {
                 @Override
                 public String configKey() {
                     return "ignored";
@@ -113,8 +111,8 @@ public interface WebClient {
             return this;
         }
 
-        public Builder register(ClientContentHandler<?> contentHandler) {
-            clientContentHandlers.add(contentHandler);
+        public Builder mediaSupport(MediaSupport mediaSupport) {
+            configuration.mediaSupport(mediaSupport);
             return this;
         }
 
@@ -138,7 +136,14 @@ public interface WebClient {
             return this;
         }
 
-        public Builder addTarget(OutboundTarget target) {
+        /**
+         * Sets specific context which should be used in requests.
+         *
+         * @param context context
+         * @return updated builder instance
+         */
+        public Builder context(Context context) {
+            configuration.context(context);
             return this;
         }
 
@@ -167,15 +172,20 @@ public interface WebClient {
         }
 
         public Builder baseUri(URI uri) {
+            configuration.uri(uri);
             return this;
         }
 
         public Builder baseUri(String uri) {
-            return this;
+            return baseUri(URI.create(uri));
         }
 
         public Builder baseUri(URL url) {
-            return this;
+            try {
+                return baseUri(url.toURI());
+            } catch (URISyntaxException e) {
+                throw new ClientException("Failed to create URI from URL", e);
+            }
         }
 
         public Builder followRedirects(boolean follow) {
@@ -189,30 +199,8 @@ public interface WebClient {
         }
 
         public ClientConfiguration configuration() {
-            configuration.clientServices(services());
             return configuration.build();
         }
 
-        //EDIT: premistit do clientconfigurace
-        //EDIT: Napadlo me to udelat tak, ze tohle hodim do client configurace a budu udrzovat jen list provideru, kteri byli registrovani pres clienta
-        // a vsechno co vytahuju tady, budu delat pro kazdy request, ale nejsem si jisty co na to performance.
-        public List<ClientService> services() {
-            Config config = this.configuration == null ? Config.empty() : this.configuration.config();
-            Config servicesConfig = config.get("services");
-            servicesConfig.get("excludes").asList(String.class).orElse(Collections.emptyList())
-                    .forEach(services::addExcludedClassName);
-
-            Config serviceConfig = servicesConfig.get("config");
-
-            return services.build()
-                    .asList()
-                    .stream()
-                    .map(it -> it.create(serviceConfig.get(it.configKey())))
-                    .collect(Collectors.toList());
-        }
-
-        public List<ClientContentHandler<?>> clientContentHandlers() {
-            return clientContentHandlers;
-        }
     }
 }

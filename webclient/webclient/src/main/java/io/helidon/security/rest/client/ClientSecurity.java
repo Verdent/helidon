@@ -148,16 +148,15 @@ public class ClientSecurity implements ClientService {
     }
 
     private SecurityContext createContext(ClientServiceRequest request) {
-        return security.contextBuilder(UUID.randomUUID().toString())
+        SecurityContext.Builder builder = security.contextBuilder(UUID.randomUUID().toString())
                 .endpointConfig(EndpointConfig.builder()
                                         .build())
                 .env(SecurityEnvironment.builder()
                              .path(request.path().toString())
-                             //TODO everything else
-                             .build())
-                .tracingTracer(request.context().get(Tracer.class).orElse(null))
-                .tracingSpan(request.context().get(SpanContext.class).orElse(null))
-                .build();
+                             .build());
+        request.context().get(Tracer.class).ifPresent(builder::tracingTracer);
+        request.context().get(SpanContext.class).ifPresent(builder::tracingSpan);
+        return builder.build();
     }
 
     static void traceError(Span span, Throwable throwable, String description) {

@@ -20,6 +20,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import io.helidon.config.Config;
+import io.helidon.media.common.MediaSupport;
+import io.helidon.media.common.StringBodyReader;
 import io.helidon.webclient.Proxy;
 import io.helidon.webclient.Ssl;
 import io.helidon.webclient.WebClient;
@@ -37,8 +39,14 @@ public class NewClientExample {
                 .build();
 
         client.get()
-                .uri("https://www.google.com")
+                .uri("https://www.google.com/search")
+                .queryParam("q", "test")
                 .request(String.class)
+                .thenAccept(System.out::println)
+                .thenCompose(nothing -> client.get()
+                        .uri("https://www.google.com/search")
+                        .queryParam("q", "test")
+                        .request(String.class))
                 .thenAccept(System.out::println)
                 .exceptionally(throwable -> {
                     // handle client error
@@ -48,6 +56,33 @@ public class NewClientExample {
                 // this is to make sure the VM does not exit before finishing the call
                 .toCompletableFuture()
                 .get();
+
+//        client.get()
+//                .uri("https://www.google.com")
+//                .register(StringBodyReader.get())
+//                .request(String.class)
+//                .thenAccept(System.out::println)
+//                .exceptionally(throwable -> {
+//                    // handle client error
+//                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+//                    return null;
+//                })
+//                // this is to make sure the VM does not exit before finishing the call
+//                .toCompletableFuture()
+//                .get();
+
+//        client.get()
+//                .uri("https://www.google.com")
+//                .request(String.class)
+//                .thenAccept(System.out::println)
+//                .exceptionally(throwable -> {
+//                    // handle client error
+//                    LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);
+//                    return null;
+//                })
+//                // this is to make sure the VM does not exit before finishing the call
+//                .toCompletableFuture()
+//                .get();
 
     }
 }

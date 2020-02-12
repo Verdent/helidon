@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
 import io.opentracing.Tracer;
+import io.opentracing.util.GlobalTracer;
 
 /**
  * Security context to retrieve security information about current user, either injected or obtained from {@link
@@ -342,6 +343,9 @@ public interface SecurityContext {
             }
             if (null == ec) {
                 ec = EndpointConfig.builder().build();
+            }
+            if (null == tracingTracer) {
+                tracingTracer = GlobalTracer.get();
             }
             return new SecurityContextImpl(this);
         }

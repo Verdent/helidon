@@ -29,9 +29,8 @@ import io.helidon.webclient.ClientServiceResponse;
 @FunctionalInterface
 public interface ClientService {
 
-    //EDIT: pred vykonanim requestu projet vsechny servicy.
-    // Podivat se jak se ted registruji pomoci builderu a dotlacit to do clienta/requestu
     CompletionStage<ClientServiceRequest> request(ClientServiceRequest request);
+
     default CompletionStage<ClientServiceResponse> response(ClientRequestBuilder.ClientRequest request,
                                                     ClientServiceResponse response) {
         return CompletableFuture.completedFuture(response);

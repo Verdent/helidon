@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import io.helidon.common.Version;
 import io.helidon.common.http.Http;
 import io.helidon.config.Config;
+import io.helidon.media.common.MediaSupport;
 
 import io.netty.channel.nio.NioEventLoopGroup;
 
@@ -41,6 +42,7 @@ final class NettyClient implements WebClient {
     private static final LazyValue<String> DEFAULT_USER_AGENT = LazyValue
             .create(() -> "Helidon/" + Version.VERSION + " (java " + System.getProperty("java.runtime.version") + ")");
     private static final Proxy DEFAULT_PROXY = Proxy.noProxy();
+    private static final MediaSupport DEFAULT_MEDIA_SUPPORT = MediaSupport.createWithDefaults();
     private static final Ssl DEFAULT_SSL = Ssl.builder().build();
 
     // shared by all client instances
@@ -55,6 +57,7 @@ final class NettyClient implements WebClient {
                     .readTimeout(DEFAULT_READ_TIMEOUT)
                     .followRedirects(DEFAULT_FOLLOW_REDIRECTS)
                     .userAgent(DEFAULT_USER_AGENT)
+                    .mediaSupport(DEFAULT_MEDIA_SUPPORT)
                     .proxy(DEFAULT_PROXY)
                     .ssl(DEFAULT_SSL)
                     .build();

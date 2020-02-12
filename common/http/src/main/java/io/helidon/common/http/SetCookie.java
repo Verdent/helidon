@@ -63,6 +63,68 @@ public class SetCookie {
         return new Builder(name, value);
     }
 
+    public static SetCookie parse(String setCookie) {
+        String[] cookieParts = setCookie.split(PARAM_SEPARATOR);
+        String nameAndValue = cookieParts[0];
+        //check na equals pozici
+        int equalsIndex = nameAndValue.indexOf('=');
+        String name = nameAndValue.substring(0, equalsIndex);
+        String value = nameAndValue.length() == equalsIndex ? null : nameAndValue.substring(equalsIndex + 1);
+        Builder builder = builder(name, value);
+
+        for (int i = 1; i < cookieParts.length; i++) {
+            String cookiePart = cookieParts[i];
+            equalsIndex = cookiePart.indexOf('=');
+            String partName;
+            String partValue;
+            if (equalsIndex > -1) {
+                partName = cookiePart.substring(0, equalsIndex);
+                partValue = cookiePart.length() == equalsIndex ? null : cookiePart.substring(equalsIndex + 1);
+            } else {
+                partName = cookiePart;
+                partValue = null;
+            }
+            switch (partName.toLowerCase()) {
+            case "expires":
+                hasValue(partName, partValue);
+                builder.expires(Http.DateTime.parse(partValue));
+                break;
+            case "max-age":
+                hasValue(partName, partValue);
+                builder.maxAge(Duration.parse(partValue));
+                break;
+            case "domain":
+                hasValue(partName, partValue);
+                builder.domain(partValue);
+                break;
+            case "path":
+                hasValue(partName, partValue);
+                builder.path(partValue);
+                break;
+            case "secure":
+                hasNoValue(partName, partValue);
+                builder.secure(true);
+                break;
+            case "httponly":
+                hasNoValue(partName, partValue);
+                builder.httpOnly(true);
+            }
+        }
+        return builder.build();
+    }
+
+    private static void hasNoValue(String partName, String partValue) {
+        if (partValue != null) {
+            throw new IllegalArgumentException("Set-Cookie parameter " + partName + " has to have no value!");
+        }
+    }
+
+    private static void hasValue(String partName, String partValue) {
+        if (partValue == null) {
+            throw new IllegalArgumentException("Set-Cookie parameter " + partName + " has to have a value!");
+        }
+    }
+
     /**
      * Creates new instance.
      *

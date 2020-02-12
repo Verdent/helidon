@@ -17,6 +17,7 @@
 package io.helidon.common.http;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -24,6 +25,7 @@ import java.time.format.DateTimeParseException;
 import java.time.format.SignStyle;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -1037,7 +1039,8 @@ public final class Http {
          * <p>
          * This is just copy of convenient copy of {@link DateTimeFormatter#RFC_1123_DATE_TIME}.
          */
-        public static final DateTimeFormatter RFC_1123_DATE_TIME = DateTimeFormatter.RFC_1123_DATE_TIME;
+        public static final DateTimeFormatter RFC_1123_DATE_TIME =
+                DateTimeFormatter.RFC_1123_DATE_TIME.withZone(ZoneId.of("GMT"));
         /**
          * The <i>ANSI C's</i> {@code asctime()} format, such as {@code 'Sun Nov  6 08:49:37 1994'}.
          * <p>
@@ -1045,6 +1048,9 @@ public final class Http {
          * However it should be used as a fallback for parsing to achieve compatibility with older HTTP standards.
          */
         public static final DateTimeFormatter ASCTIME_DATE_TIME;
+
+        //EDIT: jmeno? :D
+        private static final DateTimeFormatter RFC_1123_AND_RFC_850_HYBRID;
         /**
          * Manual list ensures that no localisation can affect standard parsing/generating.
          */
@@ -1128,6 +1134,10 @@ public final class Http {
                     .appendValue(YEAR, 4)
                     .parseDefaulting(OFFSET_SECONDS, 0)
                     .toFormatter();
+
+            RFC_1123_AND_RFC_850_HYBRID = DateTimeFormatter.ofPattern("EEE, dd-MMM-yyyy HH:mm:ss z")
+                    .withLocale(Locale.ENGLISH)
+                    .withZone(ZoneId.of("GMT"));
         }
 
         private DateTime() {
@@ -1150,7 +1160,11 @@ public final class Http {
                 try {
                     return ZonedDateTime.parse(text, RFC_850_DATE_TIME);
                 } catch (DateTimeParseException pe2) {
-                    return ZonedDateTime.parse(text, ASCTIME_DATE_TIME);
+                    try {
+                        return ZonedDateTime.parse(text, ASCTIME_DATE_TIME);
+                    } catch (DateTimeParseException pe3) {
+                        return ZonedDateTime.parse(text, RFC_1123_AND_RFC_850_HYBRID);
+                    }
                 }
             }
         }

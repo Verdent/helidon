@@ -36,9 +36,7 @@
   */
  public class ClientTracing implements ClientService {
 
-     private ClientTracing() {
-
-     }
+     private ClientTracing() {}
 
      public static ClientTracing create() {
          return new ClientTracing();

@@ -20,11 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import io.helidon.common.http.DataChunk;
 import io.helidon.common.http.Http;
 import io.helidon.common.reactive.OriginThreadPublisher;
+import io.helidon.webclient.spi.ClientService;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -51,15 +53,19 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private final ClientResponseImpl.Builder clientResponse;
     private final CompletableFuture<ClientResponse> responseFuture;
+    private final CompletableFuture<ClientServiceRequest> requestComplete;
     private HttpResponsePublisher publisher;
 
     /**
      * Creates new instance.
      *
-     * @param responseFuture response future
+     * @param responseFuture  response future
+     * @param requestComplete request complete future
      */
-    NettyClientHandler(CompletableFuture<ClientResponse> responseFuture) {
+    NettyClientHandler(CompletableFuture<ClientResponse> responseFuture,
+                       CompletableFuture<ClientServiceRequest> requestComplete) {
         this.responseFuture = responseFuture;
+        this.requestComplete = requestComplete;
         this.clientResponse = ClientResponseImpl.builder();
     }
 
@@ -74,17 +80,19 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws IOException {
         if (msg instanceof HttpResponse) {
-
             ctx.channel().config().setAutoRead(false);
+            HttpResponse response = (HttpResponse) msg;
+            ClientRequestBuilder.ClientRequest clientRequest = ctx.channel().attr(REQUEST).get();
+            RequestConfiguration requestConfiguration = clientRequest.configuration();
 
             this.publisher = new HttpResponsePublisher(ctx);
-            this.clientResponse.contentPublisher(publisher);
+            this.clientResponse.contentPublisher(publisher)
+                    .mediaSupport(requestConfiguration.mediaSupport())
+                    .status(helidonStatus(response.status()))
+                    .httpVersion(Http.Version.create(response.protocolVersion().toString()));
 
-            //publisher = new HttpResponsePublisher(ctx);
-            ClientRequestBuilder.ClientRequest clientRequest = ctx.channel().attr(REQUEST).get();
-            HttpResponse response = (HttpResponse) msg;
             for (HttpInterceptor interceptor : HTTP_INTERCEPTORS) {
-                if (interceptor.shouldIntercept(response.status(), clientRequest.configuration())) {
+                if (interceptor.shouldIntercept(response.status(), requestConfiguration)) {
                     interceptor.handleInterception(response, clientRequest, responseFuture);
                     if (!interceptor.continueAfterInterception()) {
                         publisher.complete();
@@ -93,8 +101,6 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
                     }
                 }
             }
-            clientResponse.status(helidonStatus(response.status()));
-            clientResponse.httpVersion(Http.Version.create(response.protocolVersion().toString()));
 
             HttpHeaders nettyHeaders = response.headers();
             for (String name : nettyHeaders.names()) {
@@ -105,9 +111,20 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
             // we got a response, we can safely complete the future
             // all errors are now fed only to the publisher
             ClientResponse clientResponse = this.clientResponse.build();
-            clientRequest.configuration().cookieManager().put(clientRequest.configuration().requestURI(),
+            requestConfiguration.cookieManager().put(requestConfiguration.requestURI(),
                                                               clientResponse.headers().toMap());
-            responseFuture.complete(clientResponse);
+
+            ClientServiceResponse clientServiceResponse = new ClientServiceResponseImpl(requestConfiguration.context().get(),
+                                                                                        clientResponse.headers());
+
+            List<ClientService> services = requestConfiguration.services();
+            CompletionStage<ClientServiceResponse> csr = CompletableFuture.completedFuture(clientServiceResponse);
+
+            for (ClientService service : services) {
+                csr = csr.thenCompose(clientSerResponse -> service.response(clientRequest, clientSerResponse));
+            }
+
+            csr.whenComplete((clientSerResponse, throwable) -> responseFuture.complete(clientResponse));
         }
 
         // never "else-if" - msg may be an instance of more than one type, we must process all of them
@@ -118,10 +135,11 @@ class NettyClientHandler extends SimpleChannelInboundHandler<HttpObject> {
 
         if (msg instanceof LastHttpContent) {
             ClientRequestBuilder.ClientRequest clientRequest = ctx.channel().attr(REQUEST).get();
+            ClientServiceRequest serviceRequest = clientRequest.configuration().clientServiceRequest();
+            requestComplete.complete(serviceRequest);
+
             publisher.complete();
             ctx.close();
-            ClientServiceRequest serviceRequest = clientRequest.configuration().clientServiceRequest();
-            serviceRequest.whenComplete().toCompletableFuture().complete(serviceRequest);
         }
     }
 

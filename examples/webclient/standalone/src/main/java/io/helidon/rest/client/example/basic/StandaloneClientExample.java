@@ -27,6 +27,7 @@ import io.helidon.security.Security;
 import io.helidon.security.rest.client.ClientSecurity;
 import io.helidon.tracing.rest.client.ClientTracing;
 import io.helidon.webclient.ClientResponse;
+import io.helidon.webclient.Proxy;
 import io.helidon.webclient.WebClient;
 
 import io.opentracing.SpanContext;
@@ -60,7 +61,7 @@ public class StandaloneClientExample {
         WebClient client = WebClient.builder()
                 // default configuration of client metrics
                 // REQUIRES: metrics registry configured on request context (injected by MetricsSupport)
-                .register(ClientMetrics.create(seMetricFactory, seMetricFactory.getRegistry(MetricRegistry.Type.APPLICATION)))
+// TODO               .register(ClientMetrics.create(seMetricFactory, seMetricFactory.getRegistry(MetricRegistry.Type.APPLICATION)))
                 // default configuration of tracing
                 // REQUIRES: span context configured on request context (injected by future TracingSupport)
                 .register(ClientTracing.create())
@@ -117,14 +118,15 @@ public class StandaloneClientExample {
         //                .get();
 
                 client.get()
-                                .uri("http://www.google.com:443")
-                                .queryParam("q", "ahoj")
+                                .uri("http://www.google.com/search")
+                                .queryParam("q", "test")
                                 .request(String.class)
                                 .thenAccept(System.out::println)
-                //                .thenCompose(nothing -> client.get()
-                //                        .uri("https://www.google.com/search?q=test")
-                //                        .request(String.class))
-                //                .thenAccept(System.out::println)
+                                .thenCompose(nothing -> client.get()
+                                        .uri("https://www.google.com/search")
+                                        .queryParam("q", "test")
+                                        .request(String.class))
+                                .thenAccept(System.out::println)
                                 .exceptionally(throwable -> {
                                     // handle client error
                                     LOGGER.log(Level.SEVERE, "Failed to invoke client", throwable);

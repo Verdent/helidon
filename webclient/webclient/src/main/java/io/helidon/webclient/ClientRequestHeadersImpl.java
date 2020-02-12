@@ -15,16 +15,13 @@
  */
 package io.helidon.webclient;
 
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -44,12 +41,6 @@ import io.netty.handler.codec.http.cookie.DefaultCookie;
  */
 class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
-    //Dates are required to be in following format
-    //<day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.RFC_1123_DATE_TIME
-            .withLocale(Locale.US)
-            .withZone(ZoneId.of("GMT"));
-
     private final Map<String, List<String>> headers = new HashMap<>();
 
     ClientRequestHeadersImpl() {
@@ -60,23 +51,27 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     @Override
-    public void unsetHeader(String name) {
+    public ClientRequestHeaders unsetHeader(String name) {
         headers.remove(name);
+        return this;
     }
 
     @Override
-    public void addCookie(String name, String value) {
+    public ClientRequestHeaders addCookie(String name, String value) {
         add(Http.Header.COOKIE, ClientCookieEncoder.STRICT.encode(new DefaultCookie(name, value)));
+        return this;
     }
 
     @Override
-    public void contentType(MediaType contentType) {
+    public ClientRequestHeaders contentType(MediaType contentType) {
         put(Http.Header.CONTENT_TYPE, contentType.toString());
+        return this;
     }
 
     @Override
-    public void contentLength(long length) {
+    public ClientRequestHeaders contentLength(long length) {
         put(Http.Header.CONTENT_LENGTH, Long.toString(length));
+        return this;
     }
 
     @Override
@@ -87,13 +82,13 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
     @Override
     public ClientRequestHeaders ifModifiedSince(ZonedDateTime time) {
-        put(Http.Header.IF_MODIFIED_SINCE, time.format(FORMATTER));
+        put(Http.Header.IF_MODIFIED_SINCE, time.format(Http.DateTime.RFC_1123_DATE_TIME));
         return this;
     }
 
     @Override
     public ClientRequestHeaders ifUnmodifiedSince(ZonedDateTime time) {
-        put(Http.Header.IF_UNMODIFIED_SINCE, time.format(FORMATTER));
+        put(Http.Header.IF_UNMODIFIED_SINCE, time.format(Http.DateTime.RFC_1123_DATE_TIME));
         return this;
     }
 
@@ -111,7 +106,7 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
 
     @Override
     public ClientRequestHeaders ifRange(ZonedDateTime time) {
-        put(Http.Header.IF_RANGE, time.format(FORMATTER));
+        put(Http.Header.IF_RANGE, time.format(Http.DateTime.RFC_1123_DATE_TIME));
         return this;
     }
 
@@ -271,7 +266,7 @@ class ClientRequestHeadersImpl implements ClientRequestHeaders {
     }
 
     private Optional<ZonedDateTime> convertToDate(String header) {
-        return first(header).map(date -> ZonedDateTime.parse(date, FORMATTER));
+        return first(header).map(date -> Http.DateTime.parse(header));
     }
 
     private Iterable<String> processEtags(String... etags) {

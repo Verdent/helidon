@@ -1,13 +1,18 @@
 package io.helidon.webclient;
 
+import java.nio.file.Paths;
+
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
+import io.helidon.config.spi.ConfigSource;
 
 import io.netty.handler.ssl.ClientAuth;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * TODO Javadoc

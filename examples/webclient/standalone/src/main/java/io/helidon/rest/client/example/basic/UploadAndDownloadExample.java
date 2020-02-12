@@ -19,7 +19,6 @@ package io.helidon.rest.client.example.basic;
 import java.nio.file.Path;
 
 import io.helidon.webclient.ClientResponse;
-import io.helidon.webclient.FilePublisher;
 import io.helidon.webclient.FileSubscriber;
 import io.helidon.webclient.WebClient;
 
@@ -32,12 +31,20 @@ public class UploadAndDownloadExample {
     }
 
     void upload(Path filePath, String uri) {
-        WebClient client = WebClient.create();
-        client.put()
-                .uri(uri)
-                .submit(FilePublisher.create(filePath))
-                .thenApply(ClientResponse::status)
-                .thenAccept(System.out::println);
+        //EDIT: zaregistrovat defaulty pokud nic nezadano a jinak tam nahodit empty pokud neco chce. Registrovat pres metodu }??
+//        WebClient client = WebClient.mediaSupport(MediaSupport.builder()
+//                                                          .registerDefaults()
+//                                                          .registerWriter(MultipartBodyWriter.get())
+//                                                          .build()).create();
+//
+//
+//        client.put()
+//                .uri(uri)
+//                .submit(WriteableMultiPart.create(Paths.get("/foo")))
+//                .submit(Paths.get("some"))
+//                .submit(FilePublisher.create(filePath))
+//                .thenApply(ClientResponse::status)
+//                .thenAccept(System.out::println);
     }
 
     void download(String uri, Path filePath) {

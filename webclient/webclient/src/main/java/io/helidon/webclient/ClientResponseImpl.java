@@ -16,9 +16,11 @@
 package io.helidon.webclient;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.common.http.DataChunk;
 import io.helidon.common.http.Http;
@@ -26,6 +28,7 @@ import io.helidon.common.http.MediaType;
 import io.helidon.common.reactive.Flow;
 import io.helidon.media.common.MediaSupport;
 import io.helidon.media.common.MessageBodyReadableContent;
+import io.helidon.media.common.MessageBodyReader;
 import io.helidon.media.common.MessageBodyReaderContext;
 import io.helidon.webserver.HashRequestHeaders;
 
@@ -38,12 +41,14 @@ final class ClientResponseImpl implements ClientResponse {
     private final Flow.Publisher<DataChunk> publisher;
     private final Http.ResponseStatus status;
     private final Http.Version version;
+    private final MediaSupport mediaSupport;
 
     private ClientResponseImpl(Builder builder) {
         headers = ClientResponseHeaders.create(builder.headers);
         publisher = builder.publisher;
         status = builder.status;
         version = builder.version;
+        mediaSupport = builder.mediaSupport;
     }
 
     /**
@@ -68,12 +73,12 @@ final class ClientResponseImpl implements ClientResponse {
     @Override
     public MessageBodyReadableContent content() {
         Optional<MediaType> mediaType = headers.contentType();
-        MediaSupport mediaSupport = MediaSupport.createWithDefaults();
 
-        return MessageBodyReadableContent.create(publisher, MessageBodyReaderContext.create(mediaSupport,
+        MessageBodyReaderContext readerContext = MessageBodyReaderContext.create(mediaSupport,
                                                                                             null,
                                                                                             headers,
-                                                                                            mediaType));
+                                                                                            mediaType);
+        return MessageBodyReadableContent.create(publisher, readerContext);
     }
 
     @Override
@@ -88,6 +93,7 @@ final class ClientResponseImpl implements ClientResponse {
 
         private final Map<String, List<String>> headers = new HashMap<>();
 
+        private MediaSupport mediaSupport;
         private Flow.Publisher<DataChunk> publisher;
         private Http.ResponseStatus status = Http.Status.INTERNAL_SERVER_ERROR_500;
         private Http.Version version = Http.Version.V1_1;
@@ -102,8 +108,20 @@ final class ClientResponseImpl implements ClientResponse {
          *
          * @param publisher content publisher
          */
-        public void contentPublisher(Flow.Publisher<DataChunk> publisher) {
+        public Builder contentPublisher(Flow.Publisher<DataChunk> publisher) {
             this.publisher = publisher;
+            return this;
+        }
+
+        /**
+         *
+         *
+         * @param mediaSupport
+         * @return
+         */
+        public Builder mediaSupport(MediaSupport mediaSupport) {
+            this.mediaSupport = mediaSupport;
+            return this;
         }
 
         /**
@@ -111,8 +129,9 @@ final class ClientResponseImpl implements ClientResponse {
          *
          * @param status response status code
          */
-        public void status(Http.ResponseStatus status) {
+        public Builder status(Http.ResponseStatus status) {
             this.status = status;
+            return this;
         }
 
         /**
@@ -120,8 +139,9 @@ final class ClientResponseImpl implements ClientResponse {
          *
          * @param version response http version
          */
-        public void httpVersion(Http.Version version) {
+        public Builder httpVersion(Http.Version version) {
             this.version = version;
+            return this;
         }
 
         /**
@@ -130,9 +150,9 @@ final class ClientResponseImpl implements ClientResponse {
          * @param name header name
          * @param values header value
          */
-        public void addHeader(String name, List<String> values) {
-            //HttpUtil.isTransferEncodingChunked(response)
+        public Builder addHeader(String name, List<String> values) {
             this.headers.put(name, values);
+            return this;
         }
     }
 }

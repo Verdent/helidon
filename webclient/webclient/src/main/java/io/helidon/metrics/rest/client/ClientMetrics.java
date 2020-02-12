@@ -53,7 +53,6 @@ public class ClientMetrics implements ClientService {
         return null;
     }
 
-    //EDIT: retezeni. Zavolam prvni, cekam na dokonceni, pak ClientServiceRequest predam druhe...... na konci tohle predam k vykonani requestu
     //EDIT: zatim nechat byt
     @Override
     public CompletionStage<ClientServiceRequest> request(ClientServiceRequest request) {

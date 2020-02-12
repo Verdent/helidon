@@ -1,8 +1,6 @@
 package io.helidon.webclient;
 
 import java.net.URI;
-import java.util.Collections;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -12,12 +10,15 @@ import io.helidon.common.http.Http;
 import io.helidon.common.http.Parameters;
 import io.helidon.config.Config;
 
+import sun.management.Sensor;
+
 /**
  * Implementation of the {@link ClientServiceRequest} interface
  */
 class ClientServiceRequestImpl implements ClientServiceRequest {
 
     private final ClientRequestHeaders headers;
+    private final Config config;
     private final Context context;
     private final Http.RequestMethod method;
     private final Http.Version version;
@@ -30,19 +31,23 @@ class ClientServiceRequestImpl implements ClientServiceRequest {
     private final CompletionStage<ClientServiceRequest> sent;
     private final CompletionStage<ClientServiceRequest> complete;
 
-    ClientServiceRequestImpl(ClientRequestBuilderImpl requestBuilder) {
-        headers = requestBuilder.headers();
-        context = requestBuilder.context();
-        method = requestBuilder.method();
-        version = requestBuilder.httpVersion();
-        uri = requestBuilder.uri();
-        query = requestBuilder.query();
-        queryParams = queryParams();
-        path = requestBuilder.path();
-        fragment = requestBuilder.fragment();
-        parameters = new HashParameters(requestBuilder.properties());
-        sent = new CompletableFuture<>();
-        complete = new CompletableFuture<>();
+    ClientServiceRequestImpl(ClientRequestBuilderImpl requestBuilder,
+                             Config serviceConfig,
+                             CompletionStage<ClientServiceRequest> sent,
+                             CompletionStage<ClientServiceRequest> complete) {
+        this.headers = requestBuilder.headers();
+        this.context = requestBuilder.context();
+        this.method = requestBuilder.method();
+        this.version = requestBuilder.httpVersion();
+        this.uri = requestBuilder.uri();
+        this.query = requestBuilder.query();
+        this.queryParams = queryParams();
+        this.path = requestBuilder.path();
+        this.fragment = requestBuilder.fragment();
+        this.config = serviceConfig;
+        this.parameters = new HashParameters(requestBuilder.properties());
+        this.sent = sent;
+        this.complete = complete;
     }
 
     @Override
@@ -70,10 +75,10 @@ class ClientServiceRequestImpl implements ClientServiceRequest {
         return parameters;
     }
 
-    //EDIT: muzu odstranit kdyz v prvni verzi nechceme target configurace?
+    //EDIT: Kde presne to ma sedet?
     @Override
     public Config serviceConfig() {
-        return null;
+        return config;
     }
 
     @Override

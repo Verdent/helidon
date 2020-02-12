@@ -23,11 +23,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -49,13 +51,11 @@ import io.helidon.common.reactive.Flow;
 import io.helidon.common.reactive.Single;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
-import io.helidon.media.common.MediaSupport;
 import io.helidon.media.common.MessageBodyReadableContent;
 import io.helidon.media.common.MessageBodyReader;
-import io.helidon.media.common.MessageBodyWriteableContent;
+import io.helidon.media.common.MessageBodyReaderContext;
 import io.helidon.media.common.MessageBodyWriter;
 import io.helidon.media.common.MessageBodyWriterContext;
-import io.helidon.media.jsonp.common.JsonProcessing;
 import io.helidon.webclient.spi.ClientService;
 import io.helidon.webclient.spi.ClientServiceProvider;
 
@@ -66,6 +66,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -97,7 +98,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     private final Http.RequestMethod method;
     private final ClientRequestHeaders headers;
     private final Parameters queryParams;
-    private final List<ClientContentHandler> clientContentHandlers;
+    private final MessageBodyWriterContext writerContext;
 
     private URI uri;
     private Http.Version httpVersion;
@@ -108,6 +109,7 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     private RequestConfiguration requestConfiguration;
     private HttpRequest.Path path;
     private List<ClientService> services;
+    private Set<MessageBodyReader<?>> messageBodyReaders;
 
     private ClientRequestBuilderImpl(LazyValue<NioEventLoopGroup> eventGroup,
                                      ClientConfiguration configuration,
@@ -116,16 +118,16 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         this.eventGroup = eventGroup;
         this.configuration = configuration;
         this.method = method;
+        this.uri = configuration.uri();
         //Default headers added to the current headers of the request
         this.headers = new ClientRequestHeadersImpl(this.configuration.headers());
         this.queryParams = new HashParameters();
-        this.clientContentHandlers = configuration.clientContentHandlers();
         this.httpVersion = Http.Version.V1_1;
         this.fragment = "";
         this.redirectionCount = 0;
+        this.writerContext = MessageBodyWriterContext.create(configuration.mediaSupport(), null, headers, null);
+        this.messageBodyReaders = new HashSet<>();
 
-
-        //configurace pridat parent context
         Context.Builder contextBuilder = Context.builder().id("webclient-" + REQUEST_NUMBER.incrementAndGet());
         //EDIT: prepsat az bude 11
         if (configuration.context().isPresent()) {
@@ -135,17 +137,29 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         }
         //        configuration.context().ifPresentOrElse(contextBuilder::parent,
         //                                                () -> Contexts.context().ifPresent(contextBuilder::parent));
-        Contexts.context().ifPresent(contextBuilder::parent);
+//        Contexts.context().ifPresent(contextBuilder::parent);
         context = contextBuilder.build();
     }
 
+    /**
+     * @param eventGroup
+     * @param configuration
+     * @param method
+     * @return
+     */
     public static ClientRequestBuilder create(LazyValue<NioEventLoopGroup> eventGroup,
                                               ClientConfiguration configuration,
                                               Http.RequestMethod method) {
         return new ClientRequestBuilderImpl(eventGroup, configuration, method);
     }
 
-    public static ClientRequestBuilder create(ClientRequestBuilder.ClientRequest clientRequest) {
+    /**
+     * Creates new instance of {@link ClientRequestBuilder} based on previous request.
+     *
+     * @param clientRequest previous request
+     * @return client request builder
+     */
+    static ClientRequestBuilder create(ClientRequestBuilder.ClientRequest clientRequest) {
         ClientRequestBuilderImpl builder = new ClientRequestBuilderImpl(EVENT_GROUP,
                                                                         clientRequest.configuration(),
                                                                         clientRequest.method());
@@ -157,6 +171,8 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         builder.path = clientRequest.path();
         builder.fragment = clientRequest.fragment();
         builder.redirectionCount = clientRequest.redirectionCount() + 1;
+        //EDIT: propagace request specific readeru a writeru
+        //EDIT: co vse propagovat z predchoziho requestu pri redirectu?
         int maxRedirects = builder.configuration.maxRedirects();
         if (builder.redirectionCount > maxRedirects) {
             throw new ClientException("Max number of redirects extended! (" + maxRedirects + ")");
@@ -238,8 +254,15 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     }
 
     @Override
-    public ClientRequestBuilder register(ClientContentHandler<?> handler) {
-        this.clientContentHandlers.add(handler);
+    public ClientRequestBuilder register(MessageBodyWriter<?> messageBodyWriter) {
+        writerContext.registerWriter(messageBodyWriter);
+        return this;
+    }
+
+    @Override
+    public ClientRequestBuilder register(MessageBodyReader<?> messageBodyReader) {
+        //EDIT: nezapomenout
+        messageBodyReaders.add(messageBodyReader);
         return this;
     }
 
@@ -296,22 +319,8 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     @Override
     public <T> CompletionStage<T> submit(Object requestEntity, Class<T> responseType) {
         GenericType<T> responseGenericType = GenericType.create(responseType);
-        MessageBodyWriteableContent writeableContent = MessageBodyWriteableContent.create(requestEntity, this.headers);
-
-        MessageBodyWriterContext writerContext = MediaSupport.builder().build().writerContext();
-
-        //EDIT: upravit
-        Flow.Publisher<DataChunk> sendPublisher = writerContext.marshall(
-                Single.just(content), GenericType.create(content), null);
-
-        clientContentHandlers.stream()
-                .filter(clientContentHandler -> clientContentHandler.supports(responseGenericType))
-                .forEach(clientContentHandler -> {
-                    Optional<MessageBodyWriter<T>> writer = clientContentHandler.writer(this);
-                    writer.ifPresent(writeableContent::registerWriter);
-                });
-
-        Flow.Publisher<DataChunk> dataChunkPublisher = writeableContent.toPublisher(null);
+        Flow.Publisher<DataChunk> dataChunkPublisher = writerContext.marshall(
+                Single.just(requestEntity), GenericType.create(requestEntity), null);
         return Contexts.runInContext(context, () -> invoke(dataChunkPublisher, responseGenericType));
     }
 
@@ -383,73 +392,65 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
     @SuppressWarnings("unchecked")
     private <T> CompletionStage<T> invoke(Flow.Publisher<DataChunk> requestEntity, GenericType<T> responseType) {
         this.uri = prepareFinalURI();
-
-        DefaultHttpRequest request = new DefaultHttpRequest(toNettyHttpVersion(httpVersion),
-                                                            toNettyMethod(method),
-                                                            uri.toASCIIString());
-        ClientServiceRequest serviceRequest = new ClientServiceRequestImpl(this);
-
-        //EDIT: Jak ma tohle presne fungovat? Na co je tady ta completion?
+        CompletableFuture<ClientServiceRequest> sent = new CompletableFuture<>();
+        CompletableFuture<ClientServiceRequest> complete = new CompletableFuture<>();
+        ClientServiceRequest completedRequest = new ClientServiceRequestImpl(this,
+                                                                             configuration.config().get("services"),
+                                                                             sent,
+                                                                             complete);
         services = services();
-        services.forEach(clientService -> {
-            CompletionStage<ClientServiceRequest> completionStage = clientService.request(serviceRequest);
-        });
+        CompletionStage<ClientServiceRequest> rcs = CompletableFuture.completedFuture(completedRequest);
 
-        setRequestHeaders(request.headers());
+        for (ClientService service : services) {
+            rcs = rcs.thenCompose(service::request);
+        }
 
-        requestConfiguration = RequestConfiguration.builder(uri)
-                .clientServiceRequest(serviceRequest)
-                .update(configuration).build();
-        ClientRequestImpl clientRequest = new ClientRequestImpl(this);
+        return rcs.thenCompose(serviceRequest -> {
+            HttpHeaders headers = toNettyHttpHeaders();
+            DefaultHttpRequest request = new DefaultHttpRequest(toNettyHttpVersion(httpVersion),
+                                                                toNettyMethod(method),
+                                                                uri.toASCIIString(),
+                                                                headers);
 
-        CompletableFuture<ClientResponse> result = new CompletableFuture<>();
+            requestConfiguration = RequestConfiguration.builder(uri)
+                    .update(configuration)
+                    .clientServiceRequest(serviceRequest)
+                    .services(services)
+                    .context(context)
+                    .build();
+            ClientRequestImpl clientRequest = new ClientRequestImpl(this);
 
-        EventLoopGroup group = eventGroup.get();
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(group)
-                .channel(NioSocketChannel.class)
-                .handler(new NettyClientInitializer(requestConfiguration, result))
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) configuration.connectTimeout().toMillis());
+            CompletableFuture<ClientResponse> result = new CompletableFuture<>();
 
-        ChannelFuture channelFuture = bootstrap.connect(uri.getHost(), uri.getPort());
-        channelFuture.addListener((ChannelFutureListener) future -> {
-            Throwable cause = future.cause();
-            if (null == cause) {
-                RequestContentSubscriber requestContentSubscriber = new RequestContentSubscriber(request,
-                                                                                                 channelFuture.channel(),
-                                                                                                 result);
-                requestEntity.subscribe(requestContentSubscriber);
+            EventLoopGroup group = eventGroup.get();
+            Bootstrap bootstrap = new Bootstrap();
+            bootstrap.group(group)
+                    .channel(NioSocketChannel.class)
+                    .handler(new NettyClientInitializer(requestConfiguration, result, complete))
+                    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) configuration.connectTimeout().toMillis());
+
+            ChannelFuture channelFuture = bootstrap.connect(uri.getHost(), uri.getPort());
+            channelFuture.addListener((ChannelFutureListener) future -> {
+                Throwable cause = future.cause();
+                if (null == cause) {
+                    RequestContentSubscriber requestContentSubscriber = new RequestContentSubscriber(request,
+                                                                                                     channelFuture.channel(),
+                                                                                                     result,
+                                                                                                     sent);
+                    requestEntity.subscribe(requestContentSubscriber);
+                } else {
+                    result.completeExceptionally(new ClientException(uri.toString(), cause));
+                }
+            });
+            channelFuture.channel().attr(REQUEST).set(clientRequest);
+            if (responseType.rawType().equals(ClientResponse.class)) {
+                return (CompletionStage<T>) result;
             } else {
-                result.completeExceptionally(new ClientException(uri.toString(), cause));
+                return result.thenApply(this::getContentFromClientResponse)
+                        .thenCompose(content -> content.as(responseType));
             }
         });
-        channelFuture.channel().attr(REQUEST).set(clientRequest);
-        if (responseType.rawType().equals(ClientResponse.class)) {
-            return (CompletionStage<T>) result;
-        } else {
-            return result.thenApply(clientResponse -> getContentFromClientResponse(responseType,
-                                                                                   clientRequest,
-                                                                                   clientResponse))
-                    .thenCompose(content -> content.as(responseType));
-        }
-    }
 
-    private void setRequestHeaders(HttpHeaders headers) {
-        headers.set(HttpHeaderNames.HOST, uri.getHost());
-        headers.set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
-        headers.set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
-        headers.set(HttpHeaderNames.USER_AGENT, configuration.userAgent());
-        try {
-            Map<String, List<String>> cookieHeaders = this.configuration.cookieManager().get(uri, new HashMap<>());
-            List<String> cookies = new ArrayList<>(cookieHeaders.get(Http.Header.COOKIE));
-            cookies.addAll(this.headers.values(Http.Header.COOKIE));
-            if (!cookies.isEmpty()) {
-                headers.add(Http.Header.COOKIE, String.join("; ", cookies));
-            }
-        } catch (IOException e) {
-            throw new ClientException("An error occurred while setting cookies.", e);
-        }
-        this.headers.toMap().forEach(headers::add);
     }
 
     private URI prepareFinalURI() {
@@ -483,17 +484,29 @@ class ClientRequestBuilderImpl implements ClientRequestBuilder {
         return HttpVersion.valueOf(version.value());
     }
 
-    private <T> MessageBodyReadableContent getContentFromClientResponse(GenericType<T> responseType, ClientRequest clientRequest,
-                                                                        ClientResponse clientResponse) {
-        MessageBodyReadableContent content = clientResponse.content();
-        content.registerReader(JsonProcessing.create().newReader());
+    private HttpHeaders toNettyHttpHeaders() {
+        HttpHeaders headers = new DefaultHttpHeaders();
+        headers.set(HttpHeaderNames.HOST, uri.getHost());
+        headers.set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        headers.set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
+        headers.set(HttpHeaderNames.USER_AGENT, configuration.userAgent());
+        try {
+            Map<String, List<String>> cookieHeaders = this.configuration.cookieManager().get(uri, new HashMap<>());
+            List<String> cookies = new ArrayList<>(cookieHeaders.get(Http.Header.COOKIE));
+            cookies.addAll(this.headers.values(Http.Header.COOKIE));
+            if (!cookies.isEmpty()) {
+                headers.add(Http.Header.COOKIE, String.join("; ", cookies));
+            }
+        } catch (IOException e) {
+            throw new ClientException("An error occurred while setting cookies.", e);
+        }
+        this.headers.toMap().forEach(headers::add);
+        return headers;
+    }
 
-        clientContentHandlers.stream()
-                .filter(clientContentHandler -> clientContentHandler.supports(responseType))
-                .forEach(clientContentHandler -> {
-                    Optional<MessageBodyReader<T>> reader = clientContentHandler.reader(clientRequest, clientResponse);
-                    reader.ifPresent(content::registerReader);
-                });
+    private MessageBodyReadableContent getContentFromClientResponse(ClientResponse clientResponse) {
+        MessageBodyReadableContent content = clientResponse.content();
+        messageBodyReaders.forEach(content::registerReader);
         return content;
     }
 

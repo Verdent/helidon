@@ -31,6 +31,8 @@ import io.helidon.common.http.HttpRequest;
 import io.helidon.common.http.MediaType;
 import io.helidon.common.http.Parameters;
 import io.helidon.common.reactive.Flow;
+import io.helidon.media.common.MessageBodyReader;
+import io.helidon.media.common.MessageBodyWriter;
 
 /**
  * Fluent API builder that is used by {@link WebClient} to create an outgoing request.
@@ -133,12 +135,20 @@ public interface ClientRequestBuilder {
     ClientRequestBuilder queryParams(Parameters queryParams);
 
     /**
-     * Register an entity handler.
+     * Register new message body writer.
      *
-     * @param handler
+     * @param messageBodyWriter
      * @return updated builder instance
      */
-    ClientRequestBuilder register(ClientContentHandler<?> handler);
+    ClientRequestBuilder register(MessageBodyWriter<?> messageBodyWriter);
+
+    /**
+     * Register new message body reader.
+     *
+     * @param messageBodyReader
+     * @return updated builder instance
+     */
+    ClientRequestBuilder register(MessageBodyReader<?> messageBodyReader);
 
     /**
      * Sets http version.
@@ -213,11 +223,6 @@ public interface ClientRequestBuilder {
     }
 
     CompletionStage<ClientResponse> submit();
-
-    // TODO this must work with multipart
-    // send multiple files from client to server -> memory, threads
-    // Prozkoumat jestli je tohle jiz hotove na serveru
-    // Mozna se zeptat romaina az bude client mergenutej???
 
     /**
      * Performs prepared request and submitting request entity using {@link Flow.Publisher}.

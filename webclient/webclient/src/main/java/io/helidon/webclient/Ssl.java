@@ -89,6 +89,8 @@ public class Ssl {
      *
      * @return client authentication
      */
+
+    //EDIT: Odstranit... podle vseho je client auth jen pro serverside. See ClientAuth javadoc
     public ClientAuth clientAuthentication() {
         return clientAuthentication;
     }

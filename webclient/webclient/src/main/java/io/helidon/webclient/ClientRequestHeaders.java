@@ -34,7 +34,7 @@ public interface ClientRequestHeaders extends Headers {
      *
      * @param name header name
      */
-    void unsetHeader(String name);
+    ClientRequestHeaders unsetHeader(String name);
 
     /**
      * Add a cookie to the request.
@@ -42,7 +42,7 @@ public interface ClientRequestHeaders extends Headers {
      * @param name  cookie name
      * @param value cookie value
      */
-    void addCookie(String name, String value);
+    ClientRequestHeaders addCookie(String name, String value);
 
     /**
      * Set a content type. This method is optional if you use
@@ -51,7 +51,7 @@ public interface ClientRequestHeaders extends Headers {
      *
      * @param contentType content type of the request
      */
-    void contentType(MediaType contentType);
+    ClientRequestHeaders contentType(MediaType contentType);
 
     /**
      * Set a content length. This method is optional.
@@ -59,7 +59,7 @@ public interface ClientRequestHeaders extends Headers {
      *
      * @param length content length of entity
      */
-    void contentLength(long length);
+    ClientRequestHeaders contentLength(long length);
 
     /**
      * Add accepted {@link MediaType}. Supports quality factor and wildcards.
@@ -90,13 +90,25 @@ public interface ClientRequestHeaders extends Headers {
      */
     ClientRequestHeaders ifNoneMatch(String... etags);
 
-
+    /**
+     * Sets {@link Http.Header#IF_MATCH} header to specific etags.
+     *
+     * @param etags etags
+     */
     ClientRequestHeaders ifMatch(String... etags);
 
-
+    /**
+     * Sets {@link Http.Header#IF_RANGE} header to specific time.
+     *
+     * @param time zoned date time
+     */
     ClientRequestHeaders ifRange(ZonedDateTime time);
 
-
+    /**
+     * Sets {@link Http.Header#IF_RANGE} header to specific etag.
+     *
+     * @param etag etag
+     */
     ClientRequestHeaders ifRange(String etag);
 
     /**

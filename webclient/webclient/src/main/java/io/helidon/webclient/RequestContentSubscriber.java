@@ -38,12 +38,13 @@ import static io.helidon.webclient.ClientRequestBuilderImpl.REQUEST;
 /**
  * TODO Javadoc
  */
-public class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
+class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
 
     private static final Logger LOGGER = Logger.getLogger(RequestContentSubscriber.class.getName());
     private static final LastHttpContent LAST_HTTP_CONTENT = new DefaultLastHttpContent(Unpooled.EMPTY_BUFFER);
 
     private final CompletableFuture<ClientResponse> responseFuture;
+    private final CompletableFuture<ClientServiceRequest> sent;
     private final DefaultHttpRequest request;
     private final Channel channel;
 
@@ -53,10 +54,12 @@ public class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
 
     RequestContentSubscriber(DefaultHttpRequest request,
                              Channel channel,
-                             CompletableFuture<ClientResponse> responseFuture) {
+                             CompletableFuture<ClientResponse> responseFuture,
+                             CompletableFuture<ClientServiceRequest> sent) {
         this.request = request;
         this.channel = channel;
         this.responseFuture = responseFuture;
+        this.sent = sent;
     }
 
     @Override
@@ -118,7 +121,7 @@ public class RequestContentSubscriber implements Flow.Subscriber<DataChunk> {
 
         ClientRequestBuilder.ClientRequest clientRequest = channel.attr(REQUEST).get();
         ClientServiceRequest serviceRequest = clientRequest.configuration().clientServiceRequest();
-        serviceRequest.whenComplete().toCompletableFuture().complete(serviceRequest);
+        sent.complete(serviceRequest);
     }
 
     private void sendData(DataChunk data) {

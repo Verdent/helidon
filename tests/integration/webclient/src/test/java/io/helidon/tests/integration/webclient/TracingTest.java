@@ -18,7 +18,6 @@ package io.helidon.tests.integration.webclient;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 import javax.json.JsonObject;
 
@@ -43,7 +42,7 @@ import static org.hamcrest.Matchers.iterableWithSize;
 class TracingTest extends TestParent {
 
     @Test
-    void testTracingNoServerSuccess() throws ExecutionException, InterruptedException {
+    void testTracingNoServerSuccess() {
         MockTracer mockTracer = new MockTracer();
         String uri = "http://localhost:" + webServer.port() + "/greet";
         Context context = Context.builder().id("tracing-unit-test").build();
@@ -58,13 +57,10 @@ class TracingTest extends TestParent {
 
         WebClientResponse response = client.get()
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // we must fully read entity for tracing to finish
-        response.content().as(JsonObject.class)
-                .toCompletableFuture()
-                .get();
+        response.content().as(JsonObject.class).await();
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
         assertThat(mockSpans, iterableWithSize(1));
@@ -84,7 +80,7 @@ class TracingTest extends TestParent {
     }
 
     @Test
-    void testTracingNoServerFailure() throws ExecutionException, InterruptedException {
+    void testTracingNoServerFailure() {
         MockTracer mockTracer = new MockTracer();
 
         Context context = Context.builder().id("tracing-unit-test").build();
@@ -100,13 +96,10 @@ class TracingTest extends TestParent {
         WebClientResponse response = client.get()
                 .path("/error")
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // we must fully read entity, as otherwise tracing does not finish
-        response.content().as(String.class)
-                .toCompletableFuture()
-                .get();
+        response.content().as(String.class).await();
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
         assertThat(mockSpans, iterableWithSize(1));

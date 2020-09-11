@@ -114,7 +114,7 @@ public class ResponseOrderingTest {
     }
 
     @Test
-    public void testOrdering() throws Exception {
+    public void testOrdering() {
         WebClient webClient = WebClient.builder()
                 .baseUri("http://0.0.0.0:" + webServer.port())
                 .build();
@@ -126,8 +126,7 @@ public class ResponseOrderingTest {
                     .path("multi")
                     .request(String.class)
                     .thenAccept(it -> returnedIds.add(Long.valueOf(it)))
-                    .toCompletableFuture()
-                    .get();
+                    .await();
         }
 
         assertThat(returnedIds.toArray(), allOf(arrayWithSize(i1), is(queue.toArray())));

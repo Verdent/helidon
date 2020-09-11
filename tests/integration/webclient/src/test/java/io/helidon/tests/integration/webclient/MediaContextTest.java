@@ -64,7 +64,7 @@ public class MediaContextTest extends TestParent {
     }
 
     @Test
-    public void testMediaSupportDefaults() throws Exception {
+    public void testMediaSupportDefaults() {
         WebClient client = WebClient.builder()
                 .baseUri("http://localhost:" + webServer.port() + "/greet")
                 .build();
@@ -72,12 +72,11 @@ public class MediaContextTest extends TestParent {
         client.get()
                 .request(String.class)
                 .thenAccept(it -> assertThat(it, is(JSON_GREETING.toString())))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void testMediaSupportWithoutDefaults() throws Exception {
+    public void testMediaSupportWithoutDefaults() {
         WebClient client = WebClient.builder()
                 .baseUri("http://localhost:" + webServer.port() + "/greet")
                 .mediaContext(MediaContext.empty())
@@ -90,12 +89,11 @@ public class MediaContextTest extends TestParent {
                     assertThat(ex.getCause().getMessage(), is("No reader found for type: class java.lang.String"));
                     return null;
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void testReaderRegisteredOnClient() throws Exception {
+    public void testReaderRegisteredOnClient() {
         WebClient client = WebClient.builder()
                 .baseUri("http://localhost:" + webServer.port() + "/greet")
                 .addReader(JsonpSupport.reader())
@@ -113,12 +111,11 @@ public class MediaContextTest extends TestParent {
                                is("Transformation failed!"));
                     return null;
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void testWriterRegisteredOnClient() throws Exception {
+    public void testWriterRegisteredOnClient() {
         WebClient client = WebClient.builder()
                 .baseUri("http://localhost:" + webServer.port() + "/greet")
                 .addWriter(JsonpSupport.writer())
@@ -135,12 +132,11 @@ public class MediaContextTest extends TestParent {
                     return null;
                 })
                 .thenCompose(it -> client.put().path("/greeting").submit(JSON_OLD_GREETING)) //Cleanup
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void testRequestSpecificReader() throws Exception {
+    public void testRequestSpecificReader() {
         WebClient client = WebClient.builder()
                 .baseUri("http://localhost:" + webServer.port() + "/greet")
                 .build();
@@ -162,8 +158,7 @@ public class MediaContextTest extends TestParent {
                                is("No reader found for type: interface javax.json.JsonObject"));
                     return null;
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
@@ -179,8 +174,7 @@ public class MediaContextTest extends TestParent {
                         fail("This should have failed!");
                         return CompletableFuture.completedFuture(it);
                     })
-                    .toCompletableFuture()
-                    .get();
+                    .await();
         });
         if (exception.getCause() instanceof IllegalStateException) {
             assertThat(exception.getCause().getMessage(),
@@ -204,8 +198,7 @@ public class MediaContextTest extends TestParent {
                         fail("This should have failed!");
                         return CompletableFuture.completedFuture(it);
                     })
-                    .toCompletableFuture()
-                    .get();
+                    .await();
         });
         if (exception.getCause() instanceof IllegalStateException) {
             assertThat(exception.getCause().getMessage(),

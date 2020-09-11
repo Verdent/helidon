@@ -80,20 +80,18 @@ public class MainTest {
     }
 
     @Test
-    public void testHelloWorld() throws Exception {
+    public void testHelloWorld() {
         webClient.get()
                 .path("/greet")
                 .request(JsonObject.class)
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hello World!", jsonObject.getString("greeting")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/greet/Joe")
                 .request(JsonObject.class)
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hello Joe!", jsonObject.getString("greeting")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.put()
                 .path("/greet/greeting")
@@ -103,8 +101,7 @@ public class MainTest {
                         .path("/greet/Joe")
                         .request(JsonObject.class))
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hola Joe!", jsonObject.getString("greeting")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/health")
@@ -113,8 +110,7 @@ public class MainTest {
                     Assertions.assertEquals(200, response.status().code());
                     response.close();
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/metrics")
@@ -123,12 +119,11 @@ public class MainTest {
                     Assertions.assertEquals(200, response.status().code());
                     response.close();
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void testOpenAPI() throws Exception {
+    public void testOpenAPI() {
         /*
          * If you change the OpenAPI endpoing path in application.yaml, then
          * change the following path also.
@@ -137,8 +132,7 @@ public class MainTest {
                 .accept(MediaType.APPLICATION_JSON)
                 .path("/openapi")
                 .request(JsonObject.class)
-                .toCompletableFuture()
-                .get();
+                .await();
         JsonObject paths = jsonObject.getJsonObject("paths");
 
         JsonPointer jp = Json.createPointer("/" + escape("/greet/greeting") + "/put/summary");

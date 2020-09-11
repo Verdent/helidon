@@ -16,6 +16,8 @@
  */
 package io.helidon.webserver.cors;
 
+import java.util.List;
+
 import io.helidon.common.http.Headers;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
@@ -27,11 +29,8 @@ import io.helidon.webserver.WebServer;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.contains;
-
-import java.util.List;
-import java.util.concurrent.ExecutionException;
+import static org.hamcrest.Matchers.is;
 
 /**
  * Make sure the default CorsSupport behavior is correct (basically, wildcarded sharing).
@@ -39,11 +38,11 @@ import java.util.concurrent.ExecutionException;
 public class TestDefaultCorsSupport {
 
     @Test
-    void testGetWithoutCors() throws ExecutionException, InterruptedException {
+    void testGetWithoutCors() {
         WebServer server = null;
         WebClient client;
         try {
-            server = WebServer.create(prepRouting(false)).start().toCompletableFuture().get();
+            server = WebServer.create(prepRouting(false)).start().await();
             client = WebClient.builder()
                     .baseUri("http://localhost:" + server.port())
                     .get();
@@ -51,10 +50,9 @@ public class TestDefaultCorsSupport {
             WebClientResponse response = client.get()
                     .path("/greet")
                     .submit()
-                    .toCompletableFuture()
-                    .get();
+                    .await();
 
-            String greeting= response.content().as(String.class).toCompletableFuture().get();
+            String greeting= response.content().as(String.class).await();
             assertThat(greeting, is("Hello World!"));
         } finally {
             if (server != null) {
@@ -64,11 +62,11 @@ public class TestDefaultCorsSupport {
     }
 
     @Test
-    void testOptionsWithCors() throws ExecutionException, InterruptedException {
+    void testOptionsWithCors() {
         WebServer server = null;
         WebClient client;
         try {
-            server = WebServer.create(prepRouting(true)).start().toCompletableFuture().get();
+            server = WebServer.create(prepRouting(true)).start().await();
             client = WebClient.builder()
                     .baseUri("http://localhost:" + server.port())
                     .get();
@@ -81,8 +79,7 @@ public class TestDefaultCorsSupport {
             h.add("Host", "bar.com");
             WebClientResponse response = reqBuilder
                     .submit()
-                    .toCompletableFuture()
-                    .get();
+                    .await();
 
             WebClientResponseHeaders headers = response.headers();
             List<String> allowOrigins = headers.values(CrossOriginConfig.ACCESS_CONTROL_ALLOW_ORIGIN);
@@ -95,11 +92,11 @@ public class TestDefaultCorsSupport {
     }
 
     @Test
-    void testOptionsWithoutCors() throws ExecutionException, InterruptedException {
+    void testOptionsWithoutCors() {
         WebServer server = null;
         WebClient client;
         try {
-            server = WebServer.create(prepRouting(false)).start().toCompletableFuture().get();
+            server = WebServer.create(prepRouting(false)).start().await();
             client = WebClient.builder()
                     .baseUri("http://localhost:" + server.port())
                     .get();
@@ -112,8 +109,7 @@ public class TestDefaultCorsSupport {
             h.add("Host", "bar.com");
             WebClientResponse response = reqBuilder
                     .submit()
-                    .toCompletableFuture()
-                    .get();
+                    .await();
 
             WebClientResponseHeaders headers = response.headers();
             List<String> allowOrigins = headers.values(CrossOriginConfig.ACCESS_CONTROL_ALLOW_ORIGIN);

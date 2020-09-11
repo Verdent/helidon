@@ -16,19 +16,20 @@
  */
 package io.helidon.webserver.cors;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+
 import io.helidon.common.http.Headers;
 import io.helidon.common.http.Http;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
 import io.helidon.webclient.WebClientResponse;
 import io.helidon.webserver.WebServer;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 
 import static io.helidon.common.http.Http.Header.ORIGIN;
 import static io.helidon.webserver.cors.CrossOriginConfig.ACCESS_CONTROL_ALLOW_HEADERS;
@@ -37,7 +38,6 @@ import static io.helidon.webserver.cors.CrossOriginConfig.ACCESS_CONTROL_ALLOW_O
 import static io.helidon.webserver.cors.CrossOriginConfig.ACCESS_CONTROL_REQUEST_HEADERS;
 import static io.helidon.webserver.cors.CrossOriginConfig.ACCESS_CONTROL_REQUEST_METHOD;
 import static io.helidon.webserver.cors.CustomMatchers.present;
-import static io.helidon.webserver.cors.TestUtil.path;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -66,7 +66,7 @@ public class TestHandlerRegistration {
     }
 
         @Test
-    void test4PreFlightAllowedHeaders2() throws ExecutionException, InterruptedException {
+    void test4PreFlightAllowedHeaders2() {
         WebClientRequestBuilder reqBuilder = client
                 .options()
                 .path(CORS4_CONTEXT_ROOT);
@@ -78,8 +78,7 @@ public class TestHandlerRegistration {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));

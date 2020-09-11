@@ -16,7 +16,6 @@
 
 package io.helidon.grpc.metrics;
 
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -113,7 +112,7 @@ public class MetricsIT {
     // ----- test methods ---------------------------------------------------
 
     @Test
-    public void shouldPublishMetrics() throws ExecutionException, InterruptedException {
+    public void shouldPublishMetrics() {
         // call the gRPC Echo service so that there should be some metrics
         EchoServiceGrpc.newBlockingStub(channel).echo(Echo.EchoRequest.newBuilder().setMessage("foo").build());
 
@@ -127,8 +126,7 @@ public class MetricsIT {
                     JsonValue value = it.getValue("/EchoService.Echo");
                     assertThat(value, is(notNullValue()));
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     // ----- helper methods -------------------------------------------------

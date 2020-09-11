@@ -17,7 +17,6 @@
 package io.helidon.webserver.cors;
 
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 
 import io.helidon.common.http.Headers;
 import io.helidon.common.http.Http;
@@ -25,6 +24,7 @@ import io.helidon.common.http.MediaType;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
 import io.helidon.webclient.WebClientResponse;
+
 import org.junit.jupiter.api.Test;
 
 import static io.helidon.common.http.Http.Header.ORIGIN;
@@ -56,21 +56,20 @@ public abstract class AbstractCorsTest {
     abstract String fooHeader();
 
     @Test
-    public void testSimple() throws Exception {
+    public void testSimple() {
 
         WebClientResponse response = client().get()
                 .path(contextRoot())
                 .accept(MediaType.TEXT_PLAIN)
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         Http.ResponseStatus result = response.status();
 
         assertThat(result.code(), is(Http.Status.OK_200.code()));
     }
     @Test
-    void test1PreFlightAllowedHeaders1() throws ExecutionException, InterruptedException {
+    void test1PreFlightAllowedHeaders1() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_1));
@@ -82,8 +81,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));
@@ -93,7 +91,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test1PreFlightAllowedHeaders2() throws ExecutionException, InterruptedException {
+    void test1PreFlightAllowedHeaders2() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_1));
@@ -105,8 +103,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));
@@ -117,7 +114,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test2PreFlightForbiddenOrigin() throws ExecutionException, InterruptedException {
+    void test2PreFlightForbiddenOrigin() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -128,14 +125,13 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.FORBIDDEN_403));
     }
 
     @Test
-    void test2PreFlightAllowedOrigin() throws ExecutionException, InterruptedException {
+    void test2PreFlightAllowedOrigin() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -146,8 +142,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
 
         assertThat(res.status(), is(Http.Status.OK_200));
@@ -159,7 +154,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test2PreFlightForbiddenMethod() throws ExecutionException, InterruptedException {
+    void test2PreFlightForbiddenMethod() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -170,14 +165,13 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.FORBIDDEN_403));
     }
 
     @Test
-    void test2PreFlightForbiddenHeader() throws ExecutionException, InterruptedException {
+    void test2PreFlightForbiddenHeader() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -189,14 +183,13 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.FORBIDDEN_403));
     }
 
     @Test
-    void test2PreFlightAllowedHeaders1() throws ExecutionException, InterruptedException {
+    void test2PreFlightAllowedHeaders1() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(contextRoot(), SERVICE_2));
@@ -208,8 +201,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers()
@@ -225,7 +217,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test2PreFlightAllowedHeaders2() throws ExecutionException, InterruptedException {
+    void test2PreFlightAllowedHeaders2() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -237,8 +229,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));
@@ -250,7 +241,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test2PreFlightAllowedHeaders3() throws ExecutionException, InterruptedException {
+    void test2PreFlightAllowedHeaders3() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(SERVICE_2));
@@ -263,8 +254,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));
@@ -276,7 +266,7 @@ public abstract class AbstractCorsTest {
     }
 
     @Test
-    void test1ActualAllowedOrigin() throws ExecutionException, InterruptedException {
+    void test1ActualAllowedOrigin() {
         WebClientRequestBuilder reqBuilder = client()
                 .put()
                 .path(path(SERVICE_1))
@@ -288,15 +278,14 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .submit("")
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("*")));
     }
 
     @Test
-    void test2ActualAllowedOrigin() throws ExecutionException, InterruptedException {
+    void test2ActualAllowedOrigin() {
         WebClientRequestBuilder reqBuilder = client()
                 .put()
                 .path(path(SERVICE_2))
@@ -307,8 +296,7 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .submit("")
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(Http.Status.OK_200));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), present(is("http://foo.bar")));
@@ -317,7 +305,7 @@ public abstract class AbstractCorsTest {
 
 
     @Test
-    void test2ErrorResponse() throws ExecutionException, InterruptedException {
+    void test2ErrorResponse() {
         WebClientRequestBuilder reqBuilder = client()
                 .get()
                 .path(path(SERVICE_2) + "/notfound")
@@ -328,15 +316,13 @@ public abstract class AbstractCorsTest {
 
         WebClientResponse res = reqBuilder
                 .submit()
-                .toCompletableFuture()
-                .get();
+                .await();
 
         assertThat(res.status(), is(not(Http.Status.OK_200)));
         assertThat(res.headers().first(ACCESS_CONTROL_ALLOW_ORIGIN), is(Optional.empty()));
     }
 
-    WebClientResponse runTest1PreFlightAllowedOrigin() throws ExecutionException,
-            InterruptedException {
+    WebClientResponse runTest1PreFlightAllowedOrigin() {
         WebClientRequestBuilder reqBuilder = client()
                 .options()
                 .path(path(contextRoot(), SERVICE_1));
@@ -345,11 +331,8 @@ public abstract class AbstractCorsTest {
         headers.add(ORIGIN, fooOrigin());
         headers.add(ACCESS_CONTROL_REQUEST_METHOD, "PUT");
 
-        WebClientResponse res = reqBuilder
+        return reqBuilder
                 .request()
-                .toCompletableFuture()
-                .get();
-
-        return res;
+                .await();
     }
 }

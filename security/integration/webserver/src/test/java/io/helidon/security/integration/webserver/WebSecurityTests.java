@@ -17,7 +17,6 @@
 package io.helidon.security.integration.webserver;
 
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 
 import io.helidon.common.http.Http;
 import io.helidon.security.AuditEvent;
@@ -73,7 +72,7 @@ public abstract class WebSecurityTests {
     abstract String serverBaseUri();
 
     @Test
-    void basicTestJohn() throws ExecutionException, InterruptedException {
+    void basicTestJohn() {
         String username = "john";
         String password = "password";
 
@@ -85,7 +84,7 @@ public abstract class WebSecurityTests {
     }
 
     @Test
-    void basicTestJack() throws ExecutionException, InterruptedException {
+    void basicTestJack() {
         String username = "jack";
         String password = "jackIsGreat";
 
@@ -108,7 +107,7 @@ public abstract class WebSecurityTests {
     }
 
     @Test
-    void basicTestJill() throws ExecutionException, InterruptedException {
+    void basicTestJill() {
         String username = "jill";
         String password = "password";
 
@@ -127,7 +126,7 @@ public abstract class WebSecurityTests {
     }
 
     @Test
-    void basicTest401() throws ExecutionException, InterruptedException {
+    void basicTest401() {
         webClient.get()
                 .uri(serverBaseUri() + "/noRoles")
                 .request()
@@ -141,8 +140,7 @@ public abstract class WebSecurityTests {
                                                                                          + " not present in response!");
                                              });
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         WebClientResponse webClientResponse = callProtected(serverBaseUri() + "/noRoles", "invalidUser", "invalidPassword");
         assertThat(webClientResponse.status(), is(Http.Status.UNAUTHORIZED_401));
@@ -156,7 +154,7 @@ public abstract class WebSecurityTests {
     }
 
     @Test
-    void testCustomizedAudit() throws InterruptedException, ExecutionException {
+    void testCustomizedAudit() throws InterruptedException {
         webClient.get()
                 .uri(serverBaseUri() + "/auditOnly")
                 .request()
@@ -164,8 +162,7 @@ public abstract class WebSecurityTests {
                     assertThat(it.status(), is(Http.Status.OK_200));
                     return it.close();
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // audit
         AuditEvent auditEvent = myAuditProvider.getAuditEvent();
@@ -174,7 +171,7 @@ public abstract class WebSecurityTests {
         assertThat(auditEvent.severity(), is(AuditEvent.AuditSeverity.SUCCESS));
     }
 
-    private void testForbidden(String uri, String username, String password) throws ExecutionException, InterruptedException {
+    private void testForbidden(String uri, String username, String password) {
         WebClientResponse response = callProtected(uri, username, password);
         assertThat(uri + " for user " + username + " should be forbidden",
                    response.status(),
@@ -185,7 +182,7 @@ public abstract class WebSecurityTests {
                                String username,
                                String password,
                                Set<String> expectedRoles,
-                               Set<String> invalidRoles) throws ExecutionException, InterruptedException {
+                               Set<String> invalidRoles) {
 
         WebClientResponse response = callProtected(uri, username, password);
 
@@ -200,19 +197,16 @@ public abstract class WebSecurityTests {
                     expectedRoles.forEach(role -> assertThat(it, containsString(":" + role)));
                     invalidRoles.forEach(role -> assertThat(it, not(containsString(":" + role))));
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
-    private WebClientResponse callProtected(String uri, String username, String password)
-            throws ExecutionException, InterruptedException {
+    private WebClientResponse callProtected(String uri, String username, String password) {
         return securitySetup.get()
                 .uri(uri)
                 .property(HttpBasicAuthProvider.EP_PROPERTY_OUTBOUND_USER, username)
                 .property(HttpBasicAuthProvider.EP_PROPERTY_OUTBOUND_PASSWORD, password)
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
 }

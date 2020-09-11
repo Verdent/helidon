@@ -20,8 +20,8 @@ import java.util.concurrent.TimeUnit;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.pki.KeyConfig;
-import io.helidon.webclient.WebClientTls;
 import io.helidon.webclient.WebClient;
+import io.helidon.webclient.WebClientTls;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -69,8 +69,7 @@ public class Pkcs12StoreSslTest {
                     .uri("https://localhost:" + otherWebServer.port())
                     .request(String.class)
                     .thenAccept(it -> assertThat(it, is("It works!")))
-                    .toCompletableFuture()
-                    .get();
+                    .await();
         } finally {
             otherWebServer.shutdown()
                     .toCompletableFuture()

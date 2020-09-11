@@ -21,9 +21,9 @@ import java.util.logging.Logger;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.pki.KeyConfig;
-import io.helidon.webclient.WebClientTls;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
+import io.helidon.webclient.WebClientTls;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -75,12 +75,11 @@ public class SslTest {
                 .uri("https://localhost:" + webServer.port())
                 .request(String.class)
                 .thenAccept(it -> assertThat(it, is("It works!")))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void multipleSslRequestsKeepAlive() throws Exception {
+    public void multipleSslRequestsKeepAlive() {
         WebClientRequestBuilder requestBuilder = client.get()
                 .uri("https://localhost:" + webServer.port());
 
@@ -90,12 +89,11 @@ public class SslTest {
                 .thenAccept(it -> assertThat(it, is("It works!")))
                 .thenCompose(it -> requestBuilder.request(String.class))
                 .thenAccept(it -> assertThat(it, is("It works!")))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void multipleSslRequestsNonKeepAlive() throws Exception {
+    public void multipleSslRequestsNonKeepAlive() {
         WebClientRequestBuilder requestBuilder = client.post()
                 .uri("https://localhost:" + webServer.port());
 
@@ -105,8 +103,7 @@ public class SslTest {
                 .thenAccept(it -> assertThat(it, is("It works!")))
                 .thenCompose(it -> requestBuilder.submit("", String.class))
                 .thenAccept(it -> assertThat(it, is("It works!")))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @BeforeAll

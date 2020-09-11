@@ -65,8 +65,7 @@ class TracingPropagationTest {
                 .fragment("fragment")
                 .request()
                 .thenCompose(WebClientResponse::close)
-                .toCompletableFuture()
-                .get();
+                .await();
 
         TimeUnit.MILLISECONDS.sleep(1);
         List<MockSpan> mockSpans = mockTracer.finishedSpans();

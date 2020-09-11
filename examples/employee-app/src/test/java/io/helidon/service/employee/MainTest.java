@@ -63,7 +63,7 @@ public class MainTest {
     }
 
     @Test
-    public void testHelloWorld() throws Exception {
+    public void testHelloWorld() {
         webClient.get()
                 .path("/employees")
                 .request()
@@ -71,8 +71,7 @@ public class MainTest {
                     response.close();
                     Assertions.assertEquals(Http.Status.OK_200, response.status(), "HTTP response2");
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/health")
@@ -81,8 +80,7 @@ public class MainTest {
                     response.close();
                     Assertions.assertEquals(Http.Status.OK_200, response.status(), "HTTP response2");
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/metrics")
@@ -91,8 +89,7 @@ public class MainTest {
                     response.close();
                     Assertions.assertEquals(Http.Status.OK_200, response.status(), "HTTP response2");
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
 }

@@ -75,20 +75,18 @@ public class MainTest {
     }
 
     @Test
-    public void testHelloWorld() throws Exception {
+    public void testHelloWorld() {
         webClient.get()
                 .path("/greet")
                 .request(JsonObject.class)
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hello World!", jsonObject.getString("message")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/greet/Joe")
                 .request(JsonObject.class)
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hello Joe!", jsonObject.getString("message")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.put()
                 .path("/greet/greeting")
@@ -98,22 +96,19 @@ public class MainTest {
                         .path("/greet/Joe")
                         .request(JsonObject.class))
                 .thenAccept(jsonObject -> Assertions.assertEquals("Hola Joe!", jsonObject.getString("message")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/health")
                 .request()
                 .thenAccept(response -> Assertions.assertEquals(200, response.status().code()))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/metrics")
                 .request()
                 .thenAccept(response -> Assertions.assertEquals(200, response.status().code()))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
 }

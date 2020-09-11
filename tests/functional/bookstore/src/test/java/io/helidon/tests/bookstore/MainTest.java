@@ -224,8 +224,7 @@ class MainTest {
                 .path("/books")
                 .request(JsonArray.class)
                 .thenAccept(bookArray -> assertThat("Number of books", bookArray.size(), is(numberOfBooks)))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.post()
                 .path("/books")
@@ -235,15 +234,13 @@ class MainTest {
                         .path("/books/123456")
                         .request(JsonObject.class))
                 .thenAccept(it -> assertThat("Checking if correct ISBN", it.getString("isbn"), is("123456")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/books/0000")
                 .request()
                 .thenAccept(it -> assertThat("HTTP response GET bad ISBN", it.status(), is(Http.Status.NOT_FOUND_404)))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .path("/books")
@@ -253,15 +250,13 @@ class MainTest {
                     return it;
                 })
                 .thenCompose(WebClientResponse::close)
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.delete()
                 .path("/books/123456")
                 .request()
                 .thenAccept(it -> assertThat("HTTP response delete book", it.status(), is(Http.Status.OK_200)))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     /**
@@ -295,8 +290,7 @@ class MainTest {
                 .request(String.class)
                 // Make sure we got prometheus metrics
                 .thenAccept(it -> assertThat("Making sure we got Prometheus format", it, startsWith("# TYPE")))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // Get JSON encoded metrics
         webClient.get()
@@ -307,8 +301,7 @@ class MainTest {
                 .thenAccept(it -> assertThat("Checking request count",
                                              it.getJsonObject("vendor").getInt("requests.count"),
                                              greaterThan(0)))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // Get JSON encoded metrics/base
         webClient.get()
@@ -319,8 +312,7 @@ class MainTest {
                 .thenAccept(it -> assertThat("Checking request count",
                                              it.getInt("thread.count"),
                                              greaterThan(0)))
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // Get JSON encoded health check
         webClient.get()
@@ -338,8 +330,7 @@ class MainTest {
                                    is(0));
                     }
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @ParameterizedTest
@@ -361,16 +352,14 @@ class MainTest {
                         assertThat("Checking encode URL response MP", it.status(), is(Http.Status.NOT_FOUND_404));
                     }
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         webClient.get()
                 .accept(MediaType.APPLICATION_JSON)
                 .path("/badurl")
                 .request()
                 .thenAccept(it -> assertThat("Checking encode URL response", it.status(), is(Http.Status.NOT_FOUND_404)))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     private JsonObject getBookAsJsonObject() throws IOException {

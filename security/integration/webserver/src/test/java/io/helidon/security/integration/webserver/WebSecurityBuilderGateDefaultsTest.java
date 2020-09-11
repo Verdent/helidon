@@ -19,7 +19,6 @@ package io.helidon.security.integration.webserver;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.common.http.Http;
@@ -125,7 +124,7 @@ public class WebSecurityBuilderGateDefaultsTest {
     }
 
     @Test
-    public void basicTestJohn() throws ExecutionException, InterruptedException {
+    public void basicTestJohn() {
         String username = "john";
         String password = "password";
 
@@ -136,7 +135,7 @@ public class WebSecurityBuilderGateDefaultsTest {
     }
 
     @Test
-    public void basicTestJack() throws ExecutionException, InterruptedException {
+    public void basicTestJack() {
         String username = "jack";
         String password = "jackIsGreat";
 
@@ -163,7 +162,7 @@ public class WebSecurityBuilderGateDefaultsTest {
     }
 
     @Test
-    public void basicTestJill() throws ExecutionException, InterruptedException {
+    public void basicTestJill() {
         String username = "jill";
         String password = "password";
 
@@ -178,7 +177,7 @@ public class WebSecurityBuilderGateDefaultsTest {
     }
 
     @Test
-    public void basicTest401() throws ExecutionException, InterruptedException {
+    public void basicTest401() {
         // here we call the endpoint
         webClient.get()
                 .uri(serverBaseUri + "/noRoles")
@@ -193,8 +192,7 @@ public class WebSecurityBuilderGateDefaultsTest {
                                                                                          + " not present in response!");
                                              });
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         WebClientResponse webClientResponse = callProtected(serverBaseUri + "/noRoles", "invalidUser", "invalidPassword");
         assertThat(webClientResponse.status(), is(Http.Status.UNAUTHORIZED_401));
@@ -208,7 +206,7 @@ public class WebSecurityBuilderGateDefaultsTest {
     }
 
     @Test
-    public void testCustomizedAudit() throws InterruptedException, ExecutionException {
+    public void testCustomizedAudit() throws InterruptedException {
         // even though I send username and password, this MUST NOT require authentication
         // as then audit is called twice - first time with 401 (challenge) and second time with 200 (correct request)
         // and that intermittently breaks this test
@@ -219,8 +217,7 @@ public class WebSecurityBuilderGateDefaultsTest {
                     assertThat(it.status(), is(Http.Status.OK_200));
                     return it.close();
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
 
         // audit
         AuditEvent auditEvent = myAuditProvider.getAuditEvent();
@@ -229,7 +226,7 @@ public class WebSecurityBuilderGateDefaultsTest {
         assertThat(auditEvent.toString(), auditEvent.severity(), is(AuditEvent.AuditSeverity.SUCCESS));
     }
 
-    private void testForbidden(String uri, String username, String password) throws ExecutionException, InterruptedException {
+    private void testForbidden(String uri, String username, String password) {
         WebClientResponse response = callProtected(uri, username, password);
         assertThat(uri + " for user " + username + " should be forbidden",
                    response.status(),
@@ -240,7 +237,7 @@ public class WebSecurityBuilderGateDefaultsTest {
                                String username,
                                String password,
                                Set<String> expectedRoles,
-                               Set<String> invalidRoles) throws ExecutionException, InterruptedException {
+                               Set<String> invalidRoles) {
 
         WebClientResponse response = callProtected(uri, username, password);
         assertThat(response.status(), is(Http.Status.OK_200));
@@ -254,19 +251,16 @@ public class WebSecurityBuilderGateDefaultsTest {
                     expectedRoles.forEach(role -> assertThat(it, containsString(":" + role)));
                     invalidRoles.forEach(role -> assertThat(it, not(containsString(":" + role))));
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
-    private WebClientResponse callProtected(String uri, String username, String password)
-            throws ExecutionException, InterruptedException {
+    private WebClientResponse callProtected(String uri, String username, String password) {
         // here we call the endpoint
         return securitySetup.get()
                 .uri(uri)
                 .property(HttpBasicAuthProvider.EP_PROPERTY_OUTBOUND_USER, username)
                 .property(HttpBasicAuthProvider.EP_PROPERTY_OUTBOUND_PASSWORD, password)
                 .request()
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 }

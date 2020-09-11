@@ -21,8 +21,8 @@ import io.helidon.common.http.Http;
 import io.helidon.common.pki.KeyConfig;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
-import io.helidon.webclient.WebClientTls;
 import io.helidon.webclient.WebClient;
+import io.helidon.webclient.WebClientTls;
 
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
@@ -55,7 +55,7 @@ public class MultiPortTest {
     }
 
     @BeforeEach
-    public void init() throws Exception {
+    public void init() {
 
         commonHandler = new Handler() {
 
@@ -89,8 +89,7 @@ public class MultiPortTest {
                     .path(path)
                     .request(String.class)
                     .thenAccept(it -> assertThat("Unexpected response: " + it, it, matcher))
-                    .toCompletableFuture()
-                    .get();
+                    .await();
         } catch (Exception e) {
             fail(e);
         }
@@ -193,7 +192,7 @@ public class MultiPortTest {
     }
 
     @Test
-    public void compositeRedirectWebServer() throws Exception {
+    public void compositeRedirectWebServer() {
         // start all of the servers
         webServer = WebServer.builder(Routing.builder()
                                               .get("/foo", commonHandler))
@@ -258,8 +257,7 @@ public class MultiPortTest {
                         .uri(it.headers().first(Http.Header.LOCATION).get())
                         .request(String.class))
                 .thenAccept(it -> assertThat("Unexpected response: " + it, it, is("Root! 2")))
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test

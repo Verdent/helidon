@@ -61,7 +61,7 @@ public class FormParamsSupportTest {
     }
 
     @Test
-    public void urlEncodedTest() throws Exception {
+    public void urlEncodedTest() {
         webClient.put()
                 .path("/params")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -70,12 +70,11 @@ public class FormParamsSupportTest {
                     assertThat(it, containsString("key1=[val 1]"));
                     assertThat(it, containsString("key2=[val2_1, val2_2]"));
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
     @Test
-    public void plainTextTest() throws Exception{
+    public void plainTextTest() {
         webClient.put()
                 .path("/params")
                 .contentType(MediaType.TEXT_PLAIN)
@@ -84,8 +83,7 @@ public class FormParamsSupportTest {
                     assertThat(it, containsString("key1=[val 1]"));
                     assertThat(it, containsString("key2=[val2_1, val2_2]"));
                 })
-                .toCompletableFuture()
-                .get();
+                .await();
     }
 
 }

@@ -172,8 +172,22 @@ class HelidonConnector implements Connector {
             responseStage = webClientRequestBuilder.submit();
         }
 
+        //                String outer = threadIdent();
+        //        return responseStage.thenCompose((a) -> {
+        //            if (outer.equals(threadIdent())) {
+        //                return CompletableFuture.supplyAsync(() -> convertResponse(request, a), executorService)
+        //                        .thenCompose(Function.identity());
+        //            }
+        //            return convertResponse(request, a);
+        //        });
         return responseStage.thenCompose((a) -> convertResponse(request, a));
     }
+
+    private String threadIdent() {
+        Thread thread = Thread.currentThread();
+        return thread.getName() + ":" + thread.getId();
+    }
+
 
     private CompletionStage<ClientResponse> convertResponse(final ClientRequest requestContext,
                                                             final WebClientResponse webClientResponse) {

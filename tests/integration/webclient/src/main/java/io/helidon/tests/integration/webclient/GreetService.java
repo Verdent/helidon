@@ -84,7 +84,8 @@ public class GreetService implements Service {
                 .get("/secure/basic", this::basicAuth)
                 .get("/secure/basic/outbound", this::basicAuthOutbound)
                 .get("/valuesPropagated", this::valuesPropagated)
-                .put("/greeting", this::updateGreetingHandler);
+                .put("/greeting", this::updateGreetingHandler)
+                .get("/string", this::simpleString);
     }
 
     private void basicAuthOutbound(ServerRequest serverRequest, ServerResponse response) {
@@ -104,7 +105,11 @@ public class GreetService implements Service {
                     response.send();
                     return null;
                 });
+    }
 
+    private void simpleString(ServerRequest serverRequest, ServerResponse serverResponse) {
+        serverResponse.status(Http.Status.OK_200);
+        serverResponse.send("Hello world");
     }
 
     private void valuesPropagated(ServerRequest serverRequest, ServerResponse serverResponse) {

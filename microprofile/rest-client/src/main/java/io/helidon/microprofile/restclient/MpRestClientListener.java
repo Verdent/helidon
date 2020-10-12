@@ -49,5 +49,7 @@ public class MpRestClientListener implements RestClientListener {
         } catch (Exception e) {
             LOGGER.log(Level.FINE, "Failed to replace executor service for a REST Client: " + aClass, e);
         }
+
+        restClientBuilder.register(new HelidonInboundHeaderProvider());
     }
 }

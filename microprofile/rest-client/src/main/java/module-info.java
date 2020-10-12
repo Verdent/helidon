@@ -21,9 +21,12 @@ module io.helidon.microprofile.restclient {
     requires java.logging;
     requires transitive microprofile.rest.client.api;
     requires io.helidon.common.context;
+    requires jersey.common;
     requires jersey.mp.rest.client;
     requires java.ws.rs;
 
     provides org.eclipse.microprofile.rest.client.spi.RestClientListener
             with io.helidon.microprofile.restclient.MpRestClientListener;
+    provides org.glassfish.jersey.internal.spi.ForcedAutoDiscoverable
+            with  io.helidon.microprofile.restclient.HelidonRequestHeaderAutoDiscoverable;
 }

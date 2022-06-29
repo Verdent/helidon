@@ -22,6 +22,15 @@
 :feature-name: WebClient
 :rootdir: {docdir}/../..
 
+== ToC
+
+- <<Overview, Overview>>
+- <<Maven Coordinates, Maven Coordinates>>
+- <<Usage, Usage>>
+- <<Configuration, Configuration>>
+- <<Examples, Examples>>
+- <<Reference, Reference>>
+
 include::{rootdir}/includes/se.adoc[]
 include::{rootdir}/includes/dependencies.adoc[]
 
@@ -35,7 +44,9 @@ include::{rootdir}/includes/dependencies.adoc[]
 
 == Overview
 
-WebClient is an HTTP client for Helidon SE 2.0. It handles the responses to the HTTP requests in a reactive way.
+WebClient is an HTTP client of Helidon SE. It handles the responses to the HTTP requests in a reactive way.
+
+== Usage
 
 Helidon WebClient provides the following features:
 
@@ -53,9 +64,11 @@ Automatically propagates the configured tracing, metrics and security settings o
 
 == Configuring the WebClient
 
-The WebClient default configuration may be suitable in most use cases. However, you can configure it to suit your specific requirements.
+The class responsible for WebClient configuration is:
 
-=== Example of a WebClient Configuration
+include::../../shared/config/io.helidon.webclient.WebClientConfiguration.adoc[]
+
+=== Example of a WebClient Runtime Configuration
 
 [source,java]
 ----
@@ -66,7 +79,7 @@ WebClient client = WebClient.builder()
         .build();
 ----
 
-=== Example of Yaml WebClient Configuration
+=== Example of a WebClient Yaml Configuration
 
 [source, java]
 ----
@@ -134,14 +147,15 @@ client:
 <4> Proxy configuration
 <5> TLS configuration
 
-== Creating the WebClient
+== Examples
+
+=== Creating the WebClient
 
 You can create WebClient by executing `WebClient.create()` method. This will create an instance of client with default settings and without a base uri set.
 
 To change the default settings and register
 additional services, you can use simple builder that allows you to customize the client behavior.
 
-=== Example
 .Create a WebClient with simple builder:
 [source,java]
 ----
@@ -150,7 +164,7 @@ WebClient client = WebClient.builder()
         .build();
 ----
 
-== Creating and Executing the WebClient Request
+=== Creating and Executing the WebClient Request
 
 WebClient executes requests to the target endpoints and returns specific response type.
 
@@ -169,7 +183,6 @@ For the final execution, use the following methods with variations and different
 * `Single<T> submit(Object entity, Class<T> responseType)`
 * `Single<T> request(Class<T> responseType)`
 
-=== Example
 .Execute a simple GET request to endpoint:
 [source,java]
 ----
@@ -199,12 +212,10 @@ The request settings are based on the following optional parameters, and change 
 
 For more details, see the link:{webserver-javadoc-base-url}/io/helidon/webserver/RequestHeaders.html[Request Headers] API.
 
-== Adding JSON Processing Media Support to the WebClient
+=== Adding JSON Processing Media Support to the WebClient
 
 JSON Processing (JSON-P) media support is not present in the WebClient by default. So, in this case, you must first register it before making a request.
 This example shows how to register `JsonpSupport` using the following two methods.
-
-=== Example
 
 [source,java]
 .Register JSON-P support to the WebClient.
@@ -234,3 +245,76 @@ requestBuilder.request(JsonObject.class)
 ----
 <1> Adds JSON-P writer only to this request.
 <2> Adds JSON-P reader only to this request.
+
+=== WebClient TLS configuration
+
+Configure TLS either programmatically or by the Helidon configuration framework.
+
+==== Configuring TLS in your code
+
+The one way to configure TLS in WebClient is in your application code.
+
+[source,java]
+----
+KeyConfig keyConfig = KeyConfig.keystoreBuilder()
+                //Whether this keystore is also trust store
+                .trustStore()
+                //Keystore location/name
+                .keystore(Resource.create("client.p12"))
+                //Password to the keystore
+                .keystorePassphrase("password")
+                .build();
+
+WebClient.builder()
+         .tls(WebClientTls.builder()
+               .certificateTrustStore(keyConfig)
+               .clientKeyStore(keyConfig)
+               .build())
+         .build();
+----
+
+==== Configuring TLS in the config file
+
+It is also possible to configure TLS via the config file.
+
+[source,yaml]
+.WebClient TLS configuration file `application.yaml`
+----
+webclient:
+  tls:
+    #Server part defines settings for server certificate validation and truststore
+    server:
+      keystore:
+        passphrase: "password"
+        trust-store: true
+        resource:
+          resource-path: "keystore.p12"
+    #Client part defines access to the keystore with client private key or certificate
+    client:
+      keystore:
+        passphrase: "password"
+        resource:
+          resource-path: "keystore.p12"
+----
+Then, in your application code, load the configuration from that file.
+
+[source,java]
+.WebClient initialization using the `application.yaml` file located on the classpath
+----
+Config config = Config.create();
+WebClient webClient = WebClient.create(config.get("webclient"));
+----
+Or you can only create WebClientTls instance based on the config file.
+
+[source,java]
+.WebClientTls instance based on `application.yaml` file located on the classpath
+----
+Config config = Config.create();
+WebClientTls.builder()
+    .config(config.get("webclient.tls"))
+    .build();
+----
+
+== Reference
+
+* link:https://helidon.io/docs/v2/apidocs/io.helidon.webclient/module-summary.html[Helidon WebClient JavaDoc]

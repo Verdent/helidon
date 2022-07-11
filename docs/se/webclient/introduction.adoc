@@ -23,6 +23,8 @@
 :rootdir: {docdir}/../..
 :common-deps-page-prefix-inc: ../../shared/dependencies/common_shared.adoc
 
+include::{rootdir}/includes/se.adoc[]
+
 == ToC
 
 - <<Overview, Overview>>
@@ -31,17 +33,6 @@
 - <<Configuration, Configuration>>
 - <<Examples, Examples>>
 - <<Reference, Reference>>
-
-include::{rootdir}/includes/se.adoc[]
-include::{rootdir}/includes/dependencies.adoc[]
-
-[source,xml]
-----
-<dependency>
-    <groupId>io.helidon.webclient</groupId>
-    <artifactId>helidon-webclient</artifactId>
-</dependency>
-----
 
 == Overview
 
@@ -60,6 +51,16 @@ Follows the redirect chain and perform requests on the correct endpoint by itsel
 
 * *Tracing, metrics and security propagation* +
 Automatically propagates the configured tracing, metrics and security settings of the Helidon WebServer to the WebClient and uses them during request and response.
+
+include::{rootdir}/includes/dependencies.adoc[]
+
+[source,xml]
+----
+<dependency>
+    <groupId>io.helidon.webclient</groupId>
+    <artifactId>helidon-webclient</artifactId>
+</dependency>
+----
 
 == Usage
 

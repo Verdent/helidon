@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.common.configurable.Resource
 :keywords: helidon, config, io.helidon.common.configurable.Resource
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.common.configurable.Resource
@@ -27,6 +29,7 @@ io.helidon.common.configurable.Resource
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 

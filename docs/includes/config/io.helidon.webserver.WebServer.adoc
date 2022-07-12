@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.webserver.WebServer
 :keywords: helidon, config, io.helidon.webserver.WebServer
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.webserver.WebServer
@@ -31,6 +33,7 @@ Configuration of the HTTP server.
 
 This is a standalone configuration type, prefix from configuration root: `server`
 
+Configuration key:
 
 ==== Configuration options
 
@@ -43,7 +46,7 @@ Optional configuration options:
 |===
 |key |type |default value |description
 
-|`sockets` |link:../../shared/config/io.helidon.webserver.SocketConfiguration.adoc[SocketConfiguration[&#93;] |{nbsp} |Adds an additional named server socket configuration. As a result, the server will listen
+|`sockets` |link:{rootdir}/includes/config/io.helidon.webserver.SocketConfiguration.adoc[SocketConfiguration[&#93;] |{nbsp} |Adds an additional named server socket configuration. As a result, the server will listen
  on multiple ports.
  <p>
  An additional named server socket may have a dedicated Routing configured
@@ -75,7 +78,10 @@ Optional configuration options:
  is returned.
  <p>
  Default is `8192`
-|`tls` |link:../../shared/config/io.helidon.webserver.WebServerTls.adoc[WebServerTls] |{nbsp} |Configures SSL for this socket. When configured, the server enforces SSL
+|`max-upgrade-content-length` |int |`65536` |Set a maximum length of the content of an upgrade request.
+ <p>
+ Default is `64*1024`
+|`tls` |link:{rootdir}/includes/config/io.helidon.webserver.WebServerTls.adoc[WebServerTls] |{nbsp} |Configures SSL for this socket. When configured, the server enforces SSL
  configuration.
  If this method is called, any other method except for #tls(java.util.function.Supplier)¨
  and repeated invocation of this method would be ignored.

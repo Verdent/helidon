@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.common.configurable.LruCache
 :keywords: helidon, config, io.helidon.common.configurable.LruCache
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.common.configurable.LruCache
@@ -27,6 +29,7 @@ io.helidon.common.configurable.LruCache
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 

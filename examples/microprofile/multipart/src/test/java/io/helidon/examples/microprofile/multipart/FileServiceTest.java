@@ -36,6 +36,8 @@ import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+
+import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.glassfish.jersey.client.ClientProperties;
 import org.glassfish.jersey.ext.cdi1x.internal.CdiComponentProvider;
 import org.glassfish.jersey.media.multipart.MultiPart;
@@ -65,6 +67,22 @@ import static org.hamcrest.Matchers.notNullValue;
 @AddBean(MultiPartFeatureProvider.class)
 @TestMethodOrder(OrderAnnotation.class)
 public class FileServiceTest {
+
+    @Test
+    public void testRC(WebTarget target) throws IOException {
+        FileUpload fileUpload = RestClientBuilder.newBuilder()
+                .register(MultiPartFeature.class)
+                .baseUri(target.getUri())
+                .build(FileUpload.class);
+        Path tempDirectory = Files.createTempDirectory(null);
+        File file = Files.write(tempDirectory.resolve("foo.txt"), "bar\n".getBytes(StandardCharsets.UTF_8)).toFile();
+        MultiPart multipart = new MultiPart()
+                .bodyPart(new FileDataBodyPart("file[]", file, MediaType.APPLICATION_OCTET_STREAM_TYPE));
+
+        try (Response response = fileUpload.uploadFile(multipart)) {
+            assertThat(response.getStatus(), is(303));
+        }
+    }
 
     @Test
     @Order(1)

@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.common.configurable.ScheduledThreadPoolSupplier
 :keywords: helidon, config, io.helidon.common.configurable.ScheduledThreadPoolSupplier
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.common.configurable.ScheduledThreadPoolSupplier
@@ -27,6 +29,7 @@ io.helidon.common.configurable.ScheduledThreadPoolSupplier
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 

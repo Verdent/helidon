@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.webserver.WebServerTls
 :keywords: helidon, config, io.helidon.webserver.WebServerTls
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.webserver.WebServerTls
@@ -27,6 +29,7 @@ io.helidon.webserver.WebServerTls
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 
@@ -36,7 +39,7 @@ Required configuration options:
 |===
 |key |type |default value |description
 
-|`private-key` |link:../../shared/config/io.helidon.common.pki.KeyConfig.adoc[KeyConfig] |{nbsp} |Configure private key to use for SSL context.
+|`private-key` |link:{rootdir}/includes/config/io.helidon.common.pki.KeyConfig.adoc[KeyConfig] |{nbsp} |Configure private key to use for SSL context.
 
 |===
 
@@ -55,7 +58,7 @@ Optional configuration options:
 |`client-auth` |ClientAuthentication (REQUIRE, OPTIONAL, NONE) |`none` |Configures whether client authentication will be required or not.
 |`session-cache-size` |long |{nbsp} |Set the size of the cache used for storing SSL session objects. `0` to use the
  default value.
-|`trust` |link:../../shared/config/io.helidon.common.pki.KeyConfig.adoc[KeyConfig] |{nbsp} |Set the trust key configuration to be used to validate certificates.
+|`trust` |link:{rootdir}/includes/config/io.helidon.common.pki.KeyConfig.adoc[KeyConfig] |{nbsp} |Set the trust key configuration to be used to validate certificates.
 |`enabled` |boolean |`true` |Can be used to disable TLS even if keys are configured.
 
 |===

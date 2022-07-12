@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.webserver.SocketConfiguration
 :keywords: helidon, config, io.helidon.webserver.SocketConfiguration
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.webserver.SocketConfiguration
@@ -27,6 +29,7 @@ io.helidon.webserver.SocketConfiguration
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 
@@ -70,7 +73,10 @@ Optional configuration options:
  is returned.
  <p>
  Default is `8192`
-|`tls` |link:../../shared/config/io.helidon.webserver.WebServerTls.adoc[WebServerTls] |{nbsp} |Configures SSL for this socket. When configured, the server enforces SSL
+|`max-upgrade-content-length` |int |`65536` |Set a maximum length of the content of an upgrade request.
+ <p>
+ Default is `64*1024`
+|`tls` |link:{rootdir}/includes/config/io.helidon.webserver.WebServerTls.adoc[WebServerTls] |{nbsp} |Configures SSL for this socket. When configured, the server enforces SSL
  configuration.
  If this method is called, any other method except for #tls(java.util.function.Supplier)¨
  and repeated invocation of this method would be ignored.

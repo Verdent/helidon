@@ -16,6 +16,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+ifndef::rootdir[:rootdir: {docdir}/../..]
+
 :description: Configuration of io.helidon.webserver.cors.CrossOriginConfig
 :keywords: helidon, config, io.helidon.webserver.cors.CrossOriginConfig
 :basic-table-intro: The table below lists the configuration keys that configure io.helidon.webserver.cors.CrossOriginConfig
@@ -27,6 +29,7 @@ io.helidon.webserver.cors.CrossOriginConfig
 ----
 
 
+Configuration key:
 
 ==== Configuration options
 

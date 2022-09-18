@@ -17,10 +17,12 @@
 package io.helidon.security.providers.oidc;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -30,11 +32,16 @@ import javax.json.JsonObject;
 
 import io.helidon.common.http.FormParams;
 import io.helidon.common.http.Http;
+import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
+import io.helidon.media.common.spi.MediaSupportProvider;
 import io.helidon.security.Security;
 import io.helidon.security.integration.webserver.WebSecurity;
 import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.OidcCookieHandler;
+import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
+import io.helidon.security.providers.oidc.spi.TenantConfigProvider;
+import io.helidon.security.providers.oidc.spi.TenantIdFinder;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
 import io.helidon.webserver.ResponseHeaders;
@@ -446,8 +453,16 @@ public final class OidcSupport implements Service {
      * A fluent API builder for {@link io.helidon.security.providers.oidc.OidcSupport}.
      */
     public static class Builder implements io.helidon.common.Builder<OidcSupport> {
+
+        private final HelidonServiceLoader.Builder<TenantConfigProvider> tenantCofigProviders = HelidonServiceLoader
+                .builder(ServiceLoader.load(TenantConfigProvider.class));
         private boolean enabled = true;
+
+        private Config config;
         private OidcConfig oidcConfig;
+        private List<TenantConfigFinder> tenantConfigFinder = new ArrayList<>();
+        private Map<String, OidcConfig> tenantOidcConfigs = new HashMap<>();
+        private TenantIdFinder tenantIdFinder;
 
         private Builder() {
         }
@@ -469,7 +484,10 @@ public final class OidcSupport implements Service {
 
         @Override
         public OidcSupport build() {
-            if (enabled && (oidcConfig == null)) {
+
+
+
+            if (enabled && (tenantConfigFinder.isEmpty())) {
                 throw new IllegalStateException("When OIDC and security is enabled, OIDC configuration must be provided");
             }
             return new OidcSupport(this);
@@ -486,7 +504,7 @@ public final class OidcSupport implements Service {
             config.get("enabled").asBoolean().ifPresent(this::enabled);
 
             if (enabled) {
-                this.oidcConfig = OidcConfig.create(config);
+                this.config = config;
             }
             return this;
         }
@@ -498,7 +516,16 @@ public final class OidcSupport implements Service {
          * @return updated builder instance
          */
         public Builder config(OidcConfig config) {
-            this.oidcConfig = config;
+            tenantOidcConfigs.put(DefaultTenantIdProvider.DEFAULT_TENANT_ID_STYLE, config);
+            return this;
+        }
+
+        public Builder config(String tenant, OidcConfig config) {
+            tenantOidcConfigs.put(tenant, config);
+            return this;
+        }
+
+        public Builder tenantConfigProvider(TenantConfigProvider provider, int priority) {
             return this;
         }
 

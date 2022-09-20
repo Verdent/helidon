@@ -317,7 +317,7 @@ import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature;
  * </tr>
  * </table>
  */
-public final class OidcConfig {
+public class OidcConfig {
     /**
      * Default name of the header we expect JWT in.
      */
@@ -386,7 +386,7 @@ public final class OidcConfig {
     private final boolean forceHttpsRedirects;
     private final Duration tokenRefreshSkew;
 
-    private OidcConfig(Builder builder) {
+    OidcConfig(Builder builder) {
         this.clientId = builder.clientId;
         this.useCookie = builder.useCookie;
         this.useParam = builder.useParam;
@@ -1062,8 +1062,9 @@ public final class OidcConfig {
     /**
      * A fluent API {@link io.helidon.common.Builder} to build instances of {@link OidcConfig}.
      */
+    @SuppressWarnings("unchecked")
     @Configured(description = "Open ID Connect configuration")
-    public static class Builder implements io.helidon.common.Builder<OidcConfig> {
+    public static class Builder<T extends OidcConfig, B extends Builder<T, B>> implements io.helidon.common.Builder<T> {
         static final String DEFAULT_SERVER_TYPE = "@default";
 
         private final OidcCookieHandler.Builder tokenCookieBuilder = OidcCookieHandler.builder()
@@ -1124,8 +1125,13 @@ public final class OidcConfig {
         private boolean forceHttpsRedirects = DEFAULT_FORCE_HTTPS_REDIRECTS;
         private Duration tokenRefreshSkew = DEFAULT_TOKEN_REFRESH_SKEW;
 
+        private final B me = (B) this;
+
+        Builder() {
+        }
+
         @Override
-        public OidcConfig build() {
+        public T build() {
             this.serverType = OidcUtil.fixServerType(serverType);
 
             Errors.Collector collector = Errors.collector();
@@ -1253,7 +1259,11 @@ public final class OidcConfig {
                                                                   "/oauth2/v1/introspect");
             }
 
-            return new OidcConfig(this);
+            return createConfig();
+        }
+
+        private T createConfig() {
+            return (T) new OidcConfig(this);
         }
 
         /**
@@ -1262,7 +1272,7 @@ public final class OidcConfig {
          * @param config configuration located on node with OIDC configuration keys (e.g. client-id)
          * @return updated builder instance
          */
-        public Builder config(Config config) {
+        public B config(Config config) {
             // mandatory configuration
             config.get("client-id").asString().ifPresent(this::clientId);
             config.get("client-secret").asString().ifPresent(this::clientSecret);
@@ -1339,7 +1349,7 @@ public final class OidcConfig {
 
             config.get("token-refresh-before-expiration").as(Duration.class).ifPresent(this::tokenRefreshSkew);
 
-            return this;
+            return me;
         }
 
         /**
@@ -1349,9 +1359,9 @@ public final class OidcConfig {
          * @param tokenRefreshSkew time to refresh token before expiration
          * @return updated builder
          */
-        public Builder tokenRefreshSkew(Duration tokenRefreshSkew) {
+        public B tokenRefreshSkew(Duration tokenRefreshSkew) {
             this.tokenRefreshSkew = tokenRefreshSkew;
-            return this;
+            return me;
         }
 
         /**
@@ -1364,10 +1374,10 @@ public final class OidcConfig {
          * @param cookieEncryptionName name of the encryption configuration in security used to encrypt/decrypt cookies
          * @return updated builder
          */
-        public Builder cookieEncryptionName(String cookieEncryptionName) {
+        public B cookieEncryptionName(String cookieEncryptionName) {
             this.tokenCookieBuilder.encryptionName(cookieEncryptionName);
             this.idTokenCookieBuilder.encryptionName(cookieEncryptionName);
-            return this;
+            return me;
         }
 
         /**
@@ -1377,11 +1387,11 @@ public final class OidcConfig {
          * @param cookieEncryptionPassword encryption password
          * @return updated builder
          */
-        public Builder cookieEncryptionPassword(char[] cookieEncryptionPassword) {
+        public B cookieEncryptionPassword(char[] cookieEncryptionPassword) {
             this.tokenCookieBuilder.encryptionPassword(cookieEncryptionPassword);
             this.idTokenCookieBuilder.encryptionPassword(cookieEncryptionPassword);
 
-            return this;
+            return me;
         }
 
         /**
@@ -1392,9 +1402,9 @@ public final class OidcConfig {
          *                               OIDC server {@code false}
          * @return updated builder instance
          */
-        public Builder cookieEncryptionEnabled(boolean cookieEncryptionEnabled) {
+        public B cookieEncryptionEnabled(boolean cookieEncryptionEnabled) {
             this.tokenCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
-            return this;
+            return me;
         }
 
         /**
@@ -1405,9 +1415,9 @@ public final class OidcConfig {
          *                               OIDC server {@code false}
          * @return updated builder instance
          */
-        public Builder cookieEncryptionEnabledIdToken(boolean cookieEncryptionEnabled) {
+        public B cookieEncryptionEnabledIdToken(boolean cookieEncryptionEnabled) {
             this.idTokenCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
-            return this;
+            return me;
         }
 
         /**
@@ -1416,9 +1426,9 @@ public final class OidcConfig {
          * @param crossOriginConfig cross-origin settings to apply to the redirect endpoint
          * @return updated builder instance
          */
-        public Builder crossOriginConfig(CrossOriginConfig crossOriginConfig) {
+        public B crossOriginConfig(CrossOriginConfig crossOriginConfig) {
             this.crossOriginConfig = crossOriginConfig;
-            return this;
+            return me;
         }
 
         /**
@@ -1431,9 +1441,9 @@ public final class OidcConfig {
          * @param logoutEnabled whether to enable logout
          * @return updated builder instance
          */
-        public Builder logoutEnabled(Boolean logoutEnabled) {
+        public B logoutEnabled(Boolean logoutEnabled) {
             this.logoutEnabled = logoutEnabled;
-            return this;
+            return me;
         }
 
         /**
@@ -1446,9 +1456,9 @@ public final class OidcConfig {
          * @return updated builder instance
          */
         @ConfiguredOption("true")
-        public Builder redirect(boolean redirect) {
+        public B redirect(boolean redirect) {
             this.redirect = redirect;
-            return this;
+            return me;
         }
 
         /**
@@ -1457,9 +1467,9 @@ public final class OidcConfig {
          * @param realm realm name
          * @return updated builder instance
          */
-        public Builder realm(String realm) {
+        public B realm(String realm) {
             this.realm = realm;
-            return this;
+            return me;
         }
 
         /**
@@ -1469,9 +1479,9 @@ public final class OidcConfig {
          * @return updated builder instance
          */
         @ConfiguredOption
-        public Builder audience(String audience) {
+        public B audience(String audience) {
             this.audience = audience;
-            return this;
+            return me;
         }
 
         /**
@@ -1481,9 +1491,9 @@ public final class OidcConfig {
          * @return updated builder instance
          */
         @ConfiguredOption
-        public Builder issuer(String issuer) {
+        public B issuer(String issuer) {
             this.issuer = issuer;
-            return this;
+            return me;
         }
 
         /**
@@ -1494,9 +1504,9 @@ public final class OidcConfig {
          * @return updated builder instance
          */
         @ConfiguredOption("true")
-        public Builder validateJwtWithJwk(Boolean useJwk) {
+        public B validateJwtWithJwk(Boolean useJwk) {
             this.validateJwtWithJwk = useJwk;
-            return this;
+            return me;
         }
 
         /**
@@ -1507,10 +1517,10 @@ public final class OidcConfig {
          * @return updated builder instance
          */
         @ConfiguredOption
-        public Builder introspectEndpointUri(URI uri) {
+        public B introspectEndpointUri(URI uri) {
             validateJwtWithJwk(false);
             this.introspectUri = uri;
-            return this;
+            return me;
         }
 
         /**

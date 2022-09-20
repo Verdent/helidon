@@ -10,6 +10,7 @@ import javax.annotation.Priority;
 
 import io.helidon.config.Config;
 import io.helidon.security.providers.oidc.common.OidcConfig;
+import io.helidon.security.providers.oidc.common.OidcServiceConfig;
 import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
 import io.helidon.security.providers.oidc.spi.TenantConfigProvider;
 
@@ -56,10 +57,14 @@ class DefaultTenantConfigProvider implements TenantConfigProvider {
 
     private static class MultiTenantConfig extends DefaultTenantConfig {
 
-        private final Map<String, OidcConfig> tenantMap = new ConcurrentHashMap<>();
+        private final OidcServiceConfig serviceConfig;
 
         MultiTenantConfig(Config config) {
             super(config);
+
+            serviceConfig = OidcServiceConfig.builder()
+                    .co
+                    .build();
             config.get("tenants")
                     .asList(Config.class)
                     .ifPresent(confList -> confList.forEach(this::tenantFromConfig));
@@ -77,9 +82,5 @@ class DefaultTenantConfigProvider implements TenantConfigProvider {
                     .or(() -> super.config(tenantId));
         }
 
-        @Override
-        public void onChange(Consumer<String> tenantIdChangeConsumer) {
-//            changeHandler.set(tenantIdChangeConsumer);
-        }
     }
 }

@@ -71,6 +71,9 @@ import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.OidcCookieHandler;
+import io.helidon.security.providers.oidc.common.OidcServiceConfig;
+import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
+import io.helidon.security.providers.oidc.spi.TenantIdFinder;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
 import io.helidon.security.spi.SecurityProvider;
@@ -97,6 +100,8 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
 
     private final boolean optional;
     private final OidcConfig oidcConfig;
+    private final TenantIdFinder tenantIdFinder = null;
+    private final TenantConfigFinder tenantConfigFinder = null;
     private final TokenHandler paramHeaderHandler;
 
     private final BiFunction<SignedJwt, Errors.Collector, Single<Errors.Collector>> jwtValidator;
@@ -240,6 +245,11 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
         List<String> missingLocations = new LinkedList<>();
 
         Optional<String> token = Optional.empty();
+
+        OidcConfig oidcConfig = tenantIdFinder.tenantId(providerRequest)
+                .or(() -> DefaultTenantIdProvider.TENANT_ID)
+                .flatMap(tenantId -> tenantConfigFinder.config(tenantId))
+                .orElseThrow(() -> new IllegalStateException("ZMENIT"));
 
         try {
             if (oidcConfig.useHeader()) {
@@ -630,7 +640,9 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
                 provides = {AuthenticationProvider.class, SecurityProvider.class})
     public static final class Builder implements io.helidon.common.Builder<OidcProvider> {
         private boolean optional = false;
-        private OidcConfig oidcConfig;
+        private OidcServiceConfig.Builder oidcServiceBuilder;
+        private TenantIdFinder tenantIdFinder;
+        private TenantConfigFinder tenantConfigFinder;
         // identity propagation is disabled by default. In general we should not reuse the same token
         // for outbound calls, unless it is the same audience
         private Boolean propagate;
@@ -695,11 +707,14 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
          */
         public Builder config(Config config) {
             config.get("optional").asBoolean().ifPresent(this::optional);
-            if (null == oidcConfig) {
-                if (config.get("identity-uri").exists()) {
-                    oidcConfig = OidcConfig.create(config);
-                }
-            }
+//            if (null == tenantIdFinder) {
+////                if (config.get("identity-uri").exists()) {
+////                    oidcConfig = OidcConfig.create(config);
+////                }
+//            }
+            tenantIdFinder = new DefaultTenantIdProvider().finder(config);
+            tenantConfigFinder = new DefaultTenantConfigProvider().createTenantConfigFinder(config);
+
             config.get("propagate").asBoolean().ifPresent(this::propagate);
             if (null == outboundConfig) {
                 // the OutboundConfig.create() expects the provider configuration, not the outbound configuration

@@ -10,6 +10,7 @@ import javax.annotation.Priority;
 
 import io.helidon.config.Config;
 import io.helidon.security.providers.oidc.common.OidcConfig;
+import io.helidon.security.providers.oidc.common.OidcServiceConfig;
 import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
 import io.helidon.security.providers.oidc.spi.TenantConfigProvider;
 
@@ -38,7 +39,7 @@ class DefaultTenantConfigProvider implements TenantConfigProvider {
                 oidcConfig.set(OidcConfig.create(it));
                 Consumer<String> changeHandler = this.changeHandler.get();
                 if (changeHandler != null) {
-                    changeHandler.accept(DEFAULT_TENANT_ID);
+                    changeHandler.accept(OidcServiceConfig.DEFAULT_TENANT_ID);
                 }
             });
         }
@@ -54,27 +55,21 @@ class DefaultTenantConfigProvider implements TenantConfigProvider {
         }
     }
 
-    private static class MultiTenantConfig extends DefaultTenantConfig {
+    static class MultiTenantConfig implements TenantConfigFinder  {
 
-        private final Map<String, OidcConfig> tenantMap = new ConcurrentHashMap<>();
+        private final OidcServiceConfig oidcServiceConfig;
 
         MultiTenantConfig(Config config) {
-            super(config);
-            config.get("tenants")
-                    .asList(Config.class)
-                    .ifPresent(confList -> confList.forEach(this::tenantFromConfig));
+            this(OidcServiceConfig.create(config));
         }
 
-        private void tenantFromConfig(Config config) {
-            String id = config.get("id").asString()
-                    .orElseThrow(() -> new IllegalStateException("Every tenant need to have \"tenant-id\" specified"));
-            tenantMap.put(id, OidcConfig.create(config));
+        MultiTenantConfig(OidcServiceConfig oidcServiceConfig) {
+            this.oidcServiceConfig = oidcServiceConfig;
         }
 
         @Override
         public Optional<OidcConfig> config(String tenantId) {
-            return Optional.ofNullable(tenantMap.get(tenantId))
-                    .or(() -> super.config(tenantId));
+            return oidcServiceConfig.tenantConfig(tenantId);
         }
 
         @Override

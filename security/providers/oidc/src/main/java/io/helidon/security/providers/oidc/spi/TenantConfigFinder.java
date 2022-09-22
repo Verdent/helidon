@@ -9,15 +9,11 @@ import io.helidon.security.providers.oidc.common.OidcConfig;
  * Configuration of a tenant.
  */
 public interface TenantConfigFinder {
-    /**
-     * Default tenant id used when requesting configuration for unknown tenant.
-     */
-    String DEFAULT_TENANT_ID = "@default";
 
     /**
      * Open ID Configuration for this tenant.
      *
-     * @param tenantId identified tenant, or {@link #DEFAULT_TENANT_ID}
+     * @param tenantId identified tenant, or {@link io.helidon.security.providers.oidc.common.OidcServiceConfig#DEFAULT_TENANT_ID}
      *                 if tenant was not identified, or default was chosen
      * @return open ID connect configuration, or empty optional in case we are missing configuration (this will fail the request
      * if the provider is not optional)

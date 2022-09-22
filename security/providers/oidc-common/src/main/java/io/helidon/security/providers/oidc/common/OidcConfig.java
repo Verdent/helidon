@@ -1124,6 +1124,9 @@ public final class OidcConfig {
         private boolean forceHttpsRedirects = DEFAULT_FORCE_HTTPS_REDIRECTS;
         private Duration tokenRefreshSkew = DEFAULT_TOKEN_REFRESH_SKEW;
 
+        private Builder() {
+        }
+
         @Override
         public OidcConfig build() {
             this.serverType = OidcUtil.fixServerType(serverType);

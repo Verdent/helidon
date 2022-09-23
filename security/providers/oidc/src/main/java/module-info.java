@@ -36,6 +36,7 @@ module io.helidon.security.providers.oidc {
     requires io.helidon.security.integration.webserver;
     requires static io.helidon.config.metadata;
     requires io.helidon.common.serviceloader;
+    requires java.ws.rs;
 
     exports io.helidon.security.providers.oidc;
     exports io.helidon.security.providers.oidc.spi;

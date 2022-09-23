@@ -130,6 +130,8 @@ public final class OidcSupport implements Service {
     private static final String STATE_PARAM_NAME = "state";
     private static final String DEFAULT_REDIRECT = "/index.html";
 
+    private final TenantIdFinder oidcTenantIdFinder = null;
+    private final TenantConfigFinder oidcConfigFinder = null;
     private final OidcConfig oidcConfig;
     private final OidcCookieHandler tokenCookieHandler;
     private final OidcCookieHandler idTokenCookieHandler;

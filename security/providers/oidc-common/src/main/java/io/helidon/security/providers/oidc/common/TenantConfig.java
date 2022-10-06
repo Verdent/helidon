@@ -7,6 +7,7 @@ import java.util.logging.Logger;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
 
+import io.helidon.common.LazyValue;
 import io.helidon.common.http.FormParams;
 import io.helidon.security.SecurityException;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -37,7 +38,7 @@ public class TenantConfig {
     private final boolean useParam;
     private final String paramName;
     private final URI identityUri;
-    private final URI tokenEndpointUri;
+    private final LazyValue<URI> tokenEndpointUri;
     private final boolean useHeader;
     private final TokenHandler headerHandler;
     private final boolean useCookie;
@@ -45,21 +46,21 @@ public class TenantConfig {
     private final OidcCookieHandler idTokenCookieHandler;
     private final String baseScopes;
     private final boolean validateJwtWithJwk;
-    private final String issuer;
+    private final LazyValue<String> issuer;
     private final String audience;
     private final String realm;
     private final OidcConfig.ClientAuthentication tokenEndpointAuthentication;
     private final Duration clientTimeout;
-    private final JwkKeys signJwk;
-    private final WebTarget introspectEndpoint;
+    private final LazyValue<JwkKeys> signJwk;
+    private final LazyValue<WebTarget> introspectEndpoint;
     private final String clientSecret;
-    private final URI introspectUri;
-    private final WebTarget tokenEndpoint;
+    private final LazyValue<URI> introspectUri;
+    private final LazyValue<WebTarget> tokenEndpoint;
     private final Client appClient;
     private final Client generalClient;
     private final WebClient webClient;
     private final WebClient appWebClient;
-    private final URI logoutEndpointUri;
+    private final LazyValue<URI> logoutEndpointUri;
     private final String scopeAudience;
 
     TenantConfig(BaseBuilder<?, ?> builder) {
@@ -95,18 +96,21 @@ public class TenantConfig {
             this.clientSecret = null;
         }
 
-        if (builder.signJwk == null) {
-            this.signJwk = JwkKeys.builder().build();
-        } else {
-            this.signJwk = builder.signJwk;
-        }
+        this.signJwk = LazyValue.create(() -> {
+            JwkKeys jwkKeys = builder.signJwk.get();
+            if (jwkKeys == null) {
+                return JwkKeys.builder().build();
+            } else {
+                return jwkKeys;
+            }
+        });
 
         if (validateJwtWithJwk) {
             this.introspectEndpoint = null;
             this.introspectUri = null;
         } else {
             this.introspectUri = builder.introspectUri;
-            this.introspectEndpoint = appClient.target(builder.introspectUri);
+            this.introspectEndpoint = LazyValue.create(() -> appClient.target(builder.introspectUri.get()));
         }
 
         if ((builder.scopeAudience == null) || builder.scopeAudience.trim().isEmpty()) {
@@ -134,7 +138,7 @@ public class TenantConfig {
      * @see BaseBuilder#signJwk(JwkKeys)
      */
     public JwkKeys signJwk() {
-        return signJwk;
+        return signJwk.get();
     }
 
     /**
@@ -154,7 +158,7 @@ public class TenantConfig {
      * @see OidcConfig.Builder#logoutEndpointUri(java.net.URI)
      */
     public URI logoutEndpointUri() {
-        return logoutEndpointUri;
+        return logoutEndpointUri.get();
     }
 
     /**
@@ -167,7 +171,7 @@ public class TenantConfig {
      */
     @Deprecated(forRemoval = true, since = "2.4.0")
     public WebTarget tokenEndpoint() {
-        return tokenEndpoint;
+        return tokenEndpoint.get();
     }
 
     /**
@@ -177,7 +181,7 @@ public class TenantConfig {
      * @see BaseBuilder#tokenEndpointUri(java.net.URI)
      */
     public URI tokenEndpointUri() {
-        return tokenEndpointUri;
+        return tokenEndpointUri.get();
     }
 
     /**
@@ -327,7 +331,7 @@ public class TenantConfig {
      */
     @Deprecated(forRemoval = true, since = "2.4.0")
     public WebTarget introspectEndpoint() {
-        return introspectEndpoint;
+        return introspectEndpoint.get();
     }
 
     /**
@@ -337,10 +341,11 @@ public class TenantConfig {
      * @see OidcConfig.Builder#introspectEndpointUri(java.net.URI)
      */
     public URI introspectUri() {
-        if (introspectUri == null) {
+        URI uri = introspectUri.get();
+        if (uri == null) {
             throw new SecurityException("Introspect URI is not configured when using validate with JWK.");
         }
-        return introspectUri;
+        return uri;
     }
 
     /**
@@ -350,7 +355,7 @@ public class TenantConfig {
      * @see OidcConfig.Builder#issuer(String)
      */
     public String issuer() {
-        return issuer;
+        return issuer.get();
     }
 
     /**

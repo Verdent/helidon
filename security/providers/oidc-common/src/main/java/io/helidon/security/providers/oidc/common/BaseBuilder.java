@@ -30,6 +30,7 @@ import javax.ws.rs.client.WebTarget;
 
 import io.helidon.common.Builder;
 import io.helidon.common.Errors;
+import io.helidon.common.LazyValue;
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.http.SetCookie;
 import io.helidon.config.Config;
@@ -74,20 +75,20 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
     String clientSecret;
     String baseScopes = TenantConfig.DEFAULT_BASE_SCOPES;
     String realm = TenantConfig.DEFAULT_REALM;
-    String issuer;
+    LazyValue<String> issuer;
     String audience;
     String serverType;
     String paramName = TenantConfig.DEFAULT_PARAM_NAME;
     boolean useHeader = TenantConfig.DEFAULT_HEADER_USE;
-    URI authorizationEndpointUri;
-    URI logoutEndpointUri;
+    LazyValue<URI> authorizationEndpointUri = LazyValue.empty();
+    LazyValue<URI> logoutEndpointUri = LazyValue.empty();
     URI identityUri;
-    URI tokenEndpointUri;
+    LazyValue<URI> tokenEndpointUri = LazyValue.empty();
     Duration clientTimeout = Duration.ofSeconds(TenantConfig.DEFAULT_TIMEOUT_SECONDS);
-    JwkKeys signJwk;
+    LazyValue<JwkKeys> signJwk = LazyValue.empty();
     boolean validateJwtWithJwk = TenantConfig.DEFAULT_JWT_VALIDATE_JWK;
     boolean useParam = TenantConfig.DEFAULT_PARAM_USE;
-    URI introspectUri;
+    LazyValue<URI> introspectUri;
     TokenHandler headerHandler = TokenHandler.builder()
             .tokenHeader("Authorization")
             .tokenPrefix("bearer ")
@@ -96,7 +97,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
     private String proxyProtocol = DEFAULT_PROXY_PROTOCOL;
     private int proxyPort = DEFAULT_PROXY_PORT;
     @Deprecated
-    WebTarget tokenEndpoint;
+    LazyValue<WebTarget> tokenEndpoint;
     @Deprecated
     Client appClient;
     @Deprecated
@@ -132,29 +133,49 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
         this.generalClient = clientBuilder.build();
         this.webClient = webClientBuilder.build();
 
-        OidcMetadata oidcMetadata = this.oidcMetadata.webClient(webClient)
-                .remoteEnabled(oidcMetadataWellKnown)
-                .identityUri(identityUri)
-                .collector(collector)
-                .build();
+        LazyValue<OidcMetadata> oidcMetadata = LazyValue.create(() -> {
+            Errors.Collector lazyCollector = Errors.collector();
+            OidcMetadata metadata = this.oidcMetadata.webClient(webClient)
+                    .remoteEnabled(oidcMetadataWellKnown)
+                    .identityUri(identityUri)
+                    .collector(lazyCollector)
+                    .build();
+            lazyCollector.collect().checkValid();
+            return metadata;
+        });
 
-        this.tokenEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                             tokenEndpointUri,
-                                                             "token_endpoint",
-                                                             "/oauth2/v1/token");
+        this.tokenEndpointUri = LazyValue.create(() -> {
+            Errors.Collector lazyCollector = Errors.collector();
+            URI tokenEndpointUriLazy = oidcMetadata.get().getOidcEndpoint(lazyCollector,
+                                                                          tokenEndpointUri.get(),
+                                                                          "token_endpoint",
+                                                                          "/oauth2/v1/token");
+            lazyCollector.collect().checkValid();
+            return tokenEndpointUriLazy;
+        });
 
-        this.authorizationEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                                     authorizationEndpointUri,
-                                                                     "authorization_endpoint",
-                                                                     "/oauth2/v1/authorize");
+        this.authorizationEndpointUri = LazyValue.create(() -> {
+            Errors.Collector lazyCollector = Errors.collector();
+            URI authorizationEndpointUriLazy = oidcMetadata.get().getOidcEndpoint(lazyCollector,
+                                                                                  authorizationEndpointUri.get(),
+                                                                                  "authorization_endpoint",
+                                                                                  "/oauth2/v1/authorize");
+            lazyCollector.collect().checkValid();
+            return authorizationEndpointUriLazy;
+        });
 
-        this.logoutEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                              logoutEndpointUri,
-                                                              "end_session_endpoint",
-                                                              "oauth2/v1/userlogout");
+        this.logoutEndpointUri = LazyValue.create(() -> {
+            Errors.Collector lazyCollector = Errors.collector();
+            URI authorizationEndpointUriLazy = oidcMetadata.get().getOidcEndpoint(lazyCollector,
+                                                                                  logoutEndpointUri.get(),
+                                                                                  "end_session_endpoint",
+                                                                                  "oauth2/v1/userlogout");
+            lazyCollector.collect().checkValid();
+            return authorizationEndpointUriLazy;
+        });
 
         if (issuer == null) {
-            oidcMetadata.getString("issuer").ifPresent(it -> issuer = it);
+            issuer = LazyValue.create(() -> oidcMetadata.get().getString("issuer").orElse(null));
         }
 
         if ((audience == null) && (identityUri != null)) {
@@ -186,33 +207,40 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
 
         appClient = clientBuilder.build();
         appWebClient = webClientBuilder.build();
-        tokenEndpoint = appClient.target(tokenEndpointUri);
+        tokenEndpoint = LazyValue.create(() -> appClient.target(tokenEndpointUri.get()));
 
         if (validateJwtWithJwk) {
             if (signJwk == null) {
-                // not configured - use default location
-                URI jwkUri = oidcMetadata.getOidcEndpoint(collector,
-                                                          null,
-                                                          "jwks_uri",
-                                                          null);
-                if (jwkUri != null) {
-                    if ("idcs".equals(serverType)) {
-                        this.signJwk = IdcsSupport.signJwk(appWebClient, webClient, tokenEndpointUri, jwkUri, clientTimeout);
-                    } else {
-                        this.signJwk = JwkKeys.builder()
-                                .json(webClient.get()
-                                              .uri(jwkUri)
-                                              .request(JsonObject.class)
-                                              .await())
-                                .build();
+                this.signJwk = LazyValue.create(() -> {
+                    Errors.Collector lazyCollector = Errors.collector();
+                    // not configured - use default location
+                    URI jwkUri = oidcMetadata.get().getOidcEndpoint(lazyCollector,
+                                                                    null,
+                                                                    "jwks_uri",
+                                                                    null);
+                    if (jwkUri != null) {
+                        if ("idcs".equals(serverType)) {
+                            return IdcsSupport.signJwk(appWebClient, webClient, tokenEndpointUri.get(), jwkUri, clientTimeout);
+                        } else {
+                            return JwkKeys.builder()
+                                    .json(webClient.get()
+                                                  .uri(jwkUri)
+                                                  .request(JsonObject.class)
+                                                  .await())
+                                    .build();
+                        }
                     }
-                }
+                    return null;
+                });
             }
         } else {
-            this.introspectUri = oidcMetadata.getOidcEndpoint(collector,
-                                                              introspectUri,
-                                                              "introspection_endpoint",
-                                                              "/oauth2/v1/introspect");
+            this.introspectUri = LazyValue.create(() -> {
+                Errors.Collector lazyCollector = Errors.collector();
+                return oidcMetadata.get().getOidcEndpoint(lazyCollector,
+                                                          introspectUri.get(),
+                                                          "introspection_endpoint",
+                                                          "/oauth2/v1/introspect");
+            });
         }
     }
 
@@ -350,7 +378,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
      */
     @ConfiguredOption
     public B issuer(String issuer) {
-        this.issuer = issuer;
+        this.issuer = LazyValue.create(issuer);
         return me;
     }
 
@@ -377,7 +405,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
     @ConfiguredOption
     public B introspectEndpointUri(URI uri) {
         validateJwtWithJwk(false);
-        this.introspectUri = uri;
+        this.introspectUri = LazyValue.create(uri);
         return me;
     }
 
@@ -391,7 +419,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
     @ConfiguredOption(key = "sign-jwk.resource")
     public B signJwk(Resource resource) {
         validateJwtWithJwk(true);
-        this.signJwk = JwkKeys.builder().resource(resource).build();
+        this.signJwk = LazyValue.create(JwkKeys.builder().resource(resource).build());
         return me;
     }
 
@@ -403,7 +431,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
      */
     public B signJwk(JwkKeys jwk) {
         validateJwtWithJwk(true);
-        this.signJwk = jwk;
+        this.signJwk = LazyValue.create(jwk);
         return me;
     }
 
@@ -446,7 +474,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
      */
     @ConfiguredOption
     public B authorizationEndpointUri(URI uri) {
-        this.authorizationEndpointUri = uri;
+        this.authorizationEndpointUri = LazyValue.create(uri);
         return me;
     }
 
@@ -459,7 +487,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
      * @return updated builder instance
      */
     public B logoutEndpointUri(URI logoutEndpointUri) {
-        this.logoutEndpointUri = logoutEndpointUri;
+        this.logoutEndpointUri = LazyValue.create(logoutEndpointUri);
         return me;
     }
 
@@ -474,7 +502,7 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
      */
     @ConfiguredOption
     public B tokenEndpointUri(URI uri) {
-        this.tokenEndpointUri = uri;
+        this.tokenEndpointUri = LazyValue.create(uri);
         return me;
     }
 

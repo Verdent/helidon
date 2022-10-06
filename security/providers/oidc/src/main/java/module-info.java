@@ -34,8 +34,13 @@ module io.helidon.security.providers.oidc {
     requires io.helidon.webserver.cors;
     requires io.helidon.security.integration.webserver;
     requires static io.helidon.config.metadata;
+    requires io.helidon.common.serviceloader;
 
     exports io.helidon.security.providers.oidc;
+    exports io.helidon.security.providers.oidc.spi;
 
     provides io.helidon.security.spi.SecurityProviderService with io.helidon.security.providers.oidc.OidcProviderService;
+
+    uses io.helidon.security.providers.oidc.spi.TenantConfigProvider;
+    uses io.helidon.security.providers.oidc.spi.TenantIdProvider;
 }

@@ -1,4 +1,4 @@
-package io.helidon.security.providers.oidc.spi;
+package io.helidon.security.providers.oidc.common.spi;
 
 import java.util.Optional;
 

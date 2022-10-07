@@ -27,9 +27,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import io.helidon.common.configurable.LruCache;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
 import io.helidon.config.DeprecatedConfig;
@@ -47,16 +47,16 @@ import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.TenantConfig;
-import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
-import io.helidon.security.providers.oidc.spi.TenantConfigProvider;
-import io.helidon.security.providers.oidc.spi.TenantIdFinder;
-import io.helidon.security.providers.oidc.spi.TenantIdProvider;
+import io.helidon.security.providers.oidc.common.spi.TenantConfigFinder;
+import io.helidon.security.providers.oidc.common.spi.TenantConfigProvider;
+import io.helidon.security.providers.oidc.common.spi.TenantIdFinder;
+import io.helidon.security.providers.oidc.common.spi.TenantIdProvider;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
 import io.helidon.security.spi.SecurityProvider;
 import io.helidon.security.util.TokenHandler;
 
-import static io.helidon.security.providers.oidc.spi.TenantConfigFinder.DEFAULT_TENANT_ID;
+import static io.helidon.security.providers.oidc.common.spi.TenantConfigFinder.DEFAULT_TENANT_ID;
 
 /**
  * Open ID Connect authentication provider.
@@ -80,7 +80,7 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
     private final boolean propagate;
     private final OidcOutboundConfig outboundConfig;
     private final boolean useJwtGroups;
-    private final Map<String, TenantAuthenticationHandler> tenantAuthHandlers = new ConcurrentHashMap<>();
+    private final LruCache<String, TenantAuthenticationHandler> tenantAuthHandlers = LruCache.create();
 
     private OidcProvider(Builder builder, OidcOutboundConfig oidcOutboundConfig) {
         this.optional = builder.optional;
@@ -91,6 +91,8 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
 
         tenantConfigFinders = List.copyOf(builder.tenantConfigFinders);
         tenantIdFinders = List.copyOf(builder.tenantIdFinders);
+
+        tenantConfigFinders.forEach(tenantConfigFinder -> tenantConfigFinder.onChange(tenantAuthHandlers::remove));
     }
 
     /**
@@ -132,21 +134,19 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
         String tenantId = tenantIdFinders.stream()
                 .map(tenantIdFinder -> tenantIdFinder.tenantId(providerRequest))
                 .filter(Optional::isPresent)
-                .findFirst()
                 .map(Optional::get)
+                .findFirst()
                 .orElse(DEFAULT_TENANT_ID);
 
-        return tenantAuthHandlers.computeIfAbsent(tenantId, s -> {
-            TenantConfig possibleConfig = oidcConfig;
-            for (TenantConfigFinder tenantConfigFinder : tenantConfigFinders) {
-                Optional<TenantConfig> maybeConfig = tenantConfigFinder.config(tenantId);
-                if (maybeConfig.isPresent()) {
-                    possibleConfig = maybeConfig.get();
-                    break;
-                }
-            }
-            return new TenantAuthenticationHandler(oidcConfig, possibleConfig, useJwtGroups, optional);
-        }).authenticate(tenantId, providerRequest);
+        return tenantAuthHandlers.computeValue(tenantId, () -> {
+            TenantConfig possibleConfig = tenantConfigFinders.stream()
+                    .map(tenantConfigFinder -> tenantConfigFinder.config(tenantId))
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .findFirst()
+                    .orElse(oidcConfig.tenantConfig(tenantId));
+            return Optional.of(new TenantAuthenticationHandler(oidcConfig, possibleConfig, useJwtGroups, optional));
+        }).get().authenticate(tenantId, providerRequest);
     }
 
     @Override
@@ -215,7 +215,6 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
         private Boolean propagate;
         private boolean useJwtGroups = true;
         private OutboundConfig outboundConfig;
-        private boolean registerDefaults = true;
         private Config config = Config.empty();
         private TokenHandler defaultOutboundHandler = TokenHandler.builder()
                 .tokenHeader("Authorization")
@@ -227,11 +226,9 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
             if (null == oidcConfig) {
                 throw new IllegalArgumentException("OidcConfig must be configured");
             }
-            if (registerDefaults) {
-                tenantConfigProviders.addService(config -> new DefaultTenantConfigProvider.DefaultTenantConfig(oidcConfig),
-                                                 DEFAULT_PRIORITY);
-                tenantIdProviders.addService(new DefaultTenantIdProvider());
-            }
+//            tenantConfigProviders.addService(config -> new DefaultTenantConfigProvider.DefaultTenantConfig(oidcConfig),
+//                                             DEFAULT_PRIORITY);
+            tenantIdProviders.addService(new DefaultTenantIdProvider());
             tenantConfigFinders = tenantConfigProviders.build().asList().stream()
                     .map(provider -> provider.createTenantConfigFinder(config))
                     .collect(Collectors.toList());
@@ -300,7 +297,6 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
                 config.get("outbound").ifExists(outbound -> outboundConfig(OutboundConfig.create(config)));
             }
             config.get("use-jwt-groups").asBoolean().ifPresent(this::useJwtGroups);
-            config.get("register-defaults").asBoolean().ifPresent(this::registerDefaults);
             config.get("discover-tenant-config-providers").asBoolean().ifPresent(this::discoverTenantConfigProviders);
             config.get("discover-tenant-ip-providers").asBoolean().ifPresent(this::discoverTenantIdProviders);
             return this;
@@ -377,12 +373,7 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
         }
 
         public Builder discoverTenantIdProviders(boolean discoverIdProviders) {
-            tenantConfigProviders.useSystemServiceLoader(discoverIdProviders);
-            return this;
-        }
-
-        public Builder registerDefaults(boolean registerDefaults) {
-            this.registerDefaults = registerDefaults;
+            tenantIdProviders.useSystemServiceLoader(discoverIdProviders);
             return this;
         }
 

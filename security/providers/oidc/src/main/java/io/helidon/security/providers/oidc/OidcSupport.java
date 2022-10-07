@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 
 import javax.json.JsonObject;
 
+import io.helidon.common.configurable.LruCache;
 import io.helidon.common.http.FormParams;
 import io.helidon.common.http.Http;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
@@ -39,8 +41,8 @@ import io.helidon.security.integration.webserver.WebSecurity;
 import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.OidcCookieHandler;
 import io.helidon.security.providers.oidc.common.TenantConfig;
-import io.helidon.security.providers.oidc.spi.TenantConfigFinder;
-import io.helidon.security.providers.oidc.spi.TenantConfigProvider;
+import io.helidon.security.providers.oidc.common.spi.TenantConfigFinder;
+import io.helidon.security.providers.oidc.common.spi.TenantConfigProvider;
 import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
 import io.helidon.webserver.ResponseHeaders;
@@ -131,6 +133,7 @@ public final class OidcSupport implements Service {
     private static final String DEFAULT_REDIRECT = "/index.html";
 
     private final List<TenantConfigFinder> oidcConfigFinders;
+    private final LruCache<String, TenantConfig> tenantConfigs = LruCache.create();
     private final OidcConfig oidcConfig;
     private final boolean enabled;
     private final CorsSupport corsSupport;
@@ -140,6 +143,8 @@ public final class OidcSupport implements Service {
         this.enabled = builder.enabled;
         this.corsSupport = prepareCrossOriginSupport(oidcConfig.redirectUri(), oidcConfig.crossOriginConfig());
         this.oidcConfigFinders = List.copyOf(builder.tenantConfigFinders);
+
+        this.oidcConfigFinders.forEach(tenantConfigFinder -> tenantConfigFinder.onChange(tenantConfigs::remove));
     }
 
     /**
@@ -214,12 +219,13 @@ public final class OidcSupport implements Service {
 
     private void processLogout(ServerRequest req, ServerResponse res) {
         String tenant = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
-        TenantConfig tenantConfig = oidcConfigFinders.stream()
-                .map(finder -> finder.config(tenant))
-                .filter(Optional::isPresent)
-                .findFirst()
-                .orElse(Optional.of(oidcConfig))
-                .get();
+
+        TenantConfig tenantConfig = tenantConfigs.computeValue(tenant, () -> oidcConfigFinders.stream()
+                        .map(finder -> finder.config(tenant))
+                        .filter(Optional::isPresent)
+                        .findFirst()
+                        .orElse(Optional.ofNullable(oidcConfig)))
+                .orElse(oidcConfig);
 
         OidcCookieHandler idTokenCookieHandler = tenantConfig.idTokenCookieHandler();
         OidcCookieHandler tokenCookieHandler = tenantConfig.tokenCookieHandler();
@@ -291,15 +297,15 @@ public final class OidcSupport implements Service {
 
     private void processCode(String code, ServerRequest req, ServerResponse res) {
         String tenant = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
-        TenantConfig tenantConfig = oidcConfigFinders.stream()
-                .map(finder -> finder.config(tenant))
-                .findFirst()
-                .orElse(Optional.of(oidcConfig))
-                .get();
+        TenantConfig tenantConfig = tenantConfigs.computeValue(tenant, () -> oidcConfigFinders.stream()
+                        .map(finder -> finder.config(tenant))
+                        .filter(Optional::isPresent)
+                        .findFirst()
+                        .orElse(Optional.ofNullable(oidcConfig)))
+                .orElse(oidcConfig);
 
         WebClient webClient = tenantConfig.appWebClient();
 
-        System.out.println(code);
         FormParams.Builder form = FormParams.builder()
                 .add("grant_type", "authorization_code")
                 .add("code", code)
@@ -482,7 +488,6 @@ public final class OidcSupport implements Service {
         private Config config = Config.empty();
         private OidcConfig oidcConfig;
         private List<TenantConfigFinder> tenantConfigFinders;
-        private boolean registerDefault = true;
 
         private Builder() {
         }
@@ -507,10 +512,6 @@ public final class OidcSupport implements Service {
             if (enabled && (oidcConfig == null)) {
                 throw new IllegalStateException("When OIDC and security is enabled, OIDC configuration must be provided");
             }
-            if (registerDefault) {
-                tenantConfigProviders.addService(config -> new DefaultTenantConfigProvider.DefaultTenantConfig(oidcConfig),
-                                                 DEFAULT_PRIORITY);
-            }
             tenantConfigFinders = tenantConfigProviders.build().asList().stream()
                     .map(provider -> provider.createTenantConfigFinder(config))
                     .collect(Collectors.toList());
@@ -532,7 +533,6 @@ public final class OidcSupport implements Service {
                 this.config = config;
             }
 
-            config.get("register-default").asBoolean().ifPresent(this::registerDefault);
             config.get("discover-tenant-config-providers").asBoolean().ifPresent(this::discoverTenantConfigProviders);
             return this;
         }
@@ -589,11 +589,6 @@ public final class OidcSupport implements Service {
 
         public Builder addTenantConfigFinder(TenantConfigFinder configFinder, int priority) {
             tenantConfigProviders.addService(config -> configFinder, priority);
-            return this;
-        }
-
-        public Builder registerDefault(boolean registerDefault) {
-            this.registerDefault = registerDefault;
             return this;
         }
     }

@@ -8,8 +8,8 @@ import javax.annotation.Priority;
 import io.helidon.config.Config;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.providers.oidc.common.OidcConfig;
-import io.helidon.security.providers.oidc.spi.TenantIdFinder;
-import io.helidon.security.providers.oidc.spi.TenantIdProvider;
+import io.helidon.security.providers.oidc.common.spi.TenantIdFinder;
+import io.helidon.security.providers.oidc.common.spi.TenantIdProvider;
 import io.helidon.security.util.TokenHandler;
 
 /**

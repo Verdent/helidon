@@ -46,6 +46,7 @@ import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.providers.oidc.common.OidcConfig;
+import io.helidon.security.providers.oidc.common.Tenant;
 import io.helidon.security.providers.oidc.common.TenantConfig;
 import io.helidon.security.providers.oidc.common.spi.TenantConfigFinder;
 import io.helidon.security.providers.oidc.common.spi.TenantConfigProvider;
@@ -145,7 +146,8 @@ public final class OidcProvider implements AuthenticationProvider, OutboundSecur
                     .map(Optional::get)
                     .findFirst()
                     .orElse(oidcConfig.tenantConfig(tenantId));
-            return Optional.of(new TenantAuthenticationHandler(oidcConfig, possibleConfig, useJwtGroups, optional));
+            Tenant tenant = Tenant.create(oidcConfig, possibleConfig);
+            return Optional.of(new TenantAuthenticationHandler(oidcConfig, tenant, useJwtGroups, optional));
         }).get().authenticate(tenantId, providerRequest);
     }
 

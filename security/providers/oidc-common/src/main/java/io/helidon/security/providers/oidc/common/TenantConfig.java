@@ -30,9 +30,7 @@ public class TenantConfig {
     static final boolean DEFAULT_COOKIE_USE = true;
     static final String DEFAULT_COOKIE_NAME = "JSESSIONID";
     static final int DEFAULT_TIMEOUT_SECONDS = 30;
-    static final int DEFAULT_PROXY_PORT = 80;
-    static final String DEFAULT_PROXY_PROTOCOL = "http";
-    private final String authorizationEndpointUri;
+    private final URI authorizationEndpointUri;
     private final String clientId;
     private final boolean useParam;
     private final String paramName;
@@ -51,16 +49,12 @@ public class TenantConfig {
     private final OidcConfig.ClientAuthentication tokenEndpointAuthentication;
     private final Duration clientTimeout;
     private final JwkKeys signJwk;
-    private final WebTarget introspectEndpoint;
     private final String clientSecret;
     private final URI introspectUri;
-    private final WebTarget tokenEndpoint;
-    private final Client appClient;
-    private final Client generalClient;
-    private final WebClient webClient;
-    private final WebClient appWebClient;
     private final URI logoutEndpointUri;
     private final String scopeAudience;
+    private final boolean oidcMetadataWellKnown;
+    private final String serverType;
 
     TenantConfig(BaseBuilder<?, ?> builder) {
         this.clientId = builder.clientId;
@@ -77,23 +71,15 @@ public class TenantConfig {
         this.tokenEndpointUri = builder.tokenEndpointUri;
         this.tokenEndpointAuthentication = builder.tokenEndpointAuthentication;
         this.clientTimeout = builder.clientTimeout;
-        this.authorizationEndpointUri = builder.authorizationEndpointUri.toString();
+        this.authorizationEndpointUri = builder.authorizationEndpointUri;
         this.logoutEndpointUri = builder.logoutEndpointUri;
-        this.appClient = builder.appClient;
-        this.appWebClient = builder.appWebClient;
-        this.webClient = builder.webClient;
-        this.tokenEndpoint = builder.tokenEndpoint;
-        this.generalClient = builder.generalClient;
         this.useCookie = builder.useCookie;
+        this.oidcMetadataWellKnown = builder.oidcMetadataWellKnown;
+        this.serverType = builder.serverType;
 
         this.tokenCookieHandler = builder.tokenCookieBuilder.build();
         this.idTokenCookieHandler = builder.idTokenCookieBuilder.build();
-        if (tokenEndpointAuthentication == OidcConfig.ClientAuthentication.CLIENT_SECRET_POST) {
-            // we should only store this if required
-            this.clientSecret = builder.clientSecret;
-        } else {
-            this.clientSecret = null;
-        }
+        this.clientSecret = builder.clientSecret;
 
         if (builder.signJwk == null) {
             this.signJwk = JwkKeys.builder().build();
@@ -102,11 +88,9 @@ public class TenantConfig {
         }
 
         if (validateJwtWithJwk) {
-            this.introspectEndpoint = null;
             this.introspectUri = null;
         } else {
             this.introspectUri = builder.introspectUri;
-            this.introspectEndpoint = appClient.target(builder.introspectUri);
         }
 
         if ((builder.scopeAudience == null) || builder.scopeAudience.trim().isEmpty()) {
@@ -144,7 +128,10 @@ public class TenantConfig {
      * @see BaseBuilder#authorizationEndpointUri(URI)
      */
     public String authorizationEndpointUri() {
-        return authorizationEndpointUri;
+        if (authorizationEndpointUri == null) {
+            return null;
+        }
+        return authorizationEndpointUri.toString();
     }
 
     /**
@@ -155,19 +142,6 @@ public class TenantConfig {
      */
     public URI logoutEndpointUri() {
         return logoutEndpointUri;
-    }
-
-    /**
-     * Token endpoint of the OIDC server.
-     *
-     * @return target the endpoint is on
-     * @see Builder#tokenEndpointUri(URI)
-     * @deprecated Please use {@link #appWebClient()} and {@link #tokenEndpointUri()} instead; result of moving to
-     *      reactive webclient from JAX-RS client
-     */
-    @Deprecated(forRemoval = true, since = "2.4.0")
-    public WebTarget tokenEndpoint() {
-        return tokenEndpoint;
     }
 
     /**
@@ -318,28 +292,12 @@ public class TenantConfig {
     }
 
     /**
-     * Token introspection endpoint.
-     *
-     * @return introspection endpoint
-     * @see OidcConfig.Builder#introspectEndpointUri(URI)
-     *@deprecated Please use {@link #appWebClient()} and {@link #introspectUri()} instead; result of moving to
-     *      reactive webclient from JAX-RS client
-     */
-    @Deprecated(forRemoval = true, since = "2.4.0")
-    public WebTarget introspectEndpoint() {
-        return introspectEndpoint;
-    }
-
-    /**
      * Introspection endpoint URI.
      *
      * @return introspection endpoint URI
      * @see OidcConfig.Builder#introspectEndpointUri(java.net.URI)
      */
     public URI introspectUri() {
-        if (introspectUri == null) {
-            throw new SecurityException("Introspect URI is not configured when using validate with JWK.");
-        }
         return introspectUri;
     }
 
@@ -384,46 +342,6 @@ public class TenantConfig {
     }
 
     /**
-     * Client with configured proxy with no security.
-     *
-     * @return client for general use.
-     * @deprecated Use {@link #generalWebClient()} instead
-     */
-    @Deprecated(forRemoval = true, since = "2.4.0")
-    public Client generalClient() {
-        return generalClient;
-    }
-
-    /**
-     * Client with configured proxy with no security.
-     *
-     * @return client for general use.
-     */
-    public WebClient generalWebClient() {
-        return webClient;
-    }
-
-    /**
-     * Client with configured proxy and security of this OIDC client.
-     *
-     * @return client for communication with OIDC server
-     * @deprecated Use {@link #appWebClient()}
-     */
-    @Deprecated(forRemoval = true, since = "2.4.0")
-    public Client appClient() {
-        return appClient;
-    }
-
-    /**
-     * Client with configured proxy and security.
-     *
-     * @return client for communicating with OIDC identity server
-     */
-    public WebClient appWebClient() {
-        return appWebClient;
-    }
-
-    /**
      * Realm to use for WWW-Authenticate response (if needed).
      *
      * @return realm name
@@ -439,6 +357,10 @@ public class TenantConfig {
      */
     public OidcConfig.ClientAuthentication tokenEndpointAuthentication() {
         return tokenEndpointAuthentication;
+    }
+
+    boolean oidcMetadataWellKnown() {
+        return oidcMetadataWellKnown;
     }
 
     /**
@@ -465,6 +387,23 @@ public class TenantConfig {
         return clientTimeout;
     }
 
+    /**
+     * Authorization endpoint.
+     *
+     * @return authorization endpoint uri as a string
+     * @see BaseBuilder#authorizationEndpointUri(URI)
+     */
+    URI authorizationEndpoint() {
+        return authorizationEndpointUri;
+    }
+
+    String clientSecret() {
+        return clientSecret;
+    }
+
+    String serverType() {
+        return serverType;
+    }
 
     public static final class Builder extends BaseBuilder<Builder, TenantConfig> {
 

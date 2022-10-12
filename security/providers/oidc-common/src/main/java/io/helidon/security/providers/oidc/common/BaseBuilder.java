@@ -47,8 +47,6 @@ import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature;
 
 import static io.helidon.security.providers.oidc.common.TenantConfig.DEFAULT_COOKIE_NAME;
 import static io.helidon.security.providers.oidc.common.TenantConfig.DEFAULT_COOKIE_USE;
-import static io.helidon.security.providers.oidc.common.TenantConfig.DEFAULT_PROXY_PORT;
-import static io.helidon.security.providers.oidc.common.TenantConfig.DEFAULT_PROXY_PROTOCOL;
 
 /**
  * Base builder of the OIDC config components.
@@ -92,17 +90,6 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
             .tokenHeader("Authorization")
             .tokenPrefix("bearer ")
             .build();
-    private String proxyHost;
-    private String proxyProtocol = DEFAULT_PROXY_PROTOCOL;
-    private int proxyPort = DEFAULT_PROXY_PORT;
-    @Deprecated
-    WebTarget tokenEndpoint;
-    @Deprecated
-    Client appClient;
-    @Deprecated
-    Client generalClient;
-    WebClient appWebClient;
-    WebClient webClient;
     boolean useCookie = DEFAULT_COOKIE_USE;
     boolean cookieSameSiteDefault = true;
     String scopeAudience;
@@ -120,113 +107,17 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
         OidcUtil.validateExists(collector, clientSecret, "Client Secret", "client-secret");
         OidcUtil.validateExists(collector, identityUri, "Identity URI", "identity-uri");
 
-        // first set of validations
-        collector.collect().checkValid();
-        collector = Errors.collector();
-
-        WebClient.Builder webClientBuilder = OidcUtil.webClientBaseBuilder(proxyHost,
-                                                                           proxyPort,
-                                                                           clientTimeout);
-        ClientBuilder clientBuilder = OidcUtil.clientBaseBuilder(proxyProtocol, proxyHost, proxyPort);
-
-        this.generalClient = clientBuilder.build();
-        this.webClient = webClientBuilder.build();
-
-        OidcMetadata oidcMetadata = this.oidcMetadata.webClient(webClient)
-                .remoteEnabled(oidcMetadataWellKnown)
-                .identityUri(identityUri)
-                .collector(collector)
-                .build();
-
-        this.tokenEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                             tokenEndpointUri,
-                                                             "token_endpoint",
-                                                             "/oauth2/v1/token");
-
-        this.authorizationEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                                     authorizationEndpointUri,
-                                                                     "authorization_endpoint",
-                                                                     "/oauth2/v1/authorize");
-
-        this.logoutEndpointUri = oidcMetadata.getOidcEndpoint(collector,
-                                                              logoutEndpointUri,
-                                                              "end_session_endpoint",
-                                                              "oauth2/v1/userlogout");
-
-        if (issuer == null) {
-            oidcMetadata.getString("issuer").ifPresent(it -> issuer = it);
-        }
-
         if ((audience == null) && (identityUri != null)) {
             this.audience = identityUri.toString();
         }
-
-        // second set of validations
+        // first set of validations
         collector.collect().checkValid();
-
-        if (tokenEndpointAuthentication == OidcConfig.ClientAuthentication.CLIENT_SECRET_BASIC) {
-            HttpAuthenticationFeature basicAuth = HttpAuthenticationFeature.basicBuilder()
-                    .credentials(clientId, clientSecret)
-                    .build();
-            clientBuilder.register(basicAuth);
-
-            HttpBasicAuthProvider httpBasicAuth = HttpBasicAuthProvider.builder()
-                    .addOutboundTarget(OutboundTarget.builder("oidc")
-                                               .addHost("*")
-                                               .customObject(HttpBasicOutboundConfig.class,
-                                                             HttpBasicOutboundConfig.create(clientId, clientSecret))
-                                               .build())
-                    .build();
-            Security tokenOutboundSecurity = Security.builder()
-                    .addOutboundSecurityProvider(httpBasicAuth)
-                    .build();
-
-            webClientBuilder.addService(WebClientSecurity.create(tokenOutboundSecurity));
-        }
-
-        appClient = clientBuilder.build();
-        appWebClient = webClientBuilder.build();
-        tokenEndpoint = appClient.target(tokenEndpointUri);
-
-        if (validateJwtWithJwk) {
-            if (signJwk == null) {
-                // not configured - use default location
-                URI jwkUri = oidcMetadata.getOidcEndpoint(collector,
-                                                          null,
-                                                          "jwks_uri",
-                                                          null);
-                if (jwkUri != null) {
-                    if ("idcs".equals(serverType)) {
-                        this.signJwk = IdcsSupport.signJwk(appWebClient, webClient, tokenEndpointUri, jwkUri, clientTimeout);
-                    } else {
-                        this.signJwk = JwkKeys.builder()
-                                .json(webClient.get()
-                                              .uri(jwkUri)
-                                              .request(JsonObject.class)
-                                              .await())
-                                .build();
-                    }
-                }
-            }
-        } else {
-            this.introspectUri = oidcMetadata.getOidcEndpoint(collector,
-                                                              introspectUri,
-                                                              "introspection_endpoint",
-                                                              "/oauth2/v1/introspect");
-        }
     }
 
     public B config(Config config) {
         config.get("client-id").asString().ifPresent(this::clientId);
         config.get("client-secret").asString().ifPresent(this::clientSecret);
         config.get("identity-uri").as(URI.class).ifPresent(this::identityUri);
-
-        // environment
-        config.get("proxy-protocol")
-                .asString()
-                .ifPresent(this::proxyProtocol);
-        config.get("proxy-host").asString().ifPresent(this::proxyHost);
-        config.get("proxy-port").asInt().ifPresent(this::proxyPort);
 
         // token handling
         config.get("query-param-use").asBoolean().ifPresent(this::useParam);
@@ -609,51 +500,6 @@ abstract class BaseBuilder<B extends BaseBuilder<B, T>, T extends TenantConfig> 
     @ConfiguredOption(key = "client-timeout-millis", value = "30000")
     public B clientTimeout(Duration duration) {
         this.clientTimeout = duration;
-        return me;
-    }
-
-    /**
-     * Proxy protocol to use when proxy is used.
-     * Defaults to {@value TenantConfig#DEFAULT_PROXY_PROTOCOL}.
-     *
-     * @param protocol protocol to use (such as https)
-     * @return updated builder instance
-     */
-    @ConfiguredOption(value = DEFAULT_PROXY_PROTOCOL)
-    public B proxyProtocol(String protocol) {
-        this.proxyProtocol = protocol;
-        return me;
-    }
-
-    /**
-     * Proxy host to use. When defined, triggers usage of proxy for HTTP requests.
-     * Setting to empty String has the same meaning as setting to null - disables proxy.
-     *
-     * @param proxyHost host of the proxy
-     * @return updated builder instance
-     * @see #proxyProtocol(String)
-     * @see #proxyPort(int)
-     */
-    @ConfiguredOption
-    public B proxyHost(String proxyHost) {
-        if ((proxyHost == null) || proxyHost.isEmpty()) {
-            this.proxyHost = null;
-        } else {
-            this.proxyHost = proxyHost;
-        }
-        return me;
-    }
-
-    /**
-     * Proxy port.
-     * Defaults to {@value TenantConfig#DEFAULT_PROXY_PORT}
-     *
-     * @param proxyPort port of the proxy server to use
-     * @return updated builder instance
-     */
-    @ConfiguredOption("80")
-    public B proxyPort(int proxyPort) {
-        this.proxyPort = proxyPort;
         return me;
     }
 

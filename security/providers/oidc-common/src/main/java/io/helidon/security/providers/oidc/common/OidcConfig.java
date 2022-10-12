@@ -24,9 +24,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 import javax.json.JsonObject;
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.WebTarget;
 
 import io.helidon.common.Errors;
 import io.helidon.common.configurable.Resource;
@@ -39,6 +43,7 @@ import io.helidon.config.metadata.ConfiguredOption;
 import io.helidon.security.Security;
 import io.helidon.security.SecurityException;
 import io.helidon.security.util.TokenHandler;
+import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
 import io.helidon.webserver.cors.CrossOriginConfig;
 
@@ -316,6 +321,8 @@ public final class OidcConfig extends TenantConfig {
     static final int DEFAULT_MAX_REDIRECTS = 5;
     static final boolean DEFAULT_FORCE_HTTPS_REDIRECTS = false;
     static final Duration DEFAULT_TOKEN_REFRESH_SKEW = Duration.ofSeconds(5);
+    static final int DEFAULT_PROXY_PORT = 80;
+    static final String DEFAULT_PROXY_PROTOCOL = "http";
 
     /**
      * Default tenant id used when requesting configuration for unknown tenant.
@@ -338,6 +345,14 @@ public final class OidcConfig extends TenantConfig {
     private final boolean forceHttpsRedirects;
     private final Duration tokenRefreshSkew;
     private final boolean multiTenant;
+    private final WebTarget tokenEndpoint;
+    private final Client appClient;
+    private final Client generalClient;
+    private final WebClient webClient;
+    private final WebClient appWebClient;
+    private final WebTarget introspectEndpoint;
+    private final Supplier<WebClient.Builder> webClientBuilderSupplier;
+    private final Supplier<ClientBuilder> jaxrsClientBuilderSupplier;
 
     private OidcConfig(Builder builder) {
         super(builder);
@@ -354,6 +369,20 @@ public final class OidcConfig extends TenantConfig {
         this.tokenRefreshSkew = builder.tokenRefreshSkew;
         this.multiTenant = builder.multiTenant;
         this.tenantConfigurations = Map.copyOf(builder.tenantConfigurations);
+        this.appClient = builder.appClient;
+        this.appWebClient = builder.appWebClient;
+        this.webClient = builder.webClient;
+        this.tokenEndpoint = builder.tokenEndpoint;
+        this.generalClient = builder.generalClient;
+
+        if (builder.validateJwtWithJwk) {
+            this.introspectEndpoint = null;
+        } else {
+            this.introspectEndpoint = appClient.target(builder.introspectUri);
+        }
+
+        this.webClientBuilderSupplier = builder.webClientBuilderSupplier;
+        this.jaxrsClientBuilderSupplier = builder.jaxrsClientBuilderSupplier;
 
         LOGGER.finest(() -> "Redirect URI with host: " + frontendUri + redirectUri);
     }
@@ -549,12 +578,87 @@ public final class OidcConfig extends TenantConfig {
         return multiTenant;
     }
 
+
+    /**
+     * Client with configured proxy with no security.
+     *
+     * @return client for general use.
+     * @deprecated Use {@link #generalWebClient()} instead
+     */
+    @Deprecated(forRemoval = true, since = "2.4.0")
+    public Client generalClient() {
+        return generalClient;
+    }
+
+    /**
+     * Client with configured proxy with no security.
+     *
+     * @return client for general use.
+     */
+    public WebClient generalWebClient() {
+        return webClient;
+    }
+
+    /**
+     * Client with configured proxy and security of this OIDC client.
+     *
+     * @return client for communication with OIDC server
+     * @deprecated Use {@link #appWebClient()}
+     */
+    @Deprecated(forRemoval = true, since = "2.4.0")
+    public Client appClient() {
+        return appClient;
+    }
+
+    /**
+     * Client with configured proxy and security.
+     *
+     * @return client for communicating with OIDC identity server
+     */
+    public WebClient appWebClient() {
+        return appWebClient;
+    }
+
+    /**
+     * Token endpoint of the OIDC server.
+     *
+     * @return target the endpoint is on
+     * @see TenantConfig.Builder#tokenEndpointUri(URI)
+     * @deprecated Please use {@link #appWebClient()} and {@link #tokenEndpointUri()} instead; result of moving to
+     *      reactive webclient from JAX-RS client
+     */
+    @Deprecated(forRemoval = true, since = "2.4.0")
+    public WebTarget tokenEndpoint() {
+        return tokenEndpoint;
+    }
+
+    /**
+     * Token introspection endpoint.
+     *
+     * @return introspection endpoint
+     * @see OidcConfig.Builder#introspectEndpointUri(URI)
+     *@deprecated Please use {@link #appWebClient()} and {@link #introspectUri()} instead; result of moving to
+     *      reactive webclient from JAX-RS client
+     */
+    @Deprecated(forRemoval = true, since = "2.4.0")
+    public WebTarget introspectEndpoint() {
+        return introspectEndpoint;
+    }
+
     public TenantConfig tenantConfig(String tenantId) {
         TenantConfig tenantConfig = tenantConfigurations.get(tenantId);
         if (tenantConfig == null) {
             return tenantConfigurations.getOrDefault(DEFAULT_TENANT_ID, this);
         }
         return tenantConfig;
+    }
+
+    Supplier<WebClient.Builder> webClientBuilderSupplier() {
+        return webClientBuilderSupplier;
+    }
+
+    Supplier<ClientBuilder> jaxrsClientBuilderSupplier() {
+        return jaxrsClientBuilderSupplier;
     }
 
     /**
@@ -652,6 +756,19 @@ public final class OidcConfig extends TenantConfig {
         private boolean forceHttpsRedirects = DEFAULT_FORCE_HTTPS_REDIRECTS;
         private Duration tokenRefreshSkew = DEFAULT_TOKEN_REFRESH_SKEW;
         private boolean multiTenant = false;
+        private String proxyHost;
+        private String proxyProtocol = DEFAULT_PROXY_PROTOCOL;
+        private int proxyPort = DEFAULT_PROXY_PORT;
+        @Deprecated
+        private WebTarget tokenEndpoint;
+        @Deprecated
+        private Client appClient;
+        @Deprecated
+        private Client generalClient;
+        private WebClient appWebClient;
+        private WebClient webClient;
+        private Supplier<WebClient.Builder> webClientBuilderSupplier;
+        private Supplier<ClientBuilder> jaxrsClientBuilderSupplier;
 
         protected Builder() {
         }
@@ -692,6 +809,14 @@ public final class OidcConfig extends TenantConfig {
                 idTokenCookieBuilder.encryptionEnabled(true);
             }
 
+            this.webClientBuilderSupplier = () -> OidcUtil.webClientBaseBuilder(proxyHost,
+                                                                                proxyPort,
+                                                                                clientTimeout);
+            this.jaxrsClientBuilderSupplier = () -> OidcUtil.clientBaseBuilder(proxyProtocol, proxyHost, proxyPort);
+
+            this.generalClient = jaxrsClientBuilderSupplier.get().build();
+            this.webClient = webClientBuilderSupplier.get().build();
+
             return new OidcConfig(this);
         }
 
@@ -705,6 +830,13 @@ public final class OidcConfig extends TenantConfig {
             super.config(config);
             // mandatory configuration
             config.get("frontend-uri").asString().ifPresent(this::frontendUri);
+
+            // environment
+            config.get("proxy-protocol")
+                    .asString()
+                    .ifPresent(this::proxyProtocol);
+            config.get("proxy-host").asString().ifPresent(this::proxyHost);
+            config.get("proxy-port").asInt().ifPresent(this::proxyPort);
 
             // our application
             config.get("redirect-uri").asString().ifPresent(this::redirectUri);
@@ -728,10 +860,13 @@ public final class OidcConfig extends TenantConfig {
             return this;
         }
 
+
+
         private void tenantFromConfig(Config defaultConfig, Config tenantConfig) {
             String name = tenantConfig.get(TENANT_IDENT).asString()
                     .orElseThrow(() -> new IllegalStateException("Every tenant need to have \"" + TENANT_IDENT + "\" specified"));
             tenantConfigurations.put(name, TenantConfig.tenantBuilder().config(defaultConfig).config(tenantConfig).build());
+
         }
 
         /**
@@ -889,6 +1024,52 @@ public final class OidcConfig extends TenantConfig {
             this.maxRedirects = maxRedirects;
             return this;
         }
+
+        /**
+         * Proxy protocol to use when proxy is used.
+         * Defaults to {@value DEFAULT_PROXY_PROTOCOL}.
+         *
+         * @param protocol protocol to use (such as https)
+         * @return updated builder instance
+         */
+        @ConfiguredOption(value = DEFAULT_PROXY_PROTOCOL)
+        public Builder proxyProtocol(String protocol) {
+            this.proxyProtocol = protocol;
+            return this;
+        }
+
+        /**
+         * Proxy host to use. When defined, triggers usage of proxy for HTTP requests.
+         * Setting to empty String has the same meaning as setting to null - disables proxy.
+         *
+         * @param proxyHost host of the proxy
+         * @return updated builder instance
+         * @see #proxyProtocol(String)
+         * @see #proxyPort(int)
+         */
+        @ConfiguredOption
+        public Builder proxyHost(String proxyHost) {
+            if ((proxyHost == null) || proxyHost.isEmpty()) {
+                this.proxyHost = null;
+            } else {
+                this.proxyHost = proxyHost;
+            }
+            return this;
+        }
+
+        /**
+         * Proxy port.
+         * Defaults to {@value DEFAULT_PROXY_PORT}
+         *
+         * @param proxyPort port of the proxy server to use
+         * @return updated builder instance
+         */
+        @ConfiguredOption("80")
+        public Builder proxyPort(int proxyPort) {
+            this.proxyPort = proxyPort;
+            return this;
+        }
+
 
         public Builder multiTenant(boolean multiTenant){
             this.multiTenant = multiTenant;

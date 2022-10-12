@@ -44,6 +44,7 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.providers.oidc.common.OidcConfig;
+import io.helidon.security.providers.oidc.common.Tenant;
 import io.helidon.security.providers.oidc.common.TenantConfig;
 import io.helidon.security.util.TokenHandler;
 import io.helidon.webclient.WebClientRequestBuilder;
@@ -60,21 +61,23 @@ class TenantAuthenticationHandler {
     private final boolean optional;
     private final OidcConfig defaultConfig;
     private final TenantConfig tenantConfig;
+    private final Tenant tenant;
     private final boolean useJwtGroups;
     private final BiFunction<SignedJwt, Errors.Collector, Single<Errors.Collector>> jwtValidator;
     private final BiConsumer<StringBuilder, String> scopeAppender;
     private final Pattern attemptPattern;
 
-    TenantAuthenticationHandler(OidcConfig defaultConfig, TenantConfig tenantConfig, boolean useJwtGroups, boolean optional) {
+    TenantAuthenticationHandler(OidcConfig defaultConfig, Tenant tenant, boolean useJwtGroups, boolean optional) {
         this.defaultConfig = defaultConfig;
-        this.tenantConfig = tenantConfig;
+        this.tenant = tenant;
+        this.tenantConfig = tenant.tenantConfig();
         this.useJwtGroups = useJwtGroups;
         this.optional = optional;
 
         attemptPattern = Pattern.compile(".*?" + defaultConfig.redirectAttemptParam() + "=(\\d+).*");
         if (tenantConfig.validateJwtWithJwk()) {
             this.jwtValidator = (signedJwt, collector) -> {
-                JwkKeys jwk = tenantConfig.signJwk();
+                JwkKeys jwk = tenant.signJwk();
                 Errors errors = signedJwt.verifySignature(jwk);
                 errors.forEach(errorMessage -> {
                     switch (errorMessage.getSeverity()) {
@@ -97,9 +100,9 @@ class TenantAuthenticationHandler {
                 FormParams.Builder form = FormParams.builder()
                         .add("token", signedJwt.tokenContent());
 
-                WebClientRequestBuilder post = tenantConfig.appWebClient()
+                WebClientRequestBuilder post = defaultConfig.appWebClient()
                         .post()
-                        .uri(tenantConfig.introspectUri())
+                        .uri(tenant.introspectUri())
                         .accept(MediaType.APPLICATION_JSON)
                         .headers(it -> {
                             it.add(Http.Header.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
@@ -178,7 +181,7 @@ class TenantAuthenticationHandler {
                         missingLocations.add("cookie");
                     } else {
                         return cookie.get()
-                                .flatMapSingle(it -> validateToken(tenantId, tenantConfig, providerRequest, it))
+                                .flatMapSingle(it -> validateToken(tenantId, providerRequest, it))
                                 .onErrorResumeWithSingle(throwable -> {
                                     if (LOGGER.isLoggable(Level.FINEST)) {
                                         LOGGER.log(Level.FINEST, "Invalid token in cookie", throwable);
@@ -187,8 +190,7 @@ class TenantAuthenticationHandler {
                                                                      Http.Status.UNAUTHORIZED_401,
                                                                      null,
                                                                      "Invalid token",
-                                                                     tenantId,
-                                                                     tenantConfig));
+                                                                     tenantId));
                                 });
                     }
                 }
@@ -199,7 +201,7 @@ class TenantAuthenticationHandler {
         }
 
         if (token.isPresent()) {
-            return validateToken(tenantId, tenantConfig, providerRequest, token.get());
+            return validateToken(tenantId, providerRequest, token.get());
         } else {
             LOGGER.finest(() -> "Missing token, could not find in either of: " + missingLocations);
             return CompletableFuture.completedFuture(errorResponse(providerRequest,
@@ -207,8 +209,7 @@ class TenantAuthenticationHandler {
                                                                    null,
                                                                    "Missing token, could not find in either of: "
                                                                            + missingLocations,
-                                                                   tenantId,
-                                                                   tenantConfig));
+                                                                   tenantId));
         }
     }
 
@@ -243,8 +244,7 @@ class TenantAuthenticationHandler {
                                                  Http.Status status,
                                                  String code,
                                                  String description,
-                                                 String tenantId,
-                                                 TenantConfig tenantConfig) {
+                                                 String tenantId) {
         if (defaultConfig.shouldRedirect()) {
             // make sure we do not exceed redirect limit
             String state = origUri(providerRequest);
@@ -272,7 +272,7 @@ class TenantAuthenticationHandler {
             String scopeString;
             scopeString = URLEncoder.encode(scopes.toString(), StandardCharsets.UTF_8);
 
-            String authorizationEndpoint = tenantConfig.authorizationEndpointUri();
+            String authorizationEndpoint = tenant.authorizationEndpointUri();
             String nonce = UUID.randomUUID().toString();
             String redirectUri =
                     encode(redirectUri(providerRequest.env()) + "?" + OidcSupport.TENANT_PARAM_NAME + "=" + tenantId);
@@ -381,7 +381,6 @@ class TenantAuthenticationHandler {
     }
 
     private Single<AuthenticationResponse> validateToken(String tenantId,
-                                                         TenantConfig tenantConfig,
                                                          ProviderRequest providerRequest,
                                                          String token) {
         SignedJwt signedJwt;
@@ -397,7 +396,6 @@ class TenantAuthenticationHandler {
                 .map(it -> processValidationResult(providerRequest,
                                                    signedJwt,
                                                    tenantId,
-                                                   tenantConfig,
                                                    it))
                 .onErrorResume(t -> {
                     LOGGER.log(Level.FINEST, "Failed to validate request", t);
@@ -408,11 +406,10 @@ class TenantAuthenticationHandler {
     private AuthenticationResponse processValidationResult(ProviderRequest providerRequest,
                                                            SignedJwt signedJwt,
                                                            String tenantId,
-                                                           TenantConfig tenantConfig,
                                                            Errors.Collector collector) {
         Jwt jwt = signedJwt.getJwt();
         Errors errors = collector.collect();
-        Errors validationErrors = jwt.validate(tenantConfig.issuer(), tenantConfig.audience());
+        Errors validationErrors = jwt.validate(tenant.issuer(), tenantConfig.audience());
 
         if (errors.isValid() && validationErrors.isValid()) {
 
@@ -440,8 +437,7 @@ class TenantAuthenticationHandler {
                                      Http.Status.FORBIDDEN_403,
                                      "insufficient_scope",
                                      "Scopes " + missingScopes + " are missing",
-                                     tenantId,
-                                     tenantConfig);
+                                     tenantId);
             }
         } else {
             if (LOGGER.isLoggable(Level.FINEST)) {
@@ -453,8 +449,7 @@ class TenantAuthenticationHandler {
                                  Http.Status.UNAUTHORIZED_401,
                                  "invalid_token",
                                  "Token not valid",
-                                 tenantId,
-                                 tenantConfig);
+                                 tenantId);
         }
     }
 

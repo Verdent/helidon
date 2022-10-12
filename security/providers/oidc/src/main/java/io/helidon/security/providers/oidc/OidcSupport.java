@@ -17,6 +17,8 @@
 package io.helidon.security.providers.oidc;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,7 @@ import io.helidon.security.Security;
 import io.helidon.security.integration.webserver.WebSecurity;
 import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.OidcCookieHandler;
+import io.helidon.security.providers.oidc.common.Tenant;
 import io.helidon.security.providers.oidc.common.TenantConfig;
 import io.helidon.security.providers.oidc.common.spi.TenantConfigFinder;
 import io.helidon.security.providers.oidc.common.spi.TenantConfigProvider;
@@ -133,7 +136,7 @@ public final class OidcSupport implements Service {
     private static final String DEFAULT_REDIRECT = "/index.html";
 
     private final List<TenantConfigFinder> oidcConfigFinders;
-    private final LruCache<String, TenantConfig> tenantConfigs = LruCache.create();
+    private final LruCache<String, Tenant> tenants = LruCache.create();
     private final OidcConfig oidcConfig;
     private final boolean enabled;
     private final CorsSupport corsSupport;
@@ -144,7 +147,7 @@ public final class OidcSupport implements Service {
         this.corsSupport = prepareCrossOriginSupport(oidcConfig.redirectUri(), oidcConfig.crossOriginConfig());
         this.oidcConfigFinders = List.copyOf(builder.tenantConfigFinders);
 
-        this.oidcConfigFinders.forEach(tenantConfigFinder -> tenantConfigFinder.onChange(tenantConfigs::remove));
+        this.oidcConfigFinders.forEach(tenantConfigFinder -> tenantConfigFinder.onChange(tenants::remove));
     }
 
     /**
@@ -218,14 +221,10 @@ public final class OidcSupport implements Service {
     }
 
     private void processLogout(ServerRequest req, ServerResponse res) {
-        String tenant = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
+        String tenantName = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
 
-        TenantConfig tenantConfig = tenantConfigs.computeValue(tenant, () -> oidcConfigFinders.stream()
-                        .map(finder -> finder.config(tenant))
-                        .filter(Optional::isPresent)
-                        .findFirst()
-                        .orElse(Optional.ofNullable(oidcConfig)))
-                .orElse(oidcConfig);
+        Tenant tenant = obtainCurrentTenant(tenantName);
+        TenantConfig tenantConfig = tenant.tenantConfig();
 
         OidcCookieHandler idTokenCookieHandler = tenantConfig.idTokenCookieHandler();
         OidcCookieHandler tokenCookieHandler = tenantConfig.tokenCookieHandler();
@@ -245,7 +244,7 @@ public final class OidcSupport implements Service {
 
         idTokenCookieHandler.decrypt(encryptedIdToken)
                 .forSingle(idToken -> {
-                    StringBuilder sb = new StringBuilder(oidcConfig.logoutEndpointUri()
+                    StringBuilder sb = new StringBuilder(tenant.logoutEndpointUri()
                                                                  + "?id_token_hint="
                                                                  + idToken
                                                                  + "&post_logout_redirect_uri=" + postLogoutUri(req));
@@ -262,6 +261,19 @@ public final class OidcSupport implements Service {
                             .send();
                 })
                 .exceptionallyAccept(t -> sendError(res, t));
+    }
+
+    private Tenant obtainCurrentTenant(String tenantName) {
+        return tenants.computeValue(tenantName,
+                             () -> Optional.of(oidcConfigFinders.stream()
+                                                       .map(finder -> finder.config(tenantName))
+                                                       .filter(Optional::isPresent)
+                                                       .map(tenantConfig -> Tenant.create(oidcConfig,
+                                                                                          tenantConfig.get()))
+                                                       .findFirst()
+                                                       .orElseGet(() -> Tenant.create(oidcConfig,
+                                                                                      oidcConfig.tenantConfig(tenantName)))))
+                .orElseGet(() -> Tenant.create(oidcConfig, oidcConfig.tenantConfig(tenantName)));
     }
 
     private void addRequestAsHeader(ServerRequest req, ServerResponse res) {
@@ -296,28 +308,23 @@ public final class OidcSupport implements Service {
     }
 
     private void processCode(String code, ServerRequest req, ServerResponse res) {
-        String tenant = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
-        TenantConfig tenantConfig = tenantConfigs.computeValue(tenant, () -> oidcConfigFinders.stream()
-                        .map(finder -> finder.config(tenant))
-                        .filter(Optional::isPresent)
-                        .findFirst()
-                        .orElse(Optional.ofNullable(oidcConfig)))
-                .orElse(oidcConfig);
+        String tenantName = req.queryParams().first(TENANT_PARAM_NAME).orElse(TenantConfigFinder.DEFAULT_TENANT_ID);
 
-        WebClient webClient = tenantConfig.appWebClient();
+        Tenant tenant = obtainCurrentTenant(tenantName);
+        TenantConfig tenantConfig = tenant.tenantConfig();
+
+        WebClient webClient = tenant.appWebClient();
 
         FormParams.Builder form = FormParams.builder()
                 .add("grant_type", "authorization_code")
                 .add("code", code)
-                .add("redirect_uri", redirectUri(req)+ "?" + OidcSupport.TENANT_PARAM_NAME + "=" + tenant);
+                .add("redirect_uri", redirectUri(req)+ "?" + OidcSupport.TENANT_PARAM_NAME + "=" + tenantName);
 
         WebClientRequestBuilder post = webClient.post()
-                .uri(tenantConfig.tokenEndpointUri())
+                .uri(tenant.tokenEndpointUri())
                 .accept(io.helidon.common.http.MediaType.APPLICATION_JSON);
 
-        tenantConfig.updateRequest(OidcConfig.RequestType.CODE_TO_TOKEN,
-                                 post,
-                                 form);
+        tenantConfig.updateRequest(OidcConfig.RequestType.CODE_TO_TOKEN, post, form);
 
         OidcConfig.postJsonResponse(post,
                                     form.build(),

@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.logging.Logger;
 
 import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.providers.oidc.common.spi.TenantConfigFinder;
 
 import jakarta.json.JsonObject;
 
@@ -51,8 +52,10 @@ class TenantConfigImpl implements TenantConfig {
     private final String serverType;
     private final JsonObject oidcMetadata;
     private final boolean useWellKnown;
+    private final String name;
 
     TenantConfigImpl(BaseBuilder<?, ?> builder) {
+        this.name = builder.name();
         this.clientId = builder.clientId();
         this.baseScopes = builder.baseScopes();
         this.validateJwtWithJwk = builder.validateJwtWithJwk();
@@ -110,6 +113,11 @@ class TenantConfigImpl implements TenantConfig {
     @Override
     public String clientId() {
         return clientId;
+    }
+
+    @Override
+    public String name() {
+        return name;
     }
 
     @Override

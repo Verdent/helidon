@@ -30,17 +30,12 @@ module io.helidon.security.providers.oidc.common {
     requires io.helidon.security.providers.common;
     requires io.helidon.security.jwt;
     requires io.helidon.security.providers.httpauth;
-    requires io.helidon.reactive.webclient.jaxrs;
     requires io.helidon.reactive.webclient.security;
     requires io.helidon.reactive.webclient.tracing;
     requires io.helidon.reactive.media.jsonp;
     requires io.helidon.common.crypto;
     requires static io.helidon.config.metadata;
     requires io.helidon.cors;
-
-    // these are deprecated and will be removed in 3.x
-    requires jersey.client;
-    requires jakarta.ws.rs;
 
     exports io.helidon.security.providers.oidc.common;
     exports io.helidon.security.providers.oidc.common.spi;

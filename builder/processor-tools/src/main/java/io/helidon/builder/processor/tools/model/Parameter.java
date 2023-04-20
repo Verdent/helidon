@@ -7,8 +7,11 @@ import java.io.IOException;
  */
 public class Parameter extends AbstractAnnotatable {
 
+    private final boolean optional;
+
     private Parameter(Builder builder) {
         super(builder);
+        this.optional = builder.optional;
     }
 
     public static Parameter create(String name, Class<?> type) {
@@ -20,12 +23,23 @@ public class Parameter extends AbstractAnnotatable {
     }
 
     public static Parameter create(String name, Type type) {
-        return new Builder(name, type).build();
+        return builder(name, type).build();
+    }
+
+    public static Builder builder(String name, Class<?> type) {
+        return new Builder(name, Type.create(type));
+    }
+
+    public static Builder builder(String name, Type type) {
+        return new Builder(name, type);
     }
 
     @Override
     void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
         type().writeComponent(writer, imports);
+        if (optional) {
+            writer.write("...");
+        }
         writer.write(" " + name());
     }
 
@@ -36,12 +50,19 @@ public class Parameter extends AbstractAnnotatable {
 
     public static class Builder extends AbstractAnnotatable.Builder<Parameter, Builder> {
 
+        private boolean optional = false;
+
         private Builder(String name, Type type) {
             super(name, type);
         }
 
         public Parameter build() {
             return new Parameter(this);
+        }
+
+        public Builder optional(boolean optional) {
+            this.optional = optional;
+            return this;
         }
 
     }

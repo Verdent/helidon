@@ -13,7 +13,7 @@ import java.util.Set;
 
 import static java.util.stream.Collectors.groupingBy;
 
-class AbstractClass {
+public class AbstractClass {
 
     private final String name;
     private final Type inheritance;
@@ -212,7 +212,7 @@ class AbstractClass {
         return genericParameters;
     }
 
-    static abstract class Builder<T extends AbstractClass, B extends Builder<T, B>> {
+    public static abstract class Builder<T extends AbstractClass, B extends Builder<T, B>> {
 
         private final Map<String, Method> methods = new LinkedHashMap<>();
         private final Map<String, Field> fields = new LinkedHashMap<>();

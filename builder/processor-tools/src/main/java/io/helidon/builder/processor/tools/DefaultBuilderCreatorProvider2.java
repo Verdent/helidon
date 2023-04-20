@@ -32,6 +32,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -45,6 +46,7 @@ import io.helidon.builder.Singular;
 import io.helidon.builder.processor.spi.BuilderCreatorProvider;
 import io.helidon.builder.processor.spi.DefaultTypeAndBody;
 import io.helidon.builder.processor.spi.TypeAndBody;
+import io.helidon.builder.processor.tools.model.AbstractClass;
 import io.helidon.builder.processor.tools.model.AccessModifier;
 import io.helidon.builder.processor.tools.model.AnnotParameter;
 import io.helidon.builder.processor.tools.model.ClassModel;
@@ -239,7 +241,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         appendExtraMethods(classBuilder, ctx);
         appendToBuilderMethods(classBuilder, ctx);
         appendBuilder(classBuilder, ctx);
-        appendExtraBuilderMethods(builder, ctx);
+        appendExtraBuilderMethods(classBuilder, ctx);
         appendExtraInnerClasses(builder, ctx);
         appendFooter(builder, ctx);
 
@@ -281,8 +283,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param builder the builder
      * @param ctx     the context
      */
-    protected void appendFooter(StringBuilder builder,
-                                BodyContext ctx) {
+    protected void appendFooter(StringBuilder builder, BodyContext ctx) {
         builder.append("}\n");
     }
 
@@ -406,7 +407,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     protected void appendHeader(ClassModel.Builder builder, BodyContext ctx) {
         builder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder("jakarta.annotation.Generated")
                                .addParameter(AnnotParameter.create("value", String.class, getClass().getName()))
-                               .addParameter(AnnotParameter.create("comment", String.class, generatedVersionFor(ctx))))
+                               .addParameter(AnnotParameter.create("comments", String.class, generatedVersionFor(ctx))))
                 .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder(SuppressWarnings.class)
                                        .addParameter(AnnotParameter.create("value", String.class, "unchecked")))
                 .accessModifier(ctx.publicOrPackagePrivateDecl())
@@ -548,8 +549,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         if (!ctx.hasOtherMethod("toString", ctx.typeInfo())) {
             Method.Builder methodBuilder = Method.builder("toString", String.class)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
-                    .addLine("return " + ctx.typeInfo().typeName() + ".class.getSimpleName()")
-                    .padding().add("+ ");
+                    .add("return \"" + ctx.typeInfo().typeName().className() + "\" + ");
 
             String instanceIdRef = instanceIdRef(ctx);
             if (!instanceIdRef.isBlank()) {
@@ -611,7 +611,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      *
      * @param builder     the builder
      * @param ctx         the context
-     * @param extraTabs   spacing
      * @param beanNameRef refer to bean name? otherwise refer to the element name
      */
     protected void appendVisitAttributes(ClassModel.Builder builder, BodyContext ctx, boolean beanNameRef) {
@@ -699,8 +698,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param builder the builder
      * @param ctx     the context
      */
-    protected void appendExtraFields(ClassModel.Builder builder,
-                                     BodyContext ctx) {
+    protected void appendExtraFields(ClassModel.Builder builder, BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
 //            GenerateJavadoc.internalMetaPropsField(builder);
             builder.addImport(Collections.class);
@@ -756,13 +754,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param builder the builder
      * @param ctx     the context
      */
-    protected void appendExtraBuilderMethods(StringBuilder builder,
+    protected void appendExtraBuilderMethods(ClassModel.Builder builder,
                                              BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
-//            appendVisitAttributes(builder, ctx, true);
+            appendVisitAttributes(builder, ctx, true);
         }
-
-        builder.append("\t}\n\n");
     }
 
     /**
@@ -828,7 +824,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param isMap             true if the output involves Map type
      * @param isSet             true if the output involves Set type
      */
-    protected void maybeAppendSingularSetter(ClassModel.Builder builder,
+    protected void maybeAppendSingularSetter(AbstractClass.Builder<?, ?> builder,
                                              BodyContext ctx,
                                              TypedElementName method,
                                              String beanAttributeName,
@@ -1002,21 +998,21 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     /**
      * Append the setters for the given bean attribute name.
      *
-     * @param mainBuilder       the builder
+     * @param builder       the builder
      * @param ctx               the body context
      * @param beanAttributeName the bean attribute name
      * @param methodName        the method name
      * @param method            the method
      */
-    protected void appendSetter(ClassModel.Builder mainBuilder,
+    protected void appendSetter(AbstractClass.Builder<?, ?> builder,
                                 BodyContext ctx,
                                 String beanAttributeName,
                                 String methodName,
                                 TypedElementName method) {
-        appendSetter(mainBuilder, ctx, beanAttributeName, methodName, method, true, "");
+        appendSetter(builder, ctx, beanAttributeName, methodName, method, true, "");
     }
 
-    private void appendSetter(ClassModel.Builder mainBuilder,
+    private void appendSetter(AbstractClass.Builder<?, ?> builder,
                               BodyContext ctx,
                               String beanAttributeName,
                               String methodName,
@@ -1057,20 +1053,20 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             methodBuilder.addLine("this." + beanAttributeName + " = " + maybeRequireNonNull(ctx, "val") + ";");
         }
         methodBuilder.addLine("return identity();");
-        mainBuilder.addMethod(methodBuilder);
+        builder.addMethod(methodBuilder);
 
         if (typeName.fqName().equals("char[]")) {
-            stringToCharSetter(mainBuilder, ctx, beanAttributeName, method, methodName);
+            stringToCharSetter(builder, ctx, beanAttributeName, method, methodName);
         }
 
         if (prefixName.isBlank() && typeName.isOptional() && !typeName.typeArguments().isEmpty()) {
             TypeName genericType = typeName.typeArguments().get(0);
-            appendDirectNonOptionalSetter(mainBuilder, ctx, beanAttributeName, method, methodName, genericType);
+            appendDirectNonOptionalSetter(builder, ctx, beanAttributeName, method, methodName, genericType);
         }
     }
 
     //TODO taken from GeneratedMethod class to prevent even more changes
-    static void stringToCharSetter(ClassModel.Builder builder,
+    static void stringToCharSetter(AbstractClass.Builder<?, ?> builder,
                                    BodyContext ctx,
                                    String beanAttributeName,
                                    TypedElementName method,
@@ -1092,7 +1088,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param methodName        the method name
      * @param genericType       the generic return type name of the method
      */
-    protected void appendDirectNonOptionalSetter(ClassModel.Builder builder,
+    protected void appendDirectNonOptionalSetter(AbstractClass.Builder<?, ?> builder,
                                                  BodyContext ctx,
                                                  String beanAttributeName,
                                                  TypedElementName method,
@@ -1103,13 +1099,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
 
     //TODO taken from GeneratedMethod class to prevent even more changes
-    static void nonOptionalSetter(ClassModel.Builder builder,
+    static void nonOptionalSetter(AbstractClass.Builder<?, ?> builder,
                                   BodyContext ctx,
                                   String beanAttributeName,
                                   TypedElementName method,
                                   String methodName,
                                   TypeName genericType) {
-        builder.addImport(Optional.class);
+//        builder.addImport(Optional.class);
 //        GenerateJavadoc.setter(builder, beanAttributeName);
         builder.addMethod(Method.builder(methodName, Type.token(ctx.genericBuilderAliasDecl()))
                                   .addParameter(Parameter.create("val", genericType.fqName()))
@@ -1328,9 +1324,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
         if (ctx.hasAnyBuilderClashingMethodNames()) {
 //            builder.append("\t\t// *** IMPORTANT NOTE: There are getter methods that clash with the base Builder methods ***\n");
-            appendInterfaceBasedGetters(builder, ctx);
+            appendInterfaceBasedGetters(innerClassBuilder, ctx);
         } else {
-            appendInterfaceBasedGetters(builder, ctx);
+            appendInterfaceBasedGetters(innerClassBuilder, ctx);
         }
 
         if (ctx.doingConcreteType()) {
@@ -1343,7 +1339,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .addLine("Builder b = this;");
             appendBuilderBuildPreSteps(methodBuilder, ctx, "b");
             methodBuilder.addLine("return new " + ctx.implTypeName().className() + "(b);");
-            builder.addMethod(methodBuilder);
+            innerClassBuilder.addMethod(methodBuilder);
         } else {
             int i = 0;
             for (String beanAttributeName : ctx.allAttributeNames()) {
@@ -1353,7 +1349,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 boolean isMap = !isList && typeName.isMap();
                 boolean isSet = !isMap && typeName.isSet();
                 boolean ignoredUpLevel = isSet || isList;
-                appendSetter(builder, ctx, beanAttributeName, beanAttributeName, method);
+                appendSetter(innerClassBuilder, ctx, beanAttributeName, beanAttributeName, method);
                 if (!isList && !isMap && !isSet) {
                     boolean isBoolean = BeanUtils.isBooleanType(typeName.name());
                     if (isBoolean && beanAttributeName.startsWith("is")) {
@@ -1362,93 +1358,102 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                 + beanAttributeName.substring(3);
                         if (!BeanUtils.isReservedWord(basicAttributeName)
                                 && !ctx.allAttributeNames().contains(basicAttributeName)) {
-                            appendSetter(builder, ctx, beanAttributeName, basicAttributeName, method);
+                            appendSetter(innerClassBuilder, ctx, beanAttributeName, basicAttributeName, method);
                         }
                     }
                 }
 
-                maybeAppendSingularSetter(builder, ctx, method, beanAttributeName, isList, isMap, isSet);
+                maybeAppendSingularSetter(innerClassBuilder, ctx, method, beanAttributeName, isList, isMap, isSet);
                 i++;
             }
 
             if (!ctx.hasParent() && !ctx.requireLibraryDependencies()) {
 //                GenerateJavadoc.buildMethod(builder);
-                builder.addMethod(Method.builder("build", Type.token(ctx.genericBuilderAcceptAliasDecl()))
-                                          .isAbstract(true));
+                String acceptAliasDecl = ctx.genericBuilderAcceptAliasDecl();
+                innerClassBuilder.addMethod(Method.builder("build", Type.token(acceptAliasDecl))
+                                                    .isAbstract(true));
 
                 if (ctx.hasStreamSupportOnBuilder()) {
-                    GenerateJavadoc.updateConsumer(builder);
-                    builder.append("\t\tpublic B update(Consumer<")
-                            .append(ctx.genericBuilderAcceptAliasDecl())
-                            .append("> consumer) {\n"
-                                            + "\t\t\tconsumer.accept(get());\n"
-                                            + "\t\t\treturn identity();\n"
-                                            + "\t\t}\n\n");
+//                    GenerateJavadoc.updateConsumer(builder);
+                    Method.Builder updateMethodBuilder = Method.builder("update", Type.token(acceptAliasDecl))
+                            .addParameter(Parameter.create("consumer",
+                                                           Type.generic(Consumer.class)
+                                                                   .addParam(Type.token(acceptAliasDecl))
+                                                                   .build()))
+                            .addLine("consumer.accept(get());")
+                            .addLine("return identity();");
+                    innerClassBuilder.addMethod(updateMethodBuilder);
                 }
 
                 if (!ctx.requireLibraryDependencies()) {
-                    GenerateJavadoc.identity(builder);
-                    builder.append("\t\t@SuppressWarnings(\"unchecked\")\n");
-                    builder.append("\t\tprotected ").append(ctx.genericBuilderAliasDecl()).append(" identity() {\n"
-                                                                                                        + "\t\t\treturn (")
-                            .append(ctx.genericBuilderAliasDecl()).append(") this;\n"
-                                                                                + "\t\t}\n\n"
-                                                                                + "\t\t@Override\n"
-                                                                                + "\t\tpublic ")
-                            .append(ctx.genericBuilderAcceptAliasDecl()).append(" get() {\n"
-                                                                                      + "\t\t\treturn (")
-                            .append(ctx.genericBuilderAcceptAliasDecl()).append(") build();\n"
-                                                                                      + "\t\t}\n\n");
+//                    GenerateJavadoc.identity(builder);
+                    Method.Builder identityMethodBuilder = Method.builder("identity", Type.token(ctx.genericBuilderAliasDecl()))
+                            .accessModifier(AccessModifier.PROTECTED)
+                            .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder(SuppressWarnings.class)
+                                                   .addParameter(AnnotParameter.create("value", String.class, "unchecked"))
+                                                   .build())
+                            .addLine("return this;");
+                    innerClassBuilder.addMethod(identityMethodBuilder);
+
+
+                    Method.Builder getMethodBuilder = Method.builder("get", Type.token(acceptAliasDecl))
+                            .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                            .addLine("return (" + acceptAliasDecl + ") build();");
+                    innerClassBuilder.addMethod(getMethodBuilder);
                 }
             }
 
+            Method.Builder acceptMethodBuilder = Method.builder("accept", Type.token(ctx.genericBuilderAliasDecl()))
+                    .addParameter(Parameter.create("val", Type.token(ctx.genericBuilderAcceptAliasDecl())));
             if (ctx.hasParent()) {
-                builder.append("\t\t@Override\n");
+                acceptMethodBuilder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
             } else {
-                GenerateJavadoc.accept(builder);
+//                GenerateJavadoc.accept(builder);
             }
-            builder.append("\t\tpublic ")
-                    .append(ctx.genericBuilderAliasDecl())
-                    .append(" accept(").append(ctx.genericBuilderAcceptAliasDecl()).append(" val) {\n");
             if (!ctx.allowNulls()) {
-                builder.append("\t\t\tObjects.requireNonNull(val);\n");
+                acceptMethodBuilder.addLine("Objects.requireNonNull(val);");
             }
             if (ctx.hasParent()) {
-                builder.append("\t\t\tsuper.accept(val);\n");
+                acceptMethodBuilder.addLine("super.accept(val);");
             }
-            builder.append("\t\t\t__acceptThis(val);\n");
-            builder.append("\t\t\treturn identity();\n");
-            builder.append("\t\t}\n\n");
+            acceptMethodBuilder.addLine("__acceptThis(val);")
+                            .addLine("return identity();");
+            innerClassBuilder.addMethod(acceptMethodBuilder);
 
-            builder.append("\t\tprivate void __acceptThis(").append(ctx.genericBuilderAcceptAliasDecl()).append(" val) {\n");
+            Method.Builder acceptThisBuilder = Method.builder("__acceptThis", void.class)
+                    .accessModifier(AccessModifier.PRIVATE)
+                    .addParameter(Parameter.create("val", Type.token(ctx.genericBuilderAcceptAliasDecl())));
             if (!ctx.allowNulls()) {
-                builder.append("\t\t\tObjects.requireNonNull(val);\n");
+                acceptThisBuilder.addLine("Objects.requireNonNull(val);");
             }
             i = 0;
             for (String beanAttributeName : ctx.allAttributeNames()) {
                 TypedElementName method = ctx.allTypeInfos().get(i++);
                 TypeName typeName = method.typeName();
                 String getterName = method.elementName();
-                builder.append("\t\t\t").append(beanAttributeName).append("(");
+                acceptThisBuilder.add(beanAttributeName + "(");
                 boolean isList = typeName.isList();
                 boolean isMap = !isList && typeName.isMap();
                 boolean isSet = !isMap && typeName.isSet();
                 if (isList || isSet) {
-                    builder.append("(java.util.Collection) ");
+                    builder.addImport(Collection.class);
+                    acceptThisBuilder.add("(Collection) ");
                 } else if (isMap) {
-                    builder.append("(java.util.Map) ");
+                    builder.addImport(Map.class);
+                    acceptThisBuilder.add("(Map) ");
                 }
                 boolean isPrimitive = method.typeName().primitive();
                 if (!isPrimitive && ctx.allowNulls()) {
-                    builder.append("((val == null) ? null : ");
+                    acceptThisBuilder.add("((val == null) ? null : ");
                 }
-                builder.append("val.").append(getterName).append("()");
+                acceptThisBuilder.add("val." + getterName + "()");
                 if (!isPrimitive && ctx.allowNulls()) {
-                    builder.append(")");
+                    acceptThisBuilder.add(")");
                 }
-                builder.append(");\n");
+                acceptThisBuilder.addLine(");");
             }
-            builder.append("\t\t}\n\n");
+            innerClassBuilder.addMethod(acceptThisBuilder);
+            builder.addInnerClass(innerClassBuilder.build());
         }
     }
 
@@ -1553,8 +1558,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         } else {
             builder.addGenericParameter(Type.token(ctx.genericBuilderAliasDecl(),
                                                    Type.generic(ctx.genericBuilderClassDecl())
-                                                           .addParam(Type.token(ctx.genericBuilderAliasDecl(), null))
-                                                           .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl(), null))
+                                                           .addParam(Type.token(ctx.genericBuilderAliasDecl()))
+                                                           .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl()))
                                                            .build()));
             builder.addGenericParameter(Type.token(ctx.genericBuilderAcceptAliasDecl(),
                                                    Type.create(ctx.ctorBuilderAcceptTypeName().fqName())));
@@ -1602,13 +1607,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         //        GenerateJavadoc.builderMethod(builder, ctx);
-        Method.Builder builderMethod = Method.builder("builder", ctx.implTypeName().packageName() + "Builder")
+        Method.Builder builderMethod = Method.builder("builder", ctx.implTypeName() + "$Builder")
                 .isStatic(true)
                 .addLine("return new Builder();");
         builder.addMethod(builderMethod);
 
 //        GenerateJavadoc.toBuilderMethod(builder, ctx);
-        Method.Builder toBuilderMethod = Method.builder("toBuilder", ctx.implTypeName().packageName() + "Builder")
+        Method.Builder toBuilderMethod = Method.builder("toBuilder", ctx.implTypeName()+ "$Builder")
                 .isStatic(true)
                 .addParameter(Parameter.create("val", ctx.ctorBuilderAcceptTypeName().fqName()))
                 .addLine("Objects.requireNonNull(val);")
@@ -1618,7 +1623,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 //        appendExtraToBuilderBuilderFunctions(builder, ctx, "???????"); //TODO upravit
     }
 
-    private void appendInterfaceBasedGetters(ClassModel.Builder builder, BodyContext ctx) {
+    private void appendInterfaceBasedGetters(AbstractClass.Builder<?, ?> builder, BodyContext ctx) {
         if (ctx.doingConcreteType()) {
             return;
         }
@@ -1634,7 +1639,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         if (ctx.parentAnnotationTypeName().isPresent()) {
-            Type returnType = Type.generic(Class.class).addParam(Annotation.class).build();
+            Type returnType = Type.generic(Class.class).addParam(Type.token("?", Annotation.class)).build();
             Method.Builder methodBuilder = Method.builder("annotationType", returnType)
                     .addLine("return " + ctx.typeInfo().superTypeInfo().get().typeName() + ".class;");
             builder.addMethod(methodBuilder);
@@ -1920,7 +1925,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .build();
         builder.addMethod(Method.builder("__mapOf", type)
                                   .isStatic(true)
-                                  .addParameter(Parameter.create("args", Object.class)) //Need to be optional
+                                  .addParameter(Parameter.builder("args", Object.class).optional(true).build()) //Need to be optional
                                   .addLine("Map<String, Object> result = new LinkedHashMap<>(args.length / 2);")
                                   .addLine("int i = 0;")
                                   .addLine("while (i < args.length) {")

@@ -18,6 +18,10 @@ public abstract class Type {
     public static Type token(String token) {
         return new Token.Builder(token).build();
     }
+
+    public static Type token(String token, Class<?> bound) {
+        return new Token.Builder(token, Type.create(bound)).build();
+    }
     public static Type token(String token, Type bound) {
         return new Token.Builder(token, bound).build();
     }

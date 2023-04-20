@@ -100,7 +100,9 @@ public class Field extends AbstractAnnotatable {
         }
 
         public Builder defaultValue(String defaultValue) {
-            if (type().typeName().equals(String.class.getName())) {
+            if (type().typeName().equals(String.class.getName())
+                    && !defaultValue.startsWith("\"")
+                    && !defaultValue.endsWith("\"")) {
                 this.defaultValue = "\"" + defaultValue + "\"";
             } else {
                 this.defaultValue = defaultValue;

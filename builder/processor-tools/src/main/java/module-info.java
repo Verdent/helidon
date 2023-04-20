@@ -27,6 +27,7 @@ module io.helidon.builder.processor.tools {
     requires io.helidon.config.metadata;
 
     exports io.helidon.builder.processor.tools;
+    exports io.helidon.builder.processor.tools.model;
 
     provides io.helidon.builder.processor.spi.BuilderCreatorProvider
             with io.helidon.builder.processor.tools.DefaultBuilderCreatorProvider;

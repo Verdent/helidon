@@ -285,7 +285,7 @@ public class AbstractClass {
             return me;
         }
 
-        public B isStatic(boolean isStatic) {
+        B isStatic(boolean isStatic) {
             this.isStatic = isStatic;
             return me;
         }

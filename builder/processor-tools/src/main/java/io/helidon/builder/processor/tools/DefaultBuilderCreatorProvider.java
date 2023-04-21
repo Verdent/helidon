@@ -209,26 +209,26 @@ public class DefaultBuilderCreatorProvider implements BuilderCreatorProvider {
      */
     protected String toBody(BodyContext ctx) {
         String createdByModel = new DefaultBuilderCreatorProvider2().toBody(ctx);
-        return createdByModel;
-//        StringBuilder builder = new StringBuilder();
-//        appendHeader(builder, ctx);
-//        appendExtraFields(builder, ctx);
-//        appendFields(builder, ctx);
-//        appendCtor(builder, ctx);
-//        appendExtraPostCtorCode(builder, ctx);
-//        appendInterfaceBasedGetters(builder, ctx, "", false);
-//        appendBasicGetters(builder, ctx);
-//        appendMetaAttributes(builder, ctx);
-//        appendToStringMethod(builder, ctx);
-//        appendInnerToStringMethod(builder, ctx);
-//        appendHashCodeAndEquals(builder, ctx);
-//        appendExtraMethods(builder, ctx);
-//        appendToBuilderMethods(builder, ctx);
-//        appendBuilder(builder, ctx);
-//        appendExtraBuilderMethods(builder, ctx);
-//        appendExtraInnerClasses(builder, ctx);
-//        appendFooter(builder, ctx);
-//        return builder.toString();
+//        return createdByModel;
+        StringBuilder builder = new StringBuilder();
+        appendHeader(builder, ctx);
+        appendExtraFields(builder, ctx);
+        appendFields(builder, ctx);
+        appendCtor(builder, ctx);
+        appendExtraPostCtorCode(builder, ctx);
+        appendInterfaceBasedGetters(builder, ctx, "", false);
+        appendBasicGetters(builder, ctx);
+        appendMetaAttributes(builder, ctx);
+        appendToStringMethod(builder, ctx);
+        appendInnerToStringMethod(builder, ctx);
+        appendHashCodeAndEquals(builder, ctx);
+        appendExtraMethods(builder, ctx);
+        appendToBuilderMethods(builder, ctx);
+        appendBuilder(builder, ctx);
+        appendExtraBuilderMethods(builder, ctx);
+        appendExtraInnerClasses(builder, ctx);
+        appendFooter(builder, ctx);
+        return builder.toString();
     }
 
     /**

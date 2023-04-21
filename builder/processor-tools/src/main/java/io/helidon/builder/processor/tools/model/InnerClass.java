@@ -37,5 +37,10 @@ public class InnerClass extends AbstractClass {
             commonBuildLogic();
             return new InnerClass(this);
         }
+
+        public Builder isStatic(boolean isStatic) {
+            return super.isStatic(isStatic);
+        }
+
     }
 }

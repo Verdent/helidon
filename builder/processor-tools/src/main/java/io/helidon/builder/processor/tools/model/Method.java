@@ -100,17 +100,17 @@ public class Method extends AbstractMethod {
         }
 
         public Builder isFinal(boolean isFinal) {
-            isFinal = isFinal;
+            this.isFinal = isFinal;
             return this;
         }
 
         public Builder isStatic(boolean isStatic) {
-            isStatic = isStatic;
+            this.isStatic = isStatic;
             return this;
         }
 
         public Builder isAbstract(boolean isAbstract) {
-            isAbstract = isAbstract;
+            this.isAbstract = isAbstract;
             return this;
         }
     }

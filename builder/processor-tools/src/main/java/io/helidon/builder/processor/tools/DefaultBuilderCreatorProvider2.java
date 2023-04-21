@@ -357,7 +357,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
                     .build();
             Method.Builder methodBuilder = Method.builder("__calcMeta", calcReturnType)
-                            .addLine("Map<String, Map<String, Object>> metaProps = new LinkedHashMap<>();");
+                    .isStatic(true)
+                    .addLine("Map<String, Map<String, Object>> metaProps = new LinkedHashMap<>();");
 
 
             AtomicBoolean needsCustomMapOf = new AtomicBoolean();

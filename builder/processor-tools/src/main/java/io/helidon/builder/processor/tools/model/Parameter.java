@@ -1,6 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -35,8 +36,8 @@ public class Parameter extends AbstractAnnotatable {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
-        type().writeComponent(writer, imports);
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+        type().writeComponent(writer, declaredTokens, imports);
         if (optional) {
             writer.write("...");
         }

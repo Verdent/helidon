@@ -3,6 +3,7 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public final class GenericType extends AbstractType {
 
@@ -14,7 +15,7 @@ public final class GenericType extends AbstractType {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         String typeName = imports.typeName(this, includeImport());
         writer.write(typeName);
         if (!typeParams.isEmpty()) {
@@ -26,7 +27,7 @@ public final class GenericType extends AbstractType {
                 } else {
                     writer.write(", ");
                 }
-                parameter.writeComponent(writer, imports);
+                parameter.writeComponent(writer, declaredTokens, imports);
             }
             writer.write(">");
         }

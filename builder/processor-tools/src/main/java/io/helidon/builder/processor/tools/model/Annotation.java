@@ -3,6 +3,7 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -33,7 +34,7 @@ public class Annotation extends AbstractComponent {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.write("@" + imports.typeName(type(), includeImport()));
         if (!parameters.isEmpty()) {
             writer.write("(");
@@ -42,7 +43,7 @@ public class Annotation extends AbstractComponent {
                     if (parameter.name().equals("value")) {
                         writer.write(parameter.value());
                     } else {
-                        parameter.writeComponent(writer, imports);
+                        parameter.writeComponent(writer, declaredTokens, imports);
                     }
                 }
             } else {
@@ -53,7 +54,7 @@ public class Annotation extends AbstractComponent {
                     } else {
                         writer.write(", ");
                     }
-                    parameter.writeComponent(writer, imports);
+                    parameter.writeComponent(writer, declaredTokens, imports);
                 }
             }
             writer.write(")");

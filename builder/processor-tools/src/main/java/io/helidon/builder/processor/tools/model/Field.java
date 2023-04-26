@@ -1,6 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -44,9 +45,9 @@ public class Field extends AbstractAnnotatable {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         for (Annotation annotation : annotations()) {
-            annotation.writeComponent(writer, imports);
+            annotation.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         if (AccessModifier.PACKAGE_PRIVATE != accessModifier) {
@@ -59,7 +60,7 @@ public class Field extends AbstractAnnotatable {
         if (isFinal) {
             writer.write("final ");
         }
-        type().writeComponent(writer, imports);
+        type().writeComponent(writer, declaredTokens, imports);
         writer.write(" ");
         writer.write(name());
         if (defaultValue == null) {

@@ -1,6 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
 public class Constructor extends AbstractMethod {
 
@@ -17,9 +18,9 @@ public class Constructor extends AbstractMethod {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         for (Annotation annotation : annotations()) {
-            annotation.writeComponent(writer, imports);
+            annotation.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         if (AccessModifier.PACKAGE_PRIVATE != accessModifier()) {
@@ -34,7 +35,7 @@ public class Constructor extends AbstractMethod {
             } else {
                 writer.write(", ");
             }
-            parameter.writeComponent(writer, imports);
+            parameter.writeComponent(writer, declaredTokens, imports);
         }
         writer.write(") {");
         if (!content().isEmpty()) {

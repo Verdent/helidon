@@ -1,6 +1,9 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * TODO javadoc
@@ -31,9 +34,9 @@ public class Method extends AbstractMethod {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         for (Annotation annotation : annotations()) {
-            annotation.writeComponent(writer, imports);
+            annotation.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         if (AccessModifier.PACKAGE_PRIVATE != accessModifier()) {
@@ -54,7 +57,8 @@ public class Method extends AbstractMethod {
         if (isAbstract) {
             writer.write("abstract ");
         }
-        type().writeComponent(writer, imports); //write return type
+        appendTokenDeclaration(writer, declaredTokens);
+        type().writeComponent(writer, declaredTokens, imports); //write return type
         writer.write(" " + name() + "(");
         boolean first = true;
         for (Parameter parameter : parameters().values()) {
@@ -63,7 +67,7 @@ public class Method extends AbstractMethod {
             } else {
                 writer.write(", ");
             }
-            parameter.writeComponent(writer, imports);
+            parameter.writeComponent(writer, declaredTokens, imports);
         }
         writer.write(")");
         if (isAbstract) {
@@ -77,6 +81,29 @@ public class Method extends AbstractMethod {
             writer.write("\n");
         }
         writer.write("}");
+    }
+
+    private void appendTokenDeclaration(ModelWriter writer, Set<String> declaredTokens) throws IOException {
+        Set<String> tokensToDeclare = parameters().values()
+                .stream()
+                .filter(parameter -> parameter.type() instanceof Token)
+                .map(parameter -> ((Token) parameter.type()).token())
+                .filter(tokenName -> !declaredTokens.contains(tokenName))
+                .filter(tokenName -> !tokenName.equals("?"))
+                .collect(Collectors.toSet());
+        if (!tokensToDeclare.isEmpty()) {
+            writer.write("<");
+            boolean first = true;
+            for (String token : tokensToDeclare) {
+                if (first) {
+                    first = false;
+                } else {
+                    writer.write(", ");
+                }
+                writer.write(token);
+            }
+            writer.write("> ");
+        }
     }
 
     @Override

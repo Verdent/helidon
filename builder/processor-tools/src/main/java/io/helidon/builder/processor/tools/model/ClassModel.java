@@ -3,6 +3,7 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.Objects;
+import java.util.Set;
 
 public class ClassModel extends AbstractClass {
 
@@ -26,7 +27,7 @@ public class ClassModel extends AbstractClass {
         }
         imports.writeImports(innerWriter);
         imports.writeStaticImports(innerWriter);
-        writeComponent(innerWriter, imports);
+        writeComponent(innerWriter, Set.of(),imports);
 
     }
 

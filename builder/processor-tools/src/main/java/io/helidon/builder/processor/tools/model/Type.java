@@ -1,6 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -15,14 +16,14 @@ public abstract class Type {
         return new ExactType.Builder(typeName).build();
     }
 
-    public static Type token(String token) {
+    public static Token token(String token) {
         return new Token.Builder(token).build();
     }
 
-    public static Type token(String token, Class<?> bound) {
+    public static Token token(String token, Class<?> bound) {
         return new Token.Builder(token, Type.create(bound)).build();
     }
-    public static Type token(String token, Type bound) {
+    public static Token token(String token, Type bound) {
         return new Token.Builder(token, bound).build();
     }
 
@@ -42,7 +43,7 @@ public abstract class Type {
         return new GenericType.Builder(typeName);
     }
 
-    abstract void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException;
+    abstract void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException;
 
     abstract void addImports(ImportOrganizer.Builder imports);
 

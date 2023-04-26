@@ -1,6 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -17,7 +18,7 @@ abstract class AbstractComponent {
         this.includeImport = builder.includeImport;
     }
 
-    abstract void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException;
+    abstract void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException;
 
     void addImports(ImportOrganizer.Builder imports) {
         if (includeImport()) {

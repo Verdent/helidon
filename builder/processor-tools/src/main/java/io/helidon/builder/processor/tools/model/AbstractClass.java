@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.groupingBy;
 
@@ -25,8 +27,9 @@ public class AbstractClass {
     private final Map<String, Field> staticFields;
     private final Map<String, Method> methods;
     private final Set<Type> interfaces;
+    private final Set<String> tokenNames;
     private final List<Constructor> constructors;
-    private final List<Type> genericParameters;
+    private final List<Token> genericParameters;
     private final List<InnerClass> innerClasses;
     private final List<Annotation> annotations;
 
@@ -45,12 +48,16 @@ public class AbstractClass {
         this.innerClasses = List.copyOf(builder.innerClasses.values());
         this.annotations = List.copyOf(builder.annotations);
         this.genericParameters = List.copyOf(builder.genericParameters);
+        this.tokenNames = this.genericParameters.stream()
+                .map(Token::token)
+                .collect(Collectors.toSet());
     }
 
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+        Set<String> combinedTokens = Stream.concat(declaredTokens.stream(), this.tokenNames.stream()).collect(Collectors.toSet());
         if (!annotations.isEmpty()) {
             for (Annotation annotation : annotations) {
-                annotation.writeComponent(writer, imports);
+                annotation.writeComponent(writer, combinedTokens, imports);
                 writer.write("\n");
             }
         }
@@ -71,38 +78,38 @@ public class AbstractClass {
         }
         writer.write("class " + name);
         if (!genericParameters.isEmpty()) {
-            writeGenericParameters(writer, imports);
+            writeGenericParameters(writer, combinedTokens, imports);
         }
         writer.write(" ");
         if (inheritance != null) {
             writer.write("extends ");
-            inheritance.writeComponent(writer, imports);
+            inheritance.writeComponent(writer, combinedTokens, imports);
             writer.write(" ");
         }
         if (!interfaces.isEmpty()) {
-            writeClassInterfaces(writer, imports);
+            writeClassInterfaces(writer, combinedTokens, imports);
         }
         writer.write("{\n");
         if (!staticFields.isEmpty()) {
-            writeClassFields(staticFields.values(), writer, imports);
+            writeClassFields(staticFields.values(), writer, combinedTokens, imports);
         }
         if (!fields.isEmpty()) {
-            writeClassFields(fields.values(), writer, imports);
+            writeClassFields(fields.values(), writer, combinedTokens, imports);
         }
         if (!constructors.isEmpty()) {
-            writerClassConstructors(writer, imports);
+            writerClassConstructors(writer, combinedTokens, imports);
         }
         if (!methods.isEmpty()) {
-            writerClassMethods(writer, imports);
+            writerClassMethods(writer, combinedTokens, imports);
         }
         if (!innerClasses.isEmpty()) {
-            writeInnerClasses(writer, imports);
+            writeInnerClasses(writer, combinedTokens, imports);
         }
         writer.write("\n");
         writer.write("}");
     }
 
-    private void writeGenericParameters(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writeGenericParameters(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.write("<");
         boolean first = true;
         for (Type parameter : genericParameters) {
@@ -111,12 +118,12 @@ public class AbstractClass {
             } else {
                 writer.write(", ");
             }
-            parameter.writeComponent(writer, imports);
+            parameter.writeComponent(writer, declaredTokens, imports);
         }
         writer.write(">");
     }
 
-    private void writeClassInterfaces(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writeClassInterfaces(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.write("implements ");
         boolean first = true;
         for (Type interfaceName : interfaces) {
@@ -125,60 +132,52 @@ public class AbstractClass {
             } else {
                 writer.write(", ");
             }
-            interfaceName.writeComponent(writer, imports);
+            interfaceName.writeComponent(writer, declaredTokens, imports);
         }
         writer.write(" ");
     }
 
-    private void writeClassFields(Collection<Field> fields, ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writeClassFields(Collection<Field> fields,
+                                  ModelWriter writer,
+                                  Set<String> declaredTokens,
+                                  ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Field field : fields) {
             writer.write("\n");
-            field.writeComponent(writer, imports);
+            field.writeComponent(writer, declaredTokens, imports);
         }
         writer.decreasePaddingLevel();
         writer.write("\n");
     }
-    private void writerClassConstructors(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writerClassConstructors(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Constructor constructor : constructors) {
             writer.write("\n");
-            constructor.writeComponent(writer, imports);
+            constructor.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         writer.decreasePaddingLevel();
     }
 
-    private void writerClassMethods(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writerClassMethods(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Method method : methods.values()) {
             writer.write("\n");
-            method.writeComponent(writer, imports);
+            method.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         writer.decreasePaddingLevel();
     }
 
-    private void writeInnerClasses(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    private void writeInnerClasses(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (InnerClass innerClass : innerClasses) {
             writer.write("\n");
-            innerClass.writeComponent(writer, imports);
+            innerClass.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
         writer.decreasePaddingLevel();
     }
-
-//    private String typeName(String typeName, ImportOrganizer imports) {
-//        String simpleTypeName;
-//        int lastIndexOf = typeName.lastIndexOf(".");
-//        if (lastIndexOf < 0) {
-//            simpleTypeName = typeName;
-//        } else {
-//            simpleTypeName = typeName.substring(lastIndexOf + 1);
-//        }
-//        return imports.typeName(typeName, simpleTypeName, true);
-//    }
 
     Type inheritance() {
         return inheritance;
@@ -208,7 +207,7 @@ public class AbstractClass {
         return constructors;
     }
 
-    List<Type> genericParameters() {
+    List<Token> genericParameters() {
         return genericParameters;
     }
 
@@ -220,7 +219,7 @@ public class AbstractClass {
         private final Map<String, InnerClass> innerClasses = new LinkedHashMap<>();
         private final List<Annotation> annotations = new ArrayList<>();
         private final List<Constructor> constructors = new ArrayList<>();
-        private final List<Type> genericParameters = new ArrayList<>();
+        private final List<Token> genericParameters = new ArrayList<>();
         private final Set<Type> interfaces = new HashSet<>();
         private final String name;
         private Type inheritance;
@@ -362,8 +361,8 @@ public class AbstractClass {
             return me;
         }
 
-        public B addGenericParameter(Type type) {
-            this.genericParameters.add(type);
+        public B addGenericParameter(Token token) {
+            this.genericParameters.add(token);
             return me;
         }
 
@@ -399,7 +398,7 @@ public class AbstractClass {
             return innerClasses;
         }
 
-        List<Type> genericParameters() {
+        List<Token> genericParameters() {
             return genericParameters;
         }
     }

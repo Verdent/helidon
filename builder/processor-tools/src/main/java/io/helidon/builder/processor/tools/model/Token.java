@@ -1,8 +1,9 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Set;
 
-class Token extends Type {
+public final class Token extends Type {
 
     private final String token;
     private final Type bound;
@@ -13,11 +14,11 @@ class Token extends Type {
     }
 
     @Override
-    void writeComponent(ModelWriter writer, ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.write(token);
         if (bound != null) {
             writer.write(" extends ");
-            bound.writeComponent(writer, imports);
+            bound.writeComponent(writer, declaredTokens, imports);
         }
     }
 
@@ -26,6 +27,10 @@ class Token extends Type {
         if (bound != null) {
             bound.addImports(imports);
         }
+    }
+
+    String token() {
+        return token;
     }
 
     @Override

@@ -26,6 +26,10 @@ abstract class AbstractComponent {
         }
     }
 
+    void writeJavadoc(ModelWriter writer) {
+
+    }
+
     String name() {
         return name;
     }

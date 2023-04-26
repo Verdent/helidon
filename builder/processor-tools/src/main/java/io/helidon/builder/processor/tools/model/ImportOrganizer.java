@@ -140,10 +140,6 @@ class ImportOrganizer {
         }
 
         public Builder addImport(Type type) {
-            if (type.typeName() == null) { //TODO remove null check once token model is properly made
-                return this;
-            }
-
             if (type.packageName().isEmpty()) {
                 return this;
             }

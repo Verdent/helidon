@@ -1,7 +1,6 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 

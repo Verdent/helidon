@@ -8,10 +8,12 @@ import java.util.Set;
 public class ClassModel extends AbstractClass {
 
     private final String packageName;
+    private final String licenseHeader;
     private final ImportOrganizer imports;
 
     private ClassModel(Builder builder) {
         super(builder);
+        this.licenseHeader = builder.licenseHeader;
         this.packageName = builder.packageName;
         this.imports = builder.imports.build();
     }
@@ -22,6 +24,14 @@ public class ClassModel extends AbstractClass {
 
     public void saveToFile(Writer writer) throws IOException {
         ModelWriter innerWriter = new ModelWriter(writer, "    ");
+        if (licenseHeader != null) {
+            writer.write("/*\n");
+            String[] lines = licenseHeader.split("\n");
+            for (String line : lines) {
+                writer.write(" * " + line + "\n");
+            }
+            writer.write(" */\n\n");
+        }
         if (packageName != null && !packageName.isEmpty()) {
             innerWriter.write("package " + packageName + ";\n\n");
         }
@@ -34,6 +44,7 @@ public class ClassModel extends AbstractClass {
     public static class Builder extends AbstractClass.Builder<ClassModel, Builder> {
         private final ImportOrganizer.Builder imports;
         private final String packageName;
+        private String licenseHeader;
 
         private Builder(String packageName, String name) {
             super(name);
@@ -79,11 +90,16 @@ public class ClassModel extends AbstractClass {
             return this;
         }
 
+        public Builder licenseHeader(String licenseHeader) {
+            this.licenseHeader = licenseHeader;
+            return this;
+        }
+
         public Builder addInnerClass(InnerClass innerClass) {
             return super.addInnerClass(innerClass);
         }
 
-        public ImportOrganizer.Builder imports() {
+        ImportOrganizer.Builder imports() {
             return imports;
         }
 

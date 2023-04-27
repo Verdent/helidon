@@ -19,7 +19,7 @@ public class Javadoc {
         writer.write("/**\n");
         String[] lines = content.split("\n");
         for (String line : lines) {
-            writer.write(" *" + line + "\n");
+            writer.write(" * " + line + "\n");
         }
         writer.write(" **/");
     }

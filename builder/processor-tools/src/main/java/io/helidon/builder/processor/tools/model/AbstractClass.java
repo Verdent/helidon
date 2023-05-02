@@ -32,6 +32,7 @@ public class AbstractClass {
     private final List<Token> genericParameters;
     private final List<InnerClass> innerClasses;
     private final List<Annotation> annotations;
+    private final Javadoc javadoc;
 
     AbstractClass(Builder<?, ?> builder) {
         this.name = builder.name;
@@ -51,10 +52,15 @@ public class AbstractClass {
         this.tokenNames = this.genericParameters.stream()
                 .map(Token::token)
                 .collect(Collectors.toSet());
+        this.javadoc = builder.javadoc;
     }
 
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         Set<String> combinedTokens = Stream.concat(declaredTokens.stream(), this.tokenNames.stream()).collect(Collectors.toSet());
+        if (javadoc != null) {
+            javadoc.writeComponent(writer, combinedTokens, imports);
+            writer.write("\n");
+        }
         if (!annotations.isEmpty()) {
             for (Annotation annotation : annotations) {
                 annotation.writeComponent(writer, combinedTokens, imports);
@@ -222,6 +228,7 @@ public class AbstractClass {
         private final List<Token> genericParameters = new ArrayList<>();
         private final Set<Type> interfaces = new HashSet<>();
         private final String name;
+        private Javadoc javadoc;
         private Type inheritance;
         private boolean isFinal = false;
         private boolean isAbstract = false;
@@ -363,6 +370,11 @@ public class AbstractClass {
 
         public B addGenericParameter(Token token) {
             this.genericParameters.add(token);
+            return me;
+        }
+
+        public B javadoc(Javadoc javadoc) {
+            this.javadoc = javadoc;
             return me;
         }
 

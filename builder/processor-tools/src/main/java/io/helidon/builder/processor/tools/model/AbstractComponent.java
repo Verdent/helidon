@@ -11,11 +11,13 @@ abstract class AbstractComponent {
     private final String name;
     private final Type type;
     private final boolean includeImport;
+    private final Javadoc javadoc;
 
     AbstractComponent(Builder<?, ?> builder) {
         this.name = builder.name;
         this.type = builder.type;
         this.includeImport = builder.includeImport;
+        this.javadoc = builder.javadoc;
     }
 
     abstract void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException;
@@ -24,10 +26,6 @@ abstract class AbstractComponent {
         if (includeImport()) {
             imports.addImport(type);
         }
-    }
-
-    void writeJavadoc(ModelWriter writer) {
-
     }
 
     String name() {
@@ -42,11 +40,17 @@ abstract class AbstractComponent {
         return includeImport;
     }
 
+    Javadoc javadoc() {
+        return javadoc;
+    }
+
     static abstract class Builder<T extends AbstractComponent, B extends Builder<T, B>> {
+
+        private final B me;
         private final String name;
         private final Type type;
         private boolean includeImport = true;
-        private final B me;
+        private Javadoc javadoc;
 
         Builder(String name, Type type) {
             this.name = name;
@@ -58,6 +62,11 @@ abstract class AbstractComponent {
 
         public B includeImport(boolean includeImport) {
             this.includeImport = includeImport;
+            return me;
+        }
+
+        B javadoc(Javadoc javadoc) {
+            this.javadoc = javadoc;
             return me;
         }
 

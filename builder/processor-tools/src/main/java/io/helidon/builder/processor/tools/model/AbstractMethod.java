@@ -93,6 +93,11 @@ abstract class AbstractMethod extends AbstractAnnotatable {
             return identity();
         }
 
+        @Override
+        public B javadoc(Javadoc javadoc) {
+            return super.javadoc(javadoc);
+        }
+
     }
 
 }

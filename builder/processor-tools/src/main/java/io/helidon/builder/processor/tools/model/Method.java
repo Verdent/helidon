@@ -34,6 +34,10 @@ public class Method extends AbstractMethod {
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+        if (javadoc() != null) {
+            javadoc().writeComponent(writer, declaredTokens, imports);
+            writer.write("\n");
+        }
         for (Annotation annotation : annotations()) {
             annotation.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");

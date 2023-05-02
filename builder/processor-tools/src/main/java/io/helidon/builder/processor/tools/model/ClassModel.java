@@ -25,12 +25,19 @@ public class ClassModel extends AbstractClass {
     public void saveToFile(Writer writer) throws IOException {
         ModelWriter innerWriter = new ModelWriter(writer, "    ");
         if (licenseHeader != null) {
-            writer.write("/*\n");
             String[] lines = licenseHeader.split("\n");
-            for (String line : lines) {
-                writer.write(" * " + line + "\n");
+            if (lines.length > 1) {
+                writer.write("/*\n");
+                for (String line : lines) {
+                    writer.write(" * " + line + "\n");
+                }
+                writer.write(" */\n\n");
+            } else {
+                if (!lines[0].startsWith("//")) {
+                    writer.write("// ");
+                }
+                writer.write(lines[0] + "\n");
             }
-            writer.write(" */\n\n");
         }
         if (packageName != null && !packageName.isEmpty()) {
             innerWriter.write("package " + packageName + ";\n\n");

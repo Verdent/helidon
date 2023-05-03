@@ -4,6 +4,7 @@ abstract class AbstractType extends Type{
 
     private final boolean includeImport;
     private final boolean isInnerType;
+    private final boolean isArray;
     private final String type;
     private final String outerClass;
     private final String packageName;
@@ -16,6 +17,7 @@ abstract class AbstractType extends Type{
         this.outerClass = builder.outerClass;
         this.packageName = builder.packageName;
         this.simpleTypeName = builder.simpleTypeName;
+        this.isArray = builder.isArray;
     }
 
     @Override
@@ -35,6 +37,10 @@ abstract class AbstractType extends Type{
 
     boolean isInnerType() {
         return isInnerType;
+    }
+
+    boolean isArray() {
+        return isArray;
     }
 
     String type() {
@@ -60,6 +66,7 @@ abstract class AbstractType extends Type{
         private String packageName = "";
         private boolean includeImport = true;
         private boolean isInnerType = false;
+        private boolean isArray = false;
         private final B me;
 
         Builder(String type) {
@@ -69,6 +76,10 @@ abstract class AbstractType extends Type{
 
         void commonBuildLogic() {
             if (type != null) {
+                if (type.endsWith("[]")) {
+                    isArray = true;
+                    type = type.substring(0, type.length() - 2);
+                }
                 int lastIndexOf = type.lastIndexOf(".");
                 if (lastIndexOf < 0) {
                     simpleTypeName = type;

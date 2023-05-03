@@ -13,6 +13,9 @@ public final class ExactType extends AbstractType {
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         String typeName = imports.typeName(this, includeImport());
         writer.write(typeName);
+        if (isArray()) {
+            writer.write("[]");
+        }
     }
 
     public static final class Builder extends AbstractType.Builder<Builder> {

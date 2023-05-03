@@ -49,6 +49,11 @@ public final class Token extends Type {
     }
 
     @Override
+    boolean isArray() {
+        return false;
+    }
+
+    @Override
     String type() {
         return token;
     }

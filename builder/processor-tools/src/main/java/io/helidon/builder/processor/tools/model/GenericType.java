@@ -31,6 +31,9 @@ public final class GenericType extends AbstractType {
             }
             writer.write(">");
         }
+        if (isArray()) {
+            writer.write("[]");
+        }
     }
 
     @Override

@@ -50,6 +50,7 @@ public abstract class Type {
     abstract String typeName();
     abstract String simpleTypeName();
     abstract boolean isInnerType();
+    abstract boolean isArray();
     abstract String type();
     abstract String outerClass();
     abstract String packageName();

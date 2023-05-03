@@ -243,8 +243,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         appendToBuilderMethods(classBuilder, ctx);
         appendBuilder(classBuilder, ctx);
         appendExtraBuilderMethods(classBuilder, ctx);
+        appendClassComponents(classBuilder, ctx);
         appendExtraInnerClasses(builder, ctx);
         appendFooter(builder, ctx);
+
 
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             try (OutputStreamWriter writer = new OutputStreamWriter(outputStream)) {
@@ -275,6 +277,12 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .map(this::toType)
                 .forEach(typeBuilder::addParam);
         return typeBuilder.build();
+    }
+
+    protected void appendClassComponents(ClassModel.Builder builder, BodyContext ctx) {
+    }
+
+    protected void appendBuilderClassComponents(InnerClass.Builder builder, BodyContext ctx) {
     }
 
     /**
@@ -357,6 +365,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
                     .build();
             Method.Builder methodBuilder = Method.builder("__calcMeta", calcReturnType)
+                    .accessModifier(AccessModifier.PRIVATE)
                     .isStatic(true)
                     .addLine("Map<String, Map<String, Object>> metaProps = new LinkedHashMap<>();");
 
@@ -364,6 +373,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             AtomicBoolean needsCustomMapOf = new AtomicBoolean();
             appendMetaProps(methodBuilder, ctx, "metaProps", needsCustomMapOf);
             methodBuilder.addLine("return metaProps;");
+            builder.addMethod(methodBuilder);
 
             if (needsCustomMapOf.get()) {
                 appendCustomMapOf(builder);
@@ -735,18 +745,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     }
 
     /**
-     * Adds extra toBuilder() methods.
-     *
-     * @param builder the builder
-     * @param ctx     the context
-     * @param decl    the declaration template for the toBuilder method
-     */
-    protected void appendExtraToBuilderBuilderFunctions(StringBuilder builder,
-                                                        BodyContext ctx,
-                                                        String decl) {
-    }
-
-    /**
      * Adds extra builder methods.
      *
      * @param builder the builder
@@ -774,8 +772,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param builder the builder
      * @param ctx     the context
      */
-    protected void appendExtraBuilderMethods(ClassModel.Builder builder,
-                                             BodyContext ctx) {
+    private void appendExtraBuilderMethods(ClassModel.Builder builder, BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
             appendVisitAttributes(builder, ctx, true);
         }
@@ -1513,8 +1510,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 acceptThisBuilder.addLine(");");
             }
             innerClassBuilder.addMethod(acceptThisBuilder);
-            builder.addInnerClass(innerClassBuilder.build());
         }
+        appendBuilderClassComponents(innerClassBuilder, ctx);
+        builder.addInnerClass(innerClassBuilder.build());
     }
 
     private void appendBuilderBody(InnerClass.Builder builder, BodyContext ctx) {

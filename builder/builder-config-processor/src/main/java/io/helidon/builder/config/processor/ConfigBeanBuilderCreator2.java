@@ -45,7 +45,10 @@ import io.helidon.builder.processor.tools.DefaultBuilderCreatorProvider2;
 import io.helidon.builder.processor.tools.model.AccessModifier;
 import io.helidon.builder.processor.tools.model.ClassModel;
 import io.helidon.builder.processor.tools.model.Field;
+import io.helidon.builder.processor.tools.model.InnerClass;
+import io.helidon.builder.processor.tools.model.Javadoc;
 import io.helidon.builder.processor.tools.model.Method;
+import io.helidon.builder.processor.tools.model.Parameter;
 import io.helidon.builder.processor.tools.model.Type;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
@@ -237,7 +240,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                                        BodyContext ctx,
                                        String builderTag) {
         if (!ctx.hasParent()) {
-            builder.append("\t\tsuper(b, b.__config().isPresent() ? String.valueOf(__INSTANCE_ID.getAndIncrement()) : "
+            builder.append("super(b, b.__config().isPresent() ? String.valueOf(__INSTANCE_ID.getAndIncrement()) : "
                                    + "\"-1\");\n");
         }
 
@@ -245,138 +248,158 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
     }
 
     @Override
-    protected void appendExtraToBuilderBuilderFunctions(StringBuilder builder,
-                                                        BodyContext ctx,
-                                                        String decl) {
-        if (ctx.doingConcreteType()) {
-            String decl1 = decl.replace("{args}", Config.class.getName() + " cfg");
-            javaDocToBuilder(builder, ctx, "cfg");
-            builder.append("\t").append(decl1).append(" {\n");
-            builder.append("\t\tBuilder b = builder();\n"
-                                   + "\t\tb.acceptConfig(cfg, true);\n"
-                                   + "\t\treturn b;\n"
-                                   + "\t}\n");
-        }
-
-        super.appendExtraToBuilderBuilderFunctions(builder, ctx, decl);
+    protected void appendClassComponents(ClassModel.Builder builder, BodyContext ctx) {
+        Javadoc javadoc = Javadoc.builder()
+                .addLine("Creates a builder for this type, initialized with the Config value passed.")
+                .addParameter("cfg", "the config to copy and initialize from")
+                .returnDescription("a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
+                .build();
+        Method toBuilderMethod = Method.builder("toBuilder", ctx.implTypeName() + "$Builder")
+                .addParameter(Parameter.create("cfg", Config.class))
+                .javadoc(javadoc)
+                .addLine("Builder b = builder();")
+                .addLine("b.acceptConfig(cfg, true);")
+                .addLine("return b;")
+                .build();
+        builder.addMethod(toBuilderMethod);
     }
 
     @Override
-    protected void appendExtraBuilderMethods(ClassModel.Builder builder,
-                                             BodyContext ctx) {
+    protected void appendBuilderClassComponents(InnerClass.Builder builder, BodyContext ctx) {
         if (ctx.doingConcreteType()) {
-            super.appendExtraBuilderMethods(builder, ctx);
             return;
         }
-//
-//        if (!ctx.hasParent()) {
-//            builder.append("\t\t@Override\n");
-//            builder.append("\t\tpublic void acceptConfig"
-//                                   + "(Config cfg, ConfigResolver resolver, ConfigBeanBuilderValidator<?> validator) {\n");
-//            builder.append("\t\t\t").append(ResolutionContext.class.getName())
-//                    .append(" ctx = createResolutionContext(__configBeanType(), cfg, resolver, validator, __mappers());\n");
-//            builder.append("\t\t\t__config(ctx.config());\n");
-//            builder.append("\t\t\t__acceptAndResolve(ctx);\n");
-//            builder.append("\t\t\tsuper.finishedResolution(ctx);\n");
-//            builder.append("\t\t}\n\n");
-//        }
-//
-//        if (!ctx.doingConcreteType()) {
-//            if (ctx.hasParent()) {
-//                builder.append("\t\t@Override\n");
-//            } else {
-//                javaDocAcceptResolveConfigCtx(builder, ctx, "ctx");
-//            }
-//            builder.append("\t\tprotected void __acceptAndResolve(")
-//                    .append(ResolutionContext.class.getName())
-//                    .append(" ctx) {\n");
-//            if (ctx.hasParent()) {
-//                builder.append("\t\t\tsuper.__acceptAndResolve(ctx);\n");
-//            }
-//
-//            int i = 0;
-//            for (String attrName : ctx.allAttributeNames()) {
-//                TypedElementName method = ctx.allTypeInfos().get(i);
-//                String configKey = toConfigKey(attrName, method, ctx.builderTriggerAnnotation());
-//
-//                // resolver.of(config, "port", int.class).ifPresent(this::port);
-//                String ofClause = "of";
-//                TypeName outerType = method.typeName();
-//                String outerTypeName = outerType.declaredName();
-//                TypeName type = outerType;
-//                String typeName = type.declaredName();
-//                TypeName mapKeyType = null;
-//                TypeName mapKeyComponentType = null;
-//                boolean isMap = typeName.equals(Map.class.getName());
-//                boolean isCollection = (typeName.equals(Collection.class.getName())
-//                                                || typeName.equals(Set.class.getName())
-//                                                || typeName.equals(List.class.getName()));
-//                if (isCollection) {
-//                    ofClause = "ofCollection";
-//                    type = type.typeArguments().get(0);
-//                    typeName = type.declaredName();
-//                } else if (isMap) {
-//                    ofClause = "ofMap";
-//                    mapKeyType = type.typeArguments().get(0);
-//                    if (!mapKeyType.typeArguments().isEmpty()) {
-//                        mapKeyComponentType = mapKeyType.typeArguments().get(0);
-//                    }
-//                    type = type.typeArguments().get(1);
-//                    typeName = type.declaredName();
-//                } else if (Optional.class.getName().equals(typeName)) {
-//                    type = type.typeArguments().get(0);
-//                    typeName = type.declaredName();
-//                }
-//
-//                builder.append("\t\t\tctx.resolver().").append(ofClause);
-//                builder.append("(ctx, __metaAttributes(), ").append(DefaultConfigResolverRequest.class.getPackage().getName());
-//                builder.append(".DefaultConfigResolver");
-//                if (isMap) {
-//                    builder.append("Map");
-//                }
-//                builder.append("Request.builder()\n\t\t\t\t\t");
-//                builder.append(".configKey(\"").append(configKey);
-//                builder.append("\").attributeName(\"").append(attrName).append("\")");
-//                builder.append(".valueType(").append(outerTypeName).append(".class)");
-//                if (type != outerType) {
-//                    builder.append(".valueComponentType(").append(typeName).append(".class)");
-//                }
-//                if (isMap) {
-//                    builder.append(".keyType(").append(Objects.requireNonNull(mapKeyType)).append(".class)");
-//                    if (mapKeyComponentType != null) {
-//                        builder.append(".keyComponentType(").append(mapKeyComponentType.name()).append(".class)");
-//                    }
-//                }
-//                builder.append(".build())\n\t\t\t\t\t.ifPresent(val -> this.").append(method.elementName()).append("((");
-//                builder.append(outerTypeName).append(") val));\n");
-//                i++;
-//            }
-//            builder.append("\t\t}\n\n");
-//
-//            builder.append("\t\t@Override\n");
-//            builder.append("\t\tpublic Class<?> __configBeanType() {\n"
-//                                   + "\t\t\treturn ")
-//                    .append(ctx.typeInfo().typeName().name()).append(".class;\n\t\t}\n\n");
-//
-//            builder.append("\t\t@Override\n");
-//            builder.append("\t\tpublic Map<Class<?>, Function<Config, ?>> __mappers() {\n"
-//                                   + "\t\t\tMap<Class<?>, Function<Config, ?>> result = ");
-//            if (ctx.hasParent()) {
-//                builder.append("super.__mappers();\n");
-//            } else {
-//                builder.append("new java.util.LinkedHashMap<>();\n");
-//            }
-//            appendAvailableReferencedBuilders(builder, "\t\t\tresult.", ctx.typeInfo());
-//            builder.append("\t\t\treturn result;\n");
-//            builder.append("\t\t}\n\n");
-//        }
 
-        super.appendExtraBuilderMethods(builder, ctx);
+        if (!ctx.hasParent()) {
+            acceptConfigMethod(builder);
+        }
+
+        if (!ctx.doingConcreteType()) {
+            Method.Builder acceptAndResolveBuilder = Method.builder("__acceptAndResolve", void.class);
+            if (ctx.hasParent()) {
+                acceptAndResolveBuilder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
+            } else {
+                Javadoc javadoc = Javadoc.builder()
+                        .addLine("Accept the config, resolves it, optionally validates.")
+                        .addParameter("ctx", "the config resolution context")
+                        .build();
+                acceptAndResolveBuilder.javadoc(javadoc);
+            }
+            acceptAndResolveBuilder.accessModifier(AccessModifier.PROTECTED)
+                    .addParameter(Parameter.create("ctx", ResolutionContext.class));
+            if (ctx.hasParent()) {
+                acceptAndResolveBuilder.addLine("super.__acceptAndResolve(ctx);");
+            }
+
+            int i = 0;
+            for (String attrName : ctx.allAttributeNames()) {
+                TypedElementName method = ctx.allTypeInfos().get(i);
+                String configKey = toConfigKey(attrName, method, ctx.builderTriggerAnnotation());
+
+                // resolver.of(config, "port", int.class).ifPresent(this::port);
+                String ofClause = "of";
+                TypeName outerType = method.typeName();
+                String outerTypeName = outerType.declaredName();
+                TypeName type = outerType;
+                String typeName = type.declaredName();
+                TypeName mapKeyType = null;
+                TypeName mapKeyComponentType = null;
+                boolean isMap = typeName.equals(Map.class.getName());
+                boolean isCollection = (typeName.equals(Collection.class.getName())
+                                                || typeName.equals(Set.class.getName())
+                                                || typeName.equals(List.class.getName()));
+                if (isCollection) {
+                    ofClause = "ofCollection";
+                    type = type.typeArguments().get(0);
+                    typeName = type.declaredName();
+                } else if (isMap) {
+                    ofClause = "ofMap";
+                    mapKeyType = type.typeArguments().get(0);
+                    if (!mapKeyType.typeArguments().isEmpty()) {
+                        mapKeyComponentType = mapKeyType.typeArguments().get(0);
+                    }
+                    type = type.typeArguments().get(1);
+                    typeName = type.declaredName();
+                } else if (Optional.class.getName().equals(typeName)) {
+                    type = type.typeArguments().get(0);
+                    typeName = type.declaredName();
+                }
+
+                acceptAndResolveBuilder.add("ctx.resolver().")
+                        .add(ofClause)
+                        .add("(ctx, __metaAttributes(), ")
+                        .add(DefaultConfigResolverRequest.class.getPackage().getName() + ".DefaultConfigResolver");
+                if (isMap) {
+                    acceptAndResolveBuilder.add("Map");
+                }
+                acceptAndResolveBuilder.addLine("Request.builder()")
+                        .add(".configKey(\"").add(configKey).add("\").attributeName(\"" + attrName + "\")")
+                        .add(".valueType(").add(outerTypeName).add(".class)");
+                if (type != outerType) {
+                    acceptAndResolveBuilder.add(".valueComponentType(").add(typeName).add(".class)");
+                }
+                if (isMap) {
+                    acceptAndResolveBuilder.add(".keyType(").add(mapKeyType.name()).add(".class)");
+                    if (mapKeyComponentType != null) {
+                        acceptAndResolveBuilder.add(".keyComponentType(").add(mapKeyComponentType.name()).add(".class)");
+                    }
+                }
+                acceptAndResolveBuilder.addLine(".build())")
+                        .padding().add(".ifPresent(val -> this.").add(method.elementName())
+                        .add("((").add(outerTypeName).addLine(") val));");
+                i++;
+            }
+            builder.addMethod(acceptAndResolveBuilder);
+
+            Method.Builder configBeanTypeBuilder = Method.builder("__configBeanType",
+                                                                  Type.generic(Class.class)
+                                                                          .addParam(Type.token("?"))
+                                                                          .build())
+                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                    .addLine("return " + ctx.typeInfo().typeName().name() + ".class;");
+            builder.addMethod(configBeanTypeBuilder);
+
+            Type mappersType = Type.generic(Map.class)
+                    .addParam(Type.generic(Class.class).addParam(Type.token("?")).build())
+                    .addParam(Type.generic(Function.class)
+                                      .addParam(Type.create(Config.class))
+                                      .addParam(Type.token("?"))
+                                      .build())
+                    .build();
+            Method.Builder mappersBuilder = Method.builder("__mappers", mappersType)
+                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                    .addLine("return " + ctx.typeInfo().typeName().name() + ".class;")
+                    .add("Map<Class<?>, Function<Config, ?>> result = ");
+
+            if (ctx.hasParent()) {
+                mappersBuilder.addLine("super.__mappers();");
+            } else {
+                mappersBuilder.addLine("new java.util.LinkedHashMap<>();");
+            }
+            appendAvailableReferencedBuilders(mappersBuilder, ctx.typeInfo());
+            mappersBuilder.addLine("return result;");
+            builder.addMethod(mappersBuilder);
+        }
     }
 
-    private void appendAvailableReferencedBuilders(StringBuilder builder,
-                                                   String prefix,
-                                                   TypeInfo typeInfo) {
+    private void acceptConfigMethod(InnerClass.Builder builder) {
+        Method acceptConfig = Method.builder("acceptConfig", void.class)
+                .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                .addParameter(Parameter.create("cfg", Config.class))
+                .addParameter(Parameter.create("resolver", ConfigResolver.class))
+                .addParameter(Parameter.create("validator", Type.generic(ConfigBeanBuilderValidator.class)
+                        .addParam(Type.token("?"))
+                        .build()))
+                .addLine(ResolutionContext.class.getName() + " ctx = "
+                                 + "createResolutionContext(__configBeanType(), cfg, resolver, validator, __mappers());")
+                .addLine("__config(ctx.config());")
+                .addLine("__acceptAndResolve(ctx);")
+                .addLine("super.finishedResolution(ctx);")
+                .build();
+        builder.addMethod(acceptConfig);
+    }
+
+    private void appendAvailableReferencedBuilders(Method.Builder builder, TypeInfo typeInfo) {
         typeInfo.referencedTypeNamesToAnnotations().forEach((k, v) -> {
             AnnotationAndValue builderAnnotation = DefaultAnnotationAndValue
                     .findFirst(io.helidon.builder.Builder.class.getName(), v).orElse(null);
@@ -387,8 +410,8 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
 
             if (builderAnnotation != null) {
                 TypeName referencedBuilderTypeName = toBuilderImplTypeName(k, builderAnnotation);
-                builder.append(prefix).append("put(").append(k.name()).append(".class, ");
-                builder.append(referencedBuilderTypeName).append("::toBuilder);\n");
+                builder.add("result.put(").add(k.name()).add(".class, ")
+                        .add(referencedBuilderTypeName.toString()).addLine("::toBuilder);");
             }
         });
     }
@@ -418,35 +441,6 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                 .add(configBeanAnno.value(TAG_WANT_DEFAULT_CONFIG_BEAN).orElseThrow()).addLine(")");
         builder.add(".").add(TAG_LEVEL_TYPE).add("(").add(LevelType.class.getCanonicalName()).add(".")
                 .add(configBeanAnno.value(TAG_LEVEL_TYPE).orElseThrow()).addLine(")");
-    }
-
-    private void javaDocMetaAttributesGetter(StringBuilder builder) {
-        builder.append("\t/**\n"
-                               + "\t * Returns the {@code ConfigBean} type.\n"
-                               + "\t *\n"
-                               + "\t * @return the config bean type\n"
-                               + "\t */\n");
-    }
-
-    private void javaDocToBuilder(StringBuilder builder,
-                                  BodyContext ctx,
-                                  String argTag) {
-        builder.append("\t/**\n"
-                               + "\t * Creates a builder for this type, initialized with the Config value passed.\n"
-                               + "\t *\n");
-        builder.append("\t * @param ").append(argTag).append(" the config to copy and initialize from\n");
-        builder.append("\t * @return a fluent builder for {@link ").append(ctx.typeInfo().typeName());
-        builder.append("}\n\t */\n");
-    }
-
-    private void javaDocAcceptResolveConfigCtx(StringBuilder builder,
-                                               BodyContext ctx,
-                                               String argTag) {
-        builder.append("\t\t/**\n"
-                               + "\t\t * Accept the config, resolves it, optionally validates.\n"
-                               + "\t\t *\n");
-        builder.append("\t\t * @param ").append(argTag).append(" the config resolution context\n");
-        builder.append("\t\t */\n");
     }
 
     private String toConfigKey(String attrName,

@@ -20,6 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.annotation.Annotation;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -61,10 +62,10 @@ import io.helidon.builder.processor.tools.model.Type;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.common.types.AnnotationAndValue;
-import io.helidon.common.types.DefaultAnnotationAndValue;
-import io.helidon.common.types.DefaultTypeName;
+import io.helidon.common.types.AnnotationAndValueDefault;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
+import io.helidon.common.types.TypeNameDefault;
 import io.helidon.common.types.TypedElementName;
 import io.helidon.config.metadata.ConfiguredOption;
 
@@ -77,17 +78,18 @@ import static io.helidon.builder.processor.tools.GenerateMethod.SINGULAR_PREFIX;
 /**
  * Default implementation for {@link BuilderCreatorProvider}.
  */
-@Weight(Weighted.DEFAULT_WEIGHT+2)
+@Weight(Weighted.DEFAULT_WEIGHT - 2)
 public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     static final boolean DEFAULT_INCLUDE_META_ATTRIBUTES = true;
     static final boolean DEFAULT_REQUIRE_LIBRARY_DEPENDENCIES = true;
     static final String DEFAULT_IMPL_PREFIX = Builder.DEFAULT_IMPL_PREFIX;
     static final String DEFAULT_ABSTRACT_IMPL_PREFIX = Builder.DEFAULT_ABSTRACT_IMPL_PREFIX;
+    static final String DEFAULT_ABSTRACT_IMPL_SUFFIX = Builder.DEFAULT_ABSTRACT_IMPL_SUFFIX;
     static final String DEFAULT_SUFFIX = Builder.DEFAULT_SUFFIX;
     static final String DEFAULT_LIST_TYPE = Builder.DEFAULT_LIST_TYPE.getName();
     static final String DEFAULT_MAP_TYPE = Builder.DEFAULT_MAP_TYPE.getName();
     static final String DEFAULT_SET_TYPE = Builder.DEFAULT_SET_TYPE.getName();
-    static final TypeName BUILDER_ANNO_TYPE_NAME = DefaultTypeName.create(Builder.class);
+    static final TypeName BUILDER_ANNO_TYPE_NAME = TypeNameDefault.create(Builder.class);
     static final boolean SUPPORT_STREAMS_ON_IMPL = false;
     static final boolean SUPPORT_STREAMS_ON_BUILDER = true;
 
@@ -179,8 +181,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                               AnnotationAndValue builderAnnotation) {
         String toPackageName = toPackageName(typeName.packageName(), builderAnnotation);
         String prefix = toAbstractImplTypePrefix(builderAnnotation);
-        String suffix = toImplTypeSuffix(builderAnnotation);
-        return DefaultTypeName.create(toPackageName, prefix + typeName.className() + suffix);
+        String suffix = toAbstractImplTypeSuffix(builderAnnotation);
+        return TypeNameDefault.create(toPackageName, prefix + typeName.className() + suffix);
     }
 
     /**
@@ -195,7 +197,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         String toPackageName = toPackageName(typeName.packageName(), builderAnnotation);
         String prefix = toImplTypePrefix(builderAnnotation);
         String suffix = toImplTypeSuffix(builderAnnotation);
-        return DefaultTypeName.create(toPackageName, prefix + typeName.className() + suffix);
+        return TypeNameDefault.create(toPackageName, prefix + typeName.className() + suffix);
     }
 
     /**
@@ -269,12 +271,12 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     || Optional.class.getName().equals(typeName.declaredName())) {
                 return Type.create(typeName.declaredName());
             } else if (typeName.wildcard() && !ignoreTopWildcard) {
-                boolean isObject = Object.class.getName().equals(typeName.name());
+                boolean isObject = typeName.name().equals("?") || Object.class.getName().equals(typeName.name());
                 if (isObject) {
                     return Type.token("?");
                 } else {
                     return Type.tokenBuilder("?")
-                            .bound(toType(DefaultTypeName.create(typeName.packageName(), typeName.className()), false))
+                            .bound(toType(TypeNameDefault.create(typeName.packageName(), typeName.className()), false))
                             .build();
                 }
             }
@@ -413,6 +415,12 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                       .returnType(returnType, "the map of meta attributes using the key being the attribute name")
                                       .description("The map of meta attributes describing each element of this type.")
                                       .addLine("return " + BodyContext.TAG_META_PROPS + ";"));
+
+
+            builder.addMethod(Method.builder("__metaProps")
+                                      .returnType(returnType, "the map of meta attributes using the key being the attribute name")
+                                      .description("The map of meta attributes describing each element of this type.")
+                                      .addLine("return __metaAttributes();"));
         }
     }
 
@@ -690,10 +698,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         int i = 0;
         for (String attrName : ctx.allAttributeNames()) {
             TypedElementName method = ctx.allTypeInfos().get(i);
-            String typeName = method.typeName().declaredName();
+            TypeName typeName = method.typeName();
             List<String> typeArgs = method.typeName().typeArguments().stream()
-                    .map(it -> normalize(it.declaredName()) + ".class")
-                    .collect(Collectors.toList());
+                    .map(this::normalize)
+                    .toList();
             String typeArgsStr = String.join(", ", typeArgs);
 
             methodBuilder.add("visitor.visit(\"").add(attrName).add("\", () -> this.");
@@ -703,7 +711,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 methodBuilder.add(method.elementName()).add("(), ");
             }
             methodBuilder.add(TAG_META_PROPS).add(".get(\"").add(attrName).add("\"), userDefinedCtx, ");
-            methodBuilder.add(normalize(typeName)).add(".class");
+            methodBuilder.add(normalize(typeName));
             if (!typeArgsStr.isBlank()) {
                 methodBuilder.add(", ").add(typeArgsStr);
             }
@@ -1028,7 +1036,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @return the (singular) name of the element
      */
     protected static String nameOf(TypedElementName elem) {
-        return DefaultAnnotationAndValue.findFirst(Singular.class.getName(), elem.annotations())
+        return AnnotationAndValueDefault.findFirst(Singular.class, elem.annotations())
                 .flatMap(AnnotationAndValue::value)
                 .filter(BuilderTypeTools::hasNonBlankValue)
                 .orElseGet(elem::elementName);
@@ -1062,10 +1070,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         boolean isList = typeName.isList();
         boolean isMap = !isList && typeName.isMap();
         boolean isSet = !isMap && typeName.isSet();
+        AccessModifier accessModifier = (!typeName.isOptional() || ctx.allowPublicOptionals())
+                ? AccessModifier.PUBLIC
+                : AccessModifier.PROTECTED;
         boolean upLevel = isSet || isList;
 
         builder.addImport(Objects.class);
         Method.Builder methodBuilder = Method.builder(prefixName + methodName)
+                .accessModifier(accessModifier)
                 .description("Setter for '" + beanAttributeName + "'.")
                 .returnType(ctx.genericBuilderAliasDecl(), "this fluent builder")
                 .addParameter(Parameter.builder("val", toType(method.typeName(), upLevel)).description("the new value"));
@@ -1246,7 +1258,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             }
         }
 
-        TypeName searchFor = DefaultTypeName.create(annoType);
+        TypeName searchFor = TypeNameDefault.create(annoType);
         for (AnnotationAndValue anno : method.annotations()) {
             if (anno.typeName().equals(searchFor)) {
                 Optional<String> val = anno.value();
@@ -1258,16 +1270,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         return Optional.empty();
-    }
-
-    private static String toGenericsDecl(TypedElementName method) {
-        List<TypeName> compTypeNames = method.typeName().typeArguments();
-        if (1 == compTypeNames.size()) {
-            return avoidWildcard(compTypeNames.get(0)) + " val";
-        } else if (2 == compTypeNames.size()) {
-            return avoidWildcard(compTypeNames.get(0)) + " key, " + avoidWildcard(compTypeNames.get(1)) + " val";
-        }
-        return "Object val";
     }
 
     private static String avoidWildcard(TypeName typeName) {
@@ -1298,6 +1300,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      */
     private String toAbstractImplTypePrefix(AnnotationAndValue builderAnnotation) {
         return builderAnnotation.value("abstractImplPrefix").orElse(DEFAULT_ABSTRACT_IMPL_PREFIX);
+    }
+
+    /**
+     * In support of {@link io.helidon.builder.Builder#abstractImplSuffix()}.
+     */
+    private String toAbstractImplTypeSuffix(AnnotationAndValue builderAnnotation) {
+        return builderAnnotation.value("abstractImplSuffix").orElse(DEFAULT_ABSTRACT_IMPL_SUFFIX);
     }
 
     /**
@@ -1503,7 +1512,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             if (ctx.hasParent()) {
                 constructorBuilder.addLine("super();");
             }
-            appendOverridesOfDefaultValues(constructorBuilder, ctx);
+            appendOverridesOfDefaultValues(builder, constructorBuilder, ctx);
         }
         builder.addConstructor(constructorBuilder.build());
     }
@@ -1517,7 +1526,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .description("Field value for {@code " + method + "()}.")
                 .accessModifier(AccessModifier.PRIVATE);
         toConfiguredOptionValue(method, true, true)
-                .ifPresentOrElse(defaultValue -> fieldBuilder.defaultValue(constructDefaultValue(method, defaultValue)),
+                .ifPresentOrElse(defaultValue -> fieldBuilder.defaultValue(constructDefaultValue(builder, method, defaultValue)),
                                  () -> {
                                      if (type.isOptional()) {
                                          fieldBuilder.defaultValue("java.util.Optional.empty()");
@@ -1894,7 +1903,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         builder.addMethod(methodBuilder);
     }
 
-    private String constructDefaultValue(TypedElementName method, String defaultVal) {
+    private String constructDefaultValue(AbstractClass.Builder<?, ?> classBuilder, TypedElementName method, String defaultVal) {
         StringBuilder builder = new StringBuilder();
         TypeName type = method.typeName();
         boolean isOptional = type.isOptional();
@@ -1903,6 +1912,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             if (!type.typeArguments().isEmpty()) {
                 type = type.typeArguments().get(0);
             }
+        }
+
+        if (Duration.class.getName().equals(type.name())) {
+            classBuilder.addImport(Duration.class);
+            return "Duration.parse(\"" + defaultVal + "\")";
         }
 
         boolean isString = type.declaredName().equals(String.class.getName()) && !type.array();
@@ -1928,7 +1942,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         return builder.toString();
     }
 
-    private void appendOverridesOfDefaultValues(Constructor.Builder builder,
+    private void appendOverridesOfDefaultValues(AbstractClass.Builder<?, ?> classBuilder,
+                                                Constructor.Builder builder,
                                                 BodyContext ctx) {
         for (TypedElementName method : ctx.typeInfo().elementInfo()) {
             String beanAttributeName = toBeanAttributeName(method, ctx.beanStyleRequired());
@@ -1937,7 +1952,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 String thisDefault = toConfiguredOptionValue(method, true, true).orElse(null);
                 String superDefault = superValue(ctx.typeInfo().superTypeInfo(), beanAttributeName, ctx.beanStyleRequired());
                 if (hasNonBlankValue(thisDefault) && !Objects.equals(thisDefault, superDefault)) {
-                    appendDefaultOverride(builder, beanAttributeName, method, thisDefault);
+                    appendDefaultOverride(classBuilder, builder, beanAttributeName, method, thisDefault);
                 }
             }
         }
@@ -1965,11 +1980,12 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         return null;
     }
 
-    private void appendDefaultOverride(Constructor.Builder builder,
+    private void appendDefaultOverride(AbstractClass.Builder<?, ?> classBuilder,
+                                       Constructor.Builder builder,
                                        String attrName,
                                        TypedElementName method,
                                        String override) {
-        String defaultValue = constructDefaultValue(method, override);
+        String defaultValue = constructDefaultValue(classBuilder, method, override);
         builder.addLine(attrName + "(" +defaultValue + ");");
     }
 
@@ -1996,14 +2012,15 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     private String mapOf(String attrName,
                          TypedElementName method,
                          AtomicBoolean needsCustomMapOf) {
-        Optional<? extends AnnotationAndValue> configuredOptions = DefaultAnnotationAndValue
-                .findFirst(ConfiguredOption.class.getName(), method.annotations());
+        Optional<? extends AnnotationAndValue> configuredOptions = AnnotationAndValueDefault
+                .findFirst(ConfiguredOption.class, method.annotations());
 
         TypeName typeName = method.typeName();
         String typeDecl = "\"__type\", " + typeName.declaredName() + ".class";
         if (!typeName.typeArguments().isEmpty()) {
             int pos = typeName.typeArguments().size() - 1;
-            typeDecl += ", \"__componentType\", " + normalize(typeName.typeArguments().get(pos).declaredName()) + ".class";
+            TypeName arg = typeName.typeArguments().get(pos);
+            typeDecl += ", \"__componentType\", " + normalize(arg);
         }
 
         String key = (configuredOptions.isEmpty())
@@ -2046,8 +2063,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         return result.toString();
     }
 
-    private String normalize(String name) {
-        return name.equals("?") ? "Object" : name;
+    private String normalize(TypeName typeName) {
+        return (typeName.generic() ? "Object" : typeName.name()) + ".class";
     }
 
     private String quotedTupleOf(TypeName valType,

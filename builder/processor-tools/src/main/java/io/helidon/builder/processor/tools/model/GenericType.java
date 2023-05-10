@@ -3,6 +3,7 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public final class GenericType extends AbstractType {
@@ -40,6 +41,26 @@ public final class GenericType extends AbstractType {
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
         typeParams.forEach(type -> type.addImports(imports));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        GenericType that = (GenericType) o;
+        return Objects.equals(typeParams, that.typeParams);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), typeParams);
     }
 
     public static final class Builder extends AbstractType.Builder<Builder> {

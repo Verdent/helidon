@@ -20,11 +20,8 @@ public abstract class Type {
         return new Token.Builder(token).build();
     }
 
-    public static Token token(String token, Class<?> bound) {
-        return new Token.Builder(token, Type.create(bound)).build();
-    }
-    public static Token token(String token, Type bound) {
-        return new Token.Builder(token, bound).build();
+    public static Token.Builder tokenBuilder(String token) {
+        return new Token.Builder(token);
     }
 
     public static ExactType.Builder exact(Class<?> type) {

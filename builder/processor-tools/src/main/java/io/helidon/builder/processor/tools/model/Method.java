@@ -1,6 +1,10 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -9,32 +13,28 @@ import java.util.stream.Collectors;
  */
 public class Method extends AbstractMethod {
 
+    private final Map<String, Token> declaredTokens;
     private final boolean isFinal;
     private final boolean isStatic;
     private final boolean isAbstract;
+    private final Type returnType;
 
     private Method(Builder builder) {
         super(builder);
         this.isFinal = builder.isFinal;
         this.isStatic = builder.isStatic;
         this.isAbstract = builder.isAbstract;
+        this.returnType = builder.returnType;
+        this.declaredTokens = Map.copyOf(builder.declaredTokens);
     }
 
-    public static Builder builder(String name, Class<?> returnType) {
-        return new Builder(name, Type.create(returnType));
-    }
-
-    public static Builder builder(String name, String returnType) {
-        return new Builder(name, Type.create(returnType));
-    }
-
-    public static Builder builder(String name, Type returnType) {
-        return new Builder(name, returnType);
+    public static Builder builder(String name) {
+        return new Builder(name);
     }
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        if (javadoc() != null) {
+        if (javadoc().shouldGenerate(accessModifier())) {
             javadoc().writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
@@ -60,8 +60,8 @@ public class Method extends AbstractMethod {
         if (isAbstract) {
             writer.write("abstract ");
         }
-        appendTokenDeclaration(writer, declaredTokens);
-        type().writeComponent(writer, declaredTokens, imports); //write return type
+        appendTokenDeclaration(writer, declaredTokens, imports);
+        returnType.writeComponent(writer, declaredTokens, imports); //write return type
         writer.write(" " + name() + "(");
         boolean first = true;
         for (Parameter parameter : parameters().values()) {
@@ -86,14 +86,25 @@ public class Method extends AbstractMethod {
         writer.write("}");
     }
 
-    private void appendTokenDeclaration(ModelWriter writer, Set<String> declaredTokens) throws IOException {
-        Set<String> tokensToDeclare = parameters().values()
-                .stream()
-                .filter(parameter -> parameter.type() instanceof Token)
-                .map(parameter -> ((Token) parameter.type()).token())
-                .filter(tokenName -> !declaredTokens.contains(tokenName))
-                .filter(tokenName -> !tokenName.equals("?"))
-                .collect(Collectors.toSet());
+    private void appendTokenDeclaration(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports)
+            throws IOException {
+        Set<String> tokensToDeclare;
+        if (isStatic) {
+            tokensToDeclare = parameters().values()
+                    .stream()
+                    .filter(parameter -> parameter.type() instanceof Token)
+                    .map(parameter -> ((Token) parameter.type()).token())
+                    .filter(tokenName -> !tokenName.equals("?"))
+                    .collect(Collectors.toSet());
+        } else {
+            tokensToDeclare = parameters().values()
+                    .stream()
+                    .filter(parameter -> parameter.type() instanceof Token)
+                    .map(parameter -> ((Token) parameter.type()).token())
+                    .filter(tokenName -> !declaredTokens.contains(tokenName))
+                    .filter(tokenName -> !tokenName.equals("?"))
+                    .collect(Collectors.toSet());
+        }
         if (!tokensToDeclare.isEmpty()) {
             writer.write("<");
             boolean first = true;
@@ -103,7 +114,28 @@ public class Method extends AbstractMethod {
                 } else {
                     writer.write(", ");
                 }
-                writer.write(token);
+                if (this.declaredTokens.containsKey(token)) {
+                    this.declaredTokens.get(token).writeComponent(writer, declaredTokens, imports);
+                } else {
+                    writer.write(token);
+                }
+            }
+            for (Map.Entry<String, Token> entry : this.declaredTokens.entrySet()) {
+                if (!tokensToDeclare.contains(entry.getKey())) {
+                    entry.getValue().writeComponent(writer, declaredTokens, imports);
+                }
+            }
+            writer.write("> ");
+        } else if (!this.declaredTokens.isEmpty()) {
+            writer.write("<");
+            boolean first = true;
+            for (Map.Entry<String, Token> entry : this.declaredTokens.entrySet()) {
+                if (first) {
+                    first = false;
+                } else {
+                    writer.write(", ");
+                }
+                entry.getValue().writeComponent(writer, declaredTokens, imports);
             }
             writer.write("> ");
         }
@@ -112,17 +144,41 @@ public class Method extends AbstractMethod {
     @Override
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
-        type().addImports(imports);
+        if (includeImport()) {
+            imports.addImport(returnType);
+        }
+        returnType.addImports(imports);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        Method method = (Method) o;
+        return Objects.equals(returnType, method.returnType)
+                && Objects.equals(name(), method.name())
+                && Objects.equals(parameters().values(), method.parameters().values());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(returnType);
     }
 
     public static class Builder extends AbstractMethod.Builder<Method, Builder> {
 
+        private final Map<String, Token> declaredTokens = new HashMap<>();
         private boolean isFinal = false;
         private boolean isStatic = false;
         private boolean isAbstract = false;
+        private Type returnType = Type.create(void.class);
 
-        Builder(String name, Type returnType) {
-            super(name, returnType);
+        Builder(String name) {
+            super(name, null);
         }
 
         public Method build() {
@@ -141,6 +197,36 @@ public class Method extends AbstractMethod {
 
         public Builder isAbstract(boolean isAbstract) {
             this.isAbstract = isAbstract;
+            return this;
+        }
+
+        public Builder returnType(String type) {
+            return returnType(type, "");
+        }
+
+        public Builder returnType(String type, String description) {
+            return returnType(Type.create(type), description);
+        }
+
+        public Builder returnType(Class<?> type) {
+            return returnType(type.getName());
+        }
+
+        public Builder returnType(Class<?> type, String description) {
+            return returnType(Type.create(type), description);
+        }
+
+        public Builder returnType(Type type) {
+            return returnType(type, "");
+        }
+
+        public Builder returnType(Type type, String description) {
+            this.returnType = type;
+            return returnJavadoc(description);
+        }
+
+        public Builder addTokenDeclaration(Token token) {
+            declaredTokens.put(token.token(), token);
             return this;
         }
     }

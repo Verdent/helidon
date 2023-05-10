@@ -54,9 +54,9 @@ import io.helidon.builder.processor.tools.model.Constructor;
 import io.helidon.builder.processor.tools.model.Field;
 import io.helidon.builder.processor.tools.model.GenericType;
 import io.helidon.builder.processor.tools.model.InnerClass;
-import io.helidon.builder.processor.tools.model.Javadoc;
 import io.helidon.builder.processor.tools.model.Method;
 import io.helidon.builder.processor.tools.model.Parameter;
+import io.helidon.builder.processor.tools.model.Token;
 import io.helidon.builder.processor.tools.model.Type;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
@@ -239,7 +239,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         appendExtraMethods(classBuilder, ctx);
         appendToBuilderMethods(classBuilder, ctx);
         appendBuilder(classBuilder, ctx);
-        appendExtraBuilderMethods(classBuilder, ctx);
         appendClassComponents(classBuilder, ctx);
 //        appendExtraInnerClasses(builder, ctx);
 //        appendFooter(builder, ctx);
@@ -260,18 +259,41 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         return ClassModel.builder(typeName.packageName(), typeName.className());
     }
 
-    private Type toType(TypeName typeName) {
+    private static Type toType(TypeName typeName, boolean asTopContainer) {
+        return toType(typeName, asTopContainer, false);
+    }
+
+    private static Type toType(TypeName typeName, boolean asTopContainer, boolean ignoreTopWildcard) {
         if (typeName.typeArguments().isEmpty()) {
             if (typeName.array()
-                    || Optional.class.getName().equals(typeName.declaredName())
-                    || (typeName.wildcard())) {
+                    || Optional.class.getName().equals(typeName.declaredName())) {
                 return Type.create(typeName.declaredName());
+            } else if (typeName.wildcard() && !ignoreTopWildcard) {
+                boolean isObject = Object.class.getName().equals(typeName.name());
+                if (isObject) {
+                    return Type.token("?");
+                } else {
+                    return Type.tokenBuilder("?")
+                            .bound(toType(DefaultTypeName.create(typeName.packageName(), typeName.className()), false))
+                            .build();
+                }
             }
             return Type.create(typeName.declaredName());
         }
-        GenericType.Builder typeBuilder = Type.generic(typeName.declaredName());
+        GenericType.Builder typeBuilder;
+        if (asTopContainer) {
+            if (typeName.isList() || typeName.isSet()) {
+                typeBuilder = Type.generic(Collection.class);
+            } else if (typeName.isMap()) {
+                typeBuilder = Type.generic(Map.class);
+            } else {
+                throw new IllegalStateException("Unsupported type: " + typeName.declaredName());
+            }
+        } else {
+            typeBuilder = Type.generic(typeName.declaredName());
+        }
         typeName.typeArguments().stream()
-                .map(this::toType)
+                .map(type -> toType(type, false))
                 .forEach(typeBuilder::addParam);
         return typeBuilder.build();
     }
@@ -302,7 +324,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     protected void maybeAppendInterceptor(Method.Builder builder, BodyContext ctx, String builderTag) {
         assert (!builderTag.equals("interceptor"));
         if (ctx.interceptorTypeName().isPresent()) {
-            String impl = ctx.interceptorTypeName().get().declaredName();
+            String impl = ctx.interceptorTypeName().get().className();
             builder.add(impl + " interceptor = ");
             if (ctx.interceptorCreateMethod().isEmpty()) {
                 builder.addLine("new " + impl + "();");
@@ -316,15 +338,18 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     /**
      * Appends the simple {@link ConfiguredOption#required()} validation inside the build() method.
      *
-     * @param builder       the builder
-     * @param ctx           the context
-     * @param builderTag    the tag (variable name) used for the builder arg
+     * @param classModel the class model
+     * @param builder    the builder
+     * @param ctx        the context
+     * @param builderTag the tag (variable name) used for the builder arg
      */
-    protected void appendRequiredVisitor(Method.Builder builder,
+    protected void appendRequiredVisitor(ClassModel.Builder classModel,
+                                         Method.Builder builder,
                                          BodyContext ctx,
                                          String builderTag) {
         assert (!builderTag.equals("visitor"));
         if (ctx.includeMetaAttributes()) {
+            classModel.addImport(RequiredAttributeVisitor.class);
             builder.addLine("RequiredAttributeVisitor visitor = new RequiredAttributeVisitor(" + ctx.allowNulls() + ");")
                     .addLine(builderTag + ".visitAttributes(visitor, null);")
                     .addLine("visitor.validate();");
@@ -343,7 +368,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         if (!ctx.hasParent() && ctx.hasStreamSupportOnImpl()) {
-            builder.addMethod(Method.builder("get", Type.token("T"))
+            builder.addMethod(Method.builder("get")
+                                      .generateJavadoc(false)
+                                      .returnType(Type.token("T"))
                                       .addLine("return (T) this;"));
         }
     }
@@ -361,7 +388,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .addParam(String.class)
                     .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
                     .build();
-            Method.Builder methodBuilder = Method.builder("__calcMeta", calcReturnType)
+            Method.Builder methodBuilder = Method.builder("__calcMeta")
+                    .returnType(calcReturnType)
                     .accessModifier(AccessModifier.PRIVATE)
                     .isStatic(true)
                     .addLine("Map<String, Map<String, Object>> metaProps = new LinkedHashMap<>();");
@@ -376,17 +404,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 appendCustomMapOf(builder);
             }
 
-            Javadoc javadoc = Javadoc.builder()
-                    .addLine("The map of meta attributes describing each element of this type.")
-                    .returnDescription("the map of meta attributes using the key being the attribute name")
-                    .build();
             Type returnType = Type.generic(Map.class)
                     .addParam(String.class)
                     .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
                     .build();
-            builder.addMethod(Method.builder("__metaAttributes", returnType)
+            builder.addMethod(Method.builder("__metaAttributes")
                                       .isStatic(true)
-                                      .javadoc(javadoc)
+                                      .returnType(returnType, "the map of meta attributes using the key being the attribute name")
+                                      .description("The map of meta attributes describing each element of this type.")
                                       .addLine("return " + BodyContext.TAG_META_PROPS + ";"));
         }
     }
@@ -405,7 +430,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         for (int i = 0; i < ctx.allTypeInfos().size(); i++) {
             TypeName fieldTypeName = ctx.allTypeInfos().get(i).typeName();
             String beanAttributeName = ctx.allAttributeNames().get(i);
-            Type typeBuilder = toType(fieldTypeName);
+            Type typeBuilder = toType(fieldTypeName, false);
             Field.Builder fieldBuilder = Field.builder(beanAttributeName, typeBuilder).isFinal(true);
             builder.addField(fieldBuilder);
         }
@@ -418,21 +443,21 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param ctx     the context
      */
     protected void appendHeader(ClassModel.Builder builder, BodyContext ctx) {
-        builder.licenseHeader(generatedCopyrightHeaderFor(ctx));
-
         String type = (ctx.doingConcreteType()) ? "Concrete" : "Abstract";
-        Javadoc javadoc = Javadoc.builder()
-                .addLine(type + " implementation w/ builder for {@link " + ctx.typeInfo().typeName() + "}.")
-                .build();
-        builder.javadoc(javadoc);
-        builder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder("jakarta.annotation.Generated")
-                               .addParameter(AnnotParameter.create("value", String.class, getClass().getName()))
-                               .addParameter(AnnotParameter.create("comments", String.class, generatedVersionFor(ctx))))
+        builder.licenseHeader(generatedCopyrightHeaderFor(ctx))
+                .description(type + " implementation w/ builder for {@link " + ctx.typeInfo().typeName() + "}.")
                 .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder(SuppressWarnings.class)
                                        .addParameter(AnnotParameter.create("value", String.class, "unchecked")))
                 .accessModifier(ctx.publicOrPackagePrivateDecl())
                 .isAbstract(!ctx.doingConcreteType());
 
+        if (ctx.includeGeneratedAnnotation()) {
+            builder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder("jakarta.annotation.Generated")
+                                          .addParameter(AnnotParameter.create("value", String.class, getClass().getName()))
+                                          .addParameter(AnnotParameter.create("comments",
+                                                                              String.class,
+                                                                              generatedVersionFor(ctx))));
+        }
         if (ctx.doingConcreteType()) {
             builder.inheritance(toAbstractImplTypeName(ctx.typeInfo().typeName(),
                                                        ctx.builderTriggerAnnotation()).declaredName());
@@ -567,7 +592,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         if (!ctx.hasOtherMethod("toString", ctx.typeInfo())) {
-            Method.Builder methodBuilder = Method.builder("toString", String.class)
+            Method.Builder methodBuilder = Method.builder("toString")
+                    .returnType(String.class)
+                    .generateJavadoc(false)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
                     .add("return \"" + ctx.typeInfo().typeName().className() + "\" + ");
 
@@ -633,25 +660,28 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param ctx         the context
      * @param beanNameRef refer to bean name? otherwise refer to the element name
      */
-    protected void appendVisitAttributes(ClassModel.Builder builder, BodyContext ctx, boolean beanNameRef) {
+    protected void appendVisitAttributes(AbstractClass.Builder<?, ?> builder, BodyContext ctx, boolean beanNameRef) {
         if (ctx.doingConcreteType()) {
             return;
         }
         builder.addImport(AttributeVisitor.class);
-        Method.Builder methodBuilder = Method.builder("visitAttributes", void.class)
-                .addParameter(Parameter.create("visitor", Type.generic(AttributeVisitor.class)
-                        .addParam(Type.token("T"))
-                        .build()))
-                .addParameter(Parameter.create("userDefinedCtx", Type.token("T")));
-        if (!overridesVisitAttributes(ctx)) {
-            Javadoc javadoc = Javadoc.builder()
-                    .addLine("Visits all attributes of " + ctx.typeInfo().typeName() + ", calling the {@link "
-                                     + "AttributeVisitor} for each.")
-                    .addParameter("visitor", "the visitor called for each attribute")
-                    .addParameter("userDefinedCtx", "any object you wish to pass to each visit call")
-                    .addParameter("<T>", "type of the user defined context")
-                    .build();
-            methodBuilder.javadoc(javadoc);
+        Token tokenT = Type.tokenBuilder("T")
+                .description("type of the user defined context")
+                .build();
+        Method.Builder methodBuilder = Method.builder("visitAttributes")
+                .description("Visits all attributes of " + ctx.typeInfo().typeName() + ", "
+                                     + "calling the {@link AttributeVisitor} for each.")
+                .addTokenDeclaration(tokenT)
+                .addParameter(Parameter.builder("visitor",
+                                                Type.generic(AttributeVisitor.class)
+                                                        .addParam(tokenT)
+                                                        .build())
+                                      .description("the visitor called for each attribute"))
+                .addParameter(Parameter.builder("userDefinedCtx", tokenT)
+                                      .description("any object you wish to pass to each visit call"));
+        if (overridesVisitAttributes(ctx)) {
+            methodBuilder.generateJavadoc(false)
+                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
         }
         if (ctx.hasParent()) {
             methodBuilder.addLine("super.visitAttributes(visitor, userDefinedCtx);");
@@ -724,9 +754,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                      .accessModifier(AccessModifier.PRIVATE)
                                      .isFinal(true)
                                      .isStatic(true)
-                                     .javadoc(Javadoc.builder()
-                                                      .addLine("Meta properties, statically cached.")
-                                                      .build())
+                                     .description("Meta properties, statically cached.")
                                      .defaultValue("Collections.unmodifiableMap(__calcMeta())"));
         }
     }
@@ -743,13 +771,17 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     /**
      * Adds extra builder build() method pre-steps prior to the builder being built into the target.
      *
-     * @param builder the builder
-     * @param ctx     the context
-     * @param builderTag        the tag (variable name) used for the builder arg
+     * @param classModel the class model
+     * @param builder    the builder
+     * @param ctx        the context
+     * @param builderTag the tag (variable name) used for the builder arg
      */
-    protected void appendBuilderBuildPreSteps(Method.Builder builder, BodyContext ctx, String builderTag) {
+    protected void appendBuilderBuildPreSteps(ClassModel.Builder classModel,
+                                              Method.Builder builder,
+                                              BodyContext ctx,
+                                              String builderTag) {
         maybeAppendInterceptor(builder, ctx, builderTag);
-        appendRequiredVisitor(builder, ctx, builderTag);
+        appendRequiredVisitor(classModel, builder, ctx, builderTag);
     }
 
     /**
@@ -759,7 +791,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param builder the builder
      * @param ctx     the context
      */
-    private void appendExtraBuilderMethods(ClassModel.Builder builder, BodyContext ctx) {
+    protected void appendExtraBuilderMethods(AbstractClass.Builder<?, ?> builder, BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
             appendVisitAttributes(builder, ctx, true);
         }
@@ -835,137 +867,140 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                              boolean isList, boolean isMap, boolean isSet) {
         String singularVal = toValue(Singular.class, method, false, false).orElse(null);
         if ((singularVal != null) && (isList || isMap || isSet)) {
-            char[] methodName = reverseBeanName(beanAttributeName);
-            appendSetter(builder, ctx, beanAttributeName, new String(methodName), method, false, SINGULAR_PREFIX);
+            String methodName = reverseBeanName(beanAttributeName);
+            appendSetter(builder, ctx, beanAttributeName, methodName, method, false, SINGULAR_PREFIX);
 
             methodName = reverseBeanName(singularVal.isBlank() ? maybeSingularFormOf(beanAttributeName) : singularVal);
-//            singularSetter(builder, ctx, method, beanAttributeName, methodName);
+            singularSetter(builder, ctx, method, beanAttributeName, methodName);
         }
     }
 
-//    //TODO taken from GeneratedMethod class to prevent even more changes
-//    static void singularSetter(ClassModel.Builder builder,
-//                               BodyContext ctx,
-//                               TypedElementName method,
-//                               String beanAttributeName,
-//                               char[] methodName) {
-//        TypeName typeName = method.typeName();
-//        TypeName mapValueType = mapValueTypeNameOf(typeName);
-//        builder.append(
-//                oneSingularSetter(ctx,
-//                                  typeName,
-//                                  toGenericsDecl2(method, false, mapValueType),
-//                                  beanAttributeName,
-//                                  methodName,
-//                                  false,
-//                                  mapValueType));
-//
-//        // check if the values of the map are collection types, and overload that style method as well for singular usage
-//        if (mapValueType != null && !mapValueType.typeArguments().isEmpty()) {
-//            if (mapValueType.isSet() || mapValueType.isList()) {
-//                TypeName singularMapValueType = Objects.requireNonNull(mapValueType.typeArguments().get(0));
-//                builder.append(
-//                        oneSingularSetter(ctx,
-//                                          typeName,
-//                                          toGenericsDecl2(method, true, singularMapValueType),
-//                                          beanAttributeName,
-//                                          methodName,
-//                                          true,
-//                                          mapValueType));
-//            }
-//        }
-//    }
-//
-//    //TODO taken from GeneratedMethod class to prevent even more changes.
-//    //Added 2 since there is already method of this name with slightly different impl
-//    private static String toGenericsDecl2(TypedElementName method,
-//                                         boolean useSingluarMapValues,
-//                                         TypeName mapValueType) {
-//        List<TypeName> compTypeNames = method.typeName().typeArguments();
-//        if (1 == compTypeNames.size()) {
-//            return avoidWildcard(compTypeNames.get(0)) + " val";
-//        } else if (2 == compTypeNames.size()) {
-//            if (useSingluarMapValues) {
-//                return avoidWildcard(compTypeNames.get(0)) + " key, " + avoidWildcard(mapValueType) + " val";
-//            } else {
-//                return avoidWildcard(compTypeNames.get(0)) + " key, " + avoidWildcard(compTypeNames.get(1)) + " val";
-//            }
-//        }
-//        return "Object val";
-//    }
-//
-//    //TODO taken from GeneratedMethod class to prevent even more changes
-//    private static Method oneSingularSetter(BodyContext ctx,
-//                                                   TypeName typeName,
-//                                                   String genericDecl,
-//                                                   String beanAttributeName,
-//                                                   char[] methodName,
-//                                                   boolean forceUseComputeStyle,
-//                                                   TypeName mapValueType) {
-//        GenerateJavadoc.singularSetter(builder, typeName, beanAttributeName);
-//
-//        // builder method declaration for "addSomething()"
-//        builder.append("\t\tpublic ")
-//                .append(ctx.genericBuilderAliasDecl())
-//                .append(" ").append(SINGULAR_PREFIX)
-//                .append(methodName)
-//                .append("(")
-//                .append(genericDecl)
-//                .append(") {\n");
-//        // body of the method
-//        if (typeName.isMap()) {
-//            builder.append("\t\t\tObjects.requireNonNull(key);\n");
-//        }
-//        builder.append("\t\t\tObjects.requireNonNull(val);\n");
-//
-//        builder.append("\t\t\tthis.").append(beanAttributeName);
-//        if (typeName.isList() || typeName.isSet()) {
-//            builder.append(".add(val);\n");
-//        } else { // isMap
-//            boolean useComputeStyle = forceUseComputeStyle
-//                    || (mapValueType != null && (mapValueType.isSet() || mapValueType.isList() || mapValueType.isMap()));
-//            if (useComputeStyle) {
-//                builder.append(".compute(key, (k, v) -> {\n");
-//                builder.append("\t\t\t\tif (v == null) {\n");
-//                builder.append("\t\t\t\t\tv = new ");
-//                if (mapValueType.isSet()) {
-//                    builder.append(ctx.setType());
-//                } else if (mapValueType.isList()) {
-//                    builder.append(ctx.listType());
-//                } else if (mapValueType.isMap()) {
-//                    builder.append(ctx.mapType());
-//                } else {
-//                    throw new IllegalStateException("Unhandled singular type: " + mapValueType);
-//                }
-//                builder.append("<>();\n");
-//                builder.append("\t\t\t\t}\n");
-//                if (forceUseComputeStyle) {
-//                    if (mapValueType.isSet() || mapValueType.isList()) {
-//                        builder.append("\t\t\t\t((java.util.Collection) v).add(val);\n");
-//                    } else if (mapValueType.isMap()) {
-//                        builder.append("\t\t\t\t((java.util.Map) v).put(k, val);\n");
-//                    } else {
-//                        throw new IllegalStateException("Unhandled singular type: " + mapValueType);
-//                    }
-//                } else {
-//                    if (mapValueType.isSet() || mapValueType.isList()) {
-//                        builder.append("\t\t\t\t((java.util.Collection) v).addAll(val);\n");
-//                    } else if (mapValueType.isMap()) {
-//                        builder.append("\t\t\t\t((java.util.Map) v).putAll(val);\n");
-//                    } else {
-//                        builder.append("\t\t\t\t((java.util.Map) v).put(k, val);\n");
-//                    }
-//                }
-//                builder.append("\t\t\t\treturn v;\n");
-//                builder.append("\t\t\t});\n");
-//            } else {
-//                builder.append(".put(key, val);\n");
-//            }
-//        }
-//        builder.append("\t\t\treturn identity();\n");
-//        builder.append("\t\t}\n\n");
-//        return builder;
-//    }
+    //TODO taken from GeneratedMethod class to prevent even more changes
+    static void singularSetter(AbstractClass.Builder<?, ?> builder,
+                               BodyContext ctx,
+                               TypedElementName method,
+                               String beanAttributeName,
+                               String methodName) {
+        TypeName typeName = method.typeName();
+        TypeName mapValueType = mapValueTypeNameOf(typeName);
+        builder.addMethod(oneSingularSetter(ctx,
+                                            typeName,
+                                            typeName,
+                                            beanAttributeName,
+                                            methodName,
+                                            false,
+                                            mapValueType));
+
+        // check if the values of the map are collection types, and overload that style method as well for singular usage
+        if (mapValueType != null && !mapValueType.typeArguments().isEmpty()) {
+            if (mapValueType.isSet() || mapValueType.isList()) {
+                TypeName singularMapValueType = mapValueType.typeArguments().get(0);
+                builder.addMethod(oneSingularSetter(ctx,
+                                                    typeName,
+                                                    singularMapValueType,
+                                                    beanAttributeName,
+                                                    methodName,
+                                                    true,
+                                                    mapValueType));
+            }
+        }
+    }
+
+    //TODO taken from GeneratedMethod class to prevent even more changes
+    private static Method oneSingularSetter(BodyContext ctx,
+                                            TypeName typeName,
+                                            TypeName valueParameter,
+                                            String beanAttributeName,
+                                            String methodName,
+                                            boolean forceUseComputeStyle,
+                                            TypeName mapValueType) {
+
+        Method.Builder methodBuilder = Method.builder(SINGULAR_PREFIX + methodName)
+                .description("Setter for '" + beanAttributeName + "'.")
+                .returnType(Type.token(ctx.genericBuilderAliasDecl()), "this fluent builder");
+
+        int paramNumber = 0;
+        if (typeName.isMap()) {
+            methodBuilder.addParameter(Parameter.builder("key", toMethodParameterType(typeName, paramNumber++))
+                                               .description("the key")
+                                               .build());
+        }
+        //This comparison is intentional. If valueParameter is not the same as typeName, we are processing singular setter
+        //of the collection or map value.
+        Type vylueType;
+        if (!typeName.equals(valueParameter)) {
+            vylueType = toType(valueParameter, false, true);
+        } else {
+            vylueType = toMethodParameterType(typeName, paramNumber);
+        }
+        methodBuilder.addParameter(Parameter.builder("val", vylueType)
+                                           .description("the new value")
+                                           .build());
+
+        // body of the method
+        if (typeName.isMap()) {
+            methodBuilder.addLine("Objects.requireNonNull(key);");
+        }
+        methodBuilder.addLine("Objects.requireNonNull(val);");
+
+        methodBuilder.add("this." + beanAttributeName);
+        if (typeName.isList() || typeName.isSet()) {
+            methodBuilder.addLine(".add(val);");
+        } else { // isMap
+            boolean useComputeStyle = forceUseComputeStyle
+                    || (mapValueType != null && (mapValueType.isSet() || mapValueType.isList() || mapValueType.isMap()));
+            if (useComputeStyle) {
+                methodBuilder.addLine(".compute(key, (k, v) -> {");
+                methodBuilder.padding().addLine("if (v == null) {");
+                methodBuilder.padding().padding().add("v = new ");
+                if (mapValueType.isSet()) {
+                    methodBuilder.add(ctx.setType());
+                } else if (mapValueType.isList()) {
+                    methodBuilder.add(ctx.listType());
+                } else if (mapValueType.isMap()) {
+                    methodBuilder.add(ctx.mapType());
+                } else {
+                    throw new IllegalStateException("Unhandled singular type: " + mapValueType);
+                }
+                methodBuilder.addLine("<>();");
+                methodBuilder.padding().addLine("}");
+                methodBuilder.padding();
+                if (forceUseComputeStyle) {
+                    if (mapValueType.isSet() || mapValueType.isList()) {
+                        methodBuilder.addLine("((java.util.Collection) v).add(val);");
+                    } else if (mapValueType.isMap()) {
+                        methodBuilder.addLine("((java.util.Map) v).put(k, val);");
+                    } else {
+                        throw new IllegalStateException("Unhandled singular type: " + mapValueType);
+                    }
+                } else {
+                    if (mapValueType.isSet() || mapValueType.isList()) {
+                        methodBuilder.addLine("((java.util.Collection) v).addAll(val);");
+                    } else if (mapValueType.isMap()) {
+                        methodBuilder.addLine("((java.util.Map) v).putAll(val);");
+                    } else {
+                        methodBuilder.addLine("((java.util.Map) v).put(k, val);");
+                    }
+                }
+                methodBuilder.padding().addLine("return v;");
+                methodBuilder.addLine("});");
+            } else {
+                methodBuilder.addLine(".put(key, val);");
+            }
+        }
+        methodBuilder.addLine("return identity();");
+
+        return methodBuilder.build();
+    }
+
+    private static Type toMethodParameterType(TypeName typeName, int paramNumber) {
+        TypeName parameterTypeName = typeName.typeArguments().get(paramNumber);
+        if (parameterTypeName.name().equals(Object.class.getName())) {
+            return Type.create(Object.class);
+        } else {
+            return toType(parameterTypeName, false, parameterTypeName.wildcard());
+        }
+    }
 
     //TODO taken from GeneratedMethod class to prevent even more changes
     private static TypeName mapValueTypeNameOf(TypeName typeName) {
@@ -1029,14 +1064,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         boolean isSet = !isMap && typeName.isSet();
         boolean upLevel = isSet || isList;
 
-        Javadoc javadoc = Javadoc.builder()
-                .addLine("Setter for '" + beanAttributeName + ".\n")
-                .addParameter("val", "the new value")
-                .returnDescription("this fluent builder")
-                .build();
-        Method.Builder methodBuilder = Method.builder(prefixName + methodName, ctx.genericBuilderAliasDecl())
-                .javadoc(javadoc)
-                .addParameter(Parameter.create("val", toType(method.typeName())));
+        builder.addImport(Objects.class);
+        Method.Builder methodBuilder = Method.builder(prefixName + methodName)
+                .description("Setter for '" + beanAttributeName + "'.")
+                .returnType(ctx.genericBuilderAliasDecl(), "this fluent builder")
+                .addParameter(Parameter.builder("val", toType(method.typeName(), upLevel)).description("the new value"));
 
         /*
          Assign field, or update collection
@@ -1045,12 +1077,12 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             if (doClear) {
                 methodBuilder.addLine("this." + beanAttributeName + ".clear();");
             }
-            methodBuilder.add("this." + beanAttributeName + ".addAll(" + maybeRequireNonNull(ctx, "val") + ");");
+            methodBuilder.addLine("this." + beanAttributeName + ".addAll(" + maybeRequireNonNull(ctx, "val") + ");");
         } else if (isMap) {
             if (doClear) {
                 methodBuilder.addLine("this." + beanAttributeName + ".clear();");
             }
-            methodBuilder.add("this." + beanAttributeName + ".putAll(" + maybeRequireNonNull(ctx, "val") + ");");
+            methodBuilder.addLine("this." + beanAttributeName + ".putAll(" + maybeRequireNonNull(ctx, "val") + ");");
         } else if (typeName.array()) {
             methodBuilder.add("this." + beanAttributeName);
             if (ctx.allowNulls()) {
@@ -1080,14 +1112,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                    String beanAttributeName,
                                    TypedElementName method,
                                    String methodName) {
-        Javadoc javadoc = Javadoc.builder()
-                .addLine("Setter for '" + beanAttributeName + ".\n")
-                .addParameter("val", "the new value")
-                .returnDescription("this fluent builder")
-                .build();
-        builder.addMethod(Method.builder(methodName, Type.token(ctx.genericBuilderAliasDecl()))
-                                  .javadoc(javadoc)
-                                  .addParameter(Parameter.create("val", String.class))
+        builder.addMethod(Method.builder(methodName)
+                                  .description("Setter for '" + beanAttributeName + ".")
+                                  .returnType(Type.token(ctx.genericBuilderAliasDecl()), "this fluent builder")
+                                  .description("Setter for '" + beanAttributeName + ".")
+                                  .addParameter(Parameter.builder("val", String.class).description("the new value"))
                                   .addLine("Objects.requireNonNull(val);")
                                   .addLine("return this." + methodName + "(val.toCharArray());"));
     }
@@ -1119,16 +1148,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                   TypedElementName method,
                                   String methodName,
                                   TypeName genericType) {
-//        builder.addImport(Optional.class);
+        builder.addImport(Optional.class);
         //TODO create common method out of this. It is used several times in this class
-        Javadoc javadoc = Javadoc.builder()
-                .addLine("Setter for '" + beanAttributeName + ".\n")
-                .addParameter("val", "the new value")
-                .returnDescription("this fluent builder")
-                .build();
-        builder.addMethod(Method.builder(methodName, Type.token(ctx.genericBuilderAliasDecl()))
-                                  .javadoc(javadoc)
-                                  .addParameter(Parameter.create("val", genericType.declaredName()))
+        builder.addMethod(Method.builder(methodName)
+                                  .description("Setter for '" + beanAttributeName + ".")
+                                  .returnType(Type.token(ctx.genericBuilderAliasDecl()), "this fluent builder")
+                                  .addParameter(Parameter.builder("val", toType(genericType, false))
+                                                        .description("the new value")
+                                                        .build())
                                   .addLine("Objects.requireNonNull(val);")
                                   .addLine("return " + beanAttributeName + "(" + Optional.class.getSimpleName() + ".of(val));"));
 
@@ -1156,30 +1183,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 builder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(val));
             }
         }
-    }
-
-    /**
-     * Produces the generic descriptor decl for the method.
-     *
-     * @param method              the method
-     * @param upLevelToCollection true if the generics should be "up leveled"
-     * @return the generic decl
-     */
-    protected static String toGenerics(TypedElementName method,
-                                       boolean upLevelToCollection) {
-        return toGenerics(method.typeName(), upLevelToCollection);
-    }
-
-    /**
-     * Produces the generic descriptor decl for the method.
-     *
-     * @param typeName            the type name
-     * @param upLevelToCollection true if the generics should be "up leveled"
-     * @return the generic decl
-     */
-    protected static String toGenerics(TypeName typeName,
-                                       boolean upLevelToCollection) {
-        return toGenerics(typeName, upLevelToCollection, 0);
     }
 
     /**
@@ -1257,30 +1260,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         return Optional.empty();
     }
 
-    private static String toGenerics(TypeName typeName,
-                                     boolean upLevelToCollection,
-                                     int depth) {
-        if (typeName.typeArguments().isEmpty()) {
-            return (typeName.array()
-                            || Optional.class.getName().equals(typeName.declaredName())
-                            || (typeName.wildcard() && depth > 0))
-                    ? typeName.declaredName() : typeName.declaredName();
-        }
-
-        if (upLevelToCollection) {
-            List<String> upLevelInner = typeName.typeArguments().stream()
-                    .map(it -> toGenerics(it, upLevelToCollection && 0 == depth, depth + 1))
-                    .collect(Collectors.toList());
-            if (typeName.isList() || typeName.isSet()) {
-                return Collection.class.getName() + "<" + toString(upLevelInner) + ">";
-            } else if (typeName.isMap()) {
-                return Map.class.getName() + "<" + toString(upLevelInner) + ">";
-            }
-        }
-
-        return typeName.declaredName();
-    }
-
     private static String toGenericsDecl(TypedElementName method) {
         List<TypeName> compTypeNames = method.typeName().typeArguments();
         if (1 == compTypeNames.size()) {
@@ -1292,13 +1271,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     }
 
     private static String avoidWildcard(TypeName typeName) {
-        return typeName.wildcard() ? typeName.declaredName() : typeName.declaredName();
+        return typeName.wildcard() ? typeName.name() : typeName.fqName();
     }
 
-    private static char[] reverseBeanName(String beanName) {
-        char[] c = beanName.toCharArray();
-        c[0] = Character.toUpperCase(c[0]);
-        return c;
+    private static String reverseBeanName(String beanName) {
+        return beanName.substring(0, 1).toUpperCase() + beanName.substring(1);
     }
 
     /**
@@ -1338,31 +1315,28 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     }
 
     private void appendBuilder(ClassModel.Builder builder, BodyContext ctx) {
-        InnerClass.Builder innerClassBuilder = createInnerClassBuilder(ctx);
+        InnerClass.Builder innerClassBuilder = createInnerClassBuilder(builder, ctx);
         appendExtraBuilderFields(innerClassBuilder, ctx);
         appendBuilderBody(innerClassBuilder, ctx);
 
         if (ctx.hasAnyBuilderClashingMethodNames()) {
 //            builder.append("\t\t// *** IMPORTANT NOTE: There are getter methods that clash with the base Builder methods ***\n");
-            appendInterfaceBasedGetters(innerClassBuilder, ctx);
+//            appendInterfaceBasedGetters(innerClassBuilder, ctx);
         } else {
-            appendInterfaceBasedGetters(innerClassBuilder, ctx);
         }
+        appendInterfaceBasedGetters(innerClassBuilder, ctx);
 
         if (ctx.doingConcreteType()) {
-            Method.Builder methodBuilder = Method.builder("build", ctx.implTypeName().declaredName());
+            Method.Builder methodBuilder = Method.builder("build")
+                    .description("Builds the instance.")
+                    .returnType(ctx.implTypeName().declaredName(), "the built instance")
+                    .addThrows(IllegalArgumentException.class, "if any required attributes are missing");
             if (ctx.hasParent()) {
-                methodBuilder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
-            } else {
-                Javadoc javadoc = Javadoc.builder()
-                        .addLine("Builds the instance.")
-                        .returnDescription("the built instance")
-                        .addThrows(IllegalArgumentException.class, "if any required attributes are missing")
-                        .build();
-                methodBuilder.javadoc(javadoc);
+                methodBuilder.generateJavadoc(false)
+                        .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
             }
             methodBuilder.addLine("Builder b = this;");
-            appendBuilderBuildPreSteps(methodBuilder, ctx, "b");
+            appendBuilderBuildPreSteps(builder, methodBuilder, ctx, "b");
             methodBuilder.addLine("return new " + ctx.implTypeName().className() + "(b);");
             innerClassBuilder.addMethod(methodBuilder);
         } else {
@@ -1393,67 +1367,60 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             }
 
             if (!ctx.hasParent() && !ctx.requireLibraryDependencies()) {
-                Javadoc buildJavadoc = Javadoc.builder()
-                        .addLine("Builds the instance.")
-                        .returnDescription("the built instance")
-                        .addThrows(IllegalArgumentException.class, "if any required attributes are missing")
-                        .build();
                 String acceptAliasDecl = ctx.genericBuilderAcceptAliasDecl();
-                innerClassBuilder.addMethod(Method.builder("build", Type.token(acceptAliasDecl))
-                                                    .javadoc(buildJavadoc)
+                innerClassBuilder.addMethod(Method.builder("build")
+                                                    .description("Builds the instance.")
+                                                    .returnType(Type.token(acceptAliasDecl), "the built instance")
+                                                    .addThrows(IllegalArgumentException.class,
+                                                               "if any required attributes are missing")
                                                     .isAbstract(true));
 
                 if (ctx.hasStreamSupportOnBuilder()) {
-                    Javadoc updateJavadoc = Javadoc.builder()
-                            .addLine("Update the builder in a fluent API way.")
-                            .addParameter("consumer", "consumer of the builder instance")
-                            .returnDescription("updated builder instance")
-                            .build();
-                    Method.Builder updateMethodBuilder = Method.builder("update", Type.token(acceptAliasDecl))
-                            .addParameter(Parameter.create("consumer",
+                    Method.Builder updateMethodBuilder = Method.builder("update")
+                            .description("Update the builder in a fluent API way.")
+                            .returnType(Type.token(ctx.genericBuilderAliasDecl()), "updated builder instance")
+                            .addParameter(Parameter.builder("consumer",
                                                            Type.generic(Consumer.class)
                                                                    .addParam(Type.token(acceptAliasDecl))
-                                                                   .build()))
-                            .javadoc(updateJavadoc)
+                                                                   .build())
+                                                  .description("consumer of the builder instance"))
                             .addLine("consumer.accept(get());")
                             .addLine("return identity();");
                     innerClassBuilder.addMethod(updateMethodBuilder);
                 }
 
                 if (!ctx.requireLibraryDependencies()) {
-                    Javadoc identityJavadoc = Javadoc.builder()
-                            .addLine("Instance of this builder as the correct type.")
-                            .returnDescription("this instance typed to correct type")
-                            .build();
-                    Method.Builder identityMethodBuilder = Method.builder("identity", Type.token(ctx.genericBuilderAliasDecl()))
+                    Method.Builder identityMethodBuilder = Method.builder("identity")
+                            .description("Instance of this builder as the correct type.")
+                            .returnType(Type.token(ctx.genericBuilderAliasDecl()), "this instance typed to correct type")
                             .accessModifier(AccessModifier.PROTECTED)
-                            .javadoc(identityJavadoc)
                             .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.builder(SuppressWarnings.class)
                                                    .addParameter(AnnotParameter.create("value", String.class, "unchecked"))
                                                    .build())
-                            .addLine("return this;");
+                            .addLine("return (" + ctx.genericBuilderAliasDecl() + ") this;");
                     innerClassBuilder.addMethod(identityMethodBuilder);
 
 
-                    Method.Builder getMethodBuilder = Method.builder("get", Type.token(acceptAliasDecl))
+                    Method.Builder getMethodBuilder = Method.builder("get")
+                            .generateJavadoc(false)
+                            .returnType(Type.token(acceptAliasDecl))
                             .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
                             .addLine("return (" + acceptAliasDecl + ") build();");
                     innerClassBuilder.addMethod(getMethodBuilder);
                 }
             }
 
-            Method.Builder acceptMethodBuilder = Method.builder("accept", Type.token(ctx.genericBuilderAliasDecl()))
-                    .addParameter(Parameter.create("val", Type.token(ctx.genericBuilderAcceptAliasDecl())));
+            builder.addImport(Objects.class);
+            Method.Builder acceptMethodBuilder = Method.builder("accept")
+                    .returnType(Type.token(ctx.genericBuilderAliasDecl()), "this instance typed to correct type")
+                    .description("Accept and update from the provided value object.")
+                    .addParameter(Parameter.builder("val", Type.token(ctx.genericBuilderAcceptAliasDecl()))
+                                          .description("the value object to copy from"));
             if (ctx.hasParent()) {
-                acceptMethodBuilder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
-            } else {
-                Javadoc javadoc = Javadoc.builder()
-                        .addLine("Accept and update from the provided value object.")
-                        .addParameter("val", "the value object to copy from")
-                        .returnDescription("this instance typed to correct type")
-                        .build();
-                acceptMethodBuilder.javadoc(javadoc);
+                acceptMethodBuilder.generateJavadoc(false)
+                        .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
             }
+
             if (!ctx.allowNulls()) {
                 acceptMethodBuilder.addLine("Objects.requireNonNull(val);");
             }
@@ -1464,7 +1431,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                             .addLine("return identity();");
             innerClassBuilder.addMethod(acceptMethodBuilder);
 
-            Method.Builder acceptThisBuilder = Method.builder("__acceptThis", void.class)
+            Method.Builder acceptThisBuilder = Method.builder("__acceptThis")
                     .accessModifier(AccessModifier.PRIVATE)
                     .addParameter(Parameter.create("val", Type.token(ctx.genericBuilderAcceptAliasDecl())));
             if (!ctx.allowNulls()) {
@@ -1499,6 +1466,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             innerClassBuilder.addMethod(acceptThisBuilder);
         }
         appendBuilderClassComponents(innerClassBuilder, ctx);
+        appendExtraBuilderMethods(innerClassBuilder, ctx);
+
         builder.addInnerClass(innerClassBuilder.build());
     }
 
@@ -1526,7 +1495,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         Constructor.Builder constructorBuilder = Constructor.builder(ctx.genericBuilderClassDecl())
-                .javadoc(Javadoc.create("Fluent API builder constructor."))
+                .description("Fluent API builder constructor.")
                 .accessModifier(AccessModifier.PROTECTED);
         if (ctx.doingConcreteType()) {
             constructorBuilder.addLine("super();");
@@ -1545,7 +1514,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                  TypeName type,
                                  String beanAttributeName) {
         Field.Builder fieldBuilder = Field.builder(beanAttributeName, type.declaredName())
-                .javadoc(Javadoc.create("Field value for {@code " + method + "()}."))
+                .description("Field value for {@code " + method + "()}.")
                 .accessModifier(AccessModifier.PRIVATE);
         toConfiguredOptionValue(method, true, true)
                 .ifPresentOrElse(defaultValue -> fieldBuilder.defaultValue(constructDefaultValue(method, defaultValue)),
@@ -1566,7 +1535,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .isFinal(true)
                 .accessModifier(AccessModifier.PROTECTED)
                 .defaultValue("new " + collectionType(ctx, typeName) + "<>();")
-                .javadoc(Javadoc.create("Field value for {@code " + method + "()}."))
+                .description("Field value for {@code " + method + "()}.")
                 .build();
         builder.addField(field);
     }
@@ -1584,23 +1553,24 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         throw new IllegalStateException("Type is not a known collection: " + type);
     }
 
-    private InnerClass.Builder createInnerClassBuilder(BodyContext ctx) {
-        Javadoc.Builder javadocBuilder = Javadoc.builder()
-                .addLine("Fluent API builder for {@code " + ctx.genericBuilderAcceptAliasDecl() + "}.");
-        if (!ctx.doingConcreteType()) {
-            javadocBuilder.addParameter("<" + ctx.genericBuilderAliasDecl() + ">",
-                                        "the type of the builder")
-                    .addParameter("<" + ctx.genericBuilderAcceptAliasDecl() + ">",
-                                  "the type of the built instance");
-        }
+    private InnerClass.Builder createInnerClassBuilder(ClassModel.Builder outerClassBuilder, BodyContext ctx) {
 
-        InnerClass.Builder builder = InnerClass.builder(ctx.genericBuilderClassDecl())
-                .javadoc(javadocBuilder.build())
+//        InnerClass.Builder builder = InnerClass.builder(ctx.genericBuilderClassDecl())
+        InnerClass.Builder builder = outerClassBuilder.innerClassBuilder(ctx.genericBuilderClassDecl())
+                .description("Fluent API builder for {@code " + ctx.genericBuilderAcceptAliasDecl() + "}.")
                 .accessModifier(ctx.publicOrPackagePrivateDecl())
                 .isStatic(true);
         if (!ctx.doingConcreteType()) {
             builder.isAbstract(true);
         }
+
+        Type builderToken = Type.tokenBuilder(ctx.genericBuilderAliasDecl())
+                .description("the type of the builder")
+                .build();
+
+        Type builtTypeToken = Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
+                .description("the type of the builder")
+                .build();
 
         if (ctx.doingConcreteType()) {
             TypeName parentType = toAbstractImplTypeName(ctx.typeInfo().typeName(), ctx.builderTriggerAnnotation());
@@ -1610,19 +1580,21 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .build();
             builder.inheritance(extendsType);
         } else {
-            builder.addGenericParameter(Type.token(ctx.genericBuilderAliasDecl(),
-                                                   Type.generic(ctx.genericBuilderClassDecl())
-                                                           .addParam(Type.token(ctx.genericBuilderAliasDecl()))
-                                                           .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl()))
-                                                           .build()));
-            builder.addGenericParameter(Type.token(ctx.genericBuilderAcceptAliasDecl(),
-                                                   Type.create(ctx.ctorBuilderAcceptTypeName().declaredName())));
+            builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAliasDecl())
+                                                .bound(Type.generic(ctx.genericBuilderClassDecl())
+                                                               .addParam(builderToken)
+                                                               .addParam(builtTypeToken)
+                                                               .build())
+                                                .build());
+            builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
+                                                .bound(Type.create(ctx.ctorBuilderAcceptTypeName().declaredName()))
+                                                .build());
 
             if (ctx.hasParent()) {
                 TypeName parentType = toAbstractImplTypeName(ctx.parentTypeName().orElseThrow(), ctx.builderTriggerAnnotation());
                 Type extendsType = Type.generic(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
-                        .addParam(Type.token(ctx.genericBuilderAliasDecl()))
-                        .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl()))
+                        .addParam(builderToken)
+                        .addParam(builtTypeToken)
                         .build();
                 builder.inheritance(extendsType);
             } else {
@@ -1645,8 +1617,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
                 if (ctx.requireLibraryDependencies()) {
                     builder.addInterface(Type.generic(io.helidon.common.Builder.class)
-                                                 .addParam(Type.token(ctx.genericBuilderAliasDecl()))
-                                                 .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl()))
+                                                 .addParam(builderToken)
+                                                 .addParam(builtTypeToken)
                                                  .build());
                 }
                 extraImplementedBuilderContracts(ctx).forEach(t -> builder.addInterface(t.declaredName()));
@@ -1660,29 +1632,23 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             return;
         }
 
-        Method.Builder builderMethod = Method.builder("builder", ctx.implTypeName() + "$Builder")
+        builder.addImport(Objects.class);
+        Method.Builder builderMethod = Method.builder("builder")
+                .returnType(ctx.implTypeName() + "$Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
                 .isStatic(true)
-                .javadoc(Javadoc.builder()
-                                 .addLine("Creates a builder for this type.")
-                                 .returnDescription("a builder for {@link " + ctx.typeInfo().typeName() + "}")
-                                 .build())
+                .description("Creates a builder for this type.")
                 .addLine("return new Builder();");
         builder.addMethod(builderMethod);
 
-        Javadoc javadoc = Javadoc.builder()
-                .addLine("Creates a builder for this type, initialized with the attributes from the values passed.")
-                .addParameter("val", "the value to copy to initialize the builder attributes")
-                .returnDescription("a builder for {@link " + ctx.typeInfo().typeName() + "}")
-                .build();
-        Method.Builder toBuilderMethod = Method.builder("toBuilder", ctx.implTypeName()+ "$Builder")
+        Method.Builder toBuilderMethod = Method.builder("toBuilder")
+                .returnType(ctx.implTypeName()+ "$Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
                 .isStatic(true)
-                .javadoc(javadoc)
-                .addParameter(Parameter.create("val", ctx.ctorBuilderAcceptTypeName().declaredName()))
+                .description("Creates a builder for this type, initialized with the attributes from the values passed.")
+                .addParameter(Parameter.builder("val", ctx.ctorBuilderAcceptTypeName().declaredName())
+                                      .description("the value to copy to initialize the builder attributes"))
                 .addLine("Objects.requireNonNull(val);")
                 .addLine("return builder().accept(val);");
         builder.addMethod(toBuilderMethod);
-
-//        appendExtraToBuilderBuilderFunctions(builder, ctx, "???????"); //TODO upravit
     }
 
     private void appendInterfaceBasedGetters(AbstractClass.Builder<?, ?> builder, BodyContext ctx) {
@@ -1693,7 +1659,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         int i = 0;
         for (String beanAttributeName : ctx.allAttributeNames()) {
             TypedElementName method = ctx.allTypeInfos().get(i++);
-            Method.Builder methodBuilder = Method.builder(method.elementName(), toType(method.typeName()))
+            Method.Builder methodBuilder = Method.builder(method.elementName())
+                    .returnType(toType(method.typeName(), false))
+                    .generateJavadoc(false)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
                     .addLine("return " + beanAttributeName + ";");
             appendAnnotations(methodBuilder, method.annotations());
@@ -1701,8 +1669,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         if (ctx.parentAnnotationTypeName().isPresent()) {
-            Type returnType = Type.generic(Class.class).addParam(Type.token("?", Annotation.class)).build();
-            Method.Builder methodBuilder = Method.builder("annotationType", returnType)
+            Type returnType = Type.generic(Class.class)
+                    .addParam(Type.tokenBuilder("?")
+                                      .bound(Annotation.class)
+                                      .build())
+                    .build();
+            Method.Builder methodBuilder = Method.builder("annotationType")
+                    .returnType(returnType)
                     .addLine("return " + ctx.typeInfo().superTypeInfo().get().typeName() + ".class;");
             builder.addMethod(methodBuilder);
         }
@@ -1716,28 +1689,27 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
     private void appendCtor(ClassModel.Builder builder,
                             BodyContext ctx) {
-        Constructor.Builder constorBuilder = Constructor.builder(ctx.implTypeName().declaredName())
-                .javadoc(Javadoc.builder()
-                                 .addLine("Constructor using the builder argument.")
-                                 .addParameter("b", "the builder")
-                                 .build())
+        Constructor.Builder costructorBuilder = Constructor.builder(ctx.implTypeName().declaredName())
+                .description("Constructor using the builder argument.")
                 .accessModifier(AccessModifier.PROTECTED);
 
         String builderClass = ctx.implTypeName().declaredName() + "$" +ctx.genericBuilderClassDecl();
         if (ctx.doingConcreteType()) {
-            constorBuilder.addParameter(Parameter.create("b", Type.create(builderClass)))
+            costructorBuilder.addParameter(Parameter.builder("b", Type.create(builderClass)).description("the builder"))
                     .addLine("super(b);");
         } else {
-            constorBuilder.addParameter(Parameter.create("b", Type.generic(builderClass)
-                    .addParam(Type.token("?"))
-                    .addParam(Type.token("?"))
-                    .build()));
+            costructorBuilder.addParameter(Parameter.builder("b",
+                                                          Type.generic(builderClass)
+                                                                  .addParam(Type.token("?"))
+                                                                  .addParam(Type.token("?"))
+                                                                  .build())
+                                                .description("the builder"));
             StringBuilder sb = new StringBuilder();
             appendExtraCtorCode(sb, ctx, "b");
-            appendCtorCodeBody(sb, ctx, "b");
-            constorBuilder.content(sb.toString());
+            appendCtorCodeBody(builder, sb, ctx, "b");
+            costructorBuilder.content(sb.toString());
         }
-        builder.addConstructor(constorBuilder.build());
+        builder.addConstructor(costructorBuilder.build());
     }
 
     /**
@@ -1747,26 +1719,30 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
      * @param ctx               the context
      * @param builderTag        the tag (variable name) used for the builder arg
      */
-    protected void appendCtorCodeBody(StringBuilder builder,
+    protected void appendCtorCodeBody(ClassModel.Builder classBuilder,
+                                      StringBuilder builder,
                                       BodyContext ctx,
                                       String builderTag) {
         if (ctx.hasParent()) {
-            builder.append("\t\tsuper(").append(builderTag).append(");\n");
+            builder.append("super(").append(builderTag).append(");\n");
         }
         int i = 0;
         for (String beanAttributeName : ctx.allAttributeNames()) {
             TypedElementName method = ctx.allTypeInfos().get(i++);
-            builder.append("\t\tthis.").append(beanAttributeName).append(" = ");
+            builder.append("this.").append(beanAttributeName).append(" = ");
 
             if (method.typeName().isList()) {
+                classBuilder.addImport(Collections.class);
                 builder.append("Collections.unmodifiableList(new ")
                         .append(ctx.listType()).append("<>(").append(builderTag).append(".")
                         .append(beanAttributeName).append("));\n");
             } else if (method.typeName().isMap()) {
+                classBuilder.addImport(Collections.class);
                 builder.append("Collections.unmodifiableMap(new ")
                         .append(ctx.mapType()).append("<>(").append(builderTag).append(".")
                         .append(beanAttributeName).append("));\n");
             } else if (method.typeName().isSet()) {
+                classBuilder.addImport(Collections.class);
                 builder.append("Collections.unmodifiableSet(new ")
                         .append(ctx.setType()).append("<>(").append(builderTag).append(".")
                         .append(beanAttributeName).append("));\n");
@@ -1783,7 +1759,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
         if (!ctx.hasOtherMethod("hashCode", ctx.typeInfo())) {
             builder.addImport(Objects.class);
-            Method.Builder methodBuilder = Method.builder("hashCode", int.class)
+            Method.Builder methodBuilder = Method.builder("hashCode")
+                    .returnType(int.class)
+                    .generateJavadoc(false)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
 
             methodBuilder.add("return Objects.hash(");
@@ -1803,8 +1781,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         if (!ctx.hasOtherMethod("equals", ctx.typeInfo())) {
             builder.addImport(Objects.class);
 
-            Method.Builder methodBuilder = Method.builder("equals", boolean.class)
+            Method.Builder methodBuilder = Method.builder("equals")
+                    .returnType(boolean.class)
                     .addParameter(Parameter.create("o", Object.class))
+                    .generateJavadoc(false)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
 
             methodBuilder.addLine("if (this == o) {");
@@ -1848,14 +1828,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         if (ctx.doingConcreteType()) {
             return;
         }
-        Method.Builder methodBuilder = Method.builder("toStringInner", String.class)
+        Method.Builder methodBuilder = Method.builder("toStringInner")
+                .description("Produces the inner portion of the toString() output (i.e., what is between the parents).")
                 .accessModifier(AccessModifier.PROTECTED)
-                .javadoc(Javadoc.builder()
-                                 .addLine("Produces the inner portion of the toString() output (i.e., what is between the parents).")
-                                 .returnDescription("portion of the toString output")
-                                 .build());
+                .returnType(String.class, "portion of the toString output");
         if (ctx.hasParent()) {
-            methodBuilder.addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
+            methodBuilder.generateJavadoc(false)
+                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
         }
         if (ctx.hasParent()) {
             methodBuilder.addLine("String result = super.toStringInner();");
@@ -1996,7 +1975,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .addParam(String.class)
                 .addParam(Object.class)
                 .build();
-        builder.addMethod(Method.builder("__mapOf", type)
+        builder.addMethod(Method.builder("__mapOf")
+                                  .generateJavadoc(false)
+                                  .returnType(type)
                                   .isStatic(true)
                                   .addParameter(Parameter.builder("args", Object.class).optional(true).build()) //Need to be optional
                                   .addLine("Map<String, Object> result = new LinkedHashMap<>(args.length / 2);")

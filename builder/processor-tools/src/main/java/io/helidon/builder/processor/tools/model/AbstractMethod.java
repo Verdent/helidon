@@ -2,7 +2,9 @@ package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * TODO javadoc
@@ -56,6 +58,7 @@ abstract class AbstractMethod extends AbstractAnnotatable {
             extends AbstractAnnotatable.Builder<T, B> {
 
         private final Map<String, Parameter> parameters = new LinkedHashMap<>();
+        private final Set<String> exceptions = new LinkedHashSet<>();
         private final StringBuilder contentBuilder = new StringBuilder();
         private AccessModifier accessModifier = AccessModifier.PUBLIC;
 
@@ -90,14 +93,36 @@ abstract class AbstractMethod extends AbstractAnnotatable {
 
         public B addParameter(Parameter parameter) {
             this.parameters.put(parameter.name(), parameter);
-            return identity();
+            return this.addJavadocParameter(parameter.name(), parameter.description());
+        }
+
+        public B addParameter(Parameter.Builder builder) {
+            Parameter parameter = builder.build();
+            this.parameters.put(parameter.name(), parameter);
+            return this.addJavadocParameter(parameter.name(), parameter.description());
+        }
+
+        public B addThrows(String exception) {
+            return addThrows(exception, "");
+        }
+
+        public B addThrows(Class<?> exception) {
+            return addThrows(exception, "");
+        }
+
+        public B addThrows(String exception, String description) {
+            this.exceptions.add(exception);
+            return addJavadocThrows(exception, description);
+        }
+
+        public B addThrows(Class<?> exception, String description) {
+            return addThrows(exception.getName(), description);
         }
 
         @Override
-        public B javadoc(Javadoc javadoc) {
-            return super.javadoc(javadoc);
+        public B generateJavadoc(boolean generateJavadoc) {
+            return super.generateJavadoc(generateJavadoc);
         }
-
     }
 
 }

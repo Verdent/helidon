@@ -3,20 +3,20 @@ package io.helidon.builder.processor.tools.model;
 /**
  * TODO javadoc
  */
-public class InnerClass extends AbstractClass {
+public final class InnerClass extends AbstractClass {
 
     InnerClass(Builder builder) {
         super(builder);
     }
 
-    public static Builder builder(String className) {
-        return new Builder(className);
+    static Builder builder(String className, ImportOrganizer.Builder imports) {
+        return new Builder(className, imports);
     }
 
     void addImports(ImportOrganizer.Builder imports) {
         fields().values().forEach(field -> field.addImports(imports));
         staticFields().values().forEach(field -> field.addImports(imports));
-        methods().values().forEach(method -> method.addImports(imports));
+        methods().forEach(method -> method.addImports(imports));
         interfaces().forEach(imp -> imp.addImports(imports));
         if (inheritance() != null) {
             inheritance().addImports(imports);
@@ -28,8 +28,11 @@ public class InnerClass extends AbstractClass {
 
     public static class Builder extends AbstractClass.Builder<InnerClass, Builder> {
 
-        Builder(String name) {
+        private final ImportOrganizer.Builder imports;
+
+        Builder(String name, ImportOrganizer.Builder imports) {
             super(name);
+            this.imports = imports;
         }
 
         @Override
@@ -40,6 +43,12 @@ public class InnerClass extends AbstractClass {
 
         public Builder isStatic(boolean isStatic) {
             return super.isStatic(isStatic);
+        }
+
+        @Override
+        public Builder addImport(String importName) {
+            imports.addImport(importName);
+            return this;
         }
 
     }

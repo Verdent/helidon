@@ -9,6 +9,7 @@ public class Constructor extends AbstractMethod {
         super(builder);
     }
 
+    @Deprecated
     public static Builder builder(String type) {
         return new Builder(Type.create(type));
     }
@@ -19,7 +20,7 @@ public class Constructor extends AbstractMethod {
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        if (javadoc() != null) {
+        if (javadoc().shouldGenerate(accessModifier())) {
             javadoc().writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }

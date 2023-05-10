@@ -1,16 +1,19 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.Set;
 
 public final class Token extends Type {
 
     private final String token;
     private final Type bound;
+    private final String description;
 
     private Token(Builder builder) {
         this.token = builder.token;
         this.bound = builder.bound;
+        this.description = builder.description;
     }
 
     @Override
@@ -31,6 +34,10 @@ public final class Token extends Type {
 
     String token() {
         return token;
+    }
+
+    String description() {
+        return description;
     }
 
     @Override
@@ -73,18 +80,50 @@ public final class Token extends Type {
         return "Token: " + token;
     }
 
-    static class Builder {
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        Token token1 = (Token) o;
+        return Objects.equals(token, token1.token)
+                && Objects.equals(bound, token1.bound);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(token, bound);
+    }
+
+    public static class Builder {
 
         private final String token;
-        private final Type bound;
+        private Type bound;
+        private String description;
 
         Builder(String token) {
-            this(token, null);
+            this.token = token;
         }
 
-        public Builder(String token, Type bound) {
-            this.token = token;
+        public Builder bound(String bound) {
+            return bound(Type.create(bound));
+        }
+
+        public Builder bound(Class<?> bound) {
+            return bound(Type.create(bound));
+        }
+
+        public Builder bound(Type bound) {
             this.bound = bound;
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = description;
+            return this;
         }
 
         public Token build() {

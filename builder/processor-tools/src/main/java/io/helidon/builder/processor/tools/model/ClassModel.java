@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public class ClassModel extends AbstractClass {
 
@@ -63,7 +64,7 @@ public class ClassModel extends AbstractClass {
             commonBuildLogic();
             fields().values().forEach(field -> field.addImports(imports));
             staticFields().values().forEach(field -> field.addImports(imports));
-            methods().values().forEach(method -> method.addImports(imports));
+            methods().forEach(method -> method.addImports(imports));
             interfaces().forEach(imp -> imp.addImports(imports));
             if (inheritance() != null) {
                 inheritance().addImports(imports);
@@ -102,8 +103,15 @@ public class ClassModel extends AbstractClass {
             return this;
         }
 
-        public Builder addInnerClass(InnerClass innerClass) {
-            return super.addInnerClass(innerClass);
+        public Builder innerClassBuilder(String className, Consumer<InnerClass.Builder> innerClassConsumer) {
+            InnerClass.Builder builder = InnerClass.builder(className, imports);
+            innerClassConsumer.accept(builder);
+            return addInnerClass(builder.build());
+        }
+
+        @Deprecated
+        public InnerClass.Builder innerClassBuilder(String className) {
+            return InnerClass.builder(className, imports);
         }
 
         ImportOrganizer.Builder imports() {

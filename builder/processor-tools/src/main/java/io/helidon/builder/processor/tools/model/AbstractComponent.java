@@ -17,13 +17,13 @@ abstract class AbstractComponent {
         this.name = builder.name;
         this.type = builder.type;
         this.includeImport = builder.includeImport;
-        this.javadoc = builder.javadoc;
+        this.javadoc = builder.javadocBuilder.build();
     }
 
     abstract void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException;
 
     void addImports(ImportOrganizer.Builder imports) {
-        if (includeImport()) {
+        if (includeImport() && type != null) {
             imports.addImport(type);
         }
     }
@@ -46,11 +46,11 @@ abstract class AbstractComponent {
 
     static abstract class Builder<T extends AbstractComponent, B extends Builder<T, B>> {
 
+        private final Javadoc.Builder javadocBuilder = Javadoc.builder();
         private final B me;
         private final String name;
         private final Type type;
         private boolean includeImport = true;
-        private Javadoc javadoc;
 
         Builder(String name, Type type) {
             this.name = name;
@@ -65,8 +65,41 @@ abstract class AbstractComponent {
             return me;
         }
 
-        B javadoc(Javadoc javadoc) {
-            this.javadoc = javadoc;
+        public B description(String description) {
+            this.javadocBuilder.add(description);
+            return me;
+        }
+
+        /**
+         * Set whether to generate javadoc or not.
+         * Javadoc is automatically generated for public and protected methods, but disabled
+         * for private and package private ones.
+         *
+         * @param generateJavadoc true if javadoc should be generated
+         * @return updated builder instance
+         */
+        B generateJavadoc(boolean generateJavadoc) {
+            this.javadocBuilder.generate(generateJavadoc);
+            return me;
+        }
+
+        B addJavadocParameter(String param, String description) {
+            this.javadocBuilder.addParameter(param, description);
+            return me;
+        }
+
+        B addJavadocThrows(String exception, String description) {
+            this.javadocBuilder.addThrows(exception, description);
+            return me;
+        }
+
+        B deprecationJavadoc(String description) {
+            this.javadocBuilder.deprecation(description);
+            return me;
+        }
+
+        B returnJavadoc(String description) {
+            this.javadocBuilder.returnDescription(description);
             return me;
         }
 

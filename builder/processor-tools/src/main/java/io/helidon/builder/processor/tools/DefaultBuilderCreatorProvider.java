@@ -1085,9 +1085,7 @@ public class DefaultBuilderCreatorProvider implements BuilderCreatorProvider {
         return Optional.empty();
     }
 
-    private static String toGenerics(TypeName typeName,
-                                     boolean upLevelToCollection,
-                                     int depth) {
+    private static String toGenerics(TypeName typeName, boolean upLevelToCollection, int depth) {
         if (typeName.typeArguments().isEmpty()) {
             return (typeName.array()
                             || Optional.class.getName().equals(typeName.name())
@@ -1097,7 +1095,7 @@ public class DefaultBuilderCreatorProvider implements BuilderCreatorProvider {
 
         if (upLevelToCollection) {
             List<String> upLevelInner = typeName.typeArguments().stream()
-                    .map(it -> toGenerics(it, upLevelToCollection && 0 == depth, depth + 1))
+                    .map(it -> toGenerics(it, 0 == depth, depth + 1))
                     .collect(Collectors.toList());
             if (typeName.isList() || typeName.isSet()) {
                 return Collection.class.getName() + "<" + toString(upLevelInner) + ">";

@@ -1,25 +1,29 @@
 package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class Javadoc {
+class Javadoc {
 
     private final String content;
+    private final Set<String> authors;
     private final Map<String, String> parameters;
     private final Map<String, String> throwsDesc;
     private final String returnDescription;
     private final String deprecation;
+    private final Boolean generate;
 
     private Javadoc(Builder builder) {
         this.content = builder.contentBuilder.toString();
+        this.authors = new LinkedHashSet<>(builder.authors);
         this.parameters = new LinkedHashMap<>(builder.parameters);
         this.throwsDesc = new LinkedHashMap<>(builder.throwsDesc);
         this.returnDescription = builder.returnDescription;
         this.deprecation = builder.deprecation;
+        this.generate = builder.generate;
     }
 
     public static Javadoc create(String content) {
@@ -39,6 +43,9 @@ public class Javadoc {
         if (hasAnyOtherParts()) {
             writer.write(" * \n");
         }
+        for (String author : authors) {
+            writer.write(" * @author " + author + "\n");
+        }
         for (Map.Entry<String, String> entry : parameters.entrySet()) {
             writer.write(" * @param " + entry.getKey() + " " + entry.getValue() + "\n");
         }
@@ -54,9 +61,20 @@ public class Javadoc {
         writer.write(" **/");
     }
 
+    boolean shouldGenerate(AccessModifier accessModifier) {
+        if (generate != null) {
+            return generate;
+        }
+        return switch (accessModifier) {
+            case PUBLIC, PROTECTED -> true;
+            default -> false;
+        };
+    }
+
     private boolean hasAnyOtherParts() {
-        return parameters.size() > 0
-                || throwsDesc.size() > 0
+        return !parameters.isEmpty()
+                || !throwsDesc.isEmpty()
+                || !authors.isEmpty()
                 || returnDescription != null
                 || deprecation != null;
     }
@@ -64,10 +82,12 @@ public class Javadoc {
     public static final class Builder {
 
         private final StringBuilder contentBuilder = new StringBuilder();
+        private final Set<String> authors = new LinkedHashSet<>();
         private final Map<String, String> parameters = new LinkedHashMap<>();
         private final Map<String, String> throwsDesc = new LinkedHashMap<>();
         private String returnDescription;
         private String deprecation;
+        private Boolean generate;
 
         private Builder() {
         }
@@ -83,6 +103,11 @@ public class Javadoc {
 
         public Builder add(String line) {
             this.contentBuilder.append(line);
+            return this;
+        }
+
+        public Builder addAuthor(String author) {
+            this.authors.add(author);
             return this;
         }
 
@@ -107,6 +132,11 @@ public class Javadoc {
 
         public Builder deprecation(String deprecation) {
             this.deprecation = deprecation;
+            return this;
+        }
+
+        Builder generate(boolean generate) {
+            this.generate = generate;
             return this;
         }
 

@@ -1,5 +1,7 @@
 package io.helidon.builder.processor.tools.model;
 
+import java.util.Objects;
+
 abstract class AbstractType extends Type{
 
     private final boolean includeImport;
@@ -57,6 +59,24 @@ abstract class AbstractType extends Type{
 
     boolean includeImport() {
         return includeImport;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        AbstractType that = (AbstractType) o;
+        return isArray == that.isArray
+                && Objects.equals(type, that.type);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(isArray, type);
     }
 
     static abstract class Builder<B extends Builder<B>> {

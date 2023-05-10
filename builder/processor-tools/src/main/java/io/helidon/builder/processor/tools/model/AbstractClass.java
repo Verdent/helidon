@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,7 +26,7 @@ public class AbstractClass {
     private final AccessModifier accessModifier;
     private final Map<String, Field> fields;
     private final Map<String, Field> staticFields;
-    private final Map<String, Method> methods;
+    private final Set<Method> methods;
     private final Set<Type> interfaces;
     private final Set<String> tokenNames;
     private final List<Constructor> constructors;
@@ -42,7 +43,7 @@ public class AbstractClass {
         this.accessModifier = builder.accessModifier;
         this.fields = new LinkedHashMap<>(builder.fields);
         this.staticFields = new LinkedHashMap<>(builder.staticFields);
-        this.methods = new LinkedHashMap<>(builder.methods);
+        this.methods = new LinkedHashSet<>(builder.methods);
         this.inheritance = builder.inheritance;
         this.constructors = List.copyOf(builder.constructors);
         this.interfaces = Set.copyOf(builder.interfaces);
@@ -52,12 +53,12 @@ public class AbstractClass {
         this.tokenNames = this.genericParameters.stream()
                 .map(Token::token)
                 .collect(Collectors.toSet());
-        this.javadoc = builder.javadoc;
+        this.javadoc = builder.javadocBuilder.build();
     }
 
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         Set<String> combinedTokens = Stream.concat(declaredTokens.stream(), this.tokenNames.stream()).collect(Collectors.toSet());
-        if (javadoc != null) {
+        if (javadoc.shouldGenerate(accessModifier)) {
             javadoc.writeComponent(writer, combinedTokens, imports);
             writer.write("\n");
         }
@@ -167,7 +168,7 @@ public class AbstractClass {
 
     private void writerClassMethods(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
-        for (Method method : methods.values()) {
+        for (Method method : methods) {
             writer.write("\n");
             method.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
@@ -197,7 +198,7 @@ public class AbstractClass {
         return staticFields;
     }
 
-    Map<String, Method> methods() {
+    Set<Method> methods() {
         return methods;
     }
 
@@ -219,7 +220,7 @@ public class AbstractClass {
 
     public static abstract class Builder<T extends AbstractClass, B extends Builder<T, B>> {
 
-        private final Map<String, Method> methods = new LinkedHashMap<>();
+        private final Set<Method> methods = new LinkedHashSet<>();
         private final Map<String, Field> fields = new LinkedHashMap<>();
         private final Map<String, Field> staticFields = new LinkedHashMap<>();
         private final Map<String, InnerClass> innerClasses = new LinkedHashMap<>();
@@ -227,8 +228,8 @@ public class AbstractClass {
         private final List<Constructor> constructors = new ArrayList<>();
         private final List<Token> genericParameters = new ArrayList<>();
         private final Set<Type> interfaces = new HashSet<>();
+        private final Javadoc.Builder javadocBuilder = Javadoc.builder();
         private final String name;
-        private Javadoc javadoc;
         private Type inheritance;
         private boolean isFinal = false;
         private boolean isAbstract = false;
@@ -281,6 +282,16 @@ public class AbstractClass {
                             }));
         }
 
+        public B description(String description) {
+            this.javadocBuilder.add(description);
+            return me;
+        }
+
+        public B addAuthor(String author) {
+            this.javadocBuilder.addAuthor(author);
+            return me;
+        }
+
         public B isFinal(boolean isFinal) {
             this.isFinal = isFinal;
             return me;
@@ -328,7 +339,7 @@ public class AbstractClass {
         }
 
         public B addMethod(Method method) {
-            methods.put(method.name(), method);
+            methods.add(method);
             return me;
         }
 
@@ -349,7 +360,7 @@ public class AbstractClass {
             return me;
         }
 
-        B addInnerClass(InnerClass innerClass) {
+        public B addInnerClass(InnerClass innerClass) {
             this.innerClasses.put(name, innerClass);
             return me;
         }
@@ -373,12 +384,13 @@ public class AbstractClass {
             return me;
         }
 
-        public B javadoc(Javadoc javadoc) {
-            this.javadoc = javadoc;
-            return me;
+        public B addImport(Class<?> typeImport) {
+            return addImport(typeImport.getName());
         }
 
-        Map<String, Method> methods() {
+        public abstract B addImport(String importName);
+
+        Set<Method> methods() {
             return methods;
         }
 

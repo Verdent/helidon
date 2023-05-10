@@ -33,5 +33,5 @@ module io.helidon.builder.config.processor {
     exports io.helidon.builder.config.processor;
 
     provides io.helidon.builder.processor.spi.BuilderCreatorProvider
-            with io.helidon.builder.config.processor.ConfigBeanBuilderCreator;
+            with io.helidon.builder.config.processor.ConfigBeanBuilderCreator2;
 }

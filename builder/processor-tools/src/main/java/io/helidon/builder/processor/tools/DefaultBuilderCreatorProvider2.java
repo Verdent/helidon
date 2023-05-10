@@ -1816,6 +1816,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                         .add(method.elementName()).add("(), other.")
                         .add(method.elementName()).add("())");
             }
+            if (!ctx.hasParent() && ctx.allTypeInfos().isEmpty()) {
+                //if there was no equals method defined on our parent and there are no fields to be validated, return true
+                methodBuilder.add("true");
+            }
             methodBuilder.addLine(";");
             methodBuilder.addLine("}");
             methodBuilder.addLine("return false;");

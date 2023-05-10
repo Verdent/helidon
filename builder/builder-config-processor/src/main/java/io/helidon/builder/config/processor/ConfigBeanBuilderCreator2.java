@@ -202,9 +202,9 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                                   .addLine("return " + ctx.typeInfo().typeName().name() + ".class;"));
 
         builder.addMethod(Method.builder("__thisConfigBeanType")
-                                  .returnType(Type.generic(Class.class).addParam(Type.token("?")).build())
+                                  .returnType(Type.generic(Class.class).addParam(Type.token("?")).build(), "the config bean type")
+                                  .description("Returns the {@code ConfigBean} type.")
                                   .isStatic(true)
-                                  .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
                                   .generateJavadoc(false)
                                   .addLine("return " + ctx.typeInfo().typeName().name() + ".class;"));
         super.appendMetaAttributes(builder, ctx);
@@ -252,15 +252,18 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
 
     @Override
     protected void appendClassComponents(ClassModel.Builder builder, BodyContext ctx) {
-        Method toBuilderMethod = Method.builder("toBuilder")
-                .description("Creates a builder for this type, initialized with the Config value passed.")
-                .returnType(ctx.implTypeName() + "$Builder", "a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
-                .addParameter(Parameter.builder("cfg", Config.class).description("the config to copy and initialize from"))
-                .addLine("Builder b = builder();")
-                .addLine("b.acceptConfig(cfg, true);")
-                .addLine("return b;")
-                .build();
-        builder.addMethod(toBuilderMethod);
+        if (ctx.doingConcreteType()) {
+            Method toBuilderMethod = Method.builder("toBuilder")
+                    .isStatic(true)
+                    .description("Creates a builder for this type, initialized with the Config value passed.")
+                    .returnType(ctx.implTypeName() + "$Builder", "a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
+                    .addParameter(Parameter.builder("cfg", Config.class).description("the config to copy and initialize from"))
+                    .addLine("Builder b = builder();")
+                    .addLine("b.acceptConfig(cfg, true);")
+                    .addLine("return b;")
+                    .build();
+            builder.addMethod(toBuilderMethod);
+        }
     }
 
     @Override
@@ -368,7 +371,6 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                     .returnType(mappersType)
                     .generateJavadoc(false)
                     .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
-                    .addLine("return " + ctx.typeInfo().typeName().name() + ".class;")
                     .add("Map<Class<?>, Function<Config, ?>> result = ");
 
             if (ctx.hasParent()) {

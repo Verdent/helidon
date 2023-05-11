@@ -1684,6 +1684,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                       .build())
                     .build();
             Method.Builder methodBuilder = Method.builder("annotationType")
+                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                    .generateJavadoc(false)
                     .returnType(returnType)
                     .addLine("return " + ctx.typeInfo().superTypeInfo().get().typeName() + ".class;");
             builder.addMethod(methodBuilder);

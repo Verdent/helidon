@@ -381,6 +381,7 @@ public class AbstractClass {
 
         public B addGenericParameter(Token token) {
             this.genericParameters.add(token);
+            javadocBuilder.addGenericsToken(token.token(), token.description());
             return me;
         }
 

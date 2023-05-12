@@ -11,6 +11,7 @@ class Javadoc {
     private final String content;
     private final Set<String> authors;
     private final Map<String, String> parameters;
+    private final Map<String, String> genericsTokens;
     private final Map<String, String> throwsDesc;
     private final String returnDescription;
     private final String deprecation;
@@ -20,6 +21,7 @@ class Javadoc {
         this.content = builder.contentBuilder.toString();
         this.authors = new LinkedHashSet<>(builder.authors);
         this.parameters = new LinkedHashMap<>(builder.parameters);
+        this.genericsTokens = new LinkedHashMap<>(builder.genericsTokens);
         this.throwsDesc = new LinkedHashMap<>(builder.throwsDesc);
         this.returnDescription = builder.returnDescription;
         this.deprecation = builder.deprecation;
@@ -49,6 +51,9 @@ class Javadoc {
         for (Map.Entry<String, String> entry : parameters.entrySet()) {
             writer.write(" * @param " + entry.getKey() + " " + entry.getValue() + "\n");
         }
+        for (Map.Entry<String, String> entry : genericsTokens.entrySet()) {
+            writer.write(" * @param <" + entry.getKey() + "> " + entry.getValue() + "\n");
+        }
         if (returnDescription != null) {
             writer.write(" * @return " + returnDescription + "\n");
         }
@@ -74,6 +79,7 @@ class Javadoc {
     private boolean hasAnyOtherParts() {
         return !parameters.isEmpty()
                 || !throwsDesc.isEmpty()
+                || !genericsTokens.isEmpty()
                 || !authors.isEmpty()
                 || returnDescription != null
                 || deprecation != null;
@@ -84,6 +90,7 @@ class Javadoc {
         private final StringBuilder contentBuilder = new StringBuilder();
         private final Set<String> authors = new LinkedHashSet<>();
         private final Map<String, String> parameters = new LinkedHashMap<>();
+        private final Map<String, String> genericsTokens = new LinkedHashMap<>();
         private final Map<String, String> throwsDesc = new LinkedHashMap<>();
         private String returnDescription;
         private String deprecation;
@@ -127,6 +134,11 @@ class Javadoc {
 
         public Builder returnDescription(String returnDescription) {
             this.returnDescription = returnDescription;
+            return this;
+        }
+
+        public Builder addGenericsToken(String token, String deprecation) {
+            this.genericsTokens.put(token, deprecation);
             return this;
         }
 

@@ -1573,13 +1573,9 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             builder.isAbstract(true);
         }
 
-        Type builderToken = Type.tokenBuilder(ctx.genericBuilderAliasDecl())
-                .description("the type of the builder")
-                .build();
+        Type builderToken = Type.token(ctx.genericBuilderAliasDecl());
 
-        Type builtTypeToken = Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
-                .description("the type of the builder")
-                .build();
+        Type builtTypeToken = Type.token(ctx.genericBuilderAcceptAliasDecl());
 
         if (ctx.doingConcreteType()) {
             TypeName parentType = toAbstractImplTypeName(ctx.typeInfo().typeName(), ctx.builderTriggerAnnotation());
@@ -1594,9 +1590,11 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                                                .addParam(builderToken)
                                                                .addParam(builtTypeToken)
                                                                .build())
+                                                .description("Type of the builder")
                                                 .build());
             builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
                                                 .bound(Type.create(ctx.ctorBuilderAcceptTypeName().declaredName()))
+                                                .description("Type of the built instance")
                                                 .build());
 
             if (ctx.hasParent()) {

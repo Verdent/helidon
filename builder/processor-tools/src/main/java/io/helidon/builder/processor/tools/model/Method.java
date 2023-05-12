@@ -227,6 +227,7 @@ public class Method extends AbstractMethod {
 
         public Builder addTokenDeclaration(Token token) {
             declaredTokens.put(token.token(), token);
+            tokenJavadoc(token.token(), token.description());
             return this;
         }
     }

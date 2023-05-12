@@ -103,6 +103,11 @@ abstract class AbstractComponent {
             return me;
         }
 
+        B tokenJavadoc(String token, String description) {
+            this.javadocBuilder.addGenericsToken(token, description);
+            return me;
+        }
+
         B identity() {
             return me;
         }

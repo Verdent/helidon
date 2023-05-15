@@ -243,7 +243,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         appendBuilder(classBuilder, ctx);
         appendClassComponents(classBuilder, ctx);
 //        appendExtraInnerClasses(builder, ctx);
-//        appendFooter(builder, ctx);
 
 
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
@@ -304,16 +303,6 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     }
 
     protected void appendBuilderClassComponents(InnerClass.Builder builder, BodyContext ctx) {
-    }
-
-    /**
-     * Appends the footer of the generated class.
-     *
-     * @param builder the builder
-     * @param ctx     the context
-     */
-    protected void appendFooter(StringBuilder builder, BodyContext ctx) {
-        builder.append("}\n");
     }
 
     /**

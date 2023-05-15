@@ -3,10 +3,8 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,9 +22,10 @@ public class AbstractClass {
     private final boolean isAbstract;
     private final boolean isStatic;
     private final AccessModifier accessModifier;
-    private final Map<String, Field> fields;
-    private final Map<String, Field> staticFields;
-    private final Set<Method> methods;
+    private final List<Field> fields;
+    private final List<Field> staticFields;
+    private final List<Method> methods;
+    private final List<Method> staticMethods;
     private final Set<Type> interfaces;
     private final Set<String> tokenNames;
     private final List<Constructor> constructors;
@@ -41,9 +40,10 @@ public class AbstractClass {
         this.isAbstract = builder.isAbstract;
         this.isStatic = builder.isStatic;
         this.accessModifier = builder.accessModifier;
-        this.fields = new LinkedHashMap<>(builder.fields);
-        this.staticFields = new LinkedHashMap<>(builder.staticFields);
-        this.methods = new LinkedHashSet<>(builder.methods);
+        this.fields = builder.fields.values().stream().sorted().toList();
+        this.staticFields = builder.staticFields.values().stream().sorted().toList();
+        this.methods = builder.methods.stream().sorted().toList();
+        this.staticMethods = builder.staticMethods.stream().sorted().toList();
         this.inheritance = builder.inheritance;
         this.constructors = List.copyOf(builder.constructors);
         this.interfaces = Set.copyOf(builder.interfaces);
@@ -98,16 +98,19 @@ public class AbstractClass {
         }
         writer.write("{\n");
         if (!staticFields.isEmpty()) {
-            writeClassFields(staticFields.values(), writer, combinedTokens, imports);
+            writeClassFields(staticFields, writer, combinedTokens, imports);
         }
         if (!fields.isEmpty()) {
-            writeClassFields(fields.values(), writer, combinedTokens, imports);
+            writeClassFields(fields, writer, combinedTokens, imports);
         }
         if (!constructors.isEmpty()) {
             writerClassConstructors(writer, combinedTokens, imports);
         }
+        if (!staticMethods.isEmpty()) {
+            writerClassMethods(staticMethods, writer, combinedTokens, imports);
+        }
         if (!methods.isEmpty()) {
-            writerClassMethods(writer, combinedTokens, imports);
+            writerClassMethods(methods, writer, combinedTokens, imports);
         }
         if (!innerClasses.isEmpty()) {
             writeInnerClasses(writer, combinedTokens, imports);
@@ -166,7 +169,7 @@ public class AbstractClass {
         writer.decreasePaddingLevel();
     }
 
-    private void writerClassMethods(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+    private void writerClassMethods(List<Method> methods, ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Method method : methods) {
             writer.write("\n");
@@ -190,16 +193,19 @@ public class AbstractClass {
         return inheritance;
     }
 
-    Map<String, Field> fields() {
+    List<Field> fields() {
         return fields;
     }
 
-    Map<String, Field> staticFields() {
+    List<Field> staticFields() {
         return staticFields;
     }
 
-    Set<Method> methods() {
+    List<Method> methods() {
         return methods;
+    }
+    List<Method> staticMethods() {
+        return staticMethods;
     }
 
     Set<Type> interfaces() {
@@ -220,7 +226,8 @@ public class AbstractClass {
 
     public static abstract class Builder<T extends AbstractClass, B extends Builder<T, B>> {
 
-        private final Set<Method> methods = new LinkedHashSet<>();
+        private final Set<Method> methods = new HashSet<>();
+        private final Set<Method> staticMethods = new HashSet<>();
         private final Map<String, Field> fields = new LinkedHashMap<>();
         private final Map<String, Field> staticFields = new LinkedHashMap<>();
         private final Map<String, InnerClass> innerClasses = new LinkedHashMap<>();
@@ -244,42 +251,7 @@ public class AbstractClass {
 
         public abstract T build();
 
-//        public T build() {
-//            Map<String, List<Field>> collect = fields.values().stream().collect(groupingBy(AbstractComponent::type));
-//            fields.clear();
-//
-//            collect.keySet()
-//                    .stream()
-//                    .sorted()
-//                    .map(collect::get)
-//                    .forEach(list -> list.stream().sorted(Comparator.comparing(Field::name))
-//                            .forEach(field -> fields.put(field.name(), field)));
-//
-//            fields.values().forEach(field -> field.addImports(imports));
-//            methods.values().forEach(method -> method.addImports(imports));
-//            interfaces.forEach(imports::addImport);
-//            if (inheritance != null) {
-//                inheritance.addImports(imports);
-//            }
-//            return new ClassModel(this);
-//        }
         void commonBuildLogic() {
-            //TODO prepsat
-            Map<String, List<Field>> collect = fields.values().stream().collect(groupingBy(field -> field.type().typeName()));
-            fields.clear();
-
-            collect.keySet()
-                    .stream()
-                    .sorted()
-                    .map(collect::get)
-                    .forEach(list -> list.stream().sorted(Comparator.comparing(Field::name))
-                            .forEach(field -> {
-                                if (field.isStatic()) {
-                                    staticFields.put(field.name(), field);
-                                } else {
-                                    fields.put(field.name(), field);
-                                }
-                            }));
         }
 
         public B description(String description) {
@@ -317,7 +289,7 @@ public class AbstractClass {
         }
 
         public B inheritance(String inheritance) {
-            return inheritance(Type.create(inheritance));
+            return inheritance(Type.exact(inheritance));
         }
 
         public B inheritance(Type inheritance) {
@@ -330,7 +302,14 @@ public class AbstractClass {
         }
 
         public B addField(Field field) {
-            fields.put(field.name(), field);
+            String fieldName = field.name();
+            if (field.isStatic()) {
+                fields.remove(fieldName);
+                staticFields.put(fieldName, field);
+            } else {
+                staticFields.remove(fieldName);
+                fields.put(fieldName, field);
+            }
             return me;
         }
 
@@ -339,7 +318,13 @@ public class AbstractClass {
         }
 
         public B addMethod(Method method) {
-            methods.add(method);
+            methods.remove(method);
+            staticMethods.remove(method);
+            if (method.isStatic()) {
+                staticMethods.add(method);
+            } else {
+                methods.add(method);
+            }
             return me;
         }
 
@@ -352,7 +337,7 @@ public class AbstractClass {
         }
 
         public B addInterface(String interfaceName) {
-            return addInterface(Type.create(interfaceName));
+            return addInterface(Type.exact(interfaceName));
         }
 
         public B addInterface(Type interfaceType) {
@@ -393,6 +378,10 @@ public class AbstractClass {
 
         Set<Method> methods() {
             return methods;
+        }
+
+        Set<Method> staticMethod() {
+            return staticMethods;
         }
 
         Map<String, Field> fields() {

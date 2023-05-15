@@ -11,7 +11,7 @@ public class Constructor extends AbstractMethod {
 
     @Deprecated
     public static Builder builder(String type) {
-        return new Builder(Type.create(type));
+        return new Builder(Type.exact(type));
     }
 
     public static Constructor create(String type) {

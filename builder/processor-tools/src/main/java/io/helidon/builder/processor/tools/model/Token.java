@@ -109,11 +109,11 @@ public final class Token extends Type {
         }
 
         public Builder bound(String bound) {
-            return bound(Type.create(bound));
+            return bound(Type.exact(bound));
         }
 
         public Builder bound(Class<?> bound) {
-            return bound(Type.create(bound));
+            return bound(Type.exact(bound));
         }
 
         public Builder bound(Type bound) {

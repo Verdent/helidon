@@ -136,7 +136,7 @@ class ImportOrganizer {
         }
 
         public Builder addImport(String type) {
-            return addImport(Type.create(type));
+            return addImport(Type.exact(type));
         }
 
         public Builder addImport(Type type) {

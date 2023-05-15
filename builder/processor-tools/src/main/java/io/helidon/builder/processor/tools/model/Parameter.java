@@ -19,11 +19,11 @@ public class Parameter extends AbstractAnnotatable {
     }
 
     public static Parameter create(String name, Class<?> type) {
-        return create(name, Type.create(type));
+        return create(name, Type.exact(type));
     }
 
     public static Parameter create(String name, String typeName) {
-        return create(name, Type.create(typeName));
+        return create(name, Type.exact(typeName));
     }
 
     public static Parameter create(String name, Type type) {
@@ -31,10 +31,10 @@ public class Parameter extends AbstractAnnotatable {
     }
 
     public static Builder builder(String name, String typeName) {
-        return new Builder(name, Type.create(typeName));
+        return new Builder(name, Type.exact(typeName));
     }
     public static Builder builder(String name, Class<?> type) {
-        return new Builder(name, Type.create(type));
+        return new Builder(name, Type.exact(type));
     }
 
     public static Builder builder(String name, Type type) {

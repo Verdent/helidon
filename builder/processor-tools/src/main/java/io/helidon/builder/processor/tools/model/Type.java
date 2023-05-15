@@ -8,11 +8,11 @@ import java.util.Set;
  */
 public abstract class Type {
 
-    public static Type create(Class<?> type) {
-        return create(type.getName());
+    public static Type exact(Class<?> type) {
+        return exact(type.getTypeName());
     }
 
-    public static Type create(String typeName) {
+    public static Type exact(String typeName) {
         return new ExactType.Builder(typeName).build();
     }
 
@@ -24,16 +24,16 @@ public abstract class Type {
         return new Token.Builder(token);
     }
 
-    public static ExactType.Builder exact(Class<?> type) {
-        return exact(type.getName());
+    public static ExactType.Builder exactBuilder(Class<?> type) {
+        return exactBuilder(type.getTypeName());
     }
 
-    public static ExactType.Builder exact(String typeName) {
+    public static ExactType.Builder exactBuilder(String typeName) {
         return new ExactType.Builder(typeName);
     }
 
     public static GenericType.Builder generic(Class<?> type) {
-        return generic(type.getName());
+        return generic(type.getTypeName());
     }
 
     public static GenericType.Builder generic(String typeName) {

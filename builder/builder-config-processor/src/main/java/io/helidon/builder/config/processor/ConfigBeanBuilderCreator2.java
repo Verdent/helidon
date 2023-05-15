@@ -364,7 +364,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
             Type mappersType = Type.generic(Map.class)
                     .addParam(Type.generic(Class.class).addParam(Type.token("?")).build())
                     .addParam(Type.generic(Function.class)
-                                      .addParam(Type.create(Config.class))
+                                      .addParam(Type.exact(Config.class))
                                       .addParam(Type.token("?"))
                                       .build())
                     .build();

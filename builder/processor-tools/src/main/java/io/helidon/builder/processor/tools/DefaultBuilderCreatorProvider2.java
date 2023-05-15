@@ -16,9 +16,6 @@
 
 package io.helidon.builder.processor.tools;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.lang.annotation.Annotation;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -245,14 +242,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 //        appendExtraInnerClasses(builder, ctx);
 
 
-        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            try (OutputStreamWriter writer = new OutputStreamWriter(outputStream)) {
-                classBuilder.build().saveToFile(writer);
-            }
-            return outputStream.toString();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return classBuilder.build().toString();
     }
 
     private ClassModel.Builder createClassModelBuilder(BodyContext ctx) {
@@ -268,7 +258,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         if (typeName.typeArguments().isEmpty()) {
             if (typeName.array()
                     || Optional.class.getName().equals(typeName.declaredName())) {
-                return Type.create(typeName.declaredName());
+                return Type.exact(typeName.declaredName());
             } else if (typeName.wildcard() && !ignoreTopWildcard) {
                 boolean isObject = typeName.name().equals("?") || Object.class.getName().equals(typeName.name());
                 if (isObject) {
@@ -279,7 +269,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                             .build();
                 }
             }
-            return Type.create(typeName.declaredName());
+            return Type.exact(typeName.declaredName());
         }
         GenericType.Builder typeBuilder;
         if (asTopContainer) {
@@ -993,7 +983,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     private static Type toMethodParameterType(TypeName typeName, int paramNumber) {
         TypeName parameterTypeName = typeName.typeArguments().get(paramNumber);
         if (parameterTypeName.name().equals(Object.class.getName())) {
-            return Type.create(Object.class);
+            return Type.exact(Object.class);
         } else {
             return toType(parameterTypeName, false, parameterTypeName.wildcard());
         }
@@ -1582,7 +1572,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                                 .description("Type of the builder")
                                                 .build());
             builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
-                                                .bound(Type.create(ctx.ctorBuilderAcceptTypeName().declaredName()))
+                                                .bound(Type.exact(ctx.ctorBuilderAcceptTypeName().declaredName()))
                                                 .description("Type of the built instance")
                                                 .build());
 
@@ -1693,7 +1683,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
         String builderClass = ctx.implTypeName().declaredName() + "$" +ctx.genericBuilderClassDecl();
         if (ctx.doingConcreteType()) {
-            costructorBuilder.addParameter(Parameter.builder("b", Type.create(builderClass)).description("the builder"))
+            costructorBuilder.addParameter(Parameter.builder("b", Type.exact(builderClass)).description("the builder"))
                     .addLine("super(b);");
         } else {
             costructorBuilder.addParameter(Parameter.builder("b",

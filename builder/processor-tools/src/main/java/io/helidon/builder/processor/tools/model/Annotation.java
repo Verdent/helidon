@@ -76,7 +76,7 @@ public class Annotation extends AbstractComponent {
         }
 
         private Builder(String type) {
-            super(null, Type.create(type));
+            super(null, Type.exact(type));
         }
 
         @Override

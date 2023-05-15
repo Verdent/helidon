@@ -6,9 +6,9 @@ package io.helidon.builder.processor.tools.model;
 public enum AccessModifier {
 
     PUBLIC("public"),
-    PRIVATE("private"),
     PROTECTED("protected"),
-    PACKAGE_PRIVATE("");
+    PACKAGE_PRIVATE(""),
+    PRIVATE("private");
 
     private final String modifierName;
 

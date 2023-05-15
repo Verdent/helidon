@@ -94,7 +94,7 @@ class Javadoc {
         private final Map<String, String> throwsDesc = new LinkedHashMap<>();
         private String returnDescription;
         private String deprecation;
-        private Boolean generate;
+        private Boolean generate = false;
 
         private Builder() {
         }

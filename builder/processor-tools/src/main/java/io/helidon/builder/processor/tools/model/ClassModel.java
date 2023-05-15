@@ -1,6 +1,8 @@
 package io.helidon.builder.processor.tools.model;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.Objects;
 import java.util.Set;
@@ -49,6 +51,18 @@ public class ClassModel extends AbstractClass {
 
     }
 
+    @Override
+    public String toString() {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            try (OutputStreamWriter writer = new OutputStreamWriter(outputStream)) {
+                saveToFile(writer);
+            }
+            return outputStream.toString();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static class Builder extends AbstractClass.Builder<ClassModel, Builder> {
         private final ImportOrganizer.Builder imports;
         private final String packageName;
@@ -65,6 +79,7 @@ public class ClassModel extends AbstractClass {
             fields().values().forEach(field -> field.addImports(imports));
             staticFields().values().forEach(field -> field.addImports(imports));
             methods().forEach(method -> method.addImports(imports));
+            staticMethod().forEach(method -> method.addImports(imports));
             interfaces().forEach(imp -> imp.addImports(imports));
             if (inheritance() != null) {
                 inheritance().addImports(imports);
@@ -89,7 +104,7 @@ public class ClassModel extends AbstractClass {
         }
 
         public Builder addImport(String importName) {
-            imports.addImport(Type.create(importName));
+            imports.addImport(Type.exact(importName));
             return this;
         }
 

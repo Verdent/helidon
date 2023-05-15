@@ -2,7 +2,6 @@ package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -11,7 +10,7 @@ import java.util.stream.Collectors;
 /**
  * TODO javadoc
  */
-public class Method extends AbstractMethod {
+public class Method extends AbstractMethod implements Comparable<Method> {
 
     private final Map<String, Token> declaredTokens;
     private final boolean isFinal;
@@ -150,6 +149,10 @@ public class Method extends AbstractMethod {
         returnType.addImports(imports);
     }
 
+    boolean isStatic() {
+        return isStatic;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -161,12 +164,33 @@ public class Method extends AbstractMethod {
         Method method = (Method) o;
         return Objects.equals(returnType, method.returnType)
                 && Objects.equals(name(), method.name())
-                && Objects.equals(parameters().values(), method.parameters().values());
+                && parameters().size() == method.parameters().size()
+                && parameters().values().containsAll(method.parameters().values());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(returnType);
+        return Objects.hash(returnType, name(), parameters().values());
+    }
+
+    @Override
+    public int compareTo(Method other) {
+        if (accessModifier() == other.accessModifier()) {
+            return name().compareTo(other.name());
+        } else {
+            return accessModifier().compareTo(other.accessModifier());
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "Method{" +
+                "name=" + name() +
+                ", isFinal=" + isFinal +
+                ", isStatic=" + isStatic +
+                ", isAbstract=" + isAbstract +
+                ", returnType=" + returnType +
+                '}';
     }
 
     public static class Builder extends AbstractMethod.Builder<Method, Builder> {
@@ -175,7 +199,7 @@ public class Method extends AbstractMethod {
         private boolean isFinal = false;
         private boolean isStatic = false;
         private boolean isAbstract = false;
-        private Type returnType = Type.create(void.class);
+        private Type returnType = Type.exact(void.class);
 
         Builder(String name) {
             super(name, null);
@@ -205,7 +229,7 @@ public class Method extends AbstractMethod {
         }
 
         public Builder returnType(String type, String description) {
-            return returnType(Type.create(type), description);
+            return returnType(Type.exact(type), description);
         }
 
         public Builder returnType(Class<?> type) {
@@ -213,7 +237,7 @@ public class Method extends AbstractMethod {
         }
 
         public Builder returnType(Class<?> type, String description) {
-            return returnType(Type.create(type), description);
+            return returnType(Type.exact(type), description);
         }
 
         public Builder returnType(Type type) {

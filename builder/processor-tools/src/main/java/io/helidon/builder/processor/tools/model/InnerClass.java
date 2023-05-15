@@ -14,9 +14,10 @@ public final class InnerClass extends AbstractClass {
     }
 
     void addImports(ImportOrganizer.Builder imports) {
-        fields().values().forEach(field -> field.addImports(imports));
-        staticFields().values().forEach(field -> field.addImports(imports));
+        fields().forEach(field -> field.addImports(imports));
+        staticFields().forEach(field -> field.addImports(imports));
         methods().forEach(method -> method.addImports(imports));
+        staticMethods().forEach(method -> method.addImports(imports));
         interfaces().forEach(imp -> imp.addImports(imports));
         if (inheritance() != null) {
             inheritance().addImports(imports);

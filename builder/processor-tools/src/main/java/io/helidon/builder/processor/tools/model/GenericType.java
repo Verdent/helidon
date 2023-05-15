@@ -78,11 +78,11 @@ public final class GenericType extends AbstractType {
         }
 
         public Builder addParam(String typeName) {
-            return addParam(Type.create(typeName));
+            return addParam(Type.exact(typeName));
         }
 
         public Builder addParam(Class<?> type) {
-            return addParam(Type.create(type));
+            return addParam(Type.exact(type));
         }
 
         public Builder addParam(Type type) {

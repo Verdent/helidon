@@ -67,6 +67,7 @@ abstract class AbstractComponent {
 
         public B description(String description) {
             this.javadocBuilder.add(description);
+            this.javadocBuilder.generate(true);
             return me;
         }
 

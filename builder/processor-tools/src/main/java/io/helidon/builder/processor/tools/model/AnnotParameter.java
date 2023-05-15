@@ -43,7 +43,7 @@ public class AnnotParameter extends AbstractComponent {
         private String resolvedValue;
 
         private Builder(String name, String typeName, Object value) {
-            super(name, Type.create(typeName));
+            super(name, Type.exact(typeName));
             this.value = value;
         }
 

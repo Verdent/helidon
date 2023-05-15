@@ -6,7 +6,7 @@ import java.util.Set;
 /**
  * TODO javadoc
  */
-public class Field extends AbstractAnnotatable {
+public class Field extends AbstractAnnotatable implements Comparable<Field> {
 
     private final String defaultValue;
     private final boolean isFinal;
@@ -22,10 +22,10 @@ public class Field extends AbstractAnnotatable {
     }
 
     public static Builder builder(String name, Class<?> type) {
-        return new Builder(name, Type.create(type));
+        return new Builder(name, Type.exact(type));
     }
     public static Builder builder(String name, String type) {
-        return new Builder(name, Type.create(type));
+        return new Builder(name, Type.exact(type));
     }
 
     public static Builder builder(String name, Type type) {
@@ -82,6 +82,23 @@ public class Field extends AbstractAnnotatable {
 
     boolean isStatic() {
         return isStatic;
+    }
+
+    @Override
+    public int compareTo(Field other) {
+        if (type().typeName().equals(other.type().typeName())) {
+            return name().compareTo(other.name());
+        } else {
+            return type().typeName().compareTo(other.type().typeName());
+        }
+    }
+
+    @Override
+    public String toString() {
+        if (defaultValue != null) {
+            return accessModifier.modifierName() + " " + type().typeName() + " " + name() + " = " + defaultValue;
+        }
+        return accessModifier.modifierName() + " " + type().typeName() + " " + name();
     }
 
     public static class Builder extends AbstractAnnotatable.Builder<Field, Builder> {

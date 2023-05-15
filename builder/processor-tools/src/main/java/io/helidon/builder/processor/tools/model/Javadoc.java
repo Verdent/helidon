@@ -63,7 +63,7 @@ class Javadoc {
         for (Map.Entry<String, String> entry : throwsDesc.entrySet()) {
             writer.write(" * @throws " + entry.getKey() + " " + entry.getValue() + "\n");
         }
-        writer.write(" **/");
+        writer.write(" */");
     }
 
     boolean shouldGenerate(AccessModifier accessModifier) {

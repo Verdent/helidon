@@ -86,14 +86,18 @@ public class Field extends AbstractAnnotatable implements Comparable<Field> {
 
     @Override
     public int compareTo(Field other) {
-        if (isFinal == other.isFinal) {
-            if (type().simpleTypeName().equals(other.type().simpleTypeName())) {
-                return name().compareTo(other.name());
+        if (accessModifier == other.accessModifier) {
+            if (isFinal == other.isFinal) {
+                if (type().simpleTypeName().equals(other.type().simpleTypeName())) {
+                    return name().compareTo(other.name());
+                }
+                return type().simpleTypeName().compareTo(other.type().simpleTypeName());
             }
-            return type().simpleTypeName().compareTo(other.type().simpleTypeName());
+            //final fields should be before non-final
+            return Boolean.compare(other.isFinal, isFinal);
+        } else {
+            return accessModifier.compareTo(other.accessModifier);
         }
-        //final fields should be before non-final
-        return Boolean.compare(other.isFinal, isFinal);
     }
 
     @Override

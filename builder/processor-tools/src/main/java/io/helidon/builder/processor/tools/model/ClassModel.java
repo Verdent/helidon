@@ -26,7 +26,11 @@ public class ClassModel extends AbstractClass {
     }
 
     public void saveToFile(Writer writer) throws IOException {
-        ModelWriter innerWriter = new ModelWriter(writer, "    ");
+        saveToFile(writer, "    ");
+    }
+
+    public void saveToFile(Writer writer, String padding) throws IOException {
+        ModelWriter innerWriter = new ModelWriter(writer, padding);
         if (licenseHeader != null) {
             String[] lines = licenseHeader.split("\n");
             if (lines.length > 1) {
@@ -53,9 +57,13 @@ public class ClassModel extends AbstractClass {
 
     @Override
     public String toString() {
+        return toString("    ");
+    }
+
+    public String toString(String padding) {
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             try (OutputStreamWriter writer = new OutputStreamWriter(outputStream)) {
-                saveToFile(writer);
+                saveToFile(writer, padding);
             }
             return outputStream.toString();
         } catch (IOException e) {

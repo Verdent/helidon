@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -256,6 +257,7 @@ public class AbstractClass {
 
         public B description(String description) {
             this.javadocBuilder.add(description);
+            this.javadocBuilder.generate(true);
             return me;
         }
 
@@ -359,8 +361,10 @@ public class AbstractClass {
             return me;
         }
 
-        public B addConstructor(Constructor constructor) {
-            constructors.add(constructor);
+        public B addConstructor(Consumer<Constructor.Builder> supplier) {
+            Constructor.Builder constructorBuilder = Constructor.builder(name);
+            supplier.accept(constructorBuilder);
+            constructors.add(constructorBuilder.build());
             return me;
         }
 

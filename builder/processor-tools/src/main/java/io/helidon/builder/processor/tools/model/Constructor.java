@@ -9,12 +9,11 @@ public class Constructor extends AbstractMethod {
         super(builder);
     }
 
-    @Deprecated
-    public static Builder builder(String type) {
+    static Builder builder(String type) {
         return new Builder(Type.exact(type));
     }
 
-    public static Constructor create(String type) {
+    static Constructor create(String type) {
         return builder(type).build();
     }
 

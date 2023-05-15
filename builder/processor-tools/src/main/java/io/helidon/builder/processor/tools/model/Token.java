@@ -102,7 +102,7 @@ public final class Token extends Type {
 
         private final String token;
         private Type bound;
-        private String description;
+        private String description = "";
 
         Builder(String token) {
             this.token = token;

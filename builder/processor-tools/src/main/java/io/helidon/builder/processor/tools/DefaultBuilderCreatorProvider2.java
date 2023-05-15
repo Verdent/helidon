@@ -1482,18 +1482,18 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             }
         }
 
-        Constructor.Builder constructorBuilder = Constructor.builder(ctx.genericBuilderClassDecl())
-                .description("Fluent API builder constructor.")
-                .accessModifier(AccessModifier.PROTECTED);
-        if (ctx.doingConcreteType()) {
-            constructorBuilder.addLine("super();");
-        } else {
-            if (ctx.hasParent()) {
+        builder.addConstructor(constructorBuilder -> {
+            constructorBuilder.description("Fluent API builder constructor.")
+                    .accessModifier(AccessModifier.PROTECTED);
+            if (ctx.doingConcreteType()) {
                 constructorBuilder.addLine("super();");
+            } else {
+                if (ctx.hasParent()) {
+                    constructorBuilder.addLine("super();");
+                }
+                appendOverridesOfDefaultValues(builder, constructorBuilder, ctx);
             }
-            appendOverridesOfDefaultValues(builder, constructorBuilder, ctx);
-        }
-        builder.addConstructor(constructorBuilder.build());
+        });
     }
 
     private void addBuilderField(InnerClass.Builder builder,
@@ -1677,27 +1677,26 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
     private void appendCtor(ClassModel.Builder builder,
                             BodyContext ctx) {
-        Constructor.Builder costructorBuilder = Constructor.builder(ctx.implTypeName().declaredName())
-                .description("Constructor using the builder argument.")
-                .accessModifier(AccessModifier.PROTECTED);
-
-        String builderClass = ctx.implTypeName().declaredName() + "$" +ctx.genericBuilderClassDecl();
-        if (ctx.doingConcreteType()) {
-            costructorBuilder.addParameter(Parameter.builder("b", Type.exact(builderClass)).description("the builder"))
-                    .addLine("super(b);");
-        } else {
-            costructorBuilder.addParameter(Parameter.builder("b",
-                                                          Type.generic(builderClass)
-                                                                  .addParam(Type.token("?"))
-                                                                  .addParam(Type.token("?"))
-                                                                  .build())
-                                                .description("the builder"));
-            StringBuilder sb = new StringBuilder();
-            appendExtraCtorCode(sb, ctx, "b");
-            appendCtorCodeBody(builder, sb, ctx, "b");
-            costructorBuilder.content(sb.toString());
-        }
-        builder.addConstructor(costructorBuilder.build());
+        builder.addConstructor(constructorBuilder -> {
+            constructorBuilder.description("Constructor using the builder argument.")
+                    .accessModifier(AccessModifier.PROTECTED);
+            String builderClass = ctx.implTypeName().declaredName() + "$" +ctx.genericBuilderClassDecl();
+            if (ctx.doingConcreteType()) {
+                constructorBuilder.addParameter(Parameter.builder("b", Type.exact(builderClass)).description("the builder"))
+                        .addLine("super(b);");
+            } else {
+                constructorBuilder.addParameter(Parameter.builder("b",
+                                                                 Type.generic(builderClass)
+                                                                         .addParam(Type.token("?"))
+                                                                         .addParam(Type.token("?"))
+                                                                         .build())
+                                                       .description("the builder"));
+                StringBuilder sb = new StringBuilder();
+                appendExtraCtorCode(sb, ctx, "b");
+                appendCtorCodeBody(builder, sb, ctx, "b");
+                constructorBuilder.content(sb.toString());
+            }
+        });
     }
 
     /**

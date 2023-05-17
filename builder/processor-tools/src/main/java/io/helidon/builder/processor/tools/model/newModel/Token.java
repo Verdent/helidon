@@ -11,13 +11,14 @@ public final class Token extends Type {
     private final String description;
 
     private Token(Builder builder) {
+        super(builder);
         this.token = builder.token;
         this.bound = builder.bound;
         this.description = builder.description;
     }
 
     @Override
-    void writeComponent(io.helidon.builder.processor.tools.model.ModelWriter writer, Set<String> declaredTokens, io.helidon.builder.processor.tools.model.ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         writer.write(token);
         if (bound != null) {
             writer.write(" extends ");
@@ -26,7 +27,7 @@ public final class Token extends Type {
     }
 
     @Override
-    void addImports(io.helidon.builder.processor.tools.model.ImportOrganizer.Builder imports) {
+    void addImports(ImportOrganizer.Builder imports) {
         if (bound != null) {
             bound.addImports(imports);
         }
@@ -98,7 +99,7 @@ public final class Token extends Type {
         return Objects.hash(token, bound);
     }
 
-    public static class Builder {
+    public static class Builder extends ModelComponent.Builder<Builder, Token> {
 
         private final String token;
         private Type bound;
@@ -126,6 +127,7 @@ public final class Token extends Type {
             return this;
         }
 
+        @Override
         public Token build() {
             return new Token(this);
         }

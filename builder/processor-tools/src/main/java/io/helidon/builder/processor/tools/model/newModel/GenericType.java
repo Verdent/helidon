@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import io.helidon.builder.processor.tools.model.AbstractType;
 
 public final class GenericType extends AbstractType {
 
@@ -18,7 +17,7 @@ public final class GenericType extends AbstractType {
     }
 
     @Override
-    void writeComponent(io.helidon.builder.processor.tools.model.ModelWriter writer, Set<String> declaredTokens, io.helidon.builder.processor.tools.model.ImportOrganizer imports) throws IOException {
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         String typeName = imports.typeName(this, includeImport());
         writer.write(typeName);
         if (!typeParams.isEmpty()) {
@@ -40,7 +39,7 @@ public final class GenericType extends AbstractType {
     }
 
     @Override
-    void addImports(io.helidon.builder.processor.tools.model.ImportOrganizer.Builder imports) {
+    void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
         typeParams.forEach(type -> type.addImports(imports));
     }
@@ -65,7 +64,7 @@ public final class GenericType extends AbstractType {
         return Objects.hash(super.hashCode(), typeParams);
     }
 
-    public static final class Builder extends AbstractType.Builder<Builder> {
+    public static final class Builder extends AbstractType.Builder<Builder, GenericType> {
 
         private final List<Type> typeParams = new ArrayList<>();
 
@@ -74,7 +73,7 @@ public final class GenericType extends AbstractType {
         }
 
         @Override
-        public Type build() {
+        public GenericType build() {
             commonBuildLogic();
             return new GenericType(this);
         }

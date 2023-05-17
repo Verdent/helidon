@@ -3,9 +3,9 @@ package io.helidon.builder.processor.tools.model.newModel;
 import java.io.IOException;
 import java.io.Writer;
 
-class ModelWriter extends Writer {
+import static io.helidon.builder.processor.tools.model.newModel.ClassModel.PADDING_TOKEN;
 
-    static final String PADDING_TOKEN = "<<padding>>";
+class ModelWriter extends Writer {
 
     private final Writer delegate;
     private final String padding;

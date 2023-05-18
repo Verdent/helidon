@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model.newModel;
+package io.helidon.builder.processor.tools.model;
 
 import java.io.IOException;
 import java.util.Set;

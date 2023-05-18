@@ -16,24 +16,22 @@ public class Method extends AbstractMethod implements Comparable<Method> {
     private final boolean isFinal;
     private final boolean isStatic;
     private final boolean isAbstract;
-    private final Type returnType;
 
     private Method(Builder builder) {
         super(builder);
         this.isFinal = builder.isFinal;
         this.isStatic = builder.isStatic;
         this.isAbstract = builder.isAbstract;
-        this.returnType = builder.returnType;
         this.declaredTokens = Map.copyOf(builder.declaredTokens);
     }
 
-    public static Builder builder(String name) {
-        return new Builder(name);
+    public static Builder builder() {
+        return new Builder().type(void.class);
     }
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        if (javadoc().shouldGenerate(accessModifier())) {
+        if (javadoc().generate()) {
             javadoc().writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
@@ -60,10 +58,10 @@ public class Method extends AbstractMethod implements Comparable<Method> {
             writer.write("abstract ");
         }
         appendTokenDeclaration(writer, declaredTokens, imports);
-        returnType.writeComponent(writer, declaredTokens, imports); //write return type
+        type().writeComponent(writer, declaredTokens, imports); //write return type
         writer.write(" " + name() + "(");
         boolean first = true;
-        for (Parameter parameter : parameters().values()) {
+        for (Parameter parameter : parameters()) {
             if (first) {
                 first = false;
             } else {
@@ -89,15 +87,13 @@ public class Method extends AbstractMethod implements Comparable<Method> {
             throws IOException {
         Set<String> tokensToDeclare;
         if (isStatic) {
-            tokensToDeclare = parameters().values()
-                    .stream()
+            tokensToDeclare = parameters().stream()
                     .filter(parameter -> parameter.type() instanceof Token)
                     .map(parameter -> ((Token) parameter.type()).token())
                     .filter(tokenName -> !tokenName.equals("?"))
                     .collect(Collectors.toSet());
         } else {
-            tokensToDeclare = parameters().values()
-                    .stream()
+            tokensToDeclare = parameters().stream()
                     .filter(parameter -> parameter.type() instanceof Token)
                     .map(parameter -> ((Token) parameter.type()).token())
                     .filter(tokenName -> !declaredTokens.contains(tokenName))
@@ -143,10 +139,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
     @Override
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
-        if (includeImport()) {
-            imports.addImport(returnType);
-        }
-        returnType.addImports(imports);
+        type().addImports(imports);
     }
 
     boolean isStatic() {
@@ -162,15 +155,15 @@ public class Method extends AbstractMethod implements Comparable<Method> {
             return false;
         }
         Method method = (Method) o;
-        return Objects.equals(returnType, method.returnType)
+        return Objects.equals(type(), method.type())
                 && Objects.equals(name(), method.name())
                 && parameters().size() == method.parameters().size()
-                && parameters().values().containsAll(method.parameters().values());
+                && parameters().containsAll(method.parameters());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(returnType, name(), parameters().values());
+        return Objects.hash(type(), name(), parameters());
     }
 
     @Override
@@ -189,23 +182,24 @@ public class Method extends AbstractMethod implements Comparable<Method> {
                 ", isFinal=" + isFinal +
                 ", isStatic=" + isStatic +
                 ", isAbstract=" + isAbstract +
-                ", returnType=" + returnType +
+                ", returnType=" + type().typeName() +
                 '}';
     }
 
-    public static class Builder extends AbstractMethod.Builder<Method, Builder> {
+    public static class Builder extends AbstractMethod.Builder<Builder, Method> {
 
         private final Map<String, Token> declaredTokens = new HashMap<>();
         private boolean isFinal = false;
         private boolean isStatic = false;
         private boolean isAbstract = false;
-        private Type returnType = Type.exact(void.class);
 
-        Builder(String name) {
-            super(name, null);
+        Builder() {
         }
 
         public Method build() {
+            if (name() != null) {
+                throw new ClassModelException("Method needs to have name specified");
+            }
             return new Method(this);
         }
 
@@ -233,7 +227,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
         }
 
         public Builder returnType(Class<?> type) {
-            return returnType(type.getName());
+            return returnType(Type.exact(type));
         }
 
         public Builder returnType(Class<?> type, String description) {
@@ -245,8 +239,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
         }
 
         public Builder returnType(Type type, String description) {
-            this.returnType = type;
-            return returnJavadoc(description);
+            return type(type).returnJavadoc(description);
         }
 
         public Builder addTokenDeclaration(Token token) {

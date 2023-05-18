@@ -1,7 +1,8 @@
-package io.helidon.builder.processor.tools.model.newModel;
+package io.helidon.builder.processor.tools.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 abstract class AnnotatableComponent extends CommonComponent {
 
@@ -27,6 +28,12 @@ abstract class AnnotatableComponent extends CommonComponent {
         private final List<Annotation> annotations = new ArrayList<>();
 
         Builder() {
+        }
+
+        public B addAnnotation(Consumer<Annotation.Builder> consumer) {
+            Annotation.Builder builder = Annotation.builder();
+            consumer.accept(builder);
+            return addAnnotation(builder.build());
         }
 
         public B addAnnotation(Annotation.Builder builder) {

@@ -18,14 +18,13 @@ public final class ExactType extends AbstractType {
         }
     }
 
-    public static final class Builder extends AbstractType.Builder<Builder> {
+    public static final class Builder extends AbstractType.Builder<Builder, ExactType> {
 
-        Builder(String type) {
-            super(type);
+        Builder() {
         }
 
         @Override
-        public Type build() {
+        public ExactType build() {
             commonBuildLogic();
             return new ExactType(this);
         }

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+
 public final class GenericType extends AbstractType {
 
     private final List<Type> typeParams;
@@ -63,7 +64,7 @@ public final class GenericType extends AbstractType {
         return Objects.hash(super.hashCode(), typeParams);
     }
 
-    public static final class Builder extends AbstractType.Builder<Builder> {
+    public static final class Builder extends AbstractType.Builder<Builder, GenericType> {
 
         private final List<Type> typeParams = new ArrayList<>();
 
@@ -72,7 +73,7 @@ public final class GenericType extends AbstractType {
         }
 
         @Override
-        public Type build() {
+        public GenericType build() {
             commonBuildLogic();
             return new GenericType(this);
         }

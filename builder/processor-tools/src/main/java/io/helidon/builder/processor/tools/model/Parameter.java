@@ -4,10 +4,12 @@ import java.io.IOException;
 import java.util.Objects;
 import java.util.Set;
 
+import io.helidon.common.types.TypeName;
+
 /**
  * TODO javadoc
  */
-public class Parameter extends AbstractAnnotatable {
+public class Parameter extends AnnotatableComponent {
 
     private final boolean optional;
     private final String description;
@@ -27,18 +29,13 @@ public class Parameter extends AbstractAnnotatable {
     }
 
     public static Parameter create(String name, Type type) {
-        return builder(name, type).build();
+        return builder().name(name)
+                .type(type)
+                .build();
     }
 
-    public static Builder builder(String name, String typeName) {
-        return new Builder(name, Type.exact(typeName));
-    }
-    public static Builder builder(String name, Class<?> type) {
-        return new Builder(name, Type.exact(type));
-    }
-
-    public static Builder builder(String name, Type type) {
-        return new Builder(name, type);
+    public static Builder builder() {
+        return new Builder();
     }
 
     @Override
@@ -80,16 +77,18 @@ public class Parameter extends AbstractAnnotatable {
         return description;
     }
 
-    public static class Builder extends AbstractAnnotatable.Builder<Parameter, Builder> {
+    public static class Builder extends AnnotatableComponent.Builder<Builder, Parameter> {
 
         private boolean optional = false;
         private String description = "";
 
-        private Builder(String name, Type type) {
-            super(name, type);
+        private Builder() {
         }
 
         public Parameter build() {
+            if (type() == null || name() == null) {
+                throw new ClassModelException("Annotation parameter must have name and type set");
+            }
             return new Parameter(this);
         }
 
@@ -102,6 +101,26 @@ public class Parameter extends AbstractAnnotatable {
         public Builder description(String description) {
             this.description = description;
             return this;
+        }
+
+        @Override
+        public Builder type(TypeName type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(String type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(Class<?> type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(Type type) {
+            return super.type(type);
         }
     }
 }

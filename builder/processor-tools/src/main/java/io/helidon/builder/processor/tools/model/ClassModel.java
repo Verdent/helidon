@@ -4,25 +4,28 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
+
 
 public class ClassModel extends AbstractClass {
 
+    public static final String PADDING_TOKEN = "<<padding>>";
     private final String packageName;
     private final String licenseHeader;
-    private final ImportOrganizer imports;
+    //This has to be set after this object is constructed, if we want to use common addImports method
+    private ImportOrganizer imports;
 
     private ClassModel(Builder builder) {
         super(builder);
         this.licenseHeader = builder.licenseHeader;
         this.packageName = builder.packageName;
-        this.imports = builder.imports.build();
     }
 
-    public static Builder builder(String packageName, String name) {
-        return new Builder(packageName, name);
+    public static ClassModel.Builder builder(String packageName, String name) {
+        return new Builder()
+                .packageName(packageName)
+                .name(name)
+                .importOrganizer(ImportOrganizer.builder(packageName, name));
     }
 
     public void saveToFile(Writer writer) throws IOException {
@@ -31,6 +34,11 @@ public class ClassModel extends AbstractClass {
 
     public void saveToFile(Writer writer, String padding) throws IOException {
         ModelWriter innerWriter = new ModelWriter(writer, padding);
+        writeComponent(innerWriter, Set.of(), imports);
+    }
+
+    @Override
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
         if (licenseHeader != null) {
             String[] lines = licenseHeader.split("\n");
             if (lines.length > 1) {
@@ -47,12 +55,11 @@ public class ClassModel extends AbstractClass {
             }
         }
         if (packageName != null && !packageName.isEmpty()) {
-            innerWriter.write("package " + packageName + ";\n\n");
+            writer.write("package " + packageName + ";\n\n");
         }
-        imports.writeImports(innerWriter);
-        imports.writeStaticImports(innerWriter);
-        writeComponent(innerWriter, Set.of(),imports);
-
+        imports.writeImports(writer);
+        imports.writeStaticImports(writer);
+        super.writeComponent(writer, declaredTokens, imports);
     }
 
     @Override
@@ -71,32 +78,24 @@ public class ClassModel extends AbstractClass {
         }
     }
 
-    public static class Builder extends AbstractClass.Builder<ClassModel, Builder> {
-        private final ImportOrganizer.Builder imports;
-        private final String packageName;
+    public static final class Builder extends AbstractClass.Builder<Builder, ClassModel> {
+
+        private String packageName;
         private String licenseHeader;
 
-        private Builder(String packageName, String name) {
-            super(name);
-            this.packageName = Objects.requireNonNull(packageName);
-            this.imports = ImportOrganizer.builder(packageName, name);
+        private Builder() {
         }
 
+        @Override
         public ClassModel build() {
-            commonBuildLogic();
-            fields().values().forEach(field -> field.addImports(imports));
-            staticFields().values().forEach(field -> field.addImports(imports));
-            methods().forEach(method -> method.addImports(imports));
-            staticMethod().forEach(method -> method.addImports(imports));
-            interfaces().forEach(imp -> imp.addImports(imports));
-            if (inheritance() != null) {
-                inheritance().addImports(imports);
+            if (name() == null) {
+                throw new ClassModelException("Class need to have name specified");
             }
-            annotations().forEach(annotation -> annotation.addImports(imports));
-            innerClasses().values().forEach(innerClass -> innerClass.addImports(imports));
-            constructors().forEach(constructor -> constructor.addImports(imports));
-            genericParameters().forEach(param -> param.addImports(imports));
-            return new ClassModel(this);
+            ClassModel classModel = new ClassModel(this);
+            ImportOrganizer.Builder importOrganizer = importOrganizer();
+            classModel.addImports(importOrganizer);
+            classModel.imports = importOrganizer.build();
+            return classModel;
         }
 
         @Override
@@ -107,38 +106,14 @@ public class ClassModel extends AbstractClass {
             return super.accessModifier(accessModifier);
         }
 
-        public Builder addImport(Class<?> typeImport) {
-            return addImport(typeImport.getName());
-        }
-
-        public Builder addImport(String importName) {
-            imports.addImport(Type.exact(importName));
-            return this;
-        }
-
-        public Builder addStaticImport(String staticImport) {
-            imports.addStaticImport(staticImport);
+        public Builder packageName(String packageName) {
+            this.packageName = packageName;
             return this;
         }
 
         public Builder licenseHeader(String licenseHeader) {
             this.licenseHeader = licenseHeader;
             return this;
-        }
-
-        public Builder innerClassBuilder(String className, Consumer<InnerClass.Builder> innerClassConsumer) {
-            InnerClass.Builder builder = InnerClass.builder(className, imports);
-            innerClassConsumer.accept(builder);
-            return addInnerClass(builder.build());
-        }
-
-        @Deprecated
-        public InnerClass.Builder innerClassBuilder(String className) {
-            return InnerClass.builder(className, imports);
-        }
-
-        ImportOrganizer.Builder imports() {
-            return imports;
         }
 
     }

@@ -2,9 +2,8 @@ package io.helidon.builder.processor.tools.model;
 
 import java.util.Objects;
 
-abstract class AbstractType extends Type{
+abstract class AbstractType extends Type {
 
-    private final boolean includeImport;
     private final boolean isInnerType;
     private final boolean isArray;
     private final String type;
@@ -12,21 +11,14 @@ abstract class AbstractType extends Type{
     private final String packageName;
     private final String simpleTypeName;
 
-    AbstractType(Builder<?> builder) {
-        this.includeImport = builder.includeImport;
+    AbstractType(Builder<?, ?> builder) {
+        super(builder);
         this.isInnerType = builder.isInnerType;
         this.type = builder.type;
         this.outerClass = builder.outerClass;
         this.packageName = builder.packageName;
         this.simpleTypeName = builder.simpleTypeName;
         this.isArray = builder.isArray;
-    }
-
-    @Override
-    void addImports(ImportOrganizer.Builder imports) {
-        if (includeImport) {
-            imports.addImport(this);
-        }
     }
 
     String typeName() {
@@ -57,10 +49,6 @@ abstract class AbstractType extends Type{
         return packageName;
     }
 
-    boolean includeImport() {
-        return includeImport;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -79,7 +67,14 @@ abstract class AbstractType extends Type{
         return Objects.hash(isArray, type);
     }
 
-    static abstract class Builder<B extends Builder<B>> {
+    @Override
+    void addImports(ImportOrganizer.Builder imports) {
+        if (includeImport()) {
+            imports.addImport(this);
+        }
+    }
+
+    static abstract class Builder<B extends Builder<B, T>, T extends AbstractType> extends ModelComponent.Builder<B, T> {
         private String type;
         private String simpleTypeName;
         private String outerClass;
@@ -89,8 +84,7 @@ abstract class AbstractType extends Type{
         private boolean isArray = false;
         private final B me;
 
-        Builder(String type) {
-            this.type = type;
+        Builder() {
             this.me = (B) this;
         }
 
@@ -117,12 +111,12 @@ abstract class AbstractType extends Type{
             }
         }
 
-        public abstract Type build();
-
-        public B includeImport(boolean includeImport) {
-            this.includeImport = includeImport;
+        public B type(String type) {
+            this.type = type;
             return me;
         }
+
+        public abstract T build();
 
     }
 

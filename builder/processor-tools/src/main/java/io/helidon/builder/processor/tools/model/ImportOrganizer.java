@@ -24,8 +24,8 @@ class ImportOrganizer {
         this.fullClassName = builder.typePackage + "." + builder.name;
     }
 
-    static Builder builder(String typePackage, String name) {
-        return new Builder(typePackage, name);
+    static Builder builder(String packageName, String name) {
+        return new Builder(packageName, name);
     }
 
     String typeName(Type type, boolean included) {
@@ -132,7 +132,7 @@ class ImportOrganizer {
         }
 
         public Builder addImport(Class<?> type) {
-            return addImport(type.getName());
+            return addImport(type.getTypeName());
         }
 
         public Builder addImport(String type) {

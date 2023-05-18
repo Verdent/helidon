@@ -3,29 +3,28 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
-/**
- * TODO javadoc
- */
-abstract class AbstractMethod extends AbstractAnnotatable {
+import static io.helidon.builder.processor.tools.model.ClassModel.PADDING_TOKEN;
+
+abstract class AbstractMethod extends AnnotatableComponent {
 
     private final String content;
-    private final Map<String, Parameter> parameters;
-    private final AccessModifier accessModifier;
+    private final List<Parameter> parameters;
 
     AbstractMethod(Builder<?, ?> builder) {
         super(builder);
         this.content = builder.contentBuilder.toString();
-        this.accessModifier = builder.accessModifier;
-        this.parameters = new LinkedHashMap<>(builder.parameters);
+        this.parameters = List.copyOf(builder.parameters.values());
     }
 
     @Override
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
-        parameters.values().forEach(parameter -> parameter.addImports(imports));
+        parameters.forEach(parameter -> parameter.addImports(imports));
     }
 
     void writeBody(ModelWriter writer) throws IOException {
@@ -42,7 +41,7 @@ abstract class AbstractMethod extends AbstractAnnotatable {
         }
     }
 
-    Map<String, Parameter> parameters() {
+    List<Parameter> parameters() {
         return parameters;
     }
 
@@ -50,25 +49,19 @@ abstract class AbstractMethod extends AbstractAnnotatable {
         return content;
     }
 
-    AccessModifier accessModifier() {
-        return accessModifier;
-    }
-
-    static abstract class Builder<T extends AbstractMethod, B extends Builder<T, B>>
-            extends AbstractAnnotatable.Builder<T, B> {
+    static abstract class Builder<B extends Builder<B, T>, T extends AbstractMethod>
+            extends AnnotatableComponent.Builder<B, T> {
 
         private final Map<String, Parameter> parameters = new LinkedHashMap<>();
         private final Set<String> exceptions = new LinkedHashSet<>();
         private final StringBuilder contentBuilder = new StringBuilder();
-        private AccessModifier accessModifier = AccessModifier.PUBLIC;
 
-        Builder(String name, Type returnType) {
-            super(name, returnType);
+        Builder() {
         }
 
+        @Override
         public B accessModifier(AccessModifier accessModifier) {
-            this.accessModifier = accessModifier;
-            return identity();
+            return super.accessModifier(accessModifier);
         }
 
         public B addLine(String line) {
@@ -81,7 +74,7 @@ abstract class AbstractMethod extends AbstractAnnotatable {
         }
 
         public B padding() {
-            this.contentBuilder.append(ModelWriter.PADDING_TOKEN);
+            this.contentBuilder.append(PADDING_TOKEN);
             return identity();
         }
 
@@ -89,6 +82,12 @@ abstract class AbstractMethod extends AbstractAnnotatable {
             this.contentBuilder.setLength(0);
             this.contentBuilder.append(content);
             return identity();
+        }
+
+        public B addParameter(Consumer<Parameter.Builder> consumer) {
+            Parameter.Builder builder = Parameter.builder();
+            consumer.accept(builder);
+            return addParameter(builder.build());
         }
 
         public B addParameter(Parameter parameter) {
@@ -123,6 +122,8 @@ abstract class AbstractMethod extends AbstractAnnotatable {
         public B generateJavadoc(boolean generateJavadoc) {
             return super.generateJavadoc(generateJavadoc);
         }
+
     }
 
 }
+

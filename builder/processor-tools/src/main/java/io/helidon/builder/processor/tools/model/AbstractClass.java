@@ -7,22 +7,16 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.util.stream.Collectors.groupingBy;
+public abstract class AbstractClass extends AnnotatableComponent {
 
-public class AbstractClass {
-
-    private final String name;
-    private final Type inheritance;
     private final boolean isFinal;
     private final boolean isAbstract;
     private final boolean isStatic;
-    private final AccessModifier accessModifier;
     private final List<Field> fields;
     private final List<Field> staticFields;
     private final List<Method> methods;
@@ -32,45 +26,41 @@ public class AbstractClass {
     private final List<Constructor> constructors;
     private final List<Token> genericParameters;
     private final List<InnerClass> innerClasses;
-    private final List<Annotation> annotations;
-    private final Javadoc javadoc;
 
     AbstractClass(Builder<?, ?> builder) {
-        this.name = builder.name;
+        super(builder);
         this.isFinal = builder.isFinal;
         this.isAbstract = builder.isAbstract;
         this.isStatic = builder.isStatic;
-        this.accessModifier = builder.accessModifier;
         this.fields = builder.fields.values().stream().sorted().toList();
         this.staticFields = builder.staticFields.values().stream().sorted().toList();
         this.methods = builder.methods.stream().sorted().toList();
         this.staticMethods = builder.staticMethods.stream().sorted().toList();
-        this.inheritance = builder.inheritance;
         this.constructors = List.copyOf(builder.constructors);
         this.interfaces = Set.copyOf(builder.interfaces);
         this.innerClasses = List.copyOf(builder.innerClasses.values());
-        this.annotations = List.copyOf(builder.annotations);
         this.genericParameters = List.copyOf(builder.genericParameters);
         this.tokenNames = this.genericParameters.stream()
                 .map(Token::token)
                 .collect(Collectors.toSet());
-        this.javadoc = builder.javadocBuilder.build();
     }
 
-    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+    @Override
+    void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws
+            IOException {
         Set<String> combinedTokens = Stream.concat(declaredTokens.stream(), this.tokenNames.stream()).collect(Collectors.toSet());
-        if (javadoc.shouldGenerate(accessModifier)) {
-            javadoc.writeComponent(writer, combinedTokens, imports);
+        if (javadoc().generate()) {
+            javadoc().writeComponent(writer, combinedTokens, imports);
             writer.write("\n");
         }
-        if (!annotations.isEmpty()) {
-            for (Annotation annotation : annotations) {
+        if (!annotations().isEmpty()) {
+            for (Annotation annotation : annotations()) {
                 annotation.writeComponent(writer, combinedTokens, imports);
                 writer.write("\n");
             }
         }
-        if (AccessModifier.PACKAGE_PRIVATE != accessModifier) {
-            writer.write(accessModifier.modifierName() + " ");
+        if (AccessModifier.PACKAGE_PRIVATE != accessModifier()) {
+            writer.write(accessModifier().modifierName() + " ");
         }
         if (isStatic) {
             writer.write("static ");
@@ -84,14 +74,14 @@ public class AbstractClass {
             }
             writer.write("abstract ");
         }
-        writer.write("class " + name);
+        writer.write("class " + name());
         if (!genericParameters.isEmpty()) {
             writeGenericParameters(writer, combinedTokens, imports);
         }
         writer.write(" ");
-        if (inheritance != null) {
+        if (type() != null) {
             writer.write("extends ");
-            inheritance.writeComponent(writer, combinedTokens, imports);
+            type().writeComponent(writer, combinedTokens, imports);
             writer.write(" ");
         }
         if (!interfaces.isEmpty()) {
@@ -120,7 +110,8 @@ public class AbstractClass {
         writer.write("}");
     }
 
-    private void writeGenericParameters(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+    private void writeGenericParameters(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports)
+            throws IOException {
         writer.write("<");
         boolean first = true;
         for (Type parameter : genericParameters) {
@@ -134,7 +125,8 @@ public class AbstractClass {
         writer.write(">");
     }
 
-    private void writeClassInterfaces(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+    private void writeClassInterfaces(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports)
+            throws IOException {
         writer.write("implements ");
         boolean first = true;
         for (Type interfaceName : interfaces) {
@@ -160,7 +152,10 @@ public class AbstractClass {
         writer.decreasePaddingLevel();
         writer.write("\n");
     }
-    private void writerClassConstructors(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+
+    private void writerClassConstructors(ModelWriter writer,
+                                         Set<String> declaredTokens,
+                                         ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Constructor constructor : constructors) {
             writer.write("\n");
@@ -170,7 +165,10 @@ public class AbstractClass {
         writer.decreasePaddingLevel();
     }
 
-    private void writerClassMethods(List<Method> methods, ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
+    private void writerClassMethods(List<Method> methods,
+                                    ModelWriter writer,
+                                    Set<String> declaredTokens,
+                                    ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         for (Method method : methods) {
             writer.write("\n");
@@ -190,42 +188,20 @@ public class AbstractClass {
         writer.decreasePaddingLevel();
     }
 
-    Type inheritance() {
-        return inheritance;
+    @Override
+    void addImports(ImportOrganizer.Builder imports) {
+        super.addImports(imports);
+        fields.forEach(field -> field.addImports(imports));
+        staticFields.forEach(field -> field.addImports(imports));
+        methods.forEach(method -> method.addImports(imports));
+        staticMethods.forEach(method -> method.addImports(imports));
+        interfaces.forEach(imp -> imp.addImports(imports));
+        constructors.forEach(constructor -> constructor.addImports(imports));
+        genericParameters.forEach(param -> param.addImports(imports));
     }
 
-    List<Field> fields() {
-        return fields;
-    }
-
-    List<Field> staticFields() {
-        return staticFields;
-    }
-
-    List<Method> methods() {
-        return methods;
-    }
-    List<Method> staticMethods() {
-        return staticMethods;
-    }
-
-    Set<Type> interfaces() {
-        return interfaces;
-    }
-
-    List<Annotation> annotations() {
-        return annotations;
-    }
-
-    List<Constructor> constructors() {
-        return constructors;
-    }
-
-    List<Token> genericParameters() {
-        return genericParameters;
-    }
-
-    public static abstract class Builder<T extends AbstractClass, B extends Builder<T, B>> {
+    public static abstract class Builder<B extends Builder<B, T>, T extends AbstractClass>
+            extends AnnotatableComponent.Builder<B, T> {
 
         private final Set<Method> methods = new HashSet<>();
         private final Set<Method> staticMethods = new HashSet<>();
@@ -236,54 +212,27 @@ public class AbstractClass {
         private final List<Constructor> constructors = new ArrayList<>();
         private final List<Token> genericParameters = new ArrayList<>();
         private final Set<Type> interfaces = new HashSet<>();
-        private final Javadoc.Builder javadocBuilder = Javadoc.builder();
-        private final String name;
-        private Type inheritance;
-        private boolean isFinal = false;
-        private boolean isAbstract = false;
-        private boolean isStatic = false;
-        private AccessModifier accessModifier = AccessModifier.PUBLIC;
-        private final B me;
+        private ImportOrganizer.Builder importOrganizer;
+        private boolean isFinal;
+        private boolean isAbstract;
+        private boolean isStatic;
 
-        Builder(String name) {
-            this.name = Objects.requireNonNull(name);
-            this.me = (B) this;
+        Builder() {
         }
 
-        public abstract T build();
-
-        void commonBuildLogic() {
-        }
-
-        public B description(String description) {
-            this.javadocBuilder.add(description);
-            this.javadocBuilder.generate(true);
-            return me;
-        }
-
-        public B addAuthor(String author) {
-            this.javadocBuilder.addAuthor(author);
-            return me;
+        @Override
+        public B accessModifier(AccessModifier accessModifier) {
+            return super.accessModifier(accessModifier);
         }
 
         public B isFinal(boolean isFinal) {
             this.isFinal = isFinal;
-            return me;
+            return identity();
         }
 
         public B isAbstract(boolean isAbstract) {
             this.isAbstract = isAbstract;
-            return me;
-        }
-
-        B isStatic(boolean isStatic) {
-            this.isStatic = isStatic;
-            return me;
-        }
-
-        public B accessModifier(AccessModifier accessModifier) {
-            this.accessModifier = accessModifier;
-            return me;
+            return identity();
         }
 
         public B inheritance(Class<?> inheritance) {
@@ -295,8 +244,13 @@ public class AbstractClass {
         }
 
         public B inheritance(Type inheritance) {
-            this.inheritance = inheritance;
-            return me;
+            return super.type(inheritance);
+        }
+
+        public B addField(Consumer<Field.Builder> consumer) {
+            Field.Builder builder = Field.builder();
+            consumer.accept(builder);
+            return addField(builder.build());
         }
 
         public B addField(Field.Builder builder) {
@@ -312,7 +266,13 @@ public class AbstractClass {
                 staticFields.remove(fieldName);
                 fields.put(fieldName, field);
             }
-            return me;
+            return identity();
+        }
+
+        public B addMethod(Consumer<Method.Builder> consumer) {
+            Method.Builder methodBuilder = Method.builder();
+            consumer.accept(methodBuilder);
+            return addMethod(methodBuilder);
         }
 
         public B addMethod(Method.Builder builder) {
@@ -327,7 +287,7 @@ public class AbstractClass {
             } else {
                 methods.add(method);
             }
-            return me;
+            return identity();
         }
 
         public B addInterface(Class<?> interfaceType) {
@@ -344,80 +304,62 @@ public class AbstractClass {
 
         public B addInterface(Type interfaceType) {
             interfaces.add(interfaceType);
-            return me;
+            return identity();
         }
 
-        public B addInnerClass(InnerClass innerClass) {
-            this.innerClasses.put(name, innerClass);
-            return me;
-        }
-
-        public B addAnnotation(Annotation.Builder builder) {
-            return addAnnotation(builder.build());
-        }
-
-        public B addAnnotation(Annotation annotation) {
-            annotations.add(annotation);
-            return me;
+        public B addInnerClass(Consumer<InnerClass.Builder> supplier) {
+            InnerClass.Builder innerClassBuilder = InnerClass.builder()
+                    .importOrganizer(importOrganizer);
+            supplier.accept(innerClassBuilder);
+            InnerClass innerClass = innerClassBuilder.build();
+            this.innerClasses.put(innerClass.name(), innerClass);
+            return identity();
         }
 
         public B addConstructor(Consumer<Constructor.Builder> supplier) {
-            Constructor.Builder constructorBuilder = Constructor.builder(name);
+            Constructor.Builder constructorBuilder = Constructor.builder();
             supplier.accept(constructorBuilder);
             constructors.add(constructorBuilder.build());
-            return me;
+            return identity();
         }
 
         public B addGenericParameter(Token token) {
             this.genericParameters.add(token);
-            javadocBuilder.addGenericsToken(token.token(), token.description());
-            return me;
+            return addGenericToken(token.token(), token.description());
         }
 
         public B addImport(Class<?> typeImport) {
-            return addImport(typeImport.getName());
+            importOrganizer.addImport(typeImport);
+            return identity();
         }
 
-        public abstract B addImport(String importName);
-
-        Set<Method> methods() {
-            return methods;
+        public B addImport(String importName) {
+            importOrganizer.addImport(importName);
+            return identity();
         }
 
-        Set<Method> staticMethod() {
-            return staticMethods;
+        public B addImport(Type type) {
+            importOrganizer.addImport(type);
+            return identity();
         }
 
-        Map<String, Field> fields() {
-            return fields;
+        public B addStaticImport(String staticImport) {
+            importOrganizer.addStaticImport(staticImport);
+            return identity();
         }
 
-        Map<String, Field> staticFields() {
-            return staticFields;
+        B importOrganizer(ImportOrganizer.Builder importOrganizer) {
+            this.importOrganizer = importOrganizer;
+            return identity();
         }
 
-        Set<Type> interfaces() {
-            return interfaces;
+        B isStatic(boolean isStatic) {
+            this.isStatic = isStatic;
+            return identity();
         }
 
-        List<Annotation> annotations() {
-            return annotations;
-        }
-
-        List<Constructor> constructors() {
-            return constructors;
-        }
-
-        Type inheritance() {
-            return inheritance;
-        }
-
-        Map<String, InnerClass> innerClasses() {
-            return innerClasses;
-        }
-
-        List<Token> genericParameters() {
-            return genericParameters;
+        ImportOrganizer.Builder importOrganizer() {
+            return importOrganizer;
         }
     }
 }

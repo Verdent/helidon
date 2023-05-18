@@ -3,23 +3,23 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.Set;
 
-public class Constructor extends AbstractMethod {
+public final class Constructor extends AbstractMethod {
 
     private Constructor(Builder builder) {
         super(builder);
     }
 
-    static Builder builder(String type) {
-        return new Builder(Type.exact(type));
+    static Builder builder() {
+        return new Builder();
     }
 
     static Constructor create(String type) {
-        return builder(type).build();
+        return builder().type(type).build();
     }
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        if (javadoc().shouldGenerate(accessModifier())) {
+        if (javadoc().generate()) {
             javadoc().writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
@@ -33,7 +33,7 @@ public class Constructor extends AbstractMethod {
         String typeName = type().simpleTypeName();
         writer.write(typeName + "(");
         boolean first = true;
-        for (Parameter parameter : parameters().values()) {
+        for (Parameter parameter : parameters()) {
             if (first) {
                 first = false;
             } else {
@@ -50,15 +50,15 @@ public class Constructor extends AbstractMethod {
         writer.write("}");
     }
 
-    public static class Builder extends AbstractMethod.Builder<Constructor, Builder> {
+    public static final class Builder extends AbstractMethod.Builder<Builder, Constructor> {
 
-        Builder(Type type) {
-            super(null, type);
+        private Builder() {
         }
 
         @Override
         public Constructor build() {
             return new Constructor(this);
         }
+
     }
 }

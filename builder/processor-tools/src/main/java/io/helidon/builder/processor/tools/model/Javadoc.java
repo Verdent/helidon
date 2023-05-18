@@ -6,7 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-class Javadoc {
+class Javadoc extends ModelComponent {
 
     private final String content;
     private final Set<String> authors;
@@ -18,6 +18,7 @@ class Javadoc {
     private final Boolean generate;
 
     private Javadoc(Builder builder) {
+        super(builder);
         this.content = builder.contentBuilder.toString();
         this.authors = new LinkedHashSet<>(builder.authors);
         this.parameters = new LinkedHashMap<>(builder.parameters);
@@ -66,14 +67,15 @@ class Javadoc {
         writer.write(" */");
     }
 
-    boolean shouldGenerate(AccessModifier accessModifier) {
-        if (generate != null) {
-            return generate;
-        }
-        return switch (accessModifier) {
-            case PUBLIC, PROTECTED -> true;
-            default -> false;
-        };
+    boolean generate() {
+//        if (generate != null) {
+//            return generate;
+//        }
+//        return switch (accessModifier) {
+//            case PUBLIC, PROTECTED -> true;
+//            default -> false;
+//        };
+        return generate;
     }
 
     private boolean hasAnyOtherParts() {
@@ -85,7 +87,7 @@ class Javadoc {
                 || deprecation != null;
     }
 
-    public static final class Builder {
+    public static final class Builder extends ModelComponent.Builder<Builder, Javadoc> {
 
         private final StringBuilder contentBuilder = new StringBuilder();
         private final Set<String> authors = new LinkedHashSet<>();
@@ -99,50 +101,51 @@ class Javadoc {
         private Builder() {
         }
 
+        @Override
         public Javadoc build() {
             return new Javadoc(this);
         }
 
-        public Builder addLine(String line) {
+        Builder addLine(String line) {
             this.contentBuilder.append(line).append("\n");
             return this;
         }
 
-        public Builder add(String line) {
+        Builder add(String line) {
             this.contentBuilder.append(line);
             return this;
         }
 
-        public Builder addAuthor(String author) {
+        Builder addAuthor(String author) {
             this.authors.add(author);
             return this;
         }
 
-        public Builder addParameter(String paramName, String description) {
+        Builder addParameter(String paramName, String description) {
             this.parameters.put(paramName, description);
             return this;
         }
 
-        public Builder addThrows(String exception, String description) {
+        Builder addThrows(String exception, String description) {
             this.throwsDesc.put(exception, description);
             return this;
         }
-        public Builder addThrows(Class<?> exception, String description) {
+        Builder addThrows(Class<?> exception, String description) {
             this.throwsDesc.put(exception.getSimpleName(), description);
             return this;
         }
 
-        public Builder returnDescription(String returnDescription) {
+        Builder returnDescription(String returnDescription) {
             this.returnDescription = returnDescription;
             return this;
         }
 
-        public Builder addGenericsToken(String token, String deprecation) {
+        Builder addGenericsToken(String token, String deprecation) {
             this.genericsTokens.put(token, deprecation);
             return this;
         }
 
-        public Builder deprecation(String deprecation) {
+        Builder deprecation(String deprecation) {
             this.deprecation = deprecation;
             return this;
         }

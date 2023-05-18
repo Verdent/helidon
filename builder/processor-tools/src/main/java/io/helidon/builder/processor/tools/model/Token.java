@@ -11,6 +11,7 @@ public final class Token extends Type {
     private final String description;
 
     private Token(Builder builder) {
+        super(builder);
         this.token = builder.token;
         this.bound = builder.bound;
         this.description = builder.description;
@@ -98,7 +99,7 @@ public final class Token extends Type {
         return Objects.hash(token, bound);
     }
 
-    public static class Builder {
+    public static class Builder extends ModelComponent.Builder<Builder, Token> {
 
         private final String token;
         private Type bound;
@@ -126,6 +127,7 @@ public final class Token extends Type {
             return this;
         }
 
+        @Override
         public Token build() {
             return new Token(this);
         }

@@ -3,50 +3,49 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.util.Set;
 
+import io.helidon.common.types.TypeName;
+
 /**
  * TODO javadoc
  */
-public class Field extends AbstractAnnotatable implements Comparable<Field> {
+public class Field extends AnnotatableComponent implements Comparable<Field> {
 
     private final String defaultValue;
     private final boolean isFinal;
     private final boolean isStatic;
-    private final AccessModifier accessModifier;
 
     public Field(Builder builder) {
         super(builder);
         this.defaultValue = builder.defaultValue;
-        this.accessModifier = builder.accessModifier;
         this.isFinal = builder.isFinal;
         this.isStatic = builder.isStatic;
     }
 
-    public static Builder builder(String name, Class<?> type) {
-        return new Builder(name, Type.exact(type));
-    }
-    public static Builder builder(String name, String type) {
-        return new Builder(name, Type.exact(type));
-    }
-
-    public static Builder builder(String name, Type type) {
-        return new Builder(name, type);
+    public static Builder builder() {
+        return new Builder().accessModifier(AccessModifier.PRIVATE);
     }
 
     public static Field create(String name, Class<?> type) {
-        return builder(name, type).build();
+        return builder().name(name)
+                .type(type)
+                .build();
     }
 
     public static Field create(String name, String typeName) {
-        return builder(name, typeName).build();
+        return builder().name(name)
+                .type(typeName)
+                .build();
     }
 
     public static Field create(String name, Type type) {
-        return builder(name, type).build();
+        return builder().name(name)
+                .type(type)
+                .build();
     }
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        if (javadoc().shouldGenerate(accessModifier)) {
+        if (javadoc().generate()) {
             javadoc().writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
@@ -54,8 +53,8 @@ public class Field extends AbstractAnnotatable implements Comparable<Field> {
             annotation.writeComponent(writer, declaredTokens, imports);
             writer.write("\n");
         }
-        if (AccessModifier.PACKAGE_PRIVATE != accessModifier) {
-            writer.write(accessModifier.modifierName());
+        if (AccessModifier.PACKAGE_PRIVATE != accessModifier()) {
+            writer.write(accessModifier().modifierName());
             writer.write(" ");
         }
         if (isStatic) {
@@ -86,7 +85,7 @@ public class Field extends AbstractAnnotatable implements Comparable<Field> {
 
     @Override
     public int compareTo(Field other) {
-        if (accessModifier == other.accessModifier) {
+        if (accessModifier() == other.accessModifier()) {
             if (isFinal == other.isFinal) {
                 if (type().simpleTypeName().equals(other.type().simpleTypeName())) {
                     return name().compareTo(other.name());
@@ -96,36 +95,29 @@ public class Field extends AbstractAnnotatable implements Comparable<Field> {
             //final fields should be before non-final
             return Boolean.compare(other.isFinal, isFinal);
         } else {
-            return accessModifier.compareTo(other.accessModifier);
+            return accessModifier().compareTo(other.accessModifier());
         }
     }
 
     @Override
     public String toString() {
         if (defaultValue != null) {
-            return accessModifier.modifierName() + " " + type().typeName() + " " + name() + " = " + defaultValue;
+            return accessModifier().modifierName() + " " + type().typeName() + " " + name() + " = " + defaultValue;
         }
-        return accessModifier.modifierName() + " " + type().typeName() + " " + name();
+        return accessModifier().modifierName() + " " + type().typeName() + " " + name();
     }
 
-    public static class Builder extends AbstractAnnotatable.Builder<Field, Builder> {
+    public static class Builder extends AnnotatableComponent.Builder<Builder, Field> {
 
         private String defaultValue;
         private boolean isFinal = false;
         private boolean isStatic = false;
-        private AccessModifier accessModifier = AccessModifier.PRIVATE;
 
-        private Builder(String name, Type type) {
-            super(name, type);
+        private Builder() {
         }
 
         public Field build() {
             return new Field(this);
-        }
-
-        public Builder accessModifier(AccessModifier accessModifier) {
-            this.accessModifier = accessModifier;
-            return this;
         }
 
         public Builder defaultValue(String defaultValue) {
@@ -150,5 +142,29 @@ public class Field extends AbstractAnnotatable implements Comparable<Field> {
             return this;
         }
 
+        @Override
+        public Builder type(TypeName type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(String type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(Class<?> type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder type(Type type) {
+            return super.type(type);
+        }
+
+        @Override
+        public Builder accessModifier(AccessModifier accessModifier) {
+            return super.accessModifier(accessModifier);
+        }
     }
 }

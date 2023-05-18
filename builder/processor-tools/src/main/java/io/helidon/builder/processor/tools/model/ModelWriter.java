@@ -3,9 +3,9 @@ package io.helidon.builder.processor.tools.model;
 import java.io.IOException;
 import java.io.Writer;
 
-class ModelWriter extends Writer {
+import static io.helidon.builder.processor.tools.model.ClassModel.PADDING_TOKEN;
 
-    static final String PADDING_TOKEN = "<<padding>>";
+class ModelWriter extends Writer {
 
     private final Writer delegate;
     private final String padding;
@@ -35,7 +35,6 @@ class ModelWriter extends Writer {
             firstWrite = false;
         }
         String padded = str.replaceAll("\n", "\n" + currentPadding);
-        padded = padded.replaceAll("\t", ""); //TODO remove
         padded = padded.replaceAll(PADDING_TOKEN, padding);
         delegate.write(padded);
     }

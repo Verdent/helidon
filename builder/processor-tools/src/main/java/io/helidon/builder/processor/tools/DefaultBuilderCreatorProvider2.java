@@ -41,20 +41,20 @@ import io.helidon.builder.Builder;
 import io.helidon.builder.BuilderInterceptor;
 import io.helidon.builder.RequiredAttributeVisitor;
 import io.helidon.builder.Singular;
+import io.helidon.builder.model.AbstractClass;
+import io.helidon.builder.model.AccessModifier;
+import io.helidon.builder.model.ClassModel;
+import io.helidon.builder.model.Constructor;
+import io.helidon.builder.model.Field;
+import io.helidon.builder.model.GenericType;
+import io.helidon.builder.model.InnerClass;
+import io.helidon.builder.model.Method;
+import io.helidon.builder.model.Parameter;
+import io.helidon.builder.model.Token;
+import io.helidon.builder.model.Type;
 import io.helidon.builder.processor.spi.BuilderCreatorProvider;
 import io.helidon.builder.processor.spi.DefaultTypeAndBody;
 import io.helidon.builder.processor.spi.TypeAndBody;
-import io.helidon.builder.processor.tools.model.AbstractClass;
-import io.helidon.builder.processor.tools.model.AccessModifier;
-import io.helidon.builder.processor.tools.model.ClassModel;
-import io.helidon.builder.processor.tools.model.Constructor;
-import io.helidon.builder.processor.tools.model.Field;
-import io.helidon.builder.processor.tools.model.GenericType;
-import io.helidon.builder.processor.tools.model.InnerClass;
-import io.helidon.builder.processor.tools.model.Method;
-import io.helidon.builder.processor.tools.model.Parameter;
-import io.helidon.builder.processor.tools.model.Token;
-import io.helidon.builder.processor.tools.model.Type;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.common.types.AnnotationAndValue;
@@ -263,7 +263,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 if (isObject) {
                     return Type.token("?");
                 } else {
-                    return Type.tokenBuilder("?")
+                    return Type.tokenBuilder()
+                            .token("?")
                             .bound(toType(TypeNameDefault.create(typeName.packageName(), typeName.className()), false))
                             .build();
                 }
@@ -273,14 +274,17 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         GenericType.Builder typeBuilder;
         if (asTopContainer) {
             if (typeName.isList() || typeName.isSet()) {
-                typeBuilder = Type.generic(Collection.class);
+                typeBuilder = Type.generic()
+                        .type(Collection.class);
             } else if (typeName.isMap()) {
-                typeBuilder = Type.generic(Map.class);
+                typeBuilder = Type.generic()
+                        .type(Map.class);
             } else {
                 throw new IllegalStateException("Unsupported type: " + typeName.declaredName());
             }
         } else {
-            typeBuilder = Type.generic(typeName.declaredName());
+            typeBuilder = Type.generic()
+                    .type(typeName.declaredName());
         }
         typeName.typeArguments().stream()
                 .map(type -> toType(type, false))
@@ -364,9 +368,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     protected void appendMetaAttributes(ClassModel.Builder builder, BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
             builder.addImport(LinkedHashMap.class);
-            Type calcReturnType = Type.generic(Map.class)
+            Type calcReturnType = Type.generic()
+                    .type(Map.class)
                     .addParam(String.class)
-                    .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
+                    .addParam(Type.generic()
+                                      .type(Map.class)
+                                      .addParam(String.class)
+                                      .addParam(Object.class).build())
                     .build();
             Method.Builder methodBuilder = Method.builder()
                     .name("__calcMeta")
@@ -384,9 +392,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 appendCustomMapOf(builder);
             }
 
-            Type returnType = Type.generic(Map.class)
+            Type returnType = Type.generic()
+                    .type(Map.class)
                     .addParam(String.class)
-                    .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
+                    .addParam(Type.generic()
+                                      .type(Map.class)
+                                      .addParam(String.class)
+                                      .addParam(Object.class)
+                                      .build())
                     .build();
             builder.addMethod(metaAttBuilder -> metaAttBuilder.name("__metaAttributes")
                     .isStatic(true)
@@ -460,7 +473,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 builder.addInterface(ctx.typeInfo().typeName().declaredName());
             }
             if (!ctx.hasParent() && ctx.hasStreamSupportOnImpl()) {
-                builder.addInterface(Type.generic(Supplier.class)
+                builder.addInterface(Type.generic()
+                                             .type(Supplier.class)
                                              .addParam(ctx.genericBuilderAcceptAliasDecl())
                                              .build());
             }
@@ -649,7 +663,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             return;
         }
         builder.addImport(AttributeVisitor.class);
-        Token tokenT = Type.tokenBuilder("T")
+        Token tokenT = Type.tokenBuilder()
+                .token("T")
                 .description("type of the user defined context")
                 .build();
         Method.Builder methodBuilder = Method.builder()
@@ -658,7 +673,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                      + "calling the {@link AttributeVisitor} for each.")
                 .addTokenDeclaration(tokenT)
                 .addParameter(paramBuilder -> paramBuilder.name("visitor")
-                        .type(Type.generic(AttributeVisitor.class)
+                        .type(Type.generic()
+                                      .type(AttributeVisitor.class)
                                       .addParam(tokenT)
                                       .build())
                         .description("the visitor called for each attribute"))
@@ -732,9 +748,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     protected void appendExtraFields(ClassModel.Builder builder, BodyContext ctx) {
         if (!ctx.doingConcreteType() && ctx.includeMetaAttributes()) {
             builder.addImport(Collections.class);
-            Type fieldType = Type.generic(Map.class)
+            Type fieldType = Type.generic()
+                    .type(Map.class)
                     .addParam(String.class)
-                    .addParam(Type.generic(Map.class).addParam(String.class).addParam(Object.class).build())
+                    .addParam(Type.generic()
+                                      .type(Map.class)
+                                      .addParam(String.class)
+                                      .addParam(Object.class)
+                                      .build())
                     .build();
             builder.addField(fieldBuilder -> fieldBuilder.name(TAG_META_PROPS)
                     .type(fieldType)
@@ -1418,20 +1439,24 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
         if (ctx.doingConcreteType()) {
             TypeName parentType = toAbstractImplTypeName(ctx.typeInfo().typeName(), ctx.builderTriggerAnnotation());
-            Type extendsType = Type.generic(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
+            Type extendsType = Type.generic()
+                    .type(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
                     .addParam(ctx.genericBuilderClassDecl())
                     .addParam(ctx.ctorBuilderAcceptTypeName().declaredName())
                     .build();
             builder.inheritance(extendsType);
         } else {
-            builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAliasDecl())
-                                                .bound(Type.generic(ctx.genericBuilderClassDecl())
+            builder.addGenericParameter(Type.tokenBuilder()
+                                                .token(ctx.genericBuilderAliasDecl())
+                                                .bound(Type.generic()
+                                                               .type(ctx.genericBuilderClassDecl())
                                                                .addParam(builderToken)
                                                                .addParam(builtTypeToken)
                                                                .build())
                                                 .description("Type of the builder")
                                                 .build());
-            builder.addGenericParameter(Type.tokenBuilder(ctx.genericBuilderAcceptAliasDecl())
+            builder.addGenericParameter(Type.tokenBuilder()
+                                                .token(ctx.genericBuilderAcceptAliasDecl())
                                                 .bound(Type.exact(ctx.ctorBuilderAcceptTypeName().declaredName()))
                                                 .description("Type of the built instance")
                                                 .build());
@@ -1439,7 +1464,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             if (ctx.hasParent()) {
                 TypeName parentType = toAbstractImplTypeName(ctx.parentTypeName().orElseThrow(),
                                                              ctx.builderTriggerAnnotation());
-                Type extendsType = Type.generic(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
+                Type extendsType = Type.generic()
+                        .type(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
                         .addParam(builderToken)
                         .addParam(builtTypeToken)
                         .build();
@@ -1457,13 +1483,15 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             }
             if (!ctx.hasParent()) {
                 if (ctx.hasStreamSupportOnBuilder() && !ctx.requireLibraryDependencies()) {
-                    builder.addInterface(Type.generic(Supplier.class)
+                    builder.addInterface(Type.generic()
+                                                 .type(Supplier.class)
                                                  .addParam(Type.token(ctx.genericBuilderAcceptAliasDecl()))
                                                  .build());
                 }
 
                 if (ctx.requireLibraryDependencies()) {
-                    builder.addInterface(Type.generic(io.helidon.common.Builder.class)
+                    builder.addInterface(Type.generic()
+                                                 .type(io.helidon.common.Builder.class)
                                                  .addParam(builderToken)
                                                  .addParam(builtTypeToken)
                                                  .build());
@@ -1542,7 +1570,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                             .description("Update the builder in a fluent API way.")
                             .returnType(Type.token(ctx.genericBuilderAliasDecl()), "updated builder instance")
                             .addParameter(param -> param.name("consumer")
-                                    .type(Type.generic(Consumer.class)
+                                    .type(Type.generic()
+                                                  .type(Consumer.class)
                                                   .addParam(Type.token(acceptAliasDecl))
                                                   .build())
                                     .description("consumer of the builder instance"))
@@ -1673,8 +1702,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         }
 
         if (ctx.parentAnnotationTypeName().isPresent()) {
-            Type returnType = Type.generic(Class.class)
-                    .addParam(Type.tokenBuilder("?")
+            Type returnType = Type.generic()
+                    .type(Class.class)
+                    .addParam(Type.tokenBuilder()
+                                      .token("?")
                                       .bound(Annotation.class)
                                       .build())
                     .build();
@@ -1699,7 +1730,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                         .addLine("super(b);");
             } else {
                 constructorBuilder.addParameter(param -> param.name("b")
-                        .type(Type.generic(builderClass)
+                        .type(Type.generic()
+                                      .type(builderClass)
                                       .addParam(Type.token("?"))
                                       .addParam(Type.token("?"))
                                       .build())
@@ -1986,7 +2018,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
     private void appendCustomMapOf(ClassModel.Builder builder) {
         builder.addImport(LinkedHashMap.class);
-        Type type = Type.generic(Map.class)
+        Type type = Type.generic()
+                .type(Map.class)
                 .addParam(String.class)
                 .addParam(Object.class)
                 .build();

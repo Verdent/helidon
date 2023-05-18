@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -52,23 +52,8 @@ public final class Token extends Type {
     }
 
     @Override
-    boolean isInnerType() {
-        return false;
-    }
-
-    @Override
     boolean isArray() {
         return false;
-    }
-
-    @Override
-    String type() {
-        return token;
-    }
-
-    @Override
-    String outerClass() {
-        return null;
     }
 
     @Override
@@ -101,12 +86,16 @@ public final class Token extends Type {
 
     public static class Builder extends ModelComponent.Builder<Builder, Token> {
 
-        private final String token;
+        private String token;
         private Type bound;
         private String description = "";
 
-        Builder(String token) {
+        Builder() {
+        }
+
+        public Builder token(String token) {
             this.token = token;
+            return this;
         }
 
         public Builder bound(String bound) {
@@ -129,6 +118,9 @@ public final class Token extends Type {
 
         @Override
         public Token build() {
+            if (token == null) {
+                throw new ClassModelException("Token name needs to be specified.");
+            }
             return new Token(this);
         }
 

@@ -40,15 +40,15 @@ import io.helidon.builder.config.spi.GeneratedConfigBeanBuilder;
 import io.helidon.builder.config.spi.GeneratedConfigBeanBuilderBase;
 import io.helidon.builder.config.spi.MetaConfigBeanInfo;
 import io.helidon.builder.config.spi.ResolutionContext;
+import io.helidon.builder.model.AccessModifier;
+import io.helidon.builder.model.ClassModel;
+import io.helidon.builder.model.Field;
+import io.helidon.builder.model.InnerClass;
+import io.helidon.builder.model.Method;
+import io.helidon.builder.model.Parameter;
+import io.helidon.builder.model.Type;
 import io.helidon.builder.processor.tools.BodyContext;
 import io.helidon.builder.processor.tools.DefaultBuilderCreatorProvider2;
-import io.helidon.builder.processor.tools.model.AccessModifier;
-import io.helidon.builder.processor.tools.model.ClassModel;
-import io.helidon.builder.processor.tools.model.Field;
-import io.helidon.builder.processor.tools.model.InnerClass;
-import io.helidon.builder.processor.tools.model.Method;
-import io.helidon.builder.processor.tools.model.Parameter;
-import io.helidon.builder.processor.tools.model.Type;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.common.config.Config;
@@ -195,13 +195,13 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
             super.appendMetaAttributes(builder, ctx);
             return;
         }
-        builder.addMethod(Method.builder("__configBeanType")
+        builder.addMethod(method -> method.name("__configBeanType")
                                   .returnType(Type.generic(Class.class).addParam(Type.token("?")).build())
-                                  .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                                  .addAnnotation(annotation -> annotation.type(Override.class))
                                   .generateJavadoc(false)
                                   .addLine("return " + ctx.typeInfo().typeName().name() + ".class;"));
 
-        builder.addMethod(Method.builder("__thisConfigBeanType")
+        builder.addMethod(method -> method.name("__thisConfigBeanType")
                                   .returnType(Type.generic(Class.class).addParam(Type.token("?")).build(), "the config bean type")
                                   .description("Returns the {@code ConfigBean} type.")
                                   .isStatic(true)
@@ -231,11 +231,12 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
     protected void appendExtraFields(ClassModel.Builder builder, BodyContext ctx) {
         super.appendExtraFields(builder, ctx);
         if (!ctx.hasParent() && !ctx.doingConcreteType()) {
-            builder.addField(Field.builder("__INSTANCE_ID", AtomicInteger.class)
-                                     .accessModifier(AccessModifier.PRIVATE)
-                                     .isFinal(true)
-                                     .isStatic(true)
-                                     .defaultValue("new AtomicInteger();"));
+            builder.addField(field -> field.name("__INSTANCE_ID")
+                    .type(AtomicInteger.class)
+                    .accessModifier(AccessModifier.PRIVATE)
+                    .isFinal(true)
+                    .isStatic(true)
+                    .defaultValue("new AtomicInteger();"));
         }
     }
 
@@ -254,11 +255,14 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
     @Override
     protected void appendClassComponents(ClassModel.Builder builder, BodyContext ctx) {
         if (ctx.doingConcreteType()) {
-            Method toBuilderMethod = Method.builder("toBuilder")
+            Method toBuilderMethod = Method.builder()
+                    .name("toBuilder")
                     .isStatic(true)
                     .description("Creates a builder for this type, initialized with the Config value passed.")
                     .returnType(ctx.implTypeName() + "$Builder", "a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
-                    .addParameter(Parameter.builder("cfg", Config.class).description("the config to copy and initialize from"))
+                    .addParameter(parameter -> parameter.name("cfg")
+                            .type(Config.class)
+                            .description("the config to copy and initialize from"))
                     .addLine("Builder b = builder();")
                     .addLine("b.acceptConfig(cfg, true);")
                     .addLine("return b;")
@@ -279,15 +283,17 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
         }
 
         if (!ctx.doingConcreteType()) {
-            Method.Builder acceptAndResolveBuilder = Method.builder("__acceptAndResolve")
+            Method.Builder acceptAndResolveBuilder = Method.builder()
+                    .name("__acceptAndResolve")
                     .description("Accept the config, resolves it, optionally validates.");
             if (ctx.hasParent()) {
                 acceptAndResolveBuilder.generateJavadoc(false)
-                        .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class));
+                        .addAnnotation(annotation -> annotation.type(Override.class));
             }
             acceptAndResolveBuilder.accessModifier(AccessModifier.PROTECTED)
-                    .addParameter(Parameter.builder("ctx", ResolutionContext.class)
-                                          .description("the config resolution context"));
+                    .addParameter(parameter -> parameter.name("ctx")
+                            .type(ResolutionContext.class)
+                            .description("the config resolution context"));
             if (ctx.hasParent()) {
                 acceptAndResolveBuilder.addLine("super.__acceptAndResolve(ctx);");
             }
@@ -352,12 +358,13 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
             }
             builder.addMethod(acceptAndResolveBuilder);
 
-            Method.Builder configBeanTypeBuilder = Method.builder("__configBeanType")
+            Method.Builder configBeanTypeBuilder = Method.builder()
+                    .name("__configBeanType")
                     .returnType(Type.generic(Class.class)
                                         .addParam(Type.token("?"))
                                         .build())
                     .generateJavadoc(false)
-                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                    .addAnnotation(annotation -> annotation.type(Override.class))
                     .addLine("return " + ctx.typeInfo().typeName().name() + ".class;");
             builder.addMethod(configBeanTypeBuilder);
 
@@ -368,10 +375,11 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                                       .addParam(Type.token("?"))
                                       .build())
                     .build();
-            Method.Builder mappersBuilder = Method.builder("__mappers")
+            Method.Builder mappersBuilder = Method.builder()
+                    .name("__mappers")
                     .returnType(mappersType)
                     .generateJavadoc(false)
-                    .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                    .addAnnotation(annotation -> annotation.type(Override.class))
                     .add("Map<Class<?>, Function<Config, ?>> result = ");
 
             if (ctx.hasParent()) {
@@ -386,9 +394,10 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
     }
 
     private void acceptConfigMethod(InnerClass.Builder builder) {
-        Method acceptConfig = Method.builder("acceptConfig")
+        Method acceptConfig = Method.builder()
+                .name("acceptConfig")
                 .generateJavadoc(false)
-                .addAnnotation(io.helidon.builder.processor.tools.model.Annotation.create(Override.class))
+                .addAnnotation(annotation -> annotation.type(Override.class))
                 .addParameter(Parameter.create("cfg", Config.class))
                 .addParameter(Parameter.create("resolver", ConfigResolver.class))
                 .addParameter(Parameter.create("validator", Type.generic(ConfigBeanBuilderValidator.class)

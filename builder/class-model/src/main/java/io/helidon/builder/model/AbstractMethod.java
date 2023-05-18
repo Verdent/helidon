@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import static io.helidon.builder.processor.tools.model.ClassModel.PADDING_TOKEN;
+import static io.helidon.builder.model.ClassModel.PADDING_TOKEN;
 
 abstract class AbstractMethod extends AnnotatableComponent {
 

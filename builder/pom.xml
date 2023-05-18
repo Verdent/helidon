@@ -45,5 +45,6 @@
         <module>builder-config-processor</module>
         <module>testing</module>
         <module>tests</module>
+        <module>class-model</module>
     </modules>
 </project>

@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 public class InnerClass extends AbstractClass {
 

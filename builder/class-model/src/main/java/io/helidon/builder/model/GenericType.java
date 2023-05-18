@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import io.helidon.common.types.TypeName;
 
 public final class GenericType extends AbstractType {
 
@@ -68,18 +69,23 @@ public final class GenericType extends AbstractType {
 
         private final List<Type> typeParams = new ArrayList<>();
 
-        Builder(String type) {
-            super(type);
+        Builder() {
         }
 
         @Override
         public GenericType build() {
-            commonBuildLogic();
+            if (typeName() == null) {
+                throw new ClassModelException("Type value needs to be set");
+            }
             return new GenericType(this);
         }
 
         public Builder addParam(String typeName) {
             return addParam(Type.exact(typeName));
+        }
+
+        public Builder addParam(TypeName typeName) {
+            return addParam(Type.fromTypeName(typeName));
         }
 
         public Builder addParam(Class<?> type) {

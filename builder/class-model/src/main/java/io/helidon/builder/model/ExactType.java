@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.Set;
@@ -25,7 +25,9 @@ public final class ExactType extends AbstractType {
 
         @Override
         public ExactType build() {
-            commonBuildLogic();
+            if (typeName() == null) {
+                throw new ClassModelException("Type value needs to be set");
+            }
             return new ExactType(this);
         }
 

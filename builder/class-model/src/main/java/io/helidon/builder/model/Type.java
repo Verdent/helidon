@@ -1,4 +1,4 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.util.Collection;
 import java.util.Map;
@@ -24,24 +24,20 @@ public abstract class Type extends ModelComponent {
         return new ExactType.Builder().type(typeName).build();
     }
 
-    public static Token token(String token) {
-        return new Token.Builder(token).build();
-    }
-
-    public static Token.Builder tokenBuilder(String token) {
-        return new Token.Builder(token);
-    }
-
     public static ExactType.Builder exactBuilder() {
         return new ExactType.Builder();
     }
 
-    public static GenericType.Builder generic(Class<?> type) {
-        return generic(type.getTypeName());
+    public static Token token(String token) {
+        return new Token.Builder().token(token).build();
     }
 
-    public static GenericType.Builder generic(String typeName) {
-        return new GenericType.Builder(typeName);
+    public static Token.Builder tokenBuilder() {
+        return new Token.Builder();
+    }
+
+    public static GenericType.Builder generic() {
+        return new GenericType.Builder();
     }
 
     public static Type fromTypeName(TypeName typeName) {
@@ -86,10 +82,7 @@ public abstract class Type extends ModelComponent {
 
     abstract String typeName();
     abstract String simpleTypeName();
-    abstract boolean isInnerType();
     abstract boolean isArray();
-    abstract String type();
-    abstract String outerClass();
     abstract String packageName();
 
 

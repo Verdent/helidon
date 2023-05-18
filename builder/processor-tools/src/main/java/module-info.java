@@ -22,12 +22,12 @@ module io.helidon.builder.processor.tools {
     requires jdk.compiler;
     requires io.helidon.common.types;
     requires io.helidon.builder;
+    requires io.helidon.builder.model;
     requires io.helidon.builder.processor.spi;
     requires io.helidon.common;
     requires io.helidon.config.metadata;
 
     exports io.helidon.builder.processor.tools;
-    exports io.helidon.builder.processor.tools.model;
 
     provides io.helidon.builder.processor.spi.BuilderCreatorProvider
             with io.helidon.builder.processor.tools.DefaultBuilderCreatorProvider;

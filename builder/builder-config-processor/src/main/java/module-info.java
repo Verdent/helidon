@@ -29,6 +29,7 @@ module io.helidon.builder.config.processor {
     requires io.helidon.config.metadata;
     requires transitive io.helidon.builder.processor;
     requires transitive io.helidon.builder.processor.spi;
+    requires io.helidon.builder.model;
 
     exports io.helidon.builder.config.processor;
 

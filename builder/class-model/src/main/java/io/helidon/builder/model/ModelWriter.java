@@ -1,9 +1,9 @@
-package io.helidon.builder.processor.tools.model;
+package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.io.Writer;
 
-import static io.helidon.builder.processor.tools.model.ClassModel.PADDING_TOKEN;
+import static io.helidon.builder.model.ClassModel.PADDING_TOKEN;
 
 class ModelWriter extends Writer {
 

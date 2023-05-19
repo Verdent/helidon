@@ -55,24 +55,27 @@ public abstract class Type extends ModelComponent {
                 if (isObject) {
                     return Type.token("?");
                 } else {
-                    return Type.tokenBuilder("?")
+                    return Type.tokenBuilder()
+                            .token("?")
                             .bound(fromTypeName(TypeNameDefault.create(typeName.packageName(), typeName.className())))
                             .build();
                 }
             }
-            return Type.exact(typeName.declaredName());
+            return Type.exactBuilder()
+                    .type(typeName)
+                    .build();
         }
         GenericType.Builder typeBuilder;
         if (asTopContainer) {
             if (typeName.isList() || typeName.isSet()) {
-                typeBuilder = Type.generic(Collection.class);
+                typeBuilder = Type.generic().type(Collection.class);
             } else if (typeName.isMap()) {
-                typeBuilder = Type.generic(Map.class);
+                typeBuilder = Type.generic().type(Map.class);
             } else {
                 throw new IllegalStateException("Unsupported type: " + typeName.declaredName());
             }
         } else {
-            typeBuilder = Type.generic(typeName.declaredName());
+            typeBuilder = Type.generic().type(typeName);
         }
         typeName.typeArguments().stream()
                 .map(Type::fromTypeName)
@@ -81,9 +84,11 @@ public abstract class Type extends ModelComponent {
     }
 
     abstract String typeName();
+    abstract String packageName();
     abstract String simpleTypeName();
     abstract boolean isArray();
-    abstract String packageName();
+    abstract boolean innerClass();
+    abstract Optional<Type> declaringClass();
 
 
 }

@@ -212,7 +212,7 @@ public abstract class AbstractClass extends AnnotatableComponent {
         private final List<Constructor> constructors = new ArrayList<>();
         private final List<Token> genericParameters = new ArrayList<>();
         private final Set<Type> interfaces = new HashSet<>();
-        private ImportOrganizer.Builder importOrganizer;
+        private ImportOrganizer.Builder importOrganizer = ImportOrganizer.builder();
         private boolean isFinal;
         private boolean isAbstract;
         private boolean isStatic;
@@ -307,18 +307,18 @@ public abstract class AbstractClass extends AnnotatableComponent {
             return identity();
         }
 
-        public B addInnerClass(Consumer<InnerClass.Builder> supplier) {
+        public B addInnerClass(Consumer<InnerClass.Builder> consumer) {
             InnerClass.Builder innerClassBuilder = InnerClass.builder()
                     .importOrganizer(importOrganizer);
-            supplier.accept(innerClassBuilder);
+            consumer.accept(innerClassBuilder);
             InnerClass innerClass = innerClassBuilder.build();
             this.innerClasses.put(innerClass.name(), innerClass);
             return identity();
         }
 
-        public B addConstructor(Consumer<Constructor.Builder> supplier) {
+        public B addConstructor(Consumer<Constructor.Builder> consumer) {
             Constructor.Builder constructorBuilder = Constructor.builder();
-            supplier.accept(constructorBuilder);
+            consumer.accept(constructorBuilder);
             constructors.add(constructorBuilder.build());
             return identity();
         }

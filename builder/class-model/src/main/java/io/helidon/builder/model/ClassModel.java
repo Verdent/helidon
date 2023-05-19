@@ -21,11 +21,14 @@ public class ClassModel extends AbstractClass {
         this.packageName = builder.packageName;
     }
 
+    public static ClassModel.Builder builder() {
+        return new Builder();
+    }
+
     public static ClassModel.Builder builder(String packageName, String name) {
         return new Builder()
                 .packageName(packageName)
-                .name(name)
-                .importOrganizer(ImportOrganizer.builder(packageName, name));
+                .name(name);
     }
 
     public void saveToFile(Writer writer) throws IOException {
@@ -88,8 +91,8 @@ public class ClassModel extends AbstractClass {
 
         @Override
         public ClassModel build() {
-            if (name() == null) {
-                throw new ClassModelException("Class need to have name specified");
+            if (packageName == null && name() == null) {
+                throw new ClassModelException("Class need to have name and package specified");
             }
             ClassModel classModel = new ClassModel(this);
             ImportOrganizer.Builder importOrganizer = importOrganizer();

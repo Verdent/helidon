@@ -2,6 +2,7 @@ package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 public final class Token extends Type {
@@ -54,6 +55,16 @@ public final class Token extends Type {
     @Override
     boolean isArray() {
         return false;
+    }
+
+    @Override
+    boolean innerClass() {
+        return false;
+    }
+
+    @Override
+    Optional<Type> declaringClass() {
+        return Optional.empty();
     }
 
     @Override

@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -33,6 +34,8 @@ public class TypeNameDefault implements TypeName {
     private final boolean array;
     private final boolean wildcard;
     private final boolean generic;
+    private final boolean innerClass;
+    private final TypeName declaringClass;
     private final List<TypeName> typeArguments;
 
     /**
@@ -48,6 +51,8 @@ public class TypeNameDefault implements TypeName {
         this.array = b.array;
         this.wildcard = b.wildcard;
         this.generic = b.generic;
+        this.innerClass = b.innerClass;
+        this.declaringClass = b.declaringClass;
         this.typeArguments = Collections.unmodifiableList(b.typeArguments);
     }
 
@@ -171,6 +176,19 @@ public class TypeNameDefault implements TypeName {
         }
 
         String packageName = String.join(".", packageElements);
+
+        if (className.contains("$")) {
+            //Processed class is inner class
+            int lastIndex = className.indexOf("$");
+            String declaringClassName = className.substring(0, lastIndex);
+            String innerClassName = className.substring(lastIndex + 1);
+            return TypeNameDefault.builder()
+                    .className(innerClassName)
+                    .packageName(packageName)
+                    .innerClass(true)
+                    .declaringClass(createFromTypeName(packageName + "." + declaringClassName))
+                    .build();
+        }
         return create(packageName, className);
     }
 
@@ -231,6 +249,11 @@ public class TypeNameDefault implements TypeName {
     }
 
     @Override
+    public boolean innerClass() {
+        return innerClass;
+    }
+
+    @Override
     public boolean generic() {
         return generic;
     }
@@ -248,6 +271,11 @@ public class TypeNameDefault implements TypeName {
     @Override
     public TypeName genericTypeName() {
         return toBuilder().typeArguments(Set.of()).generic(false).array(false).build();
+    }
+
+    @Override
+    public Optional<TypeName> declaringClassTypeName() {
+        return Optional.ofNullable(declaringClass);
     }
 
     @Override
@@ -349,6 +377,8 @@ public class TypeNameDefault implements TypeName {
         private boolean array;
         private boolean wildcard;
         private boolean generic;
+        private boolean innerClass;
+        private TypeName declaringClass;
 
         /**
          * Default ctor.
@@ -390,6 +420,8 @@ public class TypeNameDefault implements TypeName {
             this.array = val.array();
             this.wildcard = val.wildcard();
             this.generic = val.generic();
+            this.innerClass = val.innerClass();
+            this.declaringClass = val.declaringClassTypeName().orElse(null);
             this.typeArguments.addAll(val.typeArguments());
             return this;
         }
@@ -430,6 +462,10 @@ public class TypeNameDefault implements TypeName {
             packageName(componentType.getPackageName());
             className(componentType.getSimpleName());
             primitive(componentType.isPrimitive());
+            innerClass(componentType.isMemberClass());
+            if (componentType.isMemberClass()) {
+                declaringClass(TypeNameDefault.create(classType.getDeclaringClass()));
+            }
             return array(classType.isArray());
         }
 
@@ -473,7 +509,6 @@ public class TypeNameDefault implements TypeName {
          * @return the fluent builder
          */
         public Builder wildcard(boolean val) {
-            Objects.requireNonNull(val);
             this.wildcard = val;
             if (val) {
                 this.generic = true;
@@ -503,6 +538,16 @@ public class TypeNameDefault implements TypeName {
         public Builder addTypeArgument(TypeName val) {
             Objects.requireNonNull(val);
             this.typeArguments.add(val);
+            return this;
+        }
+
+        public Builder innerClass(boolean innerClass) {
+            this.innerClass = innerClass;
+            return this;
+        }
+
+        public Builder declaringClass(TypeName declaringClass) {
+            this.declaringClass = Objects.requireNonNull(declaringClass);
             return this;
         }
     }

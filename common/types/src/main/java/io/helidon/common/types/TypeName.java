@@ -17,6 +17,7 @@
 package io.helidon.common.types;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * TypeName is similar to {@link java.lang.reflect.Type} in its most basic use case. The {@link #name()} returns the package +
@@ -68,6 +69,8 @@ public interface TypeName extends Comparable<TypeName> {
      * @return true if this type represents a primitive array []
      */
     boolean array();
+
+    boolean innerClass();
 
     /**
      * Indicates whether this type is using generics.
@@ -133,6 +136,8 @@ public interface TypeName extends Comparable<TypeName> {
      * @return based generic type name
      */
     TypeName genericTypeName();
+
+    Optional<TypeName> declaringClassTypeName();
 
     /**
      * Typically used as part of code-gen, when ".class" is tacked onto the suffix of what this returns.

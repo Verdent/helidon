@@ -68,6 +68,7 @@ abstract class AbstractMethod extends AnnotatableComponent {
             this.contentBuilder.append(line).append("\n");
             return identity();
         }
+
         public B add(String line) {
             this.contentBuilder.append(line);
             return identity();

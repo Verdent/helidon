@@ -151,7 +151,7 @@ public interface TypeInfo {
     List<TypedElementInfo> interestingElementInfo();
 
     /**
-     * The elements that make up this type that are considered "other", or being skipped because they are irrelevant to
+     * The elements that make up this type that are considered "other", or beig skipped because they are irrelevant to
      * processing.
      *
      * @return the elements that still make up the type, but are otherwise deemed irrelevant for processing

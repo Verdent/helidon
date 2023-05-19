@@ -196,13 +196,16 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
             return;
         }
         builder.addMethod(method -> method.name("__configBeanType")
-                                  .returnType(Type.generic(Class.class).addParam(Type.token("?")).build())
+                                  .returnType(Type.generic().type(Class.class).addParam(Type.token("?")).build())
                                   .addAnnotation(annotation -> annotation.type(Override.class))
                                   .generateJavadoc(false)
                                   .addLine("return " + ctx.typeInfo().typeName().name() + ".class;"));
 
         builder.addMethod(method -> method.name("__thisConfigBeanType")
-                                  .returnType(Type.generic(Class.class).addParam(Type.token("?")).build(), "the config bean type")
+                                  .returnType(Type.generic()
+                                                      .type(Class.class)
+                                                      .addParam(Type.token("?"))
+                                                      .build(), "the config bean type")
                                   .description("Returns the {@code ConfigBean} type.")
                                   .isStatic(true)
                                   .generateJavadoc(false)
@@ -360,7 +363,8 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
 
             Method.Builder configBeanTypeBuilder = Method.builder()
                     .name("__configBeanType")
-                    .returnType(Type.generic(Class.class)
+                    .returnType(Type.generic()
+                                        .type(Class.class)
                                         .addParam(Type.token("?"))
                                         .build())
                     .generateJavadoc(false)
@@ -368,9 +372,14 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                     .addLine("return " + ctx.typeInfo().typeName().name() + ".class;");
             builder.addMethod(configBeanTypeBuilder);
 
-            Type mappersType = Type.generic(Map.class)
-                    .addParam(Type.generic(Class.class).addParam(Type.token("?")).build())
-                    .addParam(Type.generic(Function.class)
+            Type mappersType = Type.generic()
+                    .type(Map.class)
+                    .addParam(Type.generic()
+                                      .type(Class.class)
+                                      .addParam(Type.token("?"))
+                                      .build())
+                    .addParam(Type.generic()
+                                      .type(Function.class)
                                       .addParam(Type.exact(Config.class))
                                       .addParam(Type.token("?"))
                                       .build())
@@ -400,7 +409,8 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                 .addAnnotation(annotation -> annotation.type(Override.class))
                 .addParameter(Parameter.create("cfg", Config.class))
                 .addParameter(Parameter.create("resolver", ConfigResolver.class))
-                .addParameter(Parameter.create("validator", Type.generic(ConfigBeanBuilderValidator.class)
+                .addParameter(Parameter.create("validator", Type.generic()
+                        .type(ConfigBeanBuilderValidator.class)
                         .addParam(Type.token("?"))
                         .build()))
                 .addLine(ResolutionContext.class.getName() + " ctx = "

@@ -1,6 +1,7 @@
 package io.helidon.builder.model;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNameDefault;
@@ -8,22 +9,39 @@ import io.helidon.common.types.TypeNameDefault;
 abstract class AbstractType extends Type {
 
     private final TypeName typeName;
+    private final Type declaringType;
 
     AbstractType(Builder<?, ?> builder) {
         super(builder);
         this.typeName = builder.typeName;
+        this.declaringType = builder.typeName.declaringClassTypeName()
+                .map(Type::fromTypeName)
+                .orElse(null);
     }
 
+    @Override
     String typeName() {
         return typeName.name();
     }
 
+    @Override
     String simpleTypeName() {
         return typeName.className();
     }
 
+    @Override
     boolean isArray() {
         return typeName.array();
+    }
+
+    @Override
+    boolean innerClass() {
+        return typeName.innerClass();
+    }
+
+    @Override
+    Optional<Type> declaringClass() {
+        return Optional.ofNullable(declaringType);
     }
 
     String packageName() {

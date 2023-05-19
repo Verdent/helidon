@@ -4,62 +4,77 @@ import java.io.IOException;
 import java.io.Writer;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+import io.helidon.common.types.TypeName;
+import io.helidon.common.types.TypeNameDefault;
 
 class ImportOrganizer {
 
-    private final Map<String, String> imports;
-    private final Set<String> staticImports;
-    private final Set<String> exceptionImports;
-    private final Set<String> forcedFullNames;
+    private final List<String> imports;
+    private final List<String> staticImports;
+    private final Set<String> noImport;
+    private final Set<String> forcedFullImports;
     private final String fullClassName;
 
     private ImportOrganizer(Builder builder) {
-        this.imports = Map.copyOf(builder.imports);
-        this.staticImports = new TreeSet<>(builder.staticImports);
-        this.exceptionImports = Set.copyOf(builder.exceptionImports.keySet());
-        this.forcedFullNames = Set.copyOf(builder.forcedFullNames);
-        this.fullClassName = builder.typePackage + "." + builder.name;
+        this.fullClassName = builder.packageName + "." + builder.typeName;
+        this.imports = builder.finalImports.values()
+                .stream()
+                .sorted()
+                .toList();
+        this.staticImports = builder.staticImports.stream()
+                .map(Type::typeName)
+                .sorted()
+                .toList();
+        this.noImport = builder.noImports.values()
+                .stream()
+                .map(Type::typeName)
+                .collect(Collectors.toSet());
+        this.forcedFullImports = Set.copyOf(builder.forcedFullImports);
     }
 
-    static Builder builder(String packageName, String name) {
-        return new Builder(packageName, name);
+    static Builder builder() {
+        return new Builder();
     }
 
     String typeName(Type type, boolean included) {
-        if (type instanceof Token) {
-            return type.typeName();
-        }
-        String fullTypeName = type.typeName();
-        String simpleTypeName = type.simpleTypeName();
-        if (!included) {
-            return fullTypeName;
-        } else if (forcedFullNames.contains(fullTypeName)) {
-            if (type.isInnerType()) {
-                return type.outerClass() + "." + type.simpleTypeName();
-            }
-            return fullTypeName;
-        } else if (exceptionImports.contains(simpleTypeName)) {
-            if (type.isInnerType()) {
-                if (isTheSameAsCreatedClass(type)) {
-                    return type.simpleTypeName();
-                }
-                return type.outerClass() + "." + type.simpleTypeName();
-            }
-            return simpleTypeName;
-        }
-        return imports.containsKey(simpleTypeName) ? simpleTypeName : fullTypeName;
+        return "";
     }
-
-    private boolean isTheSameAsCreatedClass(Type type) {
-        return fullClassName.equals(type.packageName() + "." + type.outerClass());
-    }
+//        if (type instanceof Token) {
+//            return type.typeName();
+//        }
+//        String fullTypeName = type.typeName();
+//        String simpleTypeName = type.simpleTypeName();
+//        if (!included) {
+//            return fullTypeName;
+//        } else if (forcedFullNames.contains(fullTypeName)) {
+//            if (type.isInnerType()) {
+//                return type.outerClass() + "." + type.simpleTypeName();
+//            }
+//            return fullTypeName;
+//        } else if (exceptionImports.contains(simpleTypeName)) {
+//            if (type.isInnerType()) {
+//                if (isTheSameAsCreatedClass(type)) {
+//                    return type.simpleTypeName();
+//                }
+//                return type.outerClass() + "." + type.simpleTypeName();
+//            }
+//            return simpleTypeName;
+//        }
+//        return imports.containsKey(simpleTypeName) ? simpleTypeName : fullTypeName;
+//    }
+//
+//    private boolean isTheSameAsCreatedClass(Type type) {
+//        return fullClassName.equals(type.packageName() + "." + type.outerClass());
+//    }
 
     void writeImports(Writer writer) throws IOException {
         if (!imports.isEmpty()) {
-            for (String importName : imports.values().stream().sorted().toList()) {
+            for (String importName : imports.stream().sorted().toList()) {
                 writer.write("import " + importName + ";\n");
             }
             writer.write("\n");
@@ -75,150 +90,145 @@ class ImportOrganizer {
         }
     }
 
-    static final class Builder {
+    static final class Builder implements io.helidon.common.Builder<Builder, ImportOrganizer> {
+
+        private final Set<Type> imports = new HashSet<>();
+        private final Set<Type> staticImports = new HashSet<>();
 
         /**
          * Class imports.
          */
-        private final Map<String, String> imports = new HashMap<>();
-
-        /**
-         * Class static imports.
-         */
-        private final Set<String> staticImports = new TreeSet<>();
+        private final Map<String, String> finalImports = new HashMap<>();
 
         /**
          * Imports from "java.lang" package or classes within the same package.
          * They should be monitored for name collisions, but not included in class imports.
          */
-        private final Map<String, Type> exceptionImports = new HashMap<>();
-
-        /**
-         * Set of inner classes of the current class.
-         */
-        private final Set<String> innerClasses = new HashSet<>();
+        private final Map<String, Type> noImports = new HashMap<>();
 
         /**
          * Collection for class names with colliding simple names.
          * The first registered will be used as import. The later ones have to be used as full names.
          */
-        private final Set<String> forcedFullNames = new HashSet<>();
+        private final Set<String> forcedFullImports = new HashSet<>();
 
-        /**
-         * Package of the created class.
-         */
-        private final String typePackage;
-        /**
-         * Name of the currently created class.
-         */
-        private final String name;
-        /**
-         * Full name of the created class.
-         */
-        private final String fullName;
+        private String packageName;
+        private String typeName;
 
-        private Builder(String typePackage, String name) {
-            this.typePackage = typePackage;
-            this.name = name;
-            if (typePackage == null || typePackage.isEmpty()) {
-                fullName = name;
-            } else {
-                fullName = typePackage + "." + name;
-            }
+        private Builder() {
         }
 
-        ImportOrganizer build() {
+        Builder packageName(String packageName) {
+            this.packageName = packageName;
+            return this;
+        }
+
+        Builder typeName(String typeName) {
+            this.typeName = typeName;
+            return this;
+        }
+
+        Builder addImport(String type) {
+            return addImport(TypeNameDefault.createFromTypeName(type));
+        }
+
+        Builder addImport(Class<?> type) {
+            return addImport(TypeNameDefault.create(type));
+        }
+
+        Builder addImport(TypeName type) {
+            return addImport(Type.fromTypeName(type));
+        }
+
+        Builder addImport(Type type) {
+            imports.add(type);
+            return this;
+        }
+
+        Builder addStaticImport(String type) {
+            return addStaticImport(TypeNameDefault.createFromTypeName(type));
+        }
+
+        Builder addStaticImport(Class<?> type) {
+            return addStaticImport(TypeNameDefault.create(type));
+        }
+
+        Builder addStaticImport(TypeName type) {
+            return addStaticImport(Type.fromTypeName(type));
+        }
+
+        Builder addStaticImport(Type type) {
+            staticImports.add(type);
+            return this;
+        }
+
+        @Override
+        public ImportOrganizer build() {
+            resolveFinalImports();
             return new ImportOrganizer(this);
         }
 
-        public Builder addImport(Class<?> type) {
-            return addImport(type.getTypeName());
-        }
+        private void resolveFinalImports() {
+            for (Type type :imports){
+                String typeName = type.typeName();
+                String typePackage = type.packageName();
+                String typeSimpleName = type.simpleTypeName();
 
-        public Builder addImport(String type) {
-            return addImport(Type.exact(type));
-        }
-
-        public Builder addImport(Type type) {
-            if (type.packageName().isEmpty()) {
-                return this;
-            }
-
-            String typeName = type.typeName();
-            String typePackage = type.packageName();
-            String typeSimpleName = type.simpleTypeName();
-            if (typePackage.equals("java.lang")) {
-                processImportJavaLang(type, typeName, typeSimpleName);
-            } else if (this.typePackage != null
-                    && this.typePackage.equals(typePackage)) {
-                processImportSamePackage(type, typeName, typeSimpleName);
-            } else if (imports.containsKey(typeSimpleName) && !imports.get(typeSimpleName).equals(typeName)) {
-                //If there is imported class with this simple name already, but it is not in the same package
-                forcedFullNames.add(typeName);
-            } else if (innerClasses.contains(typeSimpleName)) {
-                forcedFullNames.add(typeName);
-            } else if (exceptionImports.containsKey(typeSimpleName)) {
-                if (exceptionImports.get(typeSimpleName).isInnerType()
-                        && !typeName.startsWith(fullName + ".")) {
-                    imports.put(typeSimpleName, typeName);
+                if (typePackage.equals("java.lang")) {
+                    //imported class is from java.lang package -> automatically imported
+                    processImportJavaLang(type, typeName, typeSimpleName);
+                } else if (this.packageName.equals(typePackage)) {
+                    processImportSamePackage(type, typeName, typeSimpleName);
+                } else if (finalImports.containsKey(typeSimpleName) &&
+                        !finalImports.get(typeSimpleName).equals(typeName)) {
+                    //If there is imported class with this simple name already, but it is not in the same package as this one
+                    //add this newly added among the forced full names
+                    forcedFullImports.add(typeName);
+                }  else if (noImports.containsKey(typeSimpleName)) {
+                    //There is already class with the same name present in the package we are generating to
+                    //or imported from java.lang
+                    forcedFullImports.add(typeName);
                 } else {
-                    forcedFullNames.add(typeName);
+                    finalImports.put(typeSimpleName, typeName);
                 }
-            } else {
-                imports.put(typeSimpleName, typeName);
+
+                System.out.println();
             }
-            return this;
         }
 
         private void processImportJavaLang(Type type, String typeName, String typeSimpleName) {
             //new class is from java.lang package
-            if (imports.containsKey(typeSimpleName)) {
+            if (finalImports.containsKey(typeSimpleName)) {
                 //some other class with the same name is already being imported (but with the different package)
                 //remove that previously added class from imports and place it to the list of forced full class names
-                forcedFullNames.add(imports.remove(typeSimpleName));
-            } else if (exceptionImports.containsKey(typeSimpleName)
-                    && !exceptionImports.get(typeSimpleName).type().equals(typeName)) {
+                forcedFullImports.add(finalImports.remove(typeSimpleName));
+            } else if (noImports.containsKey(typeSimpleName)
+                    && !noImports.get(typeSimpleName).typeName().equals(typeName)) {
                 //if there is already class with the same name, but different package, added among the imports,
                 // and it does not need import specified (java.lang and the same package), remove it from the exception
                 // list and add it among forced imports.
-                forcedFullNames.add(typeName);
+                forcedFullImports.add(typeName);
                 return;
             }
-            exceptionImports.put(typeSimpleName, type);
+            noImports.put(typeSimpleName, type);
         }
 
         private void processImportSamePackage(Type type, String typeName, String typeSimpleName) {
             //            String toCheck = type.outerClass() == null ? typeSimpleName : type.outerClass();
-            if (imports.containsKey(typeSimpleName)) {
+            if (finalImports.containsKey(typeSimpleName)) {
                 //There is a class among general imports which match the currently added class name.
-                forcedFullNames.add(imports.remove(typeSimpleName));
-                exceptionImports.put(typeSimpleName, type);
-            } else if (innerClasses.contains(typeSimpleName)) {
-                //There is inner class identified of this name for the currently created class.
-                if (!exceptionImports.get(typeSimpleName).type().equals(typeName)) {
-                    //Everything needs to be forced to have full package.
-                    forcedFullNames.add(typeName);
-                }
-            } else if (exceptionImports.containsKey(typeSimpleName)) {
+                forcedFullImports.add(finalImports.remove(typeSimpleName));
+                noImports.put(typeSimpleName, type);
+            } else if (noImports.containsKey(typeSimpleName)) {
                 //There is already specialized handling of a class with this name
-                if (!exceptionImports.get(typeSimpleName).type().equals(typeName)) {
-                    forcedFullNames.add(exceptionImports.remove(typeSimpleName).type());
-                    exceptionImports.put(typeSimpleName, type);
+                if (!noImports.get(typeSimpleName).typeName().equals(typeName)) {
+                    forcedFullImports.add(noImports.remove(typeSimpleName).typeName());
+                    noImports.put(typeSimpleName, type);
                 }
             } else {
-                exceptionImports.put(typeSimpleName, type);
-                if (type.isInnerType() && type.typeName().startsWith(fullName + ".")) {
-                    //This added class is inner class of our currently processed type.
-                    innerClasses.add(typeSimpleName);
-                }
+                noImports.put(typeSimpleName, type);
             }
         }
-
-        public Builder addStaticImport(String staticImport) {
-            staticImports.add(staticImport);
-            return this;
-        }
-
     }
 
 }

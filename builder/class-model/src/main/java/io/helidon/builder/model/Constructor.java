@@ -43,7 +43,7 @@ public final class Constructor extends AbstractMethod {
         }
         writer.write(") {");
         if (!content().isEmpty()) {
-            writeBody(writer);
+            writeBody(writer, imports);
         } else {
             writer.write("\n");
         }

@@ -31,7 +31,7 @@ public class Annotation extends CommonComponent {
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        writer.write("@" + imports.typeName(type(), includeImport()));
+        writer.write("@" + imports.typeName(type()));
         if (!parameters.isEmpty()) {
             writer.write("(");
             if (parameters.size() == 1) {

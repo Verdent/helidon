@@ -2,6 +2,7 @@ package io.helidon.builder.model;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -43,15 +44,9 @@ public class Method extends AbstractMethod implements Comparable<Method> {
             writer.write(accessModifier().modifierName() + " ");
         }
         if (isStatic) {
-            if (isAbstract) {
-                throw new IllegalStateException("Method cannot be static and abstract the same time");
-            }
             writer.write("static ");
         }
         if (isFinal) {
-            if (isAbstract) {
-                throw new IllegalStateException("Method cannot be final and abstract the same time");
-            }
             writer.write("final ");
         }
         if (isAbstract) {
@@ -76,7 +71,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
         }
         writer.write(" {");
         if (!content().isEmpty()) {
-            writeBody(writer);
+            writeBody(writer, imports);
         } else {
             writer.write("\n");
         }
@@ -158,7 +153,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
         return Objects.equals(type(), method.type())
                 && Objects.equals(name(), method.name())
                 && parameters().size() == method.parameters().size()
-                && parameters().containsAll(method.parameters());
+                && new HashSet<>(parameters()).containsAll(method.parameters());
     }
 
     @Override
@@ -197,8 +192,14 @@ public class Method extends AbstractMethod implements Comparable<Method> {
         }
 
         public Method build() {
-            if (name() != null) {
+            if (name() == null) {
                 throw new ClassModelException("Method needs to have name specified");
+            }
+            if (isStatic && isAbstract) {
+                throw new IllegalStateException("Method cannot be static and abstract at the same time");
+            }
+            if (isFinal && isAbstract) {
+                throw new IllegalStateException("Method cannot be final and abstract at the same time");
             }
             return new Method(this);
         }

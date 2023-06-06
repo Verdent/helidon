@@ -387,7 +387,7 @@ public class DefaultBuilderCreatorProvider implements BuilderCreatorProvider {
                 .append(")\n");
         builder.append("@SuppressWarnings(\"unchecked\")\t\n");
         appendAnnotations(builder, ctx.typeInfo().annotations(), "");
-        builder.append(ctx.publicOrPackagePrivateDecl().modifierName());
+        builder.append(ctx.publicOrPackagePrivateDecl());
         if (!ctx.doingConcreteType()) {
             builder.append(" abstract ");
         }
@@ -1392,7 +1392,7 @@ public class DefaultBuilderCreatorProvider implements BuilderCreatorProvider {
     private void appendBuilderHeader(StringBuilder builder,
                                      BodyContext ctx) {
         GenerateJavadoc.builderClass(builder, ctx);
-        builder.append("\t").append(ctx.publicOrPackagePrivateDecl().modifierName());
+        builder.append("\t").append(ctx.publicOrPackagePrivateDecl());
         if (!ctx.doingConcreteType()) {
             builder.append(" abstract ");
         }

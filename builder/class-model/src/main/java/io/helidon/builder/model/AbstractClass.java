@@ -317,7 +317,8 @@ public abstract class AbstractClass extends AnnotatableComponent {
         }
 
         public B addConstructor(Consumer<Constructor.Builder> consumer) {
-            Constructor.Builder constructorBuilder = Constructor.builder();
+            Constructor.Builder constructorBuilder = Constructor.builder()
+                    .type(name());
             consumer.accept(constructorBuilder);
             constructors.add(constructorBuilder.build());
             return identity();

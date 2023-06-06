@@ -10,6 +10,9 @@ import java.util.Set;
 public class ClassModel extends AbstractClass {
 
     public static final String PADDING_TOKEN = "<<padding>>";
+    public static final String CLASS_TOKEN_START = "@";
+    public static final String CLASS_TOKEN_END = "@";
+    public static final String CLASS_TOKEN = CLASS_TOKEN_START + "name" + CLASS_TOKEN_END;
     private final String packageName;
     private final String licenseHeader;
     //This has to be set after this object is constructed, if we want to use common addImports method
@@ -111,6 +114,7 @@ public class ClassModel extends AbstractClass {
 
         public Builder packageName(String packageName) {
             this.packageName = packageName;
+            importOrganizer().packageName(packageName);
             return this;
         }
 
@@ -119,6 +123,11 @@ public class ClassModel extends AbstractClass {
             return this;
         }
 
+        @Override
+        public Builder name(String name) {
+            importOrganizer().typeName(name);
+            return super.name(name);
+        }
     }
 
 }

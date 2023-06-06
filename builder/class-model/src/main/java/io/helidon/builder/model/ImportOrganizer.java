@@ -41,36 +41,19 @@ class ImportOrganizer {
         return new Builder();
     }
 
-    String typeName(Type type, boolean included) {
-        return "";
+    String typeName(Type type) {
+        if (type instanceof Token) {
+            return type.typeName();
+        }
+        String fullTypeName = type.typeName();
+        String simpleTypeName = type.simpleTypeName();
+        if (forcedFullImports.contains(fullTypeName)) {
+            return fullTypeName;
+        } else if (noImport.contains(fullTypeName)) {
+            return simpleTypeName;
+        }
+        return imports.contains(fullTypeName) ? simpleTypeName : fullTypeName;
     }
-//        if (type instanceof Token) {
-//            return type.typeName();
-//        }
-//        String fullTypeName = type.typeName();
-//        String simpleTypeName = type.simpleTypeName();
-//        if (!included) {
-//            return fullTypeName;
-//        } else if (forcedFullNames.contains(fullTypeName)) {
-//            if (type.isInnerType()) {
-//                return type.outerClass() + "." + type.simpleTypeName();
-//            }
-//            return fullTypeName;
-//        } else if (exceptionImports.contains(simpleTypeName)) {
-//            if (type.isInnerType()) {
-//                if (isTheSameAsCreatedClass(type)) {
-//                    return type.simpleTypeName();
-//                }
-//                return type.outerClass() + "." + type.simpleTypeName();
-//            }
-//            return simpleTypeName;
-//        }
-//        return imports.containsKey(simpleTypeName) ? simpleTypeName : fullTypeName;
-//    }
-//
-//    private boolean isTheSameAsCreatedClass(Type type) {
-//        return fullClassName.equals(type.packageName() + "." + type.outerClass());
-//    }
 
     void writeImports(Writer writer) throws IOException {
         if (!imports.isEmpty()) {
@@ -112,7 +95,7 @@ class ImportOrganizer {
          */
         private final Set<String> forcedFullImports = new HashSet<>();
 
-        private String packageName;
+        private String packageName = "";
         private String typeName;
 
         private Builder() {
@@ -164,6 +147,12 @@ class ImportOrganizer {
 
         @Override
         public ImportOrganizer build() {
+            if (typeName == null) {
+                throw new ClassModelException("Import organizer requires to have built type name specified.");
+            }
+            finalImports.clear();
+            forcedFullImports.clear();
+            noImports.clear();
             resolveFinalImports();
             return new ImportOrganizer(this);
         }
@@ -188,11 +177,9 @@ class ImportOrganizer {
                     //There is already class with the same name present in the package we are generating to
                     //or imported from java.lang
                     forcedFullImports.add(typeName);
-                } else {
+                } else if (!typePackage.isEmpty()) {
                     finalImports.put(typeSimpleName, typeName);
                 }
-
-                System.out.println();
             }
         }
 

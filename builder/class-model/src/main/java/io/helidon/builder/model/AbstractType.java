@@ -21,7 +21,14 @@ abstract class AbstractType extends Type {
 
     @Override
     String typeName() {
-        return typeName.name();
+        if (typeName.innerClass()) {
+            String declaringClass = typeName.declaringClassTypeName()
+                    .orElseThrow(() -> new ClassModelException("Declaring class type information is required for inner class"))
+                    .name();
+            return declaringClass + "." + typeName.className();
+        } else {
+            return typeName.name();
+        }
     }
 
     @Override

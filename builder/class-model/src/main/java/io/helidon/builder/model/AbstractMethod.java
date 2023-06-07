@@ -35,10 +35,6 @@ abstract class AbstractMethod extends AnnotatableComponent {
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
         parameters.forEach(parameter -> parameter.addImports(imports));
-//        if (includeImport()) {
-//            String[] lines = content().split("\n");
-//            Matcher matcher = CLASS_NAME_PATTERN.matcher(line);
-//        }
     }
 
     void writeBody(ModelWriter writer, ImportOrganizer imports) throws IOException {

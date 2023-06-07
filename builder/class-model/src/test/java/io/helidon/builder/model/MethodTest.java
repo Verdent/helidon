@@ -13,6 +13,11 @@ import static org.hamcrest.Matchers.is;
 
 public class MethodTest {
 
+    private static final ImportOrganizer DEFAULT_IMPORTS = ImportOrganizer.builder()
+            .packageName("io.helidon.builder.model")
+            .typeName("SomeTestClass")
+            .build();
+
     @Test
     public void testTypeReplacement() {
         String expected = """

@@ -40,7 +40,9 @@ abstract class AbstractMethod extends AnnotatableComponent {
     void writeBody(ModelWriter writer, ImportOrganizer imports) throws IOException {
         writer.increasePaddingLevel();
         writer.write("\n");
-        content.writeBody(writer, imports, true);
+        content.writeBody(writer, imports);
+        writer.decreasePaddingLevel();
+        writer.write("\n");
     }
 
     List<Parameter> parameters() {

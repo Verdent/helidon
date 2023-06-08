@@ -18,10 +18,8 @@ class ImportOrganizer {
     private final List<String> staticImports;
     private final Set<String> noImport;
     private final Set<String> forcedFullImports;
-    private final String fullClassName;
 
     private ImportOrganizer(Builder builder) {
-        this.fullClassName = builder.packageName + "." + builder.typeName;
         this.imports = builder.finalImports.values()
                 .stream()
                 .sorted()
@@ -71,6 +69,18 @@ class ImportOrganizer {
             }
             writer.write("\n");
         }
+    }
+
+    List<String> imports() {
+        return imports;
+    }
+
+    Set<String> noImport() {
+        return noImport;
+    }
+
+    Set<String> forcedFullImports() {
+        return forcedFullImports;
     }
 
     static final class Builder implements io.helidon.common.Builder<Builder, ImportOrganizer> {
@@ -158,7 +168,7 @@ class ImportOrganizer {
         }
 
         private void resolveFinalImports() {
-            for (Type type :imports){
+            for (Type type : imports){
                 String typeName = type.typeName();
                 String typePackage = type.packageName();
                 String typeSimpleName = type.simpleTypeName();

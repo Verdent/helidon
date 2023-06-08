@@ -10,13 +10,13 @@ import io.helidon.common.types.TypeName;
  */
 public class Field extends AnnotatableComponent implements Comparable<Field> {
 
-    private final String defaultValue;
+    private final Content defaultValue;
     private final boolean isFinal;
     private final boolean isStatic;
 
     public Field(Builder builder) {
         super(builder);
-        this.defaultValue = builder.defaultValue;
+        this.defaultValue = builder.defaultValueBuilder.build();
         this.isFinal = builder.isFinal;
         this.isStatic = builder.isStatic;
     }
@@ -66,10 +66,12 @@ public class Field extends AnnotatableComponent implements Comparable<Field> {
         type().writeComponent(writer, declaredTokens, imports);
         writer.write(" ");
         writer.write(name());
-        if (defaultValue == null) {
+        if (defaultValue.hasBody()) {
+            writer.write(" = ");
+            defaultValue.writeBody(writer, imports);
             writer.write(";");
         } else {
-            writer.write(" = " + defaultValue + ";");
+            writer.write(";");
         }
     }
 
@@ -77,6 +79,7 @@ public class Field extends AnnotatableComponent implements Comparable<Field> {
     void addImports(ImportOrganizer.Builder imports) {
         super.addImports(imports);
         type().addImports(imports);
+        defaultValue.addImports(imports);
     }
 
     boolean isStatic() {
@@ -109,7 +112,7 @@ public class Field extends AnnotatableComponent implements Comparable<Field> {
 
     public static class Builder extends AnnotatableComponent.Builder<Builder, Field> {
 
-        private String defaultValue;
+        private final Content.Builder defaultValueBuilder = Content.builder();
         private boolean isFinal = false;
         private boolean isStatic = false;
 
@@ -125,9 +128,9 @@ public class Field extends AnnotatableComponent implements Comparable<Field> {
                     && !type().isArray()
                     && !defaultValue.startsWith("\"")
                     && !defaultValue.endsWith("\"")) {
-                this.defaultValue = "\"" + defaultValue + "\"";
+                defaultValueBuilder.content("\"" + defaultValue + "\"");
             } else {
-                this.defaultValue = defaultValue;
+                defaultValueBuilder.content(defaultValue);
             }
             return this;
         }

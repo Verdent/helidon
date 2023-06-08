@@ -37,7 +37,7 @@ class Content {
         return !content.isEmpty();
     }
 
-    void writeBody(ModelWriter writer, ImportOrganizer imports, boolean decreaseAfterBody) throws IOException {
+    void writeBody(ModelWriter writer, ImportOrganizer imports) throws IOException {
         int offset = 0;
         Map<String, String> replacements = new HashMap<>();
         for (Position position : tokenPositions) {
@@ -54,10 +54,9 @@ class Content {
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             writer.write(line);
-            if (i + 1 == lines.length && decreaseAfterBody) {
-                writer.decreasePaddingLevel();
+            if (i + 1 != lines.length) {
+                writer.write("\n");
             }
-            writer.write("\n");
         }
     }
 

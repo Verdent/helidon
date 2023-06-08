@@ -43,7 +43,7 @@ public class ContentTest {
     private String generateMethod(Content content, ImportOrganizer importOrganizer) {
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             try (OutputStreamWriter writer = new OutputStreamWriter(outputStream)) {
-                content.writeBody(new ModelWriter(writer, "    "), importOrganizer, false);
+                content.writeBody(new ModelWriter(writer, "    "), importOrganizer);
             }
             return outputStream.toString();
         } catch (IOException e) {

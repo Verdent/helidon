@@ -42,7 +42,7 @@ public final class Constructor extends AbstractMethod {
             parameter.writeComponent(writer, declaredTokens, imports);
         }
         writer.write(") {");
-        if (!content().isEmpty()) {
+        if (hasBody()) {
             writeBody(writer, imports);
         } else {
             writer.write("\n");

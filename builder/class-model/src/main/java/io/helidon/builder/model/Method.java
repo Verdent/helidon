@@ -70,7 +70,7 @@ public class Method extends AbstractMethod implements Comparable<Method> {
             return;
         }
         writer.write(" {");
-        if (!content().isEmpty()) {
+        if (hasBody()) {
             writeBody(writer, imports);
         } else {
             writer.write("\n");

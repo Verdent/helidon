@@ -27,7 +27,7 @@ public class ContentTest {
                 .packageName("io.helidon.builder.model")
                 .typeName("SomeTestClass");
         Content content = Content.builder()
-                .addLine("@java.util.Map@<@java.lang.String@, @java.lang.String@> something;")
+                .addLine("@java.util.Map@<@java.lang.String@, @java.lang.SomeTestClass@> something;")
                 .addLine("if (true) {")
                 .addLine("System.out.println();")
                 .addLine("}")

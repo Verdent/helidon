@@ -3,6 +3,8 @@ package io.helidon.builder.model;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -62,9 +64,14 @@ public class MethodTest {
                 .name("testClass")
                 .className(String.class.getName())
                 .addLine(" var1 = \"hi\";")
-                .className("io.helidon.builder.model.String")
-                .addLine(" var2 = null;")
                 .addLine("@java.util.Map@<@java.lang.String@, @java.lang.String@> something;")
+                .addLine("for (@java.lang.int@ i = 0; i < 10; i++) {")
+                .addLine("@java.lang.System@.out.println(\"Hi\")")
+                .addLine("}")
+                .className(List.class.getName())
+                .add(".copyOf(new ")
+                .className(ArrayList.class.getName())
+                .addLine("());")
                 .build();
         method.addImports(builder);
         ImportOrganizer importOrganizer = builder.build();

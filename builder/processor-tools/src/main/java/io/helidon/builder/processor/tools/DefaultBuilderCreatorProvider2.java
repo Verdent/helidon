@@ -308,10 +308,10 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     protected void maybeAppendInterceptor(Method.Builder builder, BodyContext ctx, String builderTag) {
         assert (!builderTag.equals("interceptor"));
         if (ctx.interceptorTypeName().isPresent()) {
-            String impl = ctx.interceptorTypeName().get().className();
-            builder.add(impl + " interceptor = ");
+            String impl = ctx.interceptorTypeName().get().declaredName();
+            builder.add("@" + impl + "@ interceptor = ");
             if (ctx.interceptorCreateMethod().isEmpty()) {
-                builder.addLine("new " + impl + "();");
+                builder.addLine("new @" + impl + "@();");
             } else {
                 builder.addLine(ctx.interceptorTypeName().get() + "." + ctx.interceptorCreateMethod().get() + "();");
             }
@@ -447,7 +447,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 .description(type + " implementation w/ builder for {@link " + ctx.typeInfo().typeName() + "}.")
                 .addAnnotation(annotationBuilder -> annotationBuilder.type(SuppressWarnings.class)
                                        .addParameter("value", "unchecked"))
-                .accessModifier(ctx.publicOrPackagePrivateDecl().equals("public")
+                .accessModifier(ctx.publicOrPackagePrivateDecl().equals("public ")
                                         ? AccessModifier.PUBLIC
                                         : AccessModifier.PACKAGE_PRIVATE)
                 .isAbstract(!ctx.doingConcreteType());
@@ -1429,7 +1429,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
     private void initializeInnerClass(InnerClass.Builder builder, BodyContext ctx) {
         builder.name(ctx.genericBuilderClassDecl())
                 .description("Fluent API builder for {@code " + ctx.genericBuilderAcceptAliasDecl() + "}.")
-                .accessModifier(ctx.publicOrPackagePrivateDecl().equals("public")
+                .accessModifier(ctx.publicOrPackagePrivateDecl().equals("public ")
                                         ? AccessModifier.PUBLIC
                                         : AccessModifier.PACKAGE_PRIVATE)
                 .isStatic(true);
@@ -1444,7 +1444,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         if (ctx.doingConcreteType()) {
             TypeName parentType = toAbstractImplTypeName(ctx.typeInfo().typeName(), ctx.builderTriggerAnnotation());
             Type extendsType = Type.generic()
-                    .type(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
+                    .type(parentType.declaredName() + "." + ctx.genericBuilderClassDecl())
                     .addParam(ctx.genericBuilderClassDecl())
                     .addParam(ctx.ctorBuilderAcceptTypeName().declaredName())
                     .build();
@@ -1469,7 +1469,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 TypeName parentType = toAbstractImplTypeName(ctx.parentTypeName().orElseThrow(),
                                                              ctx.builderTriggerAnnotation());
                 Type extendsType = Type.generic()
-                        .type(parentType.declaredName() + "$" + ctx.genericBuilderClassDecl())
+                        .type(parentType.declaredName() + "." + ctx.genericBuilderClassDecl())
                         .addParam(builderToken)
                         .addParam(builtTypeToken)
                         .build();
@@ -1670,13 +1670,13 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
 
         builder.addImport(Objects.class);
         builder.addMethod(method -> method.name("builder")
-                .returnType(ctx.implTypeName() + "$Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
+                .returnType(ctx.implTypeName() + ".Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
                 .isStatic(true)
                 .description("Creates a builder for this type.")
                 .addLine("return new Builder();"));
 
         builder.addMethod(method -> method.name("toBuilder")
-                .returnType(ctx.implTypeName()+ "$Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
+                .returnType(ctx.implTypeName()+ ".Builder", "a builder for {@link " + ctx.typeInfo().typeName() + "}")
                 .isStatic(true)
                 .description("Creates a builder for this type, initialized with the attributes from the values passed.")
                 .addParameter(param -> param.name("val")
@@ -1726,7 +1726,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
         builder.addConstructor(constructorBuilder -> {
             constructorBuilder.description("Constructor using the builder argument.")
                     .accessModifier(AccessModifier.PROTECTED);
-            String builderClass = ctx.implTypeName().declaredName() + "$" +ctx.genericBuilderClassDecl();
+            String builderClass = ctx.implTypeName().declaredName() + "." +ctx.genericBuilderClassDecl();
             if (ctx.doingConcreteType()) {
                 constructorBuilder.addParameter(param -> param.name("b")
                                 .type(builderClass)

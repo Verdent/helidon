@@ -18,6 +18,7 @@ class ImportOrganizer {
     private final List<String> staticImports;
     private final Set<String> noImport;
     private final Set<String> forcedFullImports;
+    private final Map<String, String> identifiedInnerClasses;
 
     private ImportOrganizer(Builder builder) {
         this.imports = builder.finalImports.values()
@@ -33,6 +34,7 @@ class ImportOrganizer {
                 .map(Type::typeName)
                 .collect(Collectors.toSet());
         this.forcedFullImports = Set.copyOf(builder.forcedFullImports);
+        this.identifiedInnerClasses = Map.copyOf(builder.identifiedInnerClasses);
     }
 
     static Builder builder() {
@@ -43,14 +45,16 @@ class ImportOrganizer {
         if (type instanceof Token) {
             return type.typeName();
         }
-        String fullTypeName = type.typeName();
-        String simpleTypeName = type.simpleTypeName();
+        Type checkedType = type.declaringClass().orElse(type);
+        String fullTypeName = checkedType.typeName();
+        String simpleTypeName = checkedType.simpleTypeName();
+
         if (forcedFullImports.contains(fullTypeName)) {
-            return fullTypeName;
-        } else if (noImport.contains(fullTypeName)) {
-            return simpleTypeName;
+            return type.typeName();
+        } else if (noImport.contains(fullTypeName) || imports.contains(fullTypeName)) {
+            return identifiedInnerClasses.getOrDefault(type.typeName(), simpleTypeName);
         }
-        return imports.contains(fullTypeName) ? simpleTypeName : fullTypeName;
+        return identifiedInnerClasses.getOrDefault(type.typeName(), type.typeName());
     }
 
     void writeImports(Writer writer) throws IOException {
@@ -104,6 +108,12 @@ class ImportOrganizer {
          * The first registered will be used as import. The later ones have to be used as full names.
          */
         private final Set<String> forcedFullImports = new HashSet<>();
+
+        /**
+         * Map of known inner classes.
+         */
+        private final Map<String, String> identifiedInnerClasses = new HashMap<>();
+        private final Set<String> innerClassesOfTheBuiltType = new HashSet<>();
 
         private String packageName = "";
         private String typeName;
@@ -168,27 +178,38 @@ class ImportOrganizer {
         }
 
         private void resolveFinalImports() {
-            for (Type type : imports){
-                String typeName = type.typeName();
-                String typePackage = type.packageName();
-                String typeSimpleName = type.simpleTypeName();
+            for (Type type : imports) {
+                //If processed type is inner class, we will be importing parent class
+                Type typeToProcess = type.declaringClass().orElse(type);
+                String fqTypeName = typeToProcess.typeName();
+                String typePackage = typeToProcess.packageName();
+                String typeSimpleName = typeToProcess.simpleTypeName();
+
+                if (fqTypeName.endsWith("[]")) {
+                    //TODO proper array handling??
+                    continue;
+                }
+
+                if (type.innerClass()) {
+                    identifiedInnerClasses.put(type.typeName(), typeSimpleName + "." + type.simpleTypeName());
+                }
 
                 if (typePackage.equals("java.lang")) {
                     //imported class is from java.lang package -> automatically imported
-                    processImportJavaLang(type, typeName, typeSimpleName);
+                    processImportJavaLang(type, fqTypeName, typeSimpleName);
                 } else if (this.packageName.equals(typePackage)) {
-                    processImportSamePackage(type, typeName, typeSimpleName);
+                    processImportSamePackage(type, fqTypeName, typeSimpleName);
                 } else if (finalImports.containsKey(typeSimpleName) &&
-                        !finalImports.get(typeSimpleName).equals(typeName)) {
+                        !finalImports.get(typeSimpleName).equals(fqTypeName)) {
                     //If there is imported class with this simple name already, but it is not in the same package as this one
                     //add this newly added among the forced full names
-                    forcedFullImports.add(typeName);
-                }  else if (noImports.containsKey(typeSimpleName)) {
+                    forcedFullImports.add(fqTypeName);
+                } else if (noImports.containsKey(typeSimpleName)) {
                     //There is already class with the same name present in the package we are generating to
                     //or imported from java.lang
-                    forcedFullImports.add(typeName);
+                    forcedFullImports.add(fqTypeName);
                 } else if (!typePackage.isEmpty()) {
-                    finalImports.put(typeSimpleName, typeName);
+                    finalImports.put(typeSimpleName, fqTypeName);
                 }
             }
         }
@@ -211,19 +232,24 @@ class ImportOrganizer {
         }
 
         private void processImportSamePackage(Type type, String typeName, String typeSimpleName) {
-            //            String toCheck = type.outerClass() == null ? typeSimpleName : type.outerClass();
-            if (finalImports.containsKey(typeSimpleName)) {
+            String simpleName = typeSimpleName;
+            if (this.typeName.equals(simpleName)) {
+                simpleName = type.simpleTypeName();
+                innerClassesOfTheBuiltType.add(simpleName);
+                identifiedInnerClasses.put(type.typeName(), simpleName);
+            }
+            if (finalImports.containsKey(simpleName)) {
                 //There is a class among general imports which match the currently added class name.
-                forcedFullImports.add(finalImports.remove(typeSimpleName));
-                noImports.put(typeSimpleName, type);
-            } else if (noImports.containsKey(typeSimpleName)) {
+                forcedFullImports.add(finalImports.remove(simpleName));
+                noImports.put(simpleName, type);
+            } else if (noImports.containsKey(simpleName)) {
                 //There is already specialized handling of a class with this name
-                if (!noImports.get(typeSimpleName).typeName().equals(typeName)) {
-                    forcedFullImports.add(noImports.remove(typeSimpleName).typeName());
-                    noImports.put(typeSimpleName, type);
+                if (!noImports.get(simpleName).typeName().equals(typeName)) {
+                    forcedFullImports.add(noImports.remove(simpleName).typeName());
+                    noImports.put(simpleName, type);
                 }
             } else {
-                noImports.put(typeSimpleName, type);
+                noImports.put(simpleName, type);
             }
         }
     }

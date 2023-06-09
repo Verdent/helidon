@@ -176,10 +176,9 @@ public class TypeNameDefault implements TypeName {
         }
 
         String packageName = String.join(".", packageElements);
-
-        if (className.contains("$")) {
+        if (className.contains(".")) {
             //Processed class is inner class
-            int lastIndex = className.indexOf("$");
+            int lastIndex = className.lastIndexOf(".");
             String declaringClassName = className.substring(0, lastIndex);
             String innerClassName = className.substring(lastIndex + 1);
             return TypeNameDefault.builder()
@@ -299,6 +298,9 @@ public class TypeNameDefault implements TypeName {
      * @return the name
      */
     protected String calcName() {
+        if (innerClass) {
+            return declaringClass.name() + "." + className;
+        }
         return (primitive || packageName().isEmpty())
                 ? className() : packageName() + "." + className();
     }

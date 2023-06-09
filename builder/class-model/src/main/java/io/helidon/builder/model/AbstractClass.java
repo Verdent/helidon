@@ -198,6 +198,7 @@ public abstract class AbstractClass extends AnnotatableComponent {
         interfaces.forEach(imp -> imp.addImports(imports));
         constructors.forEach(constructor -> constructor.addImports(imports));
         genericParameters.forEach(param -> param.addImports(imports));
+        innerClasses.forEach(innerClass -> innerClass.addImports(imports));
     }
 
     public static abstract class Builder<B extends Builder<B, T>, T extends AbstractClass>

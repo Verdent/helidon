@@ -27,7 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import io.helidon.builder.config.ConfigBean;
 import io.helidon.builder.config.spi.ConfigBeanBuilderValidator;
@@ -42,7 +41,6 @@ import io.helidon.builder.config.spi.MetaConfigBeanInfo;
 import io.helidon.builder.config.spi.ResolutionContext;
 import io.helidon.builder.model.AccessModifier;
 import io.helidon.builder.model.ClassModel;
-import io.helidon.builder.model.Field;
 import io.helidon.builder.model.InnerClass;
 import io.helidon.builder.model.Method;
 import io.helidon.builder.model.Parameter;
@@ -57,7 +55,7 @@ import io.helidon.common.types.AnnotationAndValueDefault;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNameDefault;
-import io.helidon.common.types.TypedElementName;
+import io.helidon.common.types.TypedElementInfo;
 import io.helidon.config.metadata.ConfiguredOption;
 
 import static io.helidon.builder.config.spi.ConfigBeanInfo.LevelType;
@@ -131,7 +129,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
      * Generic/simple map types are not supported on config beans, only &lt;String, &lt;Known ConfigBean types&gt;&gt;.
      */
     private void assertNoGenericMaps(TypeInfo typeInfo) {
-        List<TypedElementName> list = typeInfo.elementInfo().stream()
+        List<TypedElementInfo> list = typeInfo.interestingElementInfo().stream()
                 .filter(it -> it.typeName().isMap())
                 .filter(it -> {
                     TypeName typeName = it.typeName();
@@ -145,7 +143,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                     }
                     return bad;
                 })
-                .collect(Collectors.toList());
+                .toList();
 
         if (!list.isEmpty()) {
             throw new IllegalStateException(list + ": only methods returning Map<String, <any-non-generic-type>> are supported "
@@ -262,7 +260,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                     .name("toBuilder")
                     .isStatic(true)
                     .description("Creates a builder for this type, initialized with the Config value passed.")
-                    .returnType(ctx.implTypeName() + "$Builder", "a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
+                    .returnType(ctx.implTypeName() + ".Builder", "a fluent builder for {@link " + ctx.typeInfo().typeName() + "}")
                     .addParameter(parameter -> parameter.name("cfg")
                             .type(Config.class)
                             .description("the config to copy and initialize from"))
@@ -303,7 +301,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
 
             int i = 0;
             for (String attrName : ctx.allAttributeNames()) {
-                TypedElementName method = ctx.allTypeInfos().get(i);
+                TypedElementInfo method = ctx.allTypeInfos().get(i);
                 String configKey = toConfigKey(attrName, method, ctx.builderTriggerAnnotation());
 
                 // resolver.of(config, "port", int.class).ifPresent(this::port);
@@ -467,7 +465,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
     }
 
     private String toConfigKey(String attrName,
-                               TypedElementName method,
+                               TypedElementInfo method,
                                AnnotationAndValue ignoredBuilderAnnotation) {
         String configKey = null;
         Optional<? extends AnnotationAndValue> configuredOptions = AnnotationAndValueDefault
@@ -490,7 +488,7 @@ public class ConfigBeanBuilderCreator2 extends DefaultBuilderCreatorProvider2 {
                                                     + " on " + typeInfo.typeName());
         }
 
-        for (TypedElementName elem : typeInfo.elementInfo()) {
+        for (TypedElementInfo elem : typeInfo.interestingElementInfo()) {
             anno = AnnotationAndValueDefault.findFirst(annoTypeName, elem.annotations());
             if (anno.isEmpty()) {
                 anno = AnnotationAndValueDefault.findFirst(annoTypeName, elem.elementTypeAnnotations());

@@ -965,8 +965,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     || (mapValueType != null && (mapValueType.isSet() || mapValueType.isList() || mapValueType.isMap()));
             if (useComputeStyle) {
                 methodBuilder.addLine(".compute(key, (k, v) -> {");
-                methodBuilder.padding().addLine("if (v == null) {");
-                methodBuilder.padding().padding().add("v = new ");
+                methodBuilder.addLine("if (v == null) {");
+                methodBuilder.add("v = new ");
                 if (mapValueType.isSet()) {
                     methodBuilder.add(ctx.setType());
                 } else if (mapValueType.isList()) {
@@ -977,8 +977,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     throw new IllegalStateException("Unhandled singular type: " + mapValueType);
                 }
                 methodBuilder.addLine("<>();");
-                methodBuilder.padding().addLine("}");
-                methodBuilder.padding();
+                methodBuilder.addLine("}");
                 if (forceUseComputeStyle) {
                     if (mapValueType.isSet() || mapValueType.isList()) {
                         methodBuilder.addLine("((java.util.Collection) v).add(val);");
@@ -996,7 +995,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                         methodBuilder.addLine("((java.util.Map) v).put(k, val);");
                     }
                 }
-                methodBuilder.padding().addLine("return v;");
+                methodBuilder.addLine("return v;");
                 methodBuilder.addLine("});");
             } else {
                 methodBuilder.addLine(".put(key, val);");
@@ -1827,14 +1826,14 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                     .addAnnotation(annotation -> annotation.type(Override.class));
 
             methodBuilder.addLine("if (this == o) {");
-            methodBuilder.padding().addLine("return true;");
+            methodBuilder.addLine("return true;");
             methodBuilder.addLine("}");
             methodBuilder.addLine("if (o instanceof " + ctx.typeInfo().typeName().className() + " other) {");
-            methodBuilder.padding().add("return ");
+            methodBuilder.add("return ");
             if (ctx.hasParent()) {
                 methodBuilder.add("super.equals(other)");
                 if (!ctx.allTypeInfos().isEmpty()) {
-                    methodBuilder.addLine(" && ").padding().padding();
+                    methodBuilder.addLine(" && ").padding();
                 }
             }
             boolean first = true;
@@ -1849,7 +1848,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                 if (first) {
                     first = false;
                 } else {
-                    methodBuilder.addLine("").padding().padding().add("&& ");
+                    methodBuilder.addLine("").padding().add("&& ");
                 }
                 methodBuilder.add(equalsClass).add(".equals(")
                         .add(method.elementName()).add("(), other.")
@@ -1884,7 +1883,7 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
             methodBuilder.addLine("String result = super.toStringInner();");
             if (!ctx.allAttributeNames().isEmpty()) {
                 methodBuilder.addLine("if (!result.isEmpty() && !result.endsWith(\", \")) {");
-                methodBuilder.padding().addLine("result += \", \";");
+                methodBuilder.addLine("result += \", \";");
                 methodBuilder.addLine("}");
             }
         } else {
@@ -2037,8 +2036,8 @@ public class DefaultBuilderCreatorProvider2 implements BuilderCreatorProvider {
                                   .addLine("Map<String, Object> result = new LinkedHashMap<>(args.length / 2);")
                                   .addLine("int i = 0;")
                                   .addLine("while (i < args.length) {")
-                                  .padding().addLine("result.put((String) args[i], args[i + 1]);")
-                                  .padding().addLine("i += 2;")
+                                  .addLine("result.put((String) args[i], args[i + 1]);")
+                                  .addLine("i += 2;")
                                   .addLine("}")
                                   .addLine("return result;"));
     }

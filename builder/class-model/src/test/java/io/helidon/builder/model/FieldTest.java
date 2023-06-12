@@ -66,7 +66,6 @@ public class FieldTest {
 
         assertThat(generatedField, is(expected));
         assertThat(importOrganizer.imports().size(), is(0));
-        assertThat(importOrganizer.forcedFullImports().size(), is(2));
         assertThat(importOrganizer.forcedFullImports(), containsInAnyOrder(List.class.getName(), ArrayList.class.getName()));
     }
 

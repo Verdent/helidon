@@ -43,7 +43,7 @@ class Content {
         for (Position position : tokenPositions) {
             String replacement = replacements.computeIfAbsent(position.type, key -> {
                 TypeName typeName = TypeNameDefault.createFromTypeName(key);
-                return imports.typeName(Type.fromTypeName(typeName));
+                return imports.typeName(Type.fromTypeName(typeName), true);
             });
             content.replace(position.start - offset, position.end - offset, replacement);
             //Since we are replacing values in the StringBuilder, previously obtained position indexes for class name tokens

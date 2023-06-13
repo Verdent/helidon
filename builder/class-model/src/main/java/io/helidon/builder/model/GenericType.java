@@ -19,7 +19,7 @@ public final class GenericType extends AbstractType {
 
     @Override
     void writeComponent(ModelWriter writer, Set<String> declaredTokens, ImportOrganizer imports) throws IOException {
-        String typeName = imports.typeName(this);
+        String typeName = imports.typeName(this, includeImport());
         writer.write(typeName);
         if (!typeParams.isEmpty()) {
             writer.write("<");

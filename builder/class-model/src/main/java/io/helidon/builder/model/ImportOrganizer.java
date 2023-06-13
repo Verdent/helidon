@@ -41,7 +41,7 @@ class ImportOrganizer {
         return new Builder();
     }
 
-    String typeName(Type type) {
+    String typeName(Type type, boolean includedImport) {
         if (type instanceof Token) {
             return type.typeName();
         }
@@ -49,7 +49,9 @@ class ImportOrganizer {
         String fullTypeName = checkedType.typeName();
         String simpleTypeName = checkedType.simpleTypeName();
 
-        if (forcedFullImports.contains(fullTypeName)) {
+        if (!includedImport) {
+            return fullTypeName;
+        } if (forcedFullImports.contains(fullTypeName)) {
             return type.typeName();
         } else if (noImport.contains(fullTypeName) || imports.contains(fullTypeName)) {
             return identifiedInnerClasses.getOrDefault(type.typeName(), simpleTypeName);

@@ -15,7 +15,6 @@ public class ClassModel extends AbstractClass {
     public static final String CLASS_TOKEN = CLASS_TOKEN_START + "name" + CLASS_TOKEN_END;
     private final String packageName;
     private final String licenseHeader;
-    //This has to be set after this object is constructed, if we want to use common addImports method
     private ImportOrganizer imports;
 
     private ClassModel(Builder builder) {

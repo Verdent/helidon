@@ -210,6 +210,9 @@ class ImportOrganizer {
                     //There is already class with the same name present in the package we are generating to
                     //or imported from java.lang
                     forcedFullImports.add(fqTypeName);
+                } else if (typeName.equals(typeSimpleName)) {
+                    //If the processed class name is the same as the one currently built.
+                    forcedFullImports.add(fqTypeName);
                 } else if (!typePackage.isEmpty()) {
                     finalImports.put(typeSimpleName, fqTypeName);
                 }

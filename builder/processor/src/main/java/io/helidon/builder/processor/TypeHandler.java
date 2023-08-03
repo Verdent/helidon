@@ -255,6 +255,7 @@ class TypeHandler {
         // if there is a builder factory method, we create a method with builder consumer
         if (factoryMethod.builder().isPresent()) {
             factorySetterConsumer(classBuilder, configured, returnType, blueprintJavadoc, factoryMethod.builder().get());
+            factorySetterSupplier(classBuilder, configured, returnType, blueprintJavadoc);
         }
     }
 
@@ -354,6 +355,43 @@ class TypeHandler {
                 .addLine("." + factoryMethod.createMethodName() + "();")
                 .addLine("consumer.accept(builder);")
                 .addLine("this." + name() + "(builder.build());")
+                .addLine("return self();");
+        classBuilder.addMethod(builder);
+    }
+
+    private void factorySetterSupplier(InnerClass.Builder classBuilder,
+                                       PrototypeProperty.ConfiguredOption configured,
+                                       TypeName returnType,
+                                       Javadoc blueprintJavadoc) {
+        TypeName supplierType = actualType();
+        if (!supplierType.wildcard()) {
+            supplierType = TypeName.builder(supplierType)
+                    .wildcard(true)
+                    .build();
+        }
+        supplierType = TypeName.builder(TypeNames.SUPPLIER)
+                .addTypeArgument(supplierType)
+                .build();
+
+        String argumentName = "supplier";
+
+        List<String> paramLines = new ArrayList<>();
+        paramLines.add("supplier of");
+        paramLines.addAll(blueprintJavadoc.returnDescription());
+
+        TypeName argumentType = supplierType;
+        Method.Builder builder = Method.builder()
+                .name(setterName())
+                .returnType(returnType, "updated builder instance")
+                .description(blueprintJavadoc.content())
+                .addJavadocTag("see", "#" + getterName() + "()")
+                .addParameter(param -> param.name(argumentName)
+                        .type(argumentType)
+                        .description(paramLines))
+                .accessModifier(setterAccessModifier(configured))
+                .typeName(Objects.class)
+                .addLine(".requireNonNull(" + argumentName + ");")
+                .addLine("this." + name() + "(" + argumentName + ".get());")
                 .addLine("return self();");
         classBuilder.addMethod(builder);
     }

@@ -68,7 +68,7 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
         // the type must be either a valid prototype, or a prototype blueprint (in case this is the same module)
         if ("<error>".equals(configDriven.configBeanType().className())) {
             throw new ToolsException("The config bean type must be set to the Blueprint type if they are within the same "
-                                             + "module! Failed on: " + service.typeName().fqName());
+                                             + "module! Failed on: " + service.typeName().resolved());
         }
         TypeInfo configBeanTypeInfo = TypeInfoFactory.create(processingEnv, asElement(configDriven.configBeanType()))
                 .orElseThrow();

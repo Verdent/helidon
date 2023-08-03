@@ -144,6 +144,6 @@ final class ModuleInfoUtil {
      * @return the item created
      */
     static ModuleInfoItem usesExternalContract(TypeName externalContract) {
-        return usesExternalContract(externalContract.fqName());
+        return usesExternalContract(externalContract.resolved());
     }
 }

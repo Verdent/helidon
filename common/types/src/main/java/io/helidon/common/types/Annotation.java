@@ -13,61 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package io.helidon.common.types;
 
+import java.lang.reflect.Type;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
+import io.helidon.builder.api.Prototype;
 import io.helidon.common.Errors;
 
 /**
  * An annotation with defined values.
- *
+ * 
  * @see #builder()
  */
-public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.Prototype.Api, Comparable<Annotation> {
-    /**
-     * Create a new fluent API builder to customize configuration.
-     *
-     * @return a new builder
-     */
-    static Builder builder() {
-        return new Builder();
-    }
+public interface Annotation extends Prototype.Api, Comparable<Annotation>, AnnotationBlueprint {
 
     /**
-     * Create a new fluent API builder from an existing instance.
-     *
-     * @param instance an existing instance used as a base for the builder
-     * @return a builder based on an instance
-     */
-    static Builder builder(Annotation instance) {
-        return Annotation.builder().from(instance);
-    }
-
-    /**
-     *Creates an instance for an annotation with no value.
-     *
-     * @param annoType the annotation type
-     * @return the new instance
-     */
-    static Annotation create(Class<? extends java.lang.annotation.Annotation> annoType) {
-        return AnnotationSupport.create(annoType);
-    }
-
-    /**
-     *Creates an instance for an annotation with no value.
-     *
-     * @param annoType the annotation type
-     * @return the new instance
-     */
-    static Annotation create(TypeName annoType) {
-        return AnnotationSupport.create(annoType);
-    }
-
-    /**
-     *Creates an instance for an annotation with a value.
-     *
+     * Creates an instance for an annotation with a value.
+     * 
      * @param annoType the annotation type
      * @param value the annotation value
      * @return the new instance
@@ -75,22 +42,21 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
     static Annotation create(Class<? extends java.lang.annotation.Annotation> annoType, String value) {
         return AnnotationSupport.create(annoType, value);
     }
-
+    
     /**
-     *Creates an instance for an annotation with a value.
-     *
+     * Creates an instance for an annotation with a value.
+     * 
      * @param annoType the annotation type
      * @param values the annotation values
      * @return the new instance
      */
-    static Annotation create(Class<? extends java.lang.annotation.Annotation> annoType,
-                             java.util.Map<String, String> values) {
+    static Annotation create(Class<? extends java.lang.annotation.Annotation> annoType, Map<String, String> values) {
         return AnnotationSupport.create(annoType, values);
     }
-
+    
     /**
-     *Creates an instance for an annotation with a value.
-     *
+     * Creates an instance for an annotation with a value.
+     * 
      * @param annoTypeName the annotation type name
      * @param value the annotation value
      * @return the new instance
@@ -98,39 +64,77 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
     static Annotation create(TypeName annoTypeName, String value) {
         return AnnotationSupport.create(annoTypeName, value);
     }
-
+    
     /**
-     *Creates an instance for annotation with zero or more values.
-     *
+     * Creates an instance for annotation with zero or more values.
+     * 
      * @param annoTypeName the annotation type name
      * @param values the annotation values
      * @return the new instance
      */
-    static Annotation create(TypeName annoTypeName, java.util.Map<String, String> values) {
+    static Annotation create(TypeName annoTypeName, Map<String, String> values) {
         return AnnotationSupport.create(annoTypeName, values);
     }
-
+    
     /**
-     * Fluent API builder base for {@link io.helidon.common.types.Annotation}.
-     *
+     * Create a new fluent API builder from an existing instance.
+     * 
+     * @param instance an existing instance used as a base for the builder
+     * @return a builder based on an instance
+     */
+    static Annotation.Builder builder(Annotation instance) {
+        return Annotation.builder().from(instance);
+    }
+    
+    /**
+     * Create a new fluent API builder to customize configuration.
+     * 
+     * @return a new builder
+     */
+    static Annotation.Builder builder() {
+        return new Annotation.Builder();
+    }
+    
+    /**
+     * Creates an instance for an annotation with no value.
+     * 
+     * @param annoType the annotation type
+     * @return the new instance
+     */
+    static Annotation create(Class<? extends java.lang.annotation.Annotation> annoType) {
+        return AnnotationSupport.create(annoType);
+    }
+    
+    /**
+     * Creates an instance for an annotation with no value.
+     * 
+     * @param annoType the annotation type
+     * @return the new instance
+     */
+    static Annotation create(TypeName annoType) {
+        return AnnotationSupport.create(annoType);
+    }
+    
+    /**
+     * Fluent API builder base for {@link Annotation}.
+     * 
      * @param <BUILDER> type of the builder extending this abstract builder
      * @param <PROTOTYPE> type of the prototype interface that would be built by {@link #buildPrototype()}
      */
-    abstract class BuilderBase<BUILDER extends BuilderBase<BUILDER, PROTOTYPE>, PROTOTYPE extends Annotation>
-            implements io.helidon.builder.api.Prototype.Builder<BUILDER, PROTOTYPE>, Annotation {
-        private final java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+    abstract class BuilderBase<BUILDER extends Annotation.BuilderBase<BUILDER, PROTOTYPE>, PROTOTYPE extends Annotation> implements Annotation, Prototype.Builder<BUILDER, PROTOTYPE> {
+    
+        private final Map<String, String> values = new LinkedHashMap<>();
         private TypeName typeName;
-
+    
         /**
          * Protected to support extensibility.
-         *
          */
         protected BuilderBase() {
         }
-
+        
         /**
          * Update this builder from an existing prototype instance.
-         *
+         * 
          * @param prototype existing prototype to update this builder from
          * @return updated builder instance
          */
@@ -139,10 +143,10 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
             addValues(prototype.values());
             return self();
         }
-
+        
         /**
          * Update this builder from an existing prototype builder instance.
-         *
+         * 
          * @param builder existing builder prototype to update this builder from
          * @return updated builder instance
          */
@@ -153,113 +157,97 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
             addValues(builder.values());
             return self();
         }
-
-        /**
-         * Handles providers and interceptors.
-         */
-        protected void preBuildPrototype() {
-        }
-
-        /**
-         * Validates required properties.
-         */
-        protected void validatePrototype() {
-            Errors.Collector collector = Errors.collector();
-            if (typeName == null) {
-                collector.fatal(getClass(), "Property \"type-name\" is required, but not set");
-            }
-            collector.collect().checkValid();
-        }
-
+        
         @Override
         public int compareTo(Annotation o) {
             return AnnotationSupport.compareTo(this, o);
         }
-
+        
         /**
-         *Annotation type name from annotation type.
-         *
-         *@param annoType annotation class
-         *@return updated builder instance
+         * Annotation type name from annotation type.
+         * 
+         * @param annoType annotation class
+         * @return updated builder instance
          */
-        public BUILDER type(java.lang.reflect.Type annoType) {
+        public BUILDER type(Type annoType) {
             AnnotationSupport.type(this, annoType);
             return self();
         }
-
+        
         /**
-         *Configure the value of this annotation (property of name {@code value}).
-         *
-         *@param value value of the annotation
-         *@return updated builder instance
+         * Configure the value of this annotation (property of name {@code value}).
+         * 
+         * @param value value of the annotation
+         * @return updated builder instance
          */
         public BUILDER value(String value) {
             AnnotationSupport.value(this, value);
             return self();
         }
-
+        
         /**
          * The type name, e.g., {@link java.util.Objects} -> "java.util.Objects".
-         *
+         * 
          * @param typeName the annotation type name
          * @return updated builder instance
          * @see #typeName()
          */
         public BUILDER typeName(TypeName typeName) {
             Objects.requireNonNull(typeName);
+            typeName = resolveBuilder(typeName);
             this.typeName = typeName;
             return self();
         }
-
+        
         /**
          * The type name, e.g., {@link java.util.Objects} -> "java.util.Objects".
-         *
+         * 
          * @param consumer consumer of builder for
-         * the annotation type name
+         *                 the annotation type name
          * @return updated builder instance
          * @see #typeName()
          */
-        public BUILDER typeName(java.util.function.Consumer<TypeName.Builder> consumer) {
+        public BUILDER typeName(Consumer<TypeName.Builder> consumer) {
             Objects.requireNonNull(consumer);
             var builder = TypeName.builder();
             consumer.accept(builder);
             this.typeName(builder.build());
             return self();
         }
-
+        
         /**
          * Get a key-value of all the annotation properties.
-         *
          * This method replaces all values with the new ones.
+         * 
          * @param values key-value pairs of all the properties present
          * @return updated builder instance
          * @see #values()
          */
-        public BUILDER values(java.util.Map<? extends String, ? extends String> values) {
+        public BUILDER values(Map<? extends String, ? extends String> values) {
             Objects.requireNonNull(values);
             this.values.clear();
             this.values.putAll(values);
             return self();
         }
-
+        
         /**
          * Get a key-value of all the annotation properties.
-         *
          * This method keeps existing values, then puts all new values into the map.
+         * 
          * @param values key-value pairs of all the properties present
          * @return updated builder instance
          * @see #values()
          */
-        public BUILDER addValues(java.util.Map<? extends String, ? extends String> values) {
+        public BUILDER addValues(Map<? extends String, ? extends String> values) {
             Objects.requireNonNull(values);
             this.values.putAll(values);
             return self();
         }
-
+        
         /**
          * Get a key-value of all the annotation properties.
-         *
          * This method adds a new value to the map, or replaces it if the key already exists.
+         * 
          * @param key key to add or replace
          * @param value new value for the key
          * @return updated builder instance
@@ -271,74 +259,93 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
             this.values.put(key, value);
             return self();
         }
-
+        
         /**
          * The type name, e.g., {@link java.util.Objects} -> "java.util.Objects".
-         *
+         * 
          * @return the type name
          */
         @Override
         public TypeName typeName() {
             return typeName;
         }
-
+        
         /**
          * Get a key-value of all the annotation properties.
-         *
+         * 
          * @return the values
          */
         @Override
-        public java.util.Map<String, String> values() {
+        public Map<String, String> values() {
             return values;
         }
-
+        
         @Override
         public String toString() {
             return "AnnotationBuilder{"
-                    + "typeName=" + typeName + ","
+                    + "typeName=" + typeName + "," 
                     + "values=" + values
                     + "}";
         }
-
+        
+        /**
+         * Handles providers and interceptors.
+         */
+        protected void preBuildPrototype() {
+        }
+        
+        /**
+         * Validates required properties.
+         */
+        protected void validatePrototype() {
+            Errors.Collector collector = Errors.collector();
+            if (typeName == null) {
+                collector.fatal(getClass(), "Property \"type-name\" is required, but not set");
+            }
+            collector.collect().checkValid();
+        }
+        
         /**
          * Generated implementation of the prototype, can be extended by descendant prototype implementations.
          */
         protected static class AnnotationImpl implements Annotation {
+        
+            private final Map<String, String> values;
             private final TypeName typeName;
-            private final java.util.Map<String, String> values;
-
+        
             /**
              * Create an instance providing a builder.
+             * 
              * @param builder extending builder base of this prototype
              */
-            protected AnnotationImpl(BuilderBase<?, ?> builder) {
+            protected AnnotationImpl(Annotation.BuilderBase<?, ?> builder) {
                 this.typeName = builder.typeName();
-                this.values = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(builder.values()));
+                this.values = Collections.unmodifiableMap(new LinkedHashMap<>(builder.values()));
             }
-
+            
             @Override
             public int compareTo(Annotation o) {
                 return AnnotationSupport.compareTo(this, o);
             }
-
+            
             @Override
             public TypeName typeName() {
                 return typeName;
             }
-
+            
             @Override
-            public java.util.Map<String, String> values() {
+            public Map<String, String> values() {
                 return values;
             }
-
+            
             @Override
             public String toString() {
                 return "Annotation{"
-                        + "typeName=" + typeName + ","
+                        + "typeName=" + typeName + "," 
                         + "values=" + values
                         + "}";
             }
-
+            
             @Override
             public boolean equals(Object o) {
                 if (o == this) {
@@ -349,32 +356,36 @@ public interface Annotation extends AnnotationBlueprint, io.helidon.builder.api.
                 }
                 return Objects.equals(typeName, other.typeName()) && Objects.equals(values, other.values());
             }
-
+            
             @Override
             public int hashCode() {
                 return Objects.hash(typeName, values);
             }
+            
         }
+        
     }
-
+    
     /**
-     * Fluent API builder for {@link io.helidon.common.types.Annotation}.
+     * Fluent API builder for {@link Annotation}.
      */
-    class Builder extends BuilderBase<Builder, Annotation> implements io.helidon.common.Builder<Builder, Annotation> {
+    class Builder extends Annotation.BuilderBase<Annotation.Builder, Annotation> implements io.helidon.common.Builder<Annotation.Builder, Annotation> {
+    
         private Builder() {
         }
-
+        
         @Override
         public Annotation buildPrototype() {
             preBuildPrototype();
             validatePrototype();
             return new AnnotationImpl(this);
         }
-
+        
         @Override
         public Annotation build() {
             return buildPrototype();
         }
-
+        
     }
+    
 }

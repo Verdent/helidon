@@ -112,13 +112,13 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
         TypeName namedInstanceWithGeneric = TypeName.builder(NAMED_INSTANCE)
                 .addTypeArgument(configBean.typeName())
                 .build();
-        String configBeanName = configBean.typeName().fqName();
+        String configBeanName = configBean.typeName().resolved();
 
         return List.of(
                 // config bean field
                 "\n\tprivate final " + configBeanName + " configBean;\n",
                 // constructor with NamedInstance
-                "\n\tprivate " + activatorImplType.className() + "(" + namedInstanceWithGeneric.fqName() + " configBean) {\n"
+                "\n\tprivate " + activatorImplType.className() + "(" + namedInstanceWithGeneric.resolved() + " configBean) {\n"
                         + "\t\tsuper(configBean.name());\n"
                         + "\t\tassertIsRootProvider(false, true);\n"
                         + "\t\tserviceInfo(serviceInfo);\n"
@@ -133,7 +133,7 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
                         + "\t}\n",
                 // createInstance(NamedInstance)
                 "\n\t@Override\n"
-                        + "\tprotected " + superType.fqName() + " createInstance(" + namedInstanceWithGeneric.fqName() + " "
+                        + "\tprotected " + superType.resolved() + " createInstance(" + namedInstanceWithGeneric.resolved() + " "
                         + "configBean) {\n"
                         + "\t\treturn new " + activatorImplType.className() + "(configBean);\n"
                         + "\t}\n",
@@ -163,7 +163,7 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
         StringBuilder method = new StringBuilder();
         method.append("\n\t@Override\n")
                 .append("\tpublic List<")
-                .append(namedInstanceWithGeneric.fqName())
+                .append(namedInstanceWithGeneric.resolved())
                 .append("> createConfigBeans(io.helidon.common.config.Config config){\n")
                 .append("\t\tvar beanConfig = config.get(\"")
                 .append(prefix)
@@ -184,7 +184,7 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
                     .append("\\\"\");");
         } else if (wantDefault) {
             method.append("\t\t\treturn List.of(new io.helidon.inject.configdriven.api.NamedInstance<>(")
-                    .append(configBean.typeName().fqName())
+                    .append(configBean.typeName().resolved())
                     .append(".create(io.helidon.common.config.Config.empty()), io.helidon.inject.configdriven.api.NamedInstance"
                                     + ".DEFAULT_NAME));\n");
         } else {
@@ -197,7 +197,7 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
             method.append("\t\treturn createRepeatableBeans(beanConfig, ")
                     .append(wantDefault)
                     .append(", ")
-                    .append(configBean.typeName().fqName())
+                    .append(configBean.typeName().resolved())
                     .append("::create);\n");
         } else {
             method.append("\t\tif (beanConfig.isList()) {\n")
@@ -206,11 +206,11 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
                     .append("\\\", but got a list\");\n")
                     .append("\t\t}\n");
             method.append("\t\treturn java.util.List.of(new ")
-                    .append(NAMED_INSTANCE.fqName())
+                    .append(NAMED_INSTANCE.resolved())
                     .append("<>(")
-                    .append(configBean.typeName().fqName())
+                    .append(configBean.typeName().resolved())
                     .append(".create(beanConfig), ")
-                    .append(NAMED_INSTANCE.fqName())
+                    .append(NAMED_INSTANCE.resolved())
                     .append(".DEFAULT_NAME));\n");
         }
         method.append("\t}\n");
@@ -219,6 +219,6 @@ public class ConfigDrivenProcessor extends InjectionAnnotationProcessor {
     }
 
     private TypeElement asElement(TypeName typeName) {
-        return processingEnv.getElementUtils().getTypeElement(typeName.fqName());
+        return processingEnv.getElementUtils().getTypeElement(typeName.resolved());
     }
 }

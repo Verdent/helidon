@@ -193,9 +193,8 @@ class TypeHandlerMap extends TypeHandler {
             method.typeName(Objects.class)
                     .addLine(".requireNonNull(key);")
                     .typeName(Objects.class)
-                    .addLine(".requireNonNull(" + singularName + ");");
-            resolveBuilderLines(method, actualType, singularName);
-            method.add("this." + name() + ".put(key, ");
+                    .addLine(".requireNonNull(" + singularName + ");")
+                    .add("this." + name() + ".put(key, ");
             secondArgToPut(method, actualType(), singularName);
             method.addLine(");")
                     .addLine("return self();");

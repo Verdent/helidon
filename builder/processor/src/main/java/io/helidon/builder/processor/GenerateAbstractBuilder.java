@@ -78,7 +78,6 @@ final class GenerateAbstractBuilder {
                     .addGenericArgument(token -> token.token("PROTOTYPE")
                             .description("type of the prototype interface that would be built by {@link #buildPrototype()}")
                             .bound(prototype))
-                    .addInterface(prototype)
                     .addConstructor(constructor -> createConstructor(constructor, typeContext));
             superType.ifPresent(type -> {
                 builder.superType(TypeName.builder()
@@ -108,12 +107,11 @@ final class GenerateAbstractBuilder {
             fromInstanceMethod(builder, typeContext, prototype);
             fromBuilderMethod(builder, typeContext, typeArguments);
 
-            // method preBuildPrototype() - handles providers, interceptor
+            // method preBuildPrototype() - handles providers, decorator
             preBuildPrototypeMethod(builder, typeContext);
             validatePrototypeMethod(builder, typeContext);
             
             //custom method adding
-            addCustomPrototypeMethods(typeContext, builder);
             addCustomBuilderMethods(typeContext, builder);
 
             // setters and getters of builder
@@ -245,11 +243,17 @@ final class GenerateAbstractBuilder {
         }
 
         TypeName returnType = TypeName.createFromGenericDeclaration("BUILDER");
-        // first setters (implement interface)
+        // first setters
         for (PrototypeProperty child : properties) {
             child.setters(classBuilder, returnType, child.configuredOption().description());
         }
         // then getters
+        /*
+        If has default value - return type
+        If primitive & optional - return type
+        If collection - return type
+        Otherwise return Optional<x>
+         */
         for (PrototypeProperty child : properties) {
             String getterName = child.getterName();
             /*
@@ -259,8 +263,7 @@ final class GenerateAbstractBuilder {
              */
             Method.Builder method = Method.builder()
                     .name(getterName)
-                    .returnType(child.typeName())
-                    .addAnnotation(Annotation.create(Override.class))
+                    .returnType(child.builderGetterType())
                     .addLine("return " + child.builderGetter() + ";");
             if (child.configuredOption().description() != null) {
                 method.description(child.configuredOption().description().content())
@@ -388,15 +391,16 @@ final class GenerateAbstractBuilder {
             TypeName declaredType = property.typeHandler().declaredType();
             String setterName = property.typeHandler().setterName();
             String getterName = property.typeHandler().getterName();
-            if (declaredType.primitive() || declaredType.isOptional()) {
-                methodBuilder.addLine(setterName + "(builder." + getterName + "());");
-            } else if (declaredType.isSet() || declaredType.isList() || declaredType.isMap()) {
-                methodBuilder.addLine("add" + capitalize(property.name()) + "(builder." + getterName + "());");
-            } else {
+            if (property.builderGetterOptional()) {
                 // property that is either mandatory or internally nullable
-                methodBuilder.addLine("if (builder." + getterName + "() != null) {");
-                methodBuilder.addLine(setterName + "(builder." + getterName + "());");
-                methodBuilder.addLine("}");
+                methodBuilder.addLine("builder." + getterName + "().ifPresent(this::" + setterName + ");");
+            } else {
+                if (declaredType.isSet() || declaredType.isList() || declaredType.isMap()) {
+                    methodBuilder.add("add" + capitalize(property.name()));
+                } else {
+                    methodBuilder.add(setterName);
+                }
+                methodBuilder.addLine("(builder." + getterName + "());");
             }
 
         }
@@ -425,7 +429,7 @@ final class GenerateAbstractBuilder {
         Method.Builder preBuildBuilder = Method.builder()
                 .name("preBuildPrototype")
                 .accessModifier(AccessModifier.PROTECTED)
-                .description("Handles providers and interceptors.");
+                .description("Handles providers and decorators.");
 
         if (typeContext.propertyData().hasProvider()) {
             preBuildBuilder.addAnnotation(builder -> builder.type(SuppressWarnings.class)
@@ -476,11 +480,10 @@ final class GenerateAbstractBuilder {
                 }
             }
         }
-        if (typeContext.typeInfo().builderInterceptor().isPresent()) {
-            // TODO we should use the resulting builder, or remove the return type from interceptor
+        if (typeContext.typeInfo().decorator().isPresent()) {
             preBuildBuilder.add("new ")
-                    .typeName(typeContext.typeInfo().builderInterceptor().get())
-                    .addLine("().intercept(this);");
+                    .typeName(typeContext.typeInfo().decorator().get())
+                    .addLine("().decorate(this);");
         }
         classBuilder.addMethod(preBuildBuilder);
     }
@@ -805,22 +808,28 @@ final class GenerateAbstractBuilder {
     private static void implAssignToFields(Constructor.Builder constructor, TypeContext typeContext) {
         for (PrototypeProperty child : typeContext.propertyData().properties()) {
             constructor.add("this." + child.name() + " = ");
-            if (child.typeHandler().declaredType().genericTypeName().equals(LIST)) {
+            TypeName declaredType = child.typeHandler().declaredType();
+            if (declaredType.genericTypeName().equals(LIST)) {
                 constructor.typeName(List.class)
                         .addLine(".copyOf(builder." + child.getterName() + "());");
-            } else if (child.typeHandler().declaredType().genericTypeName().equals(SET)) {
+            } else if (declaredType.genericTypeName().equals(SET)) {
                 constructor.typeName(Collections.class)
                         .add(".unmodifiableSet(new ")
                         .typeName(LinkedHashSet.class)
                         .addLine("<>(builder." + child.getterName() + "()));");
-            } else if (child.typeHandler().declaredType().genericTypeName().equals(MAP)) {
+            } else if (declaredType.genericTypeName().equals(MAP)) {
                 constructor.typeName(Collections.class)
                         .add(".unmodifiableMap(new ")
                         .typeName(LinkedHashMap.class)
                         .addLine("<>(builder." + child.getterName() + "()));");
             } else {
-                // optional and other types are just plainly assigned
-                constructor.addLine("builder." + child.getterName() + "();");
+                if (child.builderGetterOptional() && !declaredType.isOptional()) {
+                    // builder getter optional, but type not, we call get (must be present - is validated)
+                    constructor.addLine("builder." + child.getterName() + "().get();");
+                } else {
+                    // optional and other types are just plainly assigned
+                    constructor.addLine("builder." + child.getterName() + "();");
+                }
             }
         }
     }

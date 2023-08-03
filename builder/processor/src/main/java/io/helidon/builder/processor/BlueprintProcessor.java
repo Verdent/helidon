@@ -127,7 +127,6 @@ public class BlueprintProcessor extends AbstractProcessor {
             try {
                 process(blueprint, processingContext);
             } catch (Throwable e) {
-                e.printStackTrace();
                 messager.printError("Failed to process @Builder: "
                                             + e.getClass().getName()
                                             + ": " + e.getMessage(),

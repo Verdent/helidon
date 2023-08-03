@@ -39,11 +39,6 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
     }
 
     @Override
-    String generateBuilderGetter() {
-        return "Optional.ofNullable(" + name() + ")";
-    }
-
-    @Override
     Field.Builder fieldDeclaration(PrototypeProperty.ConfiguredOption configured, boolean isBuilder, boolean alwaysFinal) {
         Field.Builder builder = Field.builder()
                 .isFinal(alwaysFinal || !isBuilder)
@@ -67,7 +62,8 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
     @Override
     TypeName argumentTypeName() {
         return TypeName.builder(OPTIONAL)
-                .addTypeArgument(toWildcard(actualType()));
+                .addTypeArgument(toWildcard(actualType()))
+                .build();
     }
 
     @Override
@@ -96,9 +92,8 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
                             .description(blueprintJavadoc.returnDescription()))
                     .addJavadocTag("see", "#" + getterName() + "()")
                     .typeName(Objects.class)
-                    .addLine(".requireNonNull(" + name() + ");");
-            resolveBuilderLines(method, actualType(), name());
-            method.addLine("this." + name() + " = " + name() + ";")
+                    .addLine(".requireNonNull(" + name() + ");")
+                    .addLine("this." + name() + " = " + name() + ";")
                     .addLine("return self();");
             classBuilder.addMethod(method);
         }
@@ -134,7 +129,8 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
             FactoryMethods.FactoryMethod fm = factoryMethod.builder().get();
 
             TypeName builderType;
-            if (fm.factoryMethodReturnType().className().equals("Builder")) {
+            String className = fm.factoryMethodReturnType().className();
+            if (className.equals("Builder") || className.endsWith(".Builder")) {
                 builderType = fm.factoryMethodReturnType();
             } else {
                 builderType = TypeName.create(fm.factoryMethodReturnType().fqName() + ".Builder");

@@ -104,7 +104,8 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
     @Override
     TypeName argumentTypeName() {
         return TypeName.builder(collectionType)
-                .addTypeArgument(toWildcard(actualType()));
+                .addTypeArgument(toWildcard(actualType()))
+                .build();
     }
 
     @Override
@@ -229,9 +230,8 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
                         .description(blueprintJavadoc.returnDescription()))
                 .accessModifier(setterAccessModifier(configured))
                 .typeName(Objects.class)
-                .addLine(".requireNonNull(" + singularName + ");");
-        resolveBuilderLines(builder, actualType(), singularName);
-        builder.addLine("this." + name() + ".add(" + singularName + ");")
+                .addLine(".requireNonNull(" + singularName + ");")
+                .addLine("this." + name() + ".add(" + singularName + ");")
                 .addLine("return self();");
         classBuilder.addMethod(builder);
     }

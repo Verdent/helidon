@@ -96,34 +96,31 @@ class TypeHandler {
         return LINKED_HASH_SET_TYPE;
     }
 
-    protected static void resolveBuilderLines(Method.Builder method, TypeName typeName, String variableName) {
-        /*
-        Make sure that if we got builder, we build it, so the values are correctly filled with interceptors, and validated
-        with required validators
-         */
-        if (typeName.primitive()
-                || typeName.isOptional()
-                || typeName.array()
-                || typeName.isList()
-                || typeName.isSet()
-                || typeName.isMap()) {
-            // primitive types do not have builders, other types (set, array etc.) - we may add support later if needed
-            return;
-        }
-        if (typeName.packageName().startsWith("java.")) {
-            // java packages do not have builders we support
-            return;
-        }
-        method.addLine(variableName + " = resolveBuilder(" + variableName + ");");
-    }
-
     @Override
     public String toString() {
         return declaredType.fqName() + " " + name;
     }
 
-    String generateBuilderGetter() {
-        return name;
+    TypeName builderGetterType(boolean required, boolean hasDefault) {
+        if (builderGetterOptional(required, hasDefault)) {
+            if (declaredType().isOptional()) {
+                // already wrapped
+                return declaredType();
+            } else {
+                return TypeName.builder(TypeNames.OPTIONAL)
+                        .addTypeArgument(declaredType().boxed())
+                        .build();
+            }
+        }
+        return declaredType();
+    }
+
+    String generateBuilderGetter(boolean required, boolean hasDefault) {
+        if (builderGetterOptional(required, hasDefault)) {
+            return ClassModel.TYPE_TOKEN + "java.util.Optional" + ClassModel.TYPE_TOKEN + ".ofNullable(" + name + ")";
+        } else {
+            return name;
+        }
     }
 
     Field.Builder fieldDeclaration(PrototypeProperty.ConfiguredOption configured,
@@ -278,6 +275,26 @@ class TypeHandler {
                 .addLine("return self();"));
     }
 
+    boolean builderGetterOptional(boolean required, boolean hasDefault) {
+        // optional and collections - good return types
+        if (declaredType().isList()
+                || declaredType().isMap()
+                || declaredType().isSet()) {
+            return false;
+        }
+        if (declaredType().isOptional()) {
+            return true;
+        }
+        // optional and primitive type - good return type (uses default for primitive if not customized)
+        if (!required && declaredType().primitive()) {
+            return false;
+        }
+        // has default, and not Optional<X> - return type (never can be null)
+        // any other case (required, optional without defaults) - return optional
+        return !hasDefault;
+
+    }
+
     private void declaredSetter(InnerClass.Builder classBuilder,
                                 PrototypeProperty.ConfiguredOption configured,
                                 TypeName returnType,
@@ -294,7 +311,6 @@ class TypeHandler {
         if (!declaredType.primitive()) {
             builder.typeName(Objects.class).addLine(".requireNonNull(" + name() + ");");
         }
-        resolveBuilderLines(builder, actualType(), name());
         builder.addLine("this." + name() + " = " + name() + ";")
                 .addLine("return self();");
         classBuilder.addMethod(builder);

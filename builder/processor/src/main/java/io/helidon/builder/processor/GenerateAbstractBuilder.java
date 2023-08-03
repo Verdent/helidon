@@ -267,7 +267,7 @@ final class GenerateAbstractBuilder {
                     .addLine("return " + child.builderGetter() + ";");
             if (child.configuredOption().description() != null) {
                 method.description(child.configuredOption().description().content())
-                        .returnType(child.typeName(), "the " + toHumanReadable(child.name()));
+                        .returnType(child.builderGetterType(), "the " + toHumanReadable(child.name()));
             }
             classBuilder.addMethod(method);
         }

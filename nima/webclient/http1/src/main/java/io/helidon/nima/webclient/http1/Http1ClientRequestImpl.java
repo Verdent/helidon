@@ -48,10 +48,10 @@ class Http1ClientRequestImpl extends ClientRequestBase<Http1ClientRequest, Http1
     }
 
     //Copy constructor for redirection purposes
-    private Http1ClientRequestImpl(Http1ClientRequestImpl request,
-                                   Http.Method method,
-                                   ClientUri clientUri,
-                                   Map<String, String> properties) {
+    Http1ClientRequestImpl(Http1ClientRequestImpl request,
+                           Http.Method method,
+                           ClientUri clientUri,
+                           Map<String, String> properties) {
         this(request.webClient, request.clientConfig(), request.protocolConfig, method, clientUri, properties);
 
         followRedirects(request.followRedirects());
@@ -173,7 +173,7 @@ class Http1ClientRequestImpl extends ClientRequestBase<Http1ClientRequest, Http1
                                                 + clientConfig().maxRedirects() + ") reached.");
     }
 
-    private Http1ClientResponseImpl invokeRequestWithEntity(Object entity) {
+    Http1ClientResponseImpl invokeRequestWithEntity(Object entity) {
         CompletableFuture<WebClientServiceRequest> whenSent = new CompletableFuture<>();
         CompletableFuture<WebClientServiceResponse> whenComplete = new CompletableFuture<>();
         Http1CallChainBase callChain = new Http1CallEntityChain(webClient,

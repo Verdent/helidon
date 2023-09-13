@@ -128,7 +128,7 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
             String defaults = defaultValues.stream()
                     .map(super::toDefaultValue)
                     .collect(Collectors.joining(", "));
-            return collectionType.fqName() + ".of(" + defaults + ")";
+            return TYPE_TOKEN + collectionType.fqName() + TYPE_TOKEN + ".of(" + defaults + ")";
         }
 
         if (defaultInts != null) {
@@ -139,7 +139,7 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
                     .map(String::valueOf)
                     .map(it -> it + "L")
                     .collect(Collectors.joining(", "));
-            return collectionType.fqName() + ".of(" + defaults + ")";
+            return TYPE_TOKEN + collectionType.fqName() + TYPE_TOKEN + ".of(" + defaults + ")";
         }
         if (defaultDoubles != null) {
             return defaultCollection(defaultDoubles);
@@ -228,7 +228,7 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
         String defaults = list.stream()
                 .map(String::valueOf)
                 .collect(Collectors.joining(", "));
-        return collectionType.fqName() + ".of(" + defaults + ")";
+        return TYPE_TOKEN + collectionType.fqName() + TYPE_TOKEN + ".of(" + defaults + ")";
     }
 
     private void discoverServicesSetter(InnerClass.Builder classBuilder,

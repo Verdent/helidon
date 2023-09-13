@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import io.helidon.common.processor.classmodel.ClassModel;
 import io.helidon.common.types.TypeName;
 import io.helidon.inject.api.Activator;
 import io.helidon.inject.api.ServiceProvider;
@@ -59,6 +60,21 @@ public abstract class AbstractCreator {
     AbstractCreator(String templateName) {
         this.templateHelper = TemplateHelper.create();
         this.templateName = templateName;
+    }
+
+    //TODO UPRAVIT
+    static String toActivatorCodeGen2(ServiceProvider<?> sp) {
+        if (sp instanceof AbstractServiceProvider && ((AbstractServiceProvider<?>) sp).isCustom()) {
+            return null;
+        }
+        return ClassModel.TYPE_TOKEN
+                + ServiceBinderDefault.toRootProvider(sp).activator().orElseThrow().getClass().getName()
+                + ClassModel.TYPE_TOKEN
+                + ".INSTANCE";
+    }
+
+    static String toActivatorCodeGen2(Collection<ServiceProvider<?>> coll) {
+        return CommonUtils.toString(coll, AbstractCreator::toActivatorCodeGen2, null);
     }
 
     /**

@@ -16,6 +16,10 @@
 
 package io.helidon.inject.tools;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +34,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import io.helidon.common.LazyValue;
@@ -37,6 +43,9 @@ import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.common.processor.CopyrightHandler;
 import io.helidon.common.processor.GeneratorTools;
+import io.helidon.common.processor.classmodel.ClassModel;
+import io.helidon.common.processor.classmodel.Content;
+import io.helidon.common.processor.classmodel.Method;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.TypeName;
 import io.helidon.inject.api.Activator;
@@ -100,6 +109,39 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
     private static final String SERVICE_PROVIDER_APPLICATION_STUB_HBS = "service-provider-application-stub.hbs";
     private static final String SERVICE_PROVIDER_MODULE_HBS = "service-provider-module.hbs";
     private static final TypeName CREATOR = TypeName.create(ActivatorCreatorDefault.class);
+    private static final TypeName PROCESSOR = TypeName.create(ActivatorCreatorDefault.class);
+    private static final String IS_PROVIDER_METHOD = """
+            @@@java.lang.Override@@
+            public boolean isProvider() {
+                return ${isProvider};
+            }
+            """;
+    private static final String SERVICE_TYPE_METHOD = """
+            /**
+             * The service type of the managed service.
+             *
+             * @return the service type of the managed service
+             */
+            @@@java.lang.Override@@
+            public @@java.lang.Class@@<?> serviceType() {
+                return @@${serviceTypeName}@@.class;
+            }
+            """;
+    private static final String POST_CONSTRUCT_METHOD = """
+            @@@java.lang.Override@@
+            public @@java.util.Optional@@<@@io.helidon.inject.api.PostConstructMethod@@> postConstructMethod() {
+                ${serviceTypeName} target = (${serviceTypeName}) serviceRef().orElseThrow();
+                return @@java.util.Optional@@.of(target::${postConstruct});
+            }
+            """;
+
+    private static final String PRE_DESTROY_METHOD = """
+            @@@java.lang.Override@@
+            public @@java.util.Optional@@<@@io.helidon.inject.api.PreDestroyMethod@@> preDestroyMethod() {
+                ${serviceTypeName} target = (${serviceTypeName}) serviceRef().orElseThrow();
+                return @@java.util.Optional@@.of(target::${preDestroy});
+            }
+            """;
 
     /**
      * Service loader based constructor.
@@ -574,6 +616,21 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
                 .build();
     }
 
+    //TODO upravit
+    TypeName toCodenParent2(boolean ignoredIsSupportsJsr330InStrictMode,
+                            TypeName activatorTypeName,
+                            TypeName parentTypeName) {
+
+        if (parentTypeName == null || Object.class.getName().equals(parentTypeName.name())) {
+            return TypeName.builder()
+                    .type(AbstractServiceProvider.class)
+                    .addTypeArgument(activatorTypeName)
+                    .build();
+        }
+
+        return parentTypeName;
+    }
+
     String toCodenParent(boolean ignoredIsSupportsJsr330InStrictMode,
                          TypeName activatorTypeName,
                          TypeName parentTypeName) {
@@ -641,6 +698,97 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         return builder.toString();
     }
 
+    void toCodegenDependencies2(ClassModel.Builder classBuilder, Method.Builder method, DependenciesInfo dependencies) {
+        if (dependencies == null) {
+            return;
+        }
+
+        dependencies.allDependencies()
+                .forEach(dep1 -> dep1.injectionPointDependencies()
+                        .forEach(dep2 -> toCodegenDependency2(classBuilder, method, dep1.dependencyTo(), dep2)));
+    }
+
+    void toCodegenDependency2(ClassModel.Builder classBuilder,
+                              Method.Builder method,
+                              ServiceInfoCriteria dependencyTo,
+                              InjectionPointInfo ipInfo) {
+        //.add("world", World.class, InjectionPointInfo.ElementKind.FIELD, InjectionPointInfo.Access.PACKAGE_PRIVATE)
+        ElementKind elementKind = ipInfo.elementKind();
+        String elemName = CodeGenUtils.elementNameKindRef(ipInfo.elementName(), elementKind);
+        TypeName typeName = componentTypeNameOf(CommonUtils.first(dependencyTo.contractsImplemented(), true));
+        if (ElementKind.CONSTRUCTOR == elementKind) {
+            classBuilder.addStaticImport(InjectionPointInfo.class.getName() + ".CONSTRUCTOR");
+        }
+        method.add(ClassModel.PADDING_TOKEN.repeat(2))
+                .add(".add(" + elemName + ", ")
+                .typeName(typeName)
+                .add(".class, ")
+                .typeName(ElementKind.class)
+                .add("." + elementKind + ", ");
+
+        if (ElementKind.FIELD != elementKind) {
+            method.add(ipInfo.elementArgs().orElseThrow() + ", ");
+        }
+        method.typeName(AccessModifier.class)
+                .add("." + ipInfo.access() + ")");
+
+        Integer elemPos = ipInfo.elementArgs().orElse(null);
+        Integer elemOffset = ipInfo.elementOffset().orElse(null);
+        Set<Qualifier> qualifiers = ipInfo.qualifiers();
+        if (elemPos != null && elemOffset != null) {
+            method.add(".elemOffset(" + elemOffset + ")");
+        }
+        method.add(".ipName(\"" + ipInfo.ipName() + "\")")
+                .add(".ipType(")
+                .typeName(TypeName.class)
+                .add(".create(")
+                .typeName(ipInfo.ipType().genericTypeName())
+                .add(".class))");
+        if (!qualifiers.isEmpty()) {
+            toCodegenQualifiers2(method, qualifiers);
+        }
+        if (ipInfo.listWrapped()) {
+            method.add(".listWrapped()");
+        }
+        if (ipInfo.providerWrapped()) {
+            method.add(".providerWrapped()");
+        }
+        if (ipInfo.optionalWrapped()) {
+            method.add(".optionalWrapped()");
+        }
+        if (ipInfo.staticDeclaration()) {
+            method.add(".staticDeclaration()");
+        }
+        method.addLine("");
+    }
+
+    void toCodegenQualifiers2(Method.Builder method, Collection<Qualifier> qualifiers) {
+        boolean first = true;
+        for (Qualifier qualifier : qualifiers) {
+            if (first) {
+                first = false;
+            } else {
+                method.add("\n");
+            }
+//            method.add(".addQualifier(").add(toCodegenQualifiers(qualifier)).append(")");
+            method.add(".addQualifier(");
+            toCodegenQualifier2(method, qualifier);
+            method.add(")");
+        }
+    }
+
+    void toCodegenQualifier2(Method.Builder method, Qualifier qualifier) {
+        method.typeName(Qualifier.class)
+                .add(".create(")
+                .typeName(qualifier.qualifierTypeName())
+                .add(".class");
+        String val = toCodegenQuotedString(qualifier.value().orElse(null));
+        if (val != null) {
+            method.add(", " + val);
+        }
+        method.add(")");
+    }
+
     String toCodegenQualifiers(Collection<Qualifier> qualifiers) {
         StringBuilder builder = new StringBuilder();
         for (Qualifier qualifier : qualifiers) {
@@ -650,6 +798,19 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
             builder.append(".addQualifier(").append(toCodegenQualifiers(qualifier)).append(")");
         }
         return builder.toString();
+    }
+
+    //TODO UPRAVIT
+    private void toCodegenQualifiers2(Content.Builder content, Qualifier qualifier) {
+        content.typeName(Qualifier.class)
+                .add(".create(")
+                .typeName(qualifier.qualifierTypeName())
+                .add(".class");
+        String val = toCodegenQuotedString(qualifier.value().orElse(null));
+        if (val != null) {
+            content.add(", " + val);
+        }
+        content.add(")");
     }
 
     String toCodegenQualifiers(Qualifier qualifier) {
@@ -696,6 +857,32 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         return builder.toString();
     }
 
+    //TODO UPRAVIT
+    private String toCodegenCtorArgList2(DependenciesInfo dependencies) {
+        if (dependencies == null) {
+            return "";
+        }
+
+        AtomicReference<String> nameRef = new AtomicReference<>();
+        List<String> args = new ArrayList<>();
+        dependencies.allDependencies()
+                .forEach(dep1 -> dep1.injectionPointDependencies()
+                        .stream()
+                        .filter(dep2 -> InjectionPointInfo.CONSTRUCTOR.equals(dep2.elementName()))
+                        .forEach(dep2 -> {
+                            if (nameRef.get() == null) {
+                                nameRef.set(dep2.baseIdentity());
+                            } else {
+                                assert (nameRef.get().equals(dep2.baseIdentity()))
+                                        : "only one Constructor can be injectable: " + dependencies.fromServiceTypeName();
+                            }
+                            args.add(dep2.ipName());
+                        })
+                );
+
+        return args.isEmpty() ? "" : CommonUtils.toString(args);
+    }
+
     String toCodegenCtorArgList(DependenciesInfo dependencies) {
         if (dependencies == null) {
             return null;
@@ -719,6 +906,31 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
                 );
 
         return (args.isEmpty()) ? null : CommonUtils.toString(args);
+    }
+
+    //TODO UPRAVIT changed
+    private void toCodegenInjectCtorArgs2(Method.Builder method, DependenciesInfo dependencies) {
+        if (dependencies == null) {
+            return;
+        }
+
+        AtomicReference<String> nameRef = new AtomicReference<>();
+        List<DependencyInfo> allCtorArgs = dependencies.allDependenciesFor(InjectionPointInfo.CONSTRUCTOR);
+        allCtorArgs.forEach(dep1 -> dep1.injectionPointDependencies()
+                .forEach(dep2 -> {
+                    if (nameRef.get() == null) {
+                        nameRef.set(dep2.baseIdentity());
+                    } else {
+                        assert (nameRef.get().equals(dep2.baseIdentity())) : "only 1 constructor can be injectable";
+                    }
+                    // fully qualified type of the injection point, as we are assigning to it
+                    TypeName argType = dep2.ipType();
+                    String argName = dep2.ipName();
+                    method.typeName(argType)
+                            .add(" " + argName + " = (")
+                            .typeName(argType)
+                            .addLine(") get(deps, \"" + dep2.id() + "\");");
+                }));
     }
 
     List<String> toCodegenInjectCtorArgs(DependenciesInfo dependencies) {
@@ -748,6 +960,40 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         return args;
     }
 
+    private void toCodegenInjectFields2(Method.Builder method, DependenciesInfo dependencies, boolean jsr330Strict) {
+        if (dependencies == null) {
+            return;
+        }
+
+        dependencies.allDependencies()
+                .forEach(dep1 -> dep1.injectionPointDependencies().stream()
+                        .filter(dep2 -> ElementKind.FIELD
+                                .equals(dep2.elementKind()))
+                        .forEach(dep2 -> {
+                            if (jsr330Strict) {
+                                method.addLine("if (injections.add(" + dep2.id() + ")) {");
+                            }
+                            TypeName ipType = dep2.ipType();
+                            method.add("target." + dep2.elementName() + " = (")
+                                    .typeName(ipType)
+                                    .addLine(") get(deps, \"" + dep2.baseIdentity() + "\");");
+                            if (jsr330Strict) {
+                                method.addLine("}");
+                            }
+//                            String cn = toCodegenDecl(dep1.dependencyTo(), dep2);
+//                            IdAndToString setter;
+//                            String id = dep2.id();
+//                            if (Void.class.getName().equals(cn)) {//??
+//                                setter = new IdAndToString(id, dep2.elementName());
+//                            } else {
+//                                setter = new IdAndToString(id, dep2.elementName()
+//                                        + " = (" + cn + ") get(deps, \""
+//                                        + dep2.baseIdentity() + "\")");
+//                            }
+////                            fields.add(setter);
+                        }));
+    }
+
     List<Object> toCodegenInjectFields(DependenciesInfo dependencies) {
         if (dependencies == null) {
             return null;
@@ -772,6 +1018,79 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
                             fields.add(setter);
                         }));
         return fields;
+    }
+
+    //TODO upravit
+    void toCodegenInjectMethods2(Method.Builder methodBuilder,
+                                 TypeName serviceTypeName,
+                                 DependenciesInfo dependencies,
+                                 boolean jsr330Strict) {
+        if (dependencies == null) {
+            return;
+        }
+
+        String lastId = null;
+        boolean compositeSetter = false;
+        List<DependencyInfo> allDeps = dependencies.allDependencies().stream()
+                .filter(it -> it.injectionPointDependencies().iterator().next().elementKind() == ElementKind.METHOD)
+                .collect(Collectors.toList());
+        if (allDeps.size() > 1) {
+            allDeps.sort(DependencyInfoComparator.instance());
+        }
+
+        for (DependencyInfo dep1 : allDeps) {
+            for (InjectionPointInfo ipInfo : dep1.injectionPointDependencies()) {
+                if (ipInfo.elementKind() != ElementKind.METHOD) {
+                    continue;
+                }
+                String id = toBaseIdTagName(ipInfo, serviceTypeName);
+                String elemName = ipInfo.elementName();
+                Integer elemPos = ipInfo.elementOffset().orElse(null);
+                int elemArgs = ipInfo.elementArgs().orElse(0);
+
+                if (compositeSetter && !lastId.equals(id)) {
+                    methodBuilder.decreasePadding()
+                            .addLine(")");
+                    if (jsr330Strict) {
+                        methodBuilder.addLine("}");
+                    }
+                    compositeSetter = false;
+                }
+                if (jsr330Strict && !compositeSetter) {
+                    methodBuilder.addLine("if (injections.add(" + id + ")) {");
+                }
+
+
+                if (0 == elemArgs) {
+                    methodBuilder.addLine("target." + elemName + "();");
+                } else if (1 == elemArgs) {
+                    methodBuilder.add("target." + elemName +"((")
+                            .typeName(ipInfo.ipType())
+                            .addLine(") get(deps, \"" + id + "(1)\"));");
+                } else {
+                    if (!compositeSetter) {
+                        methodBuilder.addLine("target." + elemName + "(")
+                                .increasePadding();
+                    }
+                    compositeSetter = true;
+                    methodBuilder.addLine("(")
+                            .typeName(ipInfo.ipType())
+                            .addLine(") get(deps, \"" + id + "(" + elemPos + ")\")");
+                }
+                if (jsr330Strict && !compositeSetter) {
+                    methodBuilder.addLine("}");
+                }
+                lastId = id;
+            }
+        }
+
+        if (compositeSetter) {
+            methodBuilder.decreasePadding()
+                    .addLine(")");
+            if (jsr330Strict) {
+                methodBuilder.addLine("}");
+            }
+        }
     }
 
     List<Object> toCodegenInjectMethods(TypeName serviceTypeName,
@@ -876,6 +1195,43 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         return result;
     }
 
+    void toCodegenInjectMethodsSkippedInParent2(Method.Builder method,
+                                                boolean isSupportsJsr330InStrictMode,
+                                                TypeName serviceTypeName,
+                                                ActivatorCreatorCodeGen codeGen,
+                                                LazyValue<ScanResult> scan) {
+        List<TypeName> hierarchy = codeGen.serviceTypeHierarchy().get(serviceTypeName);
+        TypeName parent = parentOf(serviceTypeName, codeGen);
+        if (hierarchy == null && parent != null) {
+            hierarchy = List.of(parent);
+        }
+        if (hierarchy == null) {
+            return;
+        }
+
+        DependenciesInfo deps = codeGen.serviceTypeInjectionPointDependencies().get(serviceTypeName);
+        boolean first = true;
+        for (TypeName parentTypeName : hierarchy) {
+            if (!serviceTypeName.equals(parentTypeName)) {
+                if (first) {
+                    first = false;
+                    method.addLine("if (injections.isEmpty()) {");
+                }
+                DependenciesInfo parentDeps = codeGen.serviceTypeInjectionPointDependencies().get(parentTypeName);
+                toCodegenInjectMethodsSkippedInParent2(method,
+                                                       isSupportsJsr330InStrictMode,
+                                                       serviceTypeName,
+                                                       deps,
+                                                       parentTypeName,
+                                                       parentDeps,
+                                                       scan);
+            }
+        }
+        if (!first) {
+            method.addLine("}");
+        }
+    }
+
     /**
      * Called in strict Jsr330 compliance mode. If Inject anno is on parent method but not on child method
      * then we should hide the inject in the parent. Crazy that inject was not inherited if you ask me!
@@ -931,6 +1287,47 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         }
 
         return removeList;
+    }
+
+    //TODO UPRAVIT
+    void toCodegenInjectMethodsSkippedInParent2(Method.Builder method,
+                                                boolean isSupportsJsr330InStrictMode,
+                                                TypeName serviceTypeName,
+                                                DependenciesInfo dependencies,
+                                                TypeName parentTypeName,
+                                                DependenciesInfo parentDependencies,
+                                                LazyValue<ScanResult> scan) {
+        if (!isSupportsJsr330InStrictMode || parentTypeName == null) {
+            return;
+        }
+
+        ClassInfo classInfo = toClassInfo(serviceTypeName, scan);
+        ClassInfo parentClassInfo = toClassInfo(parentTypeName, scan);
+        MethodInfoList parentMethods = parentClassInfo.getDeclaredMethodInfo();
+        Map<IdAndToString, MethodInfo> injectedParentMethods = parentMethods.stream()
+                .filter(m -> (m.getAnnotationInfo(TypeNames.JAKARTA_INJECT) != null))
+                .filter(m -> ExternalModuleCreatorDefault.isInjectionSupported(parentTypeName, m, logger()))
+                .collect(Collectors.toMap(ActivatorCreatorDefault::toBaseIdTag, Function.identity()));
+        if (injectedParentMethods.isEmpty()) {
+            return;
+        }
+
+        MethodInfoList methods = classInfo.getDeclaredMethodInfo();
+        Map<IdAndToString, MethodInfo> allSupportedMethodsOnServiceType = methods.stream()
+                .filter(m -> ExternalModuleCreatorDefault.isInjectionSupported(serviceTypeName, m, logger()))
+                .collect(Collectors.toMap(ActivatorCreatorDefault::toBaseIdTag, Function.identity()));
+
+
+        for (Map.Entry<IdAndToString, MethodInfo> e : injectedParentMethods.entrySet()) {
+            MethodInfo methodInfo = allSupportedMethodsOnServiceType.get(e.getKey());
+            if (methodInfo != null) {
+                AnnotationInfo annotationInfo = methodInfo.getAnnotationInfo(TypeNames.JAKARTA_INJECT);
+                if (annotationInfo != null) {
+                    continue;
+                }
+                method.addLine("injections.add(\"" + e.getKey() + "\");");
+            }
+        }
     }
 
     Double toWeightedPriority(TypeName serviceTypeName,
@@ -1016,6 +1413,15 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
         }
 
         return codeGen.serviceTypeInjectionPointDependencies().get(serviceTypeName);
+    }
+
+    //TODO UPRAVIT
+    String toConstructor2(TypeName serviceTypeName, ActivatorCreatorCodeGen codeGen) {
+        String constructor = codeGen.serviceTypeDefaultConstructors().get(serviceTypeName);
+        if (constructor == null) {
+            return "serviceInfo(SERVICE_INFO);\n";
+        }
+        return constructor.replaceAll("\\{\\{className}}", serviceTypeName.className());
     }
 
     String toConstructor(TypeName serviceTypeName, ActivatorCreatorCodeGen codeGen, String className) {
@@ -1177,6 +1583,9 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
     private ActivatorCodeGenDetail createActivatorCodeGenDetail(ActivatorCreatorRequest req,
                                                                 TypeName serviceTypeName,
                                                                 LazyValue<ScanResult> scan) {
+//        createActivatorCodeGenDetail2(req, serviceTypeName, scan);
+//        String activatorBody = createActivatorCodeGenDetail2(req, serviceTypeName, scan);
+
         ActivatorCreatorCodeGen codeGen = req.codeGen();
         String template = templateHelper().safeLoadTemplate(req.templateName(), SERVICE_PROVIDER_ACTIVATOR_HBS);
         ServiceInfoBasics serviceInfo = toServiceInfo(serviceTypeName, codeGen);
@@ -1238,6 +1647,401 @@ public class ActivatorCreatorDefault extends AbstractCreator implements Activato
                 .serviceTypeName(toActivatorImplTypeName(activatorTypeName))
                 .body(activatorBody)
                 .build();
+
+//        String activatorBody = createActivatorCodeGenDetail2(req, serviceTypeName, scan);
+//        ActivatorCreatorCodeGen codeGen = req.codeGen();
+//        return ActivatorCodeGenDetail.builder()
+//                .serviceInfo(toServiceInfo(serviceTypeName, codeGen))
+//                .dependencies(Optional.ofNullable(toDependencies(serviceTypeName, codeGen)))
+//                .serviceTypeName(toActivatorImplTypeName(toActivatorTypeName(serviceTypeName)))
+//                .body(activatorBody)
+//                .build();
+    }
+
+    private String createActivatorCodeGenDetail2(ActivatorCreatorRequest req,
+                                                 TypeName serviceTypeName,
+                                                 LazyValue<ScanResult> scan) {
+        DependenciesInfo dependencies = toDependencies(serviceTypeName, req.codeGen());
+        boolean jsr330Strict = req.configOptions().supportsJsr330InStrictMode();
+        ActivatorCreatorCodeGen codeGen = req.codeGen();
+        String postConstruct = toPostConstructMethodName(serviceTypeName, codeGen);
+        boolean isProvider = toIsProvider(serviceTypeName, codeGen);
+        String preDestroy = toPreDestroyMethodName(serviceTypeName, codeGen);
+        TypeName parent = toCodenParent2(jsr330Strict, serviceTypeName, toParentTypeName(serviceTypeName, codeGen));
+
+        String className = CommonUtils.toFlatName(serviceTypeName.classNameWithEnclosingNames()) + INNER_ACTIVATOR_CLASS_NAME;
+        String fqActivatorName = serviceTypeName.packageName() + "." + className;
+        ClassModel.Builder classBuilder = ClassModel.builder()
+                .packageName(serviceTypeName.packageName())
+                .name(className)
+                .copyright(CopyrightHandler.copyright(PROCESSOR, serviceTypeName, serviceTypeName))
+                .disableStaticFieldOrdering(true)
+                .addConstructor(constructor -> constructor.description("Default activator constructor.")
+                        .accessModifier(AccessModifier.PROTECTED)
+                        .add(toConstructor2(serviceTypeName, codeGen)));
+        if (parent != null) {
+            classBuilder.superType(parent);
+        }
+        toDescription(serviceTypeName).forEach(line -> classBuilder.addDescriptionLine(line));
+        toExtraClassComments(serviceTypeName, codeGen).forEach(line -> classBuilder.addDescriptionLine(line));
+
+        Double weightedPriority = toWeightedPriority(serviceTypeName, codeGen);
+        Integer runLevel = toRunLevel(serviceTypeName, codeGen);
+        if (weightedPriority != null) {
+            classBuilder.addAnnotation(annot -> annot.type(Weight.class)
+                    .addParameter("value", weightedPriority));
+        }
+        if (runLevel != null) {
+            classBuilder.addAnnotation(annot -> annot.type(RunLevel.class)
+                    .addParameter("value", runLevel));
+        }
+
+//        toActivatorGenericDecl(serviceTypeName, codeGen);
+        defineStaticFields(classBuilder, fqActivatorName, serviceTypeName, codeGen, isProvider, weightedPriority);
+        //TODO UPRAVIT overit ^isprovider
+        if (!toIsProvider(serviceTypeName, codeGen)) {
+            if (jsr330Strict) {
+               classBuilder.addMethod(format(IS_PROVIDER_METHOD, Map.of("isProvider", false)));
+            }
+        } else {
+            classBuilder.addMethod(format(IS_PROVIDER_METHOD, Map.of("isProvider", true)));
+        }
+        classBuilder.addMethod(format(SERVICE_TYPE_METHOD, Map.of("serviceTypeName", serviceTypeName.fqName())));
+        if (postConstruct != null) {
+            classBuilder.addMethod(format(POST_CONSTRUCT_METHOD, Map.of("serviceTypeName", serviceTypeName.fqName(),
+                                                                        "postConstruct", postConstruct)));
+        }
+        if (preDestroy != null) {
+            classBuilder.addMethod(format(PRE_DESTROY_METHOD, Map.of("serviceTypeName", serviceTypeName.fqName(),
+                                                                     "preDestroy", preDestroy)));
+        }
+
+        dependenciesMethod(classBuilder, serviceTypeName, dependencies);
+
+        if (toIsConcrete(serviceTypeName, codeGen)) {
+            List<TypeName> injectionOrder = toServiceTypeHierarchy(serviceTypeName, codeGen, scan);
+            if (jsr330Strict && !injectionOrder.isEmpty()) {
+                serviceTypeInjectionOrderMethod(classBuilder, injectionOrder);
+            }
+            createServiceProviderMethod(classBuilder, serviceTypeName, dependencies);
+        }
+        doInjectingFieldsMethod(classBuilder, dependencies, serviceTypeName, jsr330Strict);
+        doInjectingMethodsMethod(classBuilder, dependencies, serviceTypeName, jsr330Strict, codeGen, scan);
+
+
+        String body;
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            try (Writer writer = new OutputStreamWriter(out)) {
+                classBuilder.build().write(writer);
+            }
+            body = out.toString();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return body;
+    }
+
+    private void defineStaticFields(ClassModel.Builder classBuilder,
+                                    String fqActivatorName,
+                                    TypeName serviceTypeName,
+                                    ActivatorCreatorCodeGen codeGen,
+                                    boolean isProvider,
+                                    Double weightedPriority) {
+        addServiceInfo(classBuilder, fqActivatorName, serviceTypeName, codeGen, isProvider, weightedPriority);
+
+        classBuilder.addField(field -> field.name("INSTANCE")
+                .isStatic(true)
+                .isFinal(true)
+                .accessModifier(AccessModifier.PUBLIC)
+                .description("The global singleton instance for this service provider activator.")
+                .type(fqActivatorName)
+                //TODO UPRAVIT Tomas?
+                .content(content -> content.add("new ")
+                        .typeName(fqActivatorName)
+                        .add("();")));
+    }
+
+    private void addServiceInfo(ClassModel.Builder classBuilder,
+                                String fqActivatorName,
+                                TypeName serviceTypeName,
+                                ActivatorCreatorCodeGen codeGen,
+                                boolean provider,
+                                Double weightedPriority) {
+        //        private static final ServiceInfo serviceInfo =
+        //                ServiceInfo.builder()
+        //                        .serviceTypeName({{packagename}}.{{classname}}.class){{#contracts}}
+        //            .addContractImplemented({{.}}.class){{/contracts}}{{#externalcontracts}}
+        //            .addExternalContractImplemented({{.}}.class){{/externalcontracts}}
+        //            .activatorTypeName({{flatclassname}}{{activatorsuffix}}.class){{^isprovider}}{{#scopetypenames}}
+        //            .addScopeTypeName({{{.}}}.class){{/scopetypenames}}{{/isprovider}}{{#qualifiers}}
+        //        {{{.}}}{{/qualifiers}}{{#isweightset}}
+        //            .declaredWeight({{weight}}){{/isweightset}}{{#isrunlevelset}}
+        //            .declaredRunLevel({{runlevel}}){{/isrunlevelset}}
+        //            .build();
+        ServiceInfoBasics serviceInfo = toServiceInfo(serviceTypeName, codeGen);
+        Integer runLevel = toRunLevel(serviceTypeName, codeGen);
+        classBuilder.addField(field -> field.isStatic(true)
+                .isFinal(true)
+                .type(ServiceInfo.class)
+                .name("SERVICE_INFO")
+                .content(content -> {
+                    content.typeName(ServiceInfo.class)
+                            .addLine(".builder()")
+                            .increasePadding()
+                            .increasePadding()
+                            .add(".serviceTypeName(").typeName(serviceTypeName).addLine(".class)")
+                            .add(".activatorTypeName(").typeName(fqActivatorName).addLine(".class)");
+                    fillInContracts(content, serviceInfo);
+                    //TODO UPRAVIT overit  ^isprovider
+                    if (!provider) {
+                        for (TypeName scopeTypeName : toScopeTypeNames(serviceTypeName, codeGen)) {
+                            content.add(".addScopeTypeName(").typeName(scopeTypeName).addLine(".class)");
+                        }
+                    }
+                    for (Qualifier qualifier : serviceInfo.qualifiers()) {
+                        content.add(".addQualifier(");
+                        toCodegenQualifiers2(content, qualifier);
+                        content.addLine(")");
+                    }
+                    if (weightedPriority != null) {
+                        content.addLine(".declaredWeight(" + weightedPriority + ")");
+                    }
+                    if (runLevel != null) {
+                        content.addLine(".declaredRunLevel(" + runLevel + ")");
+                    }
+                    content.add(".build()");
+                }));
+    }
+
+    private void fillInContracts(Content.Builder content, ServiceInfoBasics serviceInfoBasics) {
+        Set<TypeName> contracts = serviceInfoBasics.contractsImplemented();
+        if (serviceInfoBasics instanceof ServiceInfo serviceInfo) {
+            Set<TypeName> extContracts = serviceInfo.externalContractsImplemented();
+            for (TypeName contract : extContracts) {
+                content.add(".addExternalContractImplemented(").typeName(contract).addLine(".class)");
+            }
+            // there is no need to list these twice, since external contracts will implicitly back-full into contracts
+            contracts = serviceInfo.contractsImplemented().stream()
+                    .filter(it -> !extContracts.contains(it))
+                    .collect(Collectors.toSet());
+        }
+        for (TypeName contract : contracts) {
+            content.add(".addContractImplemented(").typeName(contract).addLine(".class)");
+        }
+    }
+
+    private void dependenciesMethod(ClassModel.Builder classBuilder, TypeName serviceTypeName, DependenciesInfo dependencies) {
+//        @Override
+//        public DependenciesInfo dependencies() {
+//            DependenciesInfo deps = Dependencies.builder({{packagename}}.{{classname}}.class){{#dependencies}}
+//            {{{.}}}{{/dependencies}}
+//                .build();
+//            return Dependencies.combine(super.dependencies(), deps);
+//        }
+        Method.Builder method = Method.builder()
+                .name("dependencies")
+                .returnType(returns -> returns.type(DependenciesInfo.class))
+                .addAnnotation(annot -> annot.type(Override.class))
+                .typeName(DependenciesInfo.class)
+                .add(" deps = ")
+                .typeName(Dependencies.class)
+                .addLine(".builder(" + serviceTypeName.fqName() + ".class)");
+
+        toCodegenDependencies2(classBuilder, method, dependencies);
+        method.add(ClassModel.PADDING_TOKEN.repeat(2)).addLine(".build();")
+                .add("return ")
+                .typeName(Dependencies.class)
+                .addLine(".combine(super.dependencies(), deps);");
+
+        classBuilder.addMethod(method);
+    }
+
+    private void serviceTypeInjectionOrderMethod(ClassModel.Builder classBuilder, List<TypeName> injectionOrder) {
+        TypeName typeToReturn = TypeName.builder()
+                .type(List.class)
+                .addTypeArgument(arg -> arg.type(TypeName.class))
+                .build();
+        Method.Builder method = Method.builder()
+                .name("serviceTypeInjectionOrder")
+                .returnType(returns -> returns.type(typeToReturn))
+                .addAnnotation(annot -> annot.type(Override.class))
+                .typeName(typeToReturn)
+                .add(" order = ")
+                .typeName(ArrayList.class)
+                .addLine("<>();");
+
+        for (TypeName typeName : injectionOrder) {
+            method.add("order.add(")
+                    .typeName(TypeName.class)
+                    .add(".create(")
+                    .typeName(typeName)
+                    .add(".class));");
+        }
+        method.addLine("return order;");
+        classBuilder.addMethod(method);
+    }
+
+    private void createServiceProviderMethod(ClassModel.Builder classBuilder,
+                                             TypeName serviceTypeName,
+                                             DependenciesInfo dependencies) {
+        TypeName paramType = TypeName.builder()
+                .type(Map.class)
+                .addTypeArgument(arg -> arg.type(String.class))
+                .addTypeArgument(arg -> arg.type(Object.class))
+                .build();
+        Method.Builder method = Method.builder()
+                .name("createServiceProvider")
+                .accessModifier(AccessModifier.PROTECTED)
+                .returnType(serviceTypeName)
+                .addAnnotation(annot -> annot.type(Override.class))
+                .addParameter(param -> param.type(paramType).name("deps"));
+
+        toCodegenInjectCtorArgs2(method, dependencies);
+
+        String argList = toCodegenCtorArgList2(dependencies);
+        method.add("return new ")
+                .typeName(serviceTypeName)
+                .add("(" + argList + ");");
+        classBuilder.addMethod(method);
+    }
+
+    private void doInjectingFieldsMethod(ClassModel.Builder classBuilder,
+                                         DependenciesInfo dependencies,
+                                         TypeName serviceTypeName,
+                                         boolean jsr330Strict) {
+        //        {{#if injectedfields}}
+        //        @Override
+        //        protected void doInjectingFields(Object t, Map<String, Object> deps, Set<String> injections, io.helidon.common.types.TypeName forServiceType) {
+        //            super.doInjectingFields(t, deps, injections, forServiceType);{{#if issupportsjsr330instrictmode}}
+        //            if (forServiceType != null && !{{packagename}}.{{classname}}.class.getName().equals(forServiceType)) {
+        //                return;
+        //            }
+        //            {{/if}}
+        //            {{classname}} target = ({{classname}}) t;{{#if issupportsjsr330instrictmode}}{{#injectedfields}}
+        //            if (injections.add("{{{id}}}")) {
+        //                target.{{{.}}};
+        //            }{{/injectedfields}}{{else}}{{#injectedfields}}
+        //            target.{{{.}}};{{/injectedfields}}{{/if}}
+        //        }
+        //        {{/if}}
+        TypeName paramType = TypeName.builder()
+                .type(Map.class)
+                .addTypeArgument(arg -> arg.type(String.class))
+                .addTypeArgument(arg -> arg.type(Object.class))
+                .build();
+        TypeName injectionsType = TypeName.builder()
+                .type(Set.class)
+                .addTypeArgument(arg -> arg.type(String.class))
+                .build();
+
+        Method.Builder method = Method.builder()
+                .name("doInjectingFields")
+                .accessModifier(AccessModifier.PROTECTED)
+                .addAnnotation(annot -> annot.type(Override.class))
+                .addParameter(param -> param.type(Object.class).name("t"))
+                .addParameter(param -> param.type(paramType).name("deps"))
+                .addParameter(param -> param.type(injectionsType).name("injections"))
+                .addParameter(param -> param.type(TypeName.class).name("forServiceType"))
+                .addLine("super.doInjectingFields(t, deps, injections, forServiceType);");
+        if (jsr330Strict) {
+            method.add("if (forServiceType != null && !")
+                    .typeName(serviceTypeName)
+                    .addLine(".class.getName().equals(forServiceType)) {")
+                    .addLine("return;")
+                    .addLine("}");
+        }
+        method.typeName(serviceTypeName)
+                .add(" target = (")
+                .typeName(serviceTypeName)
+                .addLine(") t;");
+        toCodegenInjectFields2(method, dependencies, jsr330Strict);
+        classBuilder.addMethod(method);
+    }
+
+    private void doInjectingMethodsMethod(ClassModel.Builder classBuilder,
+                                          DependenciesInfo dependencies,
+                                          TypeName serviceTypeName,
+                                          boolean jsr330Strict,
+                                          ActivatorCreatorCodeGen codeGen,
+                                          LazyValue<ScanResult> scan) {
+        //        {{#if injectedmethods}}
+        //        @Override
+        //        protected void doInjectingMethods(Object t, Map<String, Object> deps, Set<String> injections, TypeName forServiceType) { {{#if injectedmethodsskippedinparent}}
+        //            if (injections.isEmpty()) { {{#injectedmethodsskippedinparent}}
+        //                injections.add("{{{id}}}");{{/injectedmethodsskippedinparent}}
+        //            }{{/if}}
+        //            super.doInjectingMethods(t, deps, injections, forServiceType);
+        //            {{#if issupportsjsr330instrictmode}}
+        //            if (forServiceType != null && !{{packagename}}.{{classname}}.class.getName().equals(forServiceType)) {
+        //                return;
+        //            }
+        //            {{/if}}
+        //            {{classname}} target = ({{classname}}) t;
+        //            {{#if issupportsjsr330instrictmode}}{{#injectedmethods}}
+        //            if (injections.add("{{{id}}}")) {
+        //                target.{{{.}}};
+        //            }{{/injectedmethods}}{{else}}{{#injectedmethods}}
+        //            target.{{{.}}};{{/injectedmethods}}{{/if}}
+        //        }
+        //        {{/if}}
+        TypeName paramType = TypeName.builder()
+                .type(Map.class)
+                .addTypeArgument(arg -> arg.type(String.class))
+                .addTypeArgument(arg -> arg.type(Object.class))
+                .build();
+        TypeName injectionsType = TypeName.builder()
+                .type(Set.class)
+                .addTypeArgument(arg -> arg.type(String.class))
+                .build();
+
+        Method.Builder method = Method.builder()
+                .name("doInjectingMethods")
+                .accessModifier(AccessModifier.PROTECTED)
+                .addAnnotation(annot -> annot.type(Override.class))
+                .addParameter(param -> param.type(Object.class).name("t"))
+                .addParameter(param -> param.type(paramType).name("deps"))
+                .addParameter(param -> param.type(injectionsType).name("injections"))
+                .addParameter(param -> param.type(TypeName.class).name("forServiceType"));
+        toCodegenInjectMethodsSkippedInParent2(method, jsr330Strict, serviceTypeName, codeGen, scan);
+        method.addLine("super.doInjectingMethods(t, deps, injections, forServiceType);");
+        if (jsr330Strict) {
+            method.add("if (forServiceType != null && !")
+                    .typeName(serviceTypeName)
+                    .addLine(".class.getName().equals(forServiceType)) {")
+                    .addLine("return;")
+                    .addLine("}");
+        }
+        method.typeName(serviceTypeName)
+                .add(" target = (")
+                .typeName(serviceTypeName)
+                .addLine(") t;");
+
+        toCodegenInjectMethods2(method, serviceTypeName, dependencies, jsr330Strict);
+
+        classBuilder.addMethod(method);
+    }
+
+    //TODO UPRAVIT jedna spolecna metoda
+    private static String format(String format, Map<String, Object> values) {
+        StringBuilder formatter = new StringBuilder(format);
+        List<Object> valueList = new ArrayList<>();
+
+        //TODO UPRAVIT precompiled pattern jako constanta
+        Matcher matcher = Pattern.compile("\\$\\{(\\w+)}").matcher(format);
+
+        while (matcher.find()) {
+            String key = matcher.group(1);
+
+            String formatKey = String.format("${%s}", key);
+            int index = formatter.indexOf(formatKey);
+
+            if (index != -1) {
+                formatter.replace(index, index + formatKey.length(), "%s");
+                valueList.add(values.get(key));
+            }
+        }
+
+        return String.format(formatter.toString(), valueList.toArray());
     }
 
     private TypeName generatorType(ActivatorCreatorRequest req) {

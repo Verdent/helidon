@@ -35,7 +35,7 @@ public final class ClassModel extends ClassBase {
     /**
      * Type token is used to prepend and append to the fully qualified type names to support import handling.
      */
-    public static final String TYPE_TOKEN = "@";
+    public static final String TYPE_TOKEN = "@@";
     /**
      * Pattern in which are type names saved in the content templates.
      */

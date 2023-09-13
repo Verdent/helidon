@@ -77,8 +77,7 @@ final class GenerateBuilder {
                                 .addLine("preBuildPrototype();")
                                 .addLine("validatePrototype();")
                                 .add("return new ")
-                                .typeName(prototype)
-                                .add("Impl");
+                                .typeName(prototype.fqName() + "Impl");
                         if (!typeArguments.isEmpty()) {
                             method.add("<>");
                         }

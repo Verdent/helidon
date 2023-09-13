@@ -108,4 +108,6 @@ abstract class Type extends ModelComponent {
 
     abstract TypeName genericTypeName();
 
+    abstract String toTypeTemplate();
+
 }

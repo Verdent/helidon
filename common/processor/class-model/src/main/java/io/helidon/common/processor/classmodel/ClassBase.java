@@ -43,6 +43,7 @@ public abstract class ClassBase extends AnnotatedComponent {
     private final List<Field> fields;
     private final List<Field> staticFields;
     private final List<Method> methods;
+    private final List<Content> explicitMethods;
     private final List<Method> staticMethods;
     private final Set<Type> interfaces;
     private final Set<String> tokenNames;
@@ -57,9 +58,20 @@ public abstract class ClassBase extends AnnotatedComponent {
         this.isFinal = builder.isFinal;
         this.isAbstract = builder.isAbstract;
         this.isStatic = builder.isStatic;
-        this.fields = builder.fields.values().stream().sorted(ClassBase::fieldComparator).toList();
-        this.staticFields = builder.staticFields.values().stream().sorted(ClassBase::fieldComparator).toList();
+        if (builder.disableFieldOrdering) {
+//            this.fields = List.copyOf(builder.fields.values());
+            this.fields = builder.fields.values().stream().toList();
+        } else {
+            this.fields = builder.fields.values().stream().sorted(ClassBase::fieldComparator).toList();
+        }
+        if (builder.disableStaticFieldOrdering) {
+//            this.staticFields = List.copyOf(builder.staticFields.values());
+            this.staticFields = builder.staticFields.values().stream().toList();
+        } else {
+            this.staticFields = builder.staticFields.values().stream().sorted(ClassBase::fieldComparator).toList();
+        }
         this.methods = builder.methods.stream().sorted(ClassBase::methodCompare).toList();
+        this.explicitMethods = List.copyOf(builder.explicitMethods);
         this.staticMethods = builder.staticMethods.stream().sorted(ClassBase::methodCompare).toList();
         this.constructors = List.copyOf(builder.constructors);
         this.interfaces = Collections.unmodifiableSet(new LinkedHashSet<>(builder.interfaces));
@@ -163,6 +175,15 @@ public abstract class ClassBase extends AnnotatedComponent {
         if (!methods.isEmpty()) {
             writerClassMethods(methods, writer, combinedTokens, imports);
         }
+        if (!explicitMethods.isEmpty()) {
+            writer.increasePaddingLevel();
+            for (Content explicitMethod : explicitMethods) {
+                writer.write("\n");
+                explicitMethod.writeBody(writer, imports);
+                writer.writeSeparatorLine();
+            }
+            writer.decreasePaddingLevel();
+        }
         if (!innerClasses.isEmpty()) {
             writeInnerClasses(writer, combinedTokens, imports);
         }
@@ -258,6 +279,7 @@ public abstract class ClassBase extends AnnotatedComponent {
         fields.forEach(field -> field.addImports(imports));
         staticFields.forEach(field -> field.addImports(imports));
         methods.forEach(method -> method.addImports(imports));
+        explicitMethods.forEach(method -> method.addImports(imports));
         staticMethods.forEach(method -> method.addImports(imports));
         interfaces.forEach(imp -> imp.addImports(imports));
         constructors.forEach(constructor -> constructor.addImports(imports));
@@ -285,6 +307,7 @@ public abstract class ClassBase extends AnnotatedComponent {
             extends AnnotatedComponent.Builder<B, T> {
 
         private final Set<Method> methods = new LinkedHashSet<>();
+        private final Set<Content> explicitMethods = new LinkedHashSet<>();
         private final Set<Method> staticMethods = new LinkedHashSet<>();
         private final Set<Type> interfaces = new LinkedHashSet<>();
         private final Map<String, Field> fields = new LinkedHashMap<>();
@@ -295,6 +318,8 @@ public abstract class ClassBase extends AnnotatedComponent {
         private final ImportOrganizer.Builder importOrganizer = ImportOrganizer.builder();
         private ClassType classType = ClassType.CLASS;
         private Type superType;
+        private boolean disableStaticFieldOrdering = false;
+        private boolean disableFieldOrdering = false;
         private boolean isFinal;
         private boolean isAbstract;
         private boolean isStatic;
@@ -411,6 +436,30 @@ public abstract class ClassBase extends AnnotatedComponent {
         }
 
         /**
+         * Whether to disable static field ordering.
+         * Default value is {@code  false}.
+         *
+         * @param disableOrdering disable static field ordering
+         * @return updated builder instance
+         */
+        public B disableStaticFieldOrdering(boolean disableOrdering) {
+            this.disableStaticFieldOrdering = disableOrdering;
+            return identity();
+        }
+
+        /**
+         * Whether to disable field ordering.
+         * Default value is {@code  false}.
+         *
+         * @param disableOrdering disable field ordering
+         * @return updated builder instance
+         */
+        public B disableFieldOrdering(boolean disableOrdering) {
+            this.disableFieldOrdering = disableOrdering;
+            return identity();
+        }
+
+        /**
          * Add new method to the type.
          *
          * @param consumer method builder consumer
@@ -446,6 +495,13 @@ public abstract class ClassBase extends AnnotatedComponent {
             } else {
                 methods.add(method);
             }
+            return identity();
+        }
+
+        public B addMethod(String method) {
+            this.explicitMethods.add(Content.builder()
+                                             .content(method)
+                                             .build());
             return identity();
         }
 

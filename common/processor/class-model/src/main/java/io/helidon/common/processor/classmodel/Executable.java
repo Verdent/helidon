@@ -175,7 +175,8 @@ abstract class Executable extends AnnotatedComponent {
          * @return updated builder instance
          */
         public B typeName(TypeName typeName) {
-            return typeName(typeName.resolvedName());
+            contentBuilder.typeName(typeName);
+            return identity();
         }
 
         /**

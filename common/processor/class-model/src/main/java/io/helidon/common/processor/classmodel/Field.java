@@ -19,6 +19,7 @@ package io.helidon.common.processor.classmodel;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.TypeName;
@@ -154,7 +155,7 @@ public final class Field extends AnnotatedComponent {
          */
         public Builder defaultValue(String defaultValue) {
             if (defaultValue != null
-                    && type().equals(TypeNames.STRING)
+                    && type().fqTypeName().equals(String.class.getName())
                     && !type().isArray()
                     && !defaultValue.startsWith("\"")
                     && !defaultValue.endsWith("\"")) {
@@ -173,6 +174,13 @@ public final class Field extends AnnotatedComponent {
          */
         public Builder defaultValueContent(String defaultValue) {
             defaultValueBuilder.content(defaultValue);
+            return this;
+        }
+
+        public Builder content(Consumer<Content.Builder> consumer) {
+            //TODO UPRAVIT ma to premazavat predchozi content?
+            defaultValueBuilder.clearContent();
+            consumer.accept(defaultValueBuilder);
             return this;
         }
 

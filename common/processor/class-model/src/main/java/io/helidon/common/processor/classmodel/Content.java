@@ -30,7 +30,7 @@ import io.helidon.common.types.TypeName;
 import static io.helidon.common.processor.classmodel.ClassModel.PADDING_TOKEN;
 import static io.helidon.common.processor.classmodel.ClassModel.TYPE_TOKEN;
 
-class Content {
+public class Content {
 
     private final StringBuilder content;
     private final Set<String> toImport;
@@ -63,11 +63,7 @@ class Content {
                 TypeName typeName = TypeName.create(key);
                 return imports.typeName(Type.fromTypeName(typeName), true);
             });
-            try {
-                content.replace(position.start - offset, position.end - offset, replacement);
-            } catch (StringIndexOutOfBoundsException e) {
-                System.out.printf("");
-            }
+            content.replace(position.start - offset, position.end - offset, replacement);
             //Since we are replacing values in the StringBuilder, previously obtained position indexes for class name tokens
             //will differ and because fo that, these changes need to be reflected via calculating overall offset
             offset += (position.end - position.start) - replacement.length();
@@ -89,9 +85,9 @@ class Content {
     /**
      * Fluent API builder for {@link Content}.
      */
-    static final class Builder implements io.helidon.common.Builder<Builder, Content> {
+    public static final class Builder implements io.helidon.common.Builder<Builder, Content> {
 
-        private static final Pattern TYPE_NAME_PATTERN = Pattern.compile(TYPE_TOKEN + "(.*?)" + TYPE_TOKEN);
+        private static final Pattern TYPE_NAME_PATTERN = Pattern.compile(TYPE_TOKEN + "([^@]*?)" + TYPE_TOKEN);
 
         private final StringBuilder content = new StringBuilder();
         private final Set<String> toImport = new HashSet<>();
@@ -118,7 +114,7 @@ class Content {
          * @param content content to be set
          * @return updated builder instance
          */
-        Builder content(String content) {
+        public Builder content(String content) {
             return content(List.of(content));
         }
 
@@ -129,7 +125,7 @@ class Content {
          * @param content content to be set
          * @return updated builder instance
          */
-        Builder content(List<String> content) {
+        public Builder content(List<String> content) {
             this.content.setLength(0);
             content.forEach(this::addLine);
             return identity();
@@ -142,7 +138,7 @@ class Content {
          * @param line line to add
          * @return updated builder instance
          */
-        Builder addLine(String line) {
+        public Builder addLine(String line) {
             return add(line).add("\n");
         }
 
@@ -153,7 +149,7 @@ class Content {
          * @param line line to add
          * @return updated builder instance
          */
-        Builder add(String line) {
+        public Builder add(String line) {
             String trimmed = line.trim();
             if (trimmed.equals("}")) {
                 decreasePadding();
@@ -178,6 +174,10 @@ class Content {
             return this;
         }
 
+        public Builder typeName(Class<?> type) {
+            return typeName(type.getName());
+        }
+
         /**
          * Obtained fully qualified type name is enclosed between {@link ClassModel#TYPE_TOKEN} tokens.
          * Class names in such a format are later recognized as class names for import handling.
@@ -185,8 +185,19 @@ class Content {
          * @param fqClassName fully qualified class name
          * @return updated builder instance
          */
-        Builder typeName(String fqClassName) {
+        public Builder typeName(String fqClassName) {
             return add(ClassModel.TYPE_TOKEN_PATTERN.replace("name", fqClassName));
+        }
+
+        /**
+         * Obtained fully qualified type name is enclosed between {@link ClassModel#TYPE_TOKEN} tokens.
+         * Class names in such a format are later recognized as class names for import handling.
+         *
+         * @param typeName type name
+         * @return updated builder instance
+         */
+        public Builder typeName(TypeName typeName) {
+            return add(Type.fromTypeName(typeName).toTypeTemplate());
         }
 
         /**
@@ -195,7 +206,7 @@ class Content {
          *
          * @return updated builder instance
          */
-        Builder padding() {
+        public Builder padding() {
             this.content.append(PADDING_TOKEN);
             return this;
         }
@@ -207,7 +218,7 @@ class Content {
          * @param repetition number of padding repetitions
          * @return updated builder instance
          */
-        Builder padding(int repetition) {
+        public Builder padding(int repetition) {
             this.content.append(PADDING_TOKEN.repeat(repetition));
             return this;
         }
@@ -218,7 +229,7 @@ class Content {
          *
          * @return updated builder instance
          */
-        Builder increasePadding() {
+        public Builder increasePadding() {
             this.extraPaddingLevel++;
             this.extraPadding = PADDING_TOKEN.repeat(this.extraPaddingLevel);
             return this;
@@ -230,7 +241,7 @@ class Content {
          *
          * @return updated builder instance
          */
-        Builder decreasePadding() {
+        public Builder decreasePadding() {
             this.extraPaddingLevel--;
             if (this.extraPaddingLevel < 0) {
                 throw new ClassModelException("Content padding cannot be negative");
@@ -244,7 +255,7 @@ class Content {
          *
          * @return updated builder instance
          */
-        Builder clearContent() {
+        public Builder clearContent() {
             this.content.setLength(0);
             return this;
         }

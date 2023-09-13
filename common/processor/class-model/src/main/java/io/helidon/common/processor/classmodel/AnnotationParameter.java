@@ -30,7 +30,9 @@ public final class AnnotationParameter extends CommonComponent {
 
     private AnnotationParameter(Builder builder) {
         super(builder);
-        this.value = resolveValueToString(builder.type(), builder.value);
+        this.value = builder.useExactValue
+                ? builder.value.toString()
+                : resolveValueToString(builder.type(), builder.value);
     }
 
     /**
@@ -71,6 +73,7 @@ public final class AnnotationParameter extends CommonComponent {
     public static final class Builder extends CommonComponent.Builder<Builder, AnnotationParameter> {
 
         private Object value;
+        private boolean useExactValue = false;
 
         private Builder() {
         }
@@ -79,6 +82,9 @@ public final class AnnotationParameter extends CommonComponent {
         public AnnotationParameter build() {
             if (value == null || name() == null) {
                 throw new ClassModelException("Annotation parameter needs to have value and type set");
+            }
+            if (type() == null) {
+                type(value.getClass());
             }
             return new AnnotationParameter(this);
         }
@@ -96,6 +102,19 @@ public final class AnnotationParameter extends CommonComponent {
          */
         public Builder value(Object value) {
             this.value = Objects.requireNonNull(value);
+            return this;
+        }
+
+        /**
+         * Set annotation parameter value.
+         * This parameter value will be used as is and no further value transformation will be performed.
+         *
+         * @param value annotation parameter value
+         * @return updated builder instance
+         */
+        public Builder exactValue(Object value) {
+            this.value = Objects.requireNonNull(value);
+            this.useExactValue = true;
             return this;
         }
 

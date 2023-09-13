@@ -32,6 +32,7 @@ import io.helidon.common.processor.classmodel.TypeArgument;
 import io.helidon.common.types.TypeName;
 
 import static io.helidon.builder.processor.Types.STRING_TYPE;
+import static io.helidon.common.processor.classmodel.ClassModel.TYPE_TOKEN;
 import static io.helidon.common.types.TypeNames.LIST;
 import static io.helidon.common.types.TypeNames.MAP;
 import static io.helidon.common.types.TypeNames.OBJECT;
@@ -83,7 +84,7 @@ class TypeHandlerMap extends TypeHandler {
                 defaults[i] = super.toDefaultValue(defaultValues.get(i));
             }
 
-            return "java.util.Map.of(" + String.join(", ", defaults) + ")";
+            return TYPE_TOKEN + "java.util.Map" + TYPE_TOKEN + ".of(" + String.join(", ", defaults) + ")";
         }
 
         return null;

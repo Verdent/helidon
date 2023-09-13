@@ -82,6 +82,17 @@ public final class TypeArgument extends Type implements TypeName {
     }
 
     @Override
+    String toTypeTemplate() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(token.className());
+        if (bound != null) {
+            builder.append(" extends ")
+                    .append(bound.toTypeTemplate());
+        }
+        return builder.toString();
+    }
+
+    @Override
     void addImports(ImportOrganizer.Builder imports) {
         if (bound != null) {
             bound.addImports(imports);

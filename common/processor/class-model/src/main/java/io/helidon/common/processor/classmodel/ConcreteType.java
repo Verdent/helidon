@@ -74,6 +74,32 @@ class ConcreteType extends Type {
     }
 
     @Override
+    String toTypeTemplate() {
+        StringBuilder builder = new StringBuilder();
+        String typeName = fqTypeName();
+        builder.append(ClassModel.TYPE_TOKEN)
+                .append(typeName)
+                .append(ClassModel.TYPE_TOKEN);
+        if (!typeParams.isEmpty()) {
+            builder.append("<");
+            boolean first = true;
+            for (Type parameter : typeParams) {
+                if (first) {
+                    first = false;
+                } else {
+                    builder.append(", ");
+                }
+                builder.append(parameter.toTypeTemplate());
+            }
+            builder.append(">");
+        }
+        if (isArray()) {
+            builder.append("[]");
+        }
+        return builder.toString();
+    }
+
+    @Override
     void addImports(ImportOrganizer.Builder imports) {
         if (includeImport()) {
             imports.addImport(this);
@@ -84,7 +110,11 @@ class ConcreteType extends Type {
     @Override
     String fqTypeName() {
         if (innerClass()) {
-            return typeName.classNameWithEnclosingNames();
+            if (packageName().isEmpty()) {
+                return typeName.classNameWithEnclosingNames();
+            }
+            return typeName.packageName() + "." + typeName.classNameWithEnclosingNames();
+//            return typeName.fqName();
         } else {
             return typeName.name();
         }

@@ -83,6 +83,10 @@
             <artifactId>helidon-common-processor</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.common.processor</groupId>
+            <artifactId>helidon-common-processor-class-model</artifactId>
+        </dependency>
+        <dependency>
             <groupId>jakarta.inject</groupId>
             <artifactId>jakarta.inject-api</artifactId>
             <scope>compile</scope> <!-- because we have Provider<> dependencies -->

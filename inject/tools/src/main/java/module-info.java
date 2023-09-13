@@ -26,6 +26,7 @@ module io.helidon.inject.tools {
     requires io.helidon.builder.api;
     requires io.helidon.common.config;
     requires io.helidon.common.processor;
+    requires io.helidon.common.processor.classmodel;
     requires io.helidon.common;
     requires jakarta.inject;
     requires java.compiler;
@@ -49,5 +50,5 @@ module io.helidon.inject.tools {
             with io.helidon.inject.tools.ExternalModuleCreatorDefault;
     provides io.helidon.inject.tools.spi.InterceptorCreator
             with io.helidon.inject.tools.InterceptorCreatorDefault;
-	
+
 }

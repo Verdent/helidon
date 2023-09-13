@@ -16,7 +16,12 @@
 
 package io.helidon.inject.tools;
 
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,10 +31,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import io.helidon.common.Generated;
 import io.helidon.common.Weight;
 import io.helidon.common.processor.CopyrightHandler;
+import io.helidon.common.processor.classmodel.ClassModel;
+import io.helidon.common.processor.classmodel.Method;
+import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
 import io.helidon.common.types.TypeName;
 import io.helidon.inject.api.Application;
@@ -39,6 +50,7 @@ import io.helidon.inject.api.InjectionPointInfo;
 import io.helidon.inject.api.InjectionServices;
 import io.helidon.inject.api.ModuleComponent;
 import io.helidon.inject.api.ServiceInfoCriteria;
+import io.helidon.inject.api.ServiceInjectionPlanBinder;
 import io.helidon.inject.api.ServiceProvider;
 import io.helidon.inject.api.Services;
 import io.helidon.inject.runtime.AbstractServiceProvider;
@@ -46,6 +58,7 @@ import io.helidon.inject.runtime.HelidonInjectionPlan;
 import io.helidon.inject.runtime.ServiceBinderDefault;
 import io.helidon.inject.tools.spi.ApplicationCreator;
 
+import jakarta.inject.Named;
 import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
@@ -72,13 +85,26 @@ public class ApplicationCreatorDefault extends AbstractCreator implements Applic
      * The FQN "Injection$$Application" name.
      */
     public static final String APPLICATION_NAME = NAME_PREFIX + APPLICATION_NAME_SUFFIX;
-
-    static final String SERVICE_PROVIDER_APPLICATION_SERVICETYPEBINDING_HBS
-            = "service-provider-application-servicetypebinding.hbs";
-    static final String SERVICE_PROVIDER_APPLICATION_EMPTY_SERVICETYPEBINDING_HBS
-            = "service-provider-application-empty-servicetypebinding.hbs";
-    static final String SERVICE_PROVIDER_APPLICATION_HBS
-            = "service-provider-application.hbs";
+    private static final String SERVICE_TYPE_BINDING = """
+            /*
+             * In module name "${moduleName}".
+             * @see {@link ${serviceTypeName}}
+             */
+            binder.bindTo(${activator})${injectionPlan}
+                    .commit();
+            """;
+    private static final String NAMED_METHOD = """
+            @@@java.lang.Override@@
+            public @@java.util.Optional@@<@@java.lang.String@@> named() {
+                return @@java.util.Optional@@.of(NAME);
+            }
+            """;
+    private static final String TO_STRING_METHOD = """
+            @@@java.lang.Override@@
+            public @@java.lang.String@@ toString() {
+                return NAME + ":" + getClass().getName();
+            }
+            """;
     private static final TypeName CREATOR = TypeName.create(ApplicationCreatorDefault.class);
 
     /**
@@ -240,49 +266,61 @@ public class ApplicationCreatorDefault extends AbstractCreator implements Applic
 
     ApplicationCreatorResponse codegen(ApplicationCreatorRequest req,
                                        ApplicationCreatorResponse.Builder builder) {
+        TypeName application = toApplicationTypeName(req);
+        String moduleName = toModuleName(req);
+
+        ClassModel.Builder classBuilder = ClassModel.builder()
+                .type(application)
+                .description(application + " - Generated Application.")
+                .copyright(CopyrightHandler.copyright(CREATOR, CREATOR, application))
+                .addAnnotation(annot -> annot.type(Generated.class)
+                        .addParameter("value", ApplicationCreatorDefault.class.getName())
+                        .addParameter("trigger", ApplicationCreatorDefault.class.getName()))
+                .addAnnotation(annot -> annot.type(Singleton.class))
+                .addAnnotation(annot -> annot.type(Named.class)
+                        .addParameter(param -> param.name("value").exactValue(application.className() + ".NAME")))
+                .addInterface(Application.class)
+                .addField(field -> field.name("NAME")
+                        .type(String.class)
+                        .isFinal(true)
+                        .isStatic(true)
+                        .accessModifier(AccessModifier.PACKAGE_PRIVATE)
+                        .defaultValue(moduleName))
+                .addMethod(NAMED_METHOD)
+                .addMethod(TO_STRING_METHOD);
+
         InjectionServices injectionServices = InjectionServices.injectionServices().orElseThrow();
 
-        String serviceTypeBindingTemplate = templateHelper()
-                .safeLoadTemplate(req.templateName(), SERVICE_PROVIDER_APPLICATION_SERVICETYPEBINDING_HBS);
-        String serviceTypeBindingEmptyTemplate = templateHelper()
-                .safeLoadTemplate(req.templateName(), SERVICE_PROVIDER_APPLICATION_EMPTY_SERVICETYPEBINDING_HBS);
-
         List<TypeName> serviceTypeNames = new ArrayList<>();
-        List<String> serviceTypeBindings = new ArrayList<>();
+        Method.Builder methodBuilder = Method.builder()
+                .name("configure")
+                .addAnnotation(annot -> annot.type(Override.class))
+                .addParameter(param -> param.type(ServiceInjectionPlanBinder.class)
+                        .name("binder"));
         for (TypeName serviceTypeName : req.serviceTypeNames()) {
             try {
-                String injectionPlan = toServiceTypeInjectionPlan(injectionServices, serviceTypeName,
-                                                                  serviceTypeBindingTemplate, serviceTypeBindingEmptyTemplate);
-                if (injectionPlan == null) {
-                    continue;
+                boolean add = toServiceTypeInjectionPlan2(injectionServices,
+                                                          serviceTypeName,
+                                                          methodBuilder);
+                if (add) {
+                    serviceTypeNames.add(serviceTypeName);
                 }
-                serviceTypeNames.add(serviceTypeName);
-                serviceTypeBindings.add(injectionPlan);
             } catch (Exception e) {
                 throw new ToolsException("Error during injection plan generation for: " + serviceTypeName, e);
             }
         }
-
-        TypeName application = toApplicationTypeName(req);
+        classBuilder.addMethod(methodBuilder);
         serviceTypeNames.add(application);
 
-        String moduleName = toModuleName(req);
-
-        Map<String, Object> subst = new HashMap<>();
-        subst.put("classname", application.className());
-        subst.put("packagename", application.packageName());
-        subst.put("description", application + " - Generated Application.");
-        subst.put("header", CopyrightHandler.copyright(CREATOR,
-                                                       CREATOR,
-                                                       application));
-        subst.put("generatedanno", toGeneratedSticker(CREATOR,
-                                                      CREATOR, // there is no specific type trigger for application
-                                                      application));
-        subst.put("modulename", moduleName);
-        subst.put("servicetypebindings", serviceTypeBindings);
-
-        String template = templateHelper().safeLoadTemplate(req.templateName(), SERVICE_PROVIDER_APPLICATION_HBS);
-        String body = templateHelper().applySubstitutions(template, subst, true).trim();
+        String body;
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            try (Writer writer = new OutputStreamWriter(out)) {
+                classBuilder.build().write(writer);
+            }
+            body = out.toString();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
         if (req.codeGenPaths().isPresent()
                 && req.codeGenPaths().get().generatedSourcesPath().isPresent()) {
@@ -307,40 +345,60 @@ public class ApplicationCreatorDefault extends AbstractCreator implements Applic
                 .build();
     }
 
-    String toServiceTypeInjectionPlan(InjectionServices injectionServices,
-                                      TypeName serviceTypeName,
-                                      String serviceTypeBindingTemplate,
-                                      String serviceTypeBindingEmptyTemplate) {
+    boolean toServiceTypeInjectionPlan2(InjectionServices injectionServices,
+                                        TypeName serviceTypeName,
+                                        Method.Builder methodBuilder) {
         Services services = injectionServices.services();
 
         ServiceInfoCriteria si = toServiceInfoCriteria(serviceTypeName);
         ServiceProvider<?> sp = services.lookupFirst(si);
-        String activator = toActivatorCodeGen(sp);
-        if (activator == null) {
-            return null;
+        String activator = toActivatorCodeGen2(sp);
+        if (activator == null || !isQualifiedInjectionTarget(sp)) {
+            return false;
         }
-        Map<String, Object> subst = new HashMap<>();
-        subst.put("servicetypename", serviceTypeName.name());
+        Map<String, String> subst = new HashMap<>();
+        subst.put("serviceTypeName", serviceTypeName.name());
         subst.put("activator", activator);
-        subst.put("modulename", sp.serviceInfo().moduleName().orElse(null));
-        if (isQualifiedInjectionTarget(sp)) {
-            subst.put("injectionplan", toInjectionPlanBindings(sp));
-            return templateHelper().applySubstitutions(serviceTypeBindingTemplate, subst, true);
-        } else {
-            return templateHelper().applySubstitutions(serviceTypeBindingEmptyTemplate, subst, true);
-        }
+        subst.put("moduleName", sp.serviceInfo().moduleName().orElse("null"));
+        subst.put("injectionPlan", toInjectionPlanBindings2(sp));
+        String toAdd = format(SERVICE_TYPE_BINDING, subst);
+
+        methodBuilder.addLine(toAdd);
+        return true;
     }
 
-    @SuppressWarnings("unchecked")
-    List<String> toInjectionPlanBindings(ServiceProvider<?> sp) {
+    //TODO UPRAVIT jedna spolecna metoda
+    public static String format(String format, Map<String, String> values) {
+        StringBuilder formatter = new StringBuilder(format);
+        List<Object> valueList = new ArrayList<>();
+
+        //TODO UPRAVIT precompiled pattern jako constanta
+        Matcher matcher = Pattern.compile("\\$\\{(\\w+)}").matcher(format);
+
+        while (matcher.find()) {
+            String key = matcher.group(1);
+
+            String formatKey = String.format("${%s}", key);
+            int index = formatter.indexOf(formatKey);
+
+            if (index != -1) {
+                formatter.replace(index, index + formatKey.length(), "%s");
+                valueList.add(values.get(key));
+            }
+        }
+
+        return String.format(formatter.toString(), valueList.toArray());
+    }
+
+    String toInjectionPlanBindings2(ServiceProvider<?> sp) {
         AbstractServiceProvider<?> asp = AbstractServiceProvider
                 .toAbstractServiceProvider(ServiceBinderDefault.toRootProvider(sp), true).orElseThrow();
         DependenciesInfo deps = asp.dependencies();
         if (deps.allDependencies().isEmpty()) {
-            return List.of();
+            return "";
         }
 
-        List<String> plan = new ArrayList<>(deps.allDependencies().size());
+        StringBuilder toReturn = new StringBuilder();
         Map<String, HelidonInjectionPlan> injectionPlan = asp.getOrCreateInjectionPlan(false);
         for (Map.Entry<String, HelidonInjectionPlan> e : injectionPlan.entrySet()) {
             StringBuilder line = new StringBuilder();
@@ -369,21 +427,27 @@ public class ApplicationCreatorDefault extends AbstractCreator implements Applic
                     if (!(target instanceof Class)) {
                         target = target.getClass();
                     }
-                    line.append(", ").append(((Class<?>) target).getName()).append(".class");
+                    line.append(", ")
+                            .append(ClassModel.TYPE_TOKEN)
+                            .append(((Class<?>) target).getName())
+                            .append(ClassModel.TYPE_TOKEN)
+                            .append(".class");
                 } else if (ipInfo.listWrapped() && !ipQualified.isEmpty()) {
-                    line.append(", ").append(toActivatorCodeGen((Collection<ServiceProvider<?>>) ipQualified));
+                    line.append(", ").append(toActivatorCodeGen2((Collection<ServiceProvider<?>>) ipQualified));
                 } else if (!ipQualified.isEmpty()) {
-                    line.append(", ").append(toActivatorCodeGen(ipQualified.get(0)));
+                    line.append(", ").append(toActivatorCodeGen2(ipQualified.get(0)));
                 }
                 line.append(")");
 
-                plan.add(line.toString());
+                toReturn.append("\n")
+                        .append(ClassModel.PADDING_TOKEN.repeat(2))
+                        .append(line);
             } catch (Exception exc) {
                 throw new IllegalStateException("Failed to process: " + e.getKey() + " with " + e.getValue(), exc);
             }
         }
 
-        return plan;
+        return toReturn.toString();
     }
 
     /**

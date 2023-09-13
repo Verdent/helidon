@@ -49,7 +49,7 @@ interface DefaultValuesBlueprint {
     @Option.DefaultMethod(type = DefaultValuesBlueprint.class, value = "defaultStrings")
     List<String> methodStrings();
 
-    @Option.DefaultCode("@java.util.List@.of(\"From code\")")
+    @Option.DefaultCode("@@java.util.List@@.of(\"From code\")")
     List<String> codeStrings();
 
     @Option.Default(DEFAULT_STRING)

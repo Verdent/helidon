@@ -36,5 +36,7 @@ module io.helidon.inject.processor {
             io.helidon.inject.processor.CustomAnnotationProcessor,
             io.helidon.inject.processor.UnsupportedConstructsProcessor,
             io.helidon.inject.processor.InjectionAnnotationProcessor;
+    provides io.helidon.inject.processor.spi.AnnotationTypeConvertor with
+            io.helidon.inject.processor.JavaxAnnotationConvertor;
 
 }

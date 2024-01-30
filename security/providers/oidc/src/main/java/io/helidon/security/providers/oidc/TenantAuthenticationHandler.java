@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -50,6 +51,7 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.Role;
 import io.helidon.security.Security;
 import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.SecurityException;
 import io.helidon.security.SecurityLevel;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
@@ -64,7 +66,11 @@ import io.helidon.security.providers.oidc.common.OidcConfig;
 import io.helidon.security.providers.oidc.common.Tenant;
 import io.helidon.security.providers.oidc.common.TenantConfig;
 import io.helidon.security.util.TokenHandler;
+import io.helidon.webclient.WebClient;
 import io.helidon.webclient.WebClientRequestBuilder;
+import io.helidon.webclient.WebClientResponse;
+
+import jakarta.json.JsonObject;
 
 import static io.helidon.security.providers.oidc.common.OidcConfig.postJsonResponse;
 import static io.helidon.security.providers.oidc.common.spi.TenantConfigFinder.DEFAULT_TENANT_ID;
@@ -75,6 +81,7 @@ import static io.helidon.security.providers.oidc.common.spi.TenantConfigFinder.D
 class TenantAuthenticationHandler {
     private static final Logger LOGGER = Logger.getLogger(TenantAuthenticationHandler.class.getName());
     private static final TokenHandler PARAM_HEADER_HANDLER = TokenHandler.forHeader(OidcConfig.PARAM_HEADER_NAME);
+    private static final TokenHandler PARAM_ID_HEADER_HANDLER = TokenHandler.forHeader(OidcConfig.PARAM_ID_HEADER_NAME);
 
     private final boolean optional;
     private final OidcConfig oidcConfig;
@@ -166,7 +173,53 @@ class TenantAuthenticationHandler {
 
     CompletionStage<AuthenticationResponse> authenticate(String tenantId, ProviderRequest providerRequest) {
         /*
-        1. Get token from request - if available, validate it and continue
+        1. Get id token from request - if available, validate it and process access token
+        2. If not - skip to access token validation directly
+         */
+        Optional<String> idToken = Optional.empty();
+        try {
+            if (oidcConfig.useParam()) {
+                idToken = idToken.or(() -> PARAM_ID_HEADER_HANDLER.extractToken(providerRequest.env().headers()));
+
+                if (idToken.isEmpty()) {
+                    idToken = idToken.or(() -> providerRequest.env().queryParams().first(oidcConfig.idTokenParamName()));
+                }
+            }
+
+            if (oidcConfig.useCookie() && idToken.isEmpty()) {
+                // only do this for cookies
+                Optional<Single<String>> cookie = oidcConfig.idTokenCookieHandler()
+                        .findCookie(providerRequest.env().headers());
+                if (cookie.isPresent()) {
+                    return cookie.get()
+                            .flatMapCompletionStage(it -> validateIdToken(tenantId, providerRequest, it))
+                            .onErrorResumeWithSingle(throwable -> {
+                                if (LOGGER.isLoggable(Level.FINEST)) {
+                                    LOGGER.log(Level.FINEST, "Invalid id token in cookie", throwable);
+                                }
+                                return Single.just(errorResponse(providerRequest,
+                                                                 Http.Status.UNAUTHORIZED_401,
+                                                                 null,
+                                                                 "Invalid id token",
+                                                                 tenantId));
+                            });
+                }
+            }
+        } catch (SecurityException e) {
+            LOGGER.log(Level.FINEST, "Failed to extract token from one of the configured locations", e);
+            return failOrAbstain("Failed to extract one of the configured tokens" + e);
+        }
+        if (idToken.isPresent()) {
+            return validateIdToken(tenantId, providerRequest, idToken.get());
+        } else {
+            return processAccessToken(tenantId, providerRequest, null);
+        }
+    }
+
+    CompletionStage<AuthenticationResponse> processAccessToken(String tenantId, ProviderRequest providerRequest, Jwt idToken) {
+        /*
+        Access token is mandatory!
+        1. Get access token from request - if available, validate it and continue
         2. If not - Redirect to login page
          */
         List<String> missingLocations = new LinkedList<>();
@@ -202,34 +255,34 @@ class TenantAuthenticationHandler {
                         missingLocations.add("cookie");
                     } else {
                         return cookie.get()
-                                .flatMapSingle(it -> validateToken(tenantId, providerRequest, it))
+                                .flatMapSingle(it -> validateAccessToken(tenantId, providerRequest, it, idToken))
                                 .onErrorResumeWithSingle(throwable -> {
                                     if (LOGGER.isLoggable(Level.FINEST)) {
-                                        LOGGER.log(Level.FINEST, "Invalid token in cookie", throwable);
+                                        LOGGER.log(Level.FINEST, "Invalid access token in cookie", throwable);
                                     }
                                     return Single.just(errorResponse(providerRequest,
                                                                      Http.Status.UNAUTHORIZED_401,
                                                                      null,
-                                                                     "Invalid token",
+                                                                     "Invalid access token",
                                                                      tenantId));
                                 });
                     }
                 }
             }
         } catch (SecurityException e) {
-            LOGGER.log(Level.FINEST, "Failed to extract token from one of the configured locations", e);
+            LOGGER.log(Level.FINEST, "Failed to extract access token from one of the configured locations", e);
             return failOrAbstain("Failed to extract one of the configured tokens" + e);
         }
 
         if (token.isPresent()) {
-            return validateToken(tenantId, providerRequest, token.get());
+            return validateAccessToken(tenantId, providerRequest, token.get(), idToken);
         } else {
-            LOGGER.finest(() -> "Missing token, could not find in either of: " + missingLocations);
+            LOGGER.finest(() -> "Missing access token, could not find it in either of: " + missingLocations);
             return CompletableFuture.completedFuture(errorResponse(providerRequest,
                                                                    Http.Status.UNAUTHORIZED_401,
                                                                    null,
-                                                                   "Missing token, could not find in either of: "
-                                                                           + missingLocations,
+                                                                   "Missing access token, could not find it "
+                                                                           + "in either of: " + missingLocations,
                                                                    tenantId));
         }
     }
@@ -303,14 +356,12 @@ class TenantAuthenticationHandler {
                                              + encode(oidcConfig.tenantParamName()) + "=" + encode(tenantId));
             }
 
-
-            StringBuilder queryString = new StringBuilder("?");
-            queryString.append("client_id=").append(tenantConfig.clientId()).append("&");
-            queryString.append("response_type=code&");
-            queryString.append("redirect_uri=").append(redirectUri).append("&");
-            queryString.append("scope=").append(scopeString).append("&");
-            queryString.append("nonce=").append(nonce).append("&");
-            queryString.append("state=").append(encode(state));
+            String queryString = "?" + "client_id=" + tenantConfig.clientId() + "&"
+                    + "response_type=code&"
+                    + "redirect_uri=" + redirectUri + "&"
+                    + "scope=" + scopeString + "&"
+                    + "nonce=" + nonce + "&"
+                    + "state=" + encode(state);
 
             // must redirect
             return AuthenticationResponse
@@ -413,9 +464,38 @@ class TenantAuthenticationHandler {
         return URLEncoder.encode(state, StandardCharsets.UTF_8);
     }
 
-    private Single<AuthenticationResponse> validateToken(String tenantId,
-                                                         ProviderRequest providerRequest,
-                                                         String token) {
+    private CompletionStage<AuthenticationResponse> validateIdToken(String tenantId,
+                                                                    ProviderRequest providerRequest,
+                                                                    String idToken) {
+        SignedJwt signedJwt;
+        try {
+            signedJwt = SignedJwt.parseToken(idToken);
+        } catch (Exception e) {
+            //invalid token
+            LOGGER.log(Level.FINEST, "Could not parse inbound id token", e);
+            return Single.just(AuthenticationResponse.failed("Invalid id token", e));
+        }
+
+        Single<Errors.Collector> collector;
+        if (oidcConfig.idTokenSignatureValidation()) {
+            collector = jwtValidator.apply(signedJwt, Errors.collector());
+        } else {
+            collector = Single.just(Errors.collector());
+        }
+        return collector.flatMapCompletionStage(it -> processIdTokenValidationResult(providerRequest,
+                                                                                     signedJwt,
+                                                                                     tenantId,
+                                                                                     it))
+                .onErrorResume(t -> {
+                    LOGGER.log(Level.FINEST, "Failed to validate request", t);
+                    return AuthenticationResponse.failed("Failed to validate JWT", t);
+                });
+    }
+
+    private Single<AuthenticationResponse> validateAccessToken(String tenantId,
+                                                               ProviderRequest providerRequest,
+                                                               String token,
+                                                               Jwt idToken) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
@@ -425,21 +505,177 @@ class TenantAuthenticationHandler {
             return Single.just(AuthenticationResponse.failed("Invalid token", e));
         }
 
-        return jwtValidator.apply(signedJwt, Errors.collector())
-                .map(it -> processValidationResult(providerRequest,
-                                                   signedJwt,
-                                                   tenantId,
-                                                   it))
+        Single<Errors.Collector> collector;
+        if (oidcConfig.tokenSignatureValidation()) {
+            collector = jwtValidator.apply(signedJwt, Errors.collector());
+        } else {
+            collector = Single.just(Errors.collector());
+        }
+        return collector.flatMapSingle(it -> {
+                    Errors timeErrors = signedJwt.getJwt().validate(Jwt.defaultTimeValidators());
+                    if (timeErrors.isValid()) {
+                        return Single.just(processValidationResult(providerRequest, signedJwt, idToken, tenantId, it));
+                    }
+                    //Access token expired, we should attempt to refresh it
+                    Optional<Single<String>> refreshToken = oidcConfig.refreshTokenCookieHandler()
+                            .findCookie(providerRequest.env().headers());
+                    //If we have no refresh token to use. Continue with evaluation and reuse failure mechanism.
+                    if (refreshToken.isPresent()) {
+                        return refreshToken.get()
+                                .flatMapSingle(refTokenValue -> refreshAccessToken(providerRequest,
+                                                                                   refTokenValue,
+                                                                                   idToken,
+                                                                                   tenantId));
+                    } else {
+                        return Single.just(processValidationResult(providerRequest, signedJwt, idToken, tenantId, it));
+                    }
+                })
                 .onErrorResume(t -> {
                     LOGGER.log(Level.FINEST, "Failed to validate request", t);
                     return AuthenticationResponse.failed("Failed to validate JWT", t);
                 });
     }
 
+    private Single<AuthenticationResponse> refreshAccessToken(ProviderRequest providerRequest,
+                                                              String refreshTokenString,
+                                                              Jwt idToken,
+                                                              String tenantId) {
+        WebClient webClient = tenant.appWebClient();
+        FormParams.Builder form = FormParams.builder()
+                .add("grant_type", "refresh_token")
+                .add("refresh_token", refreshTokenString)
+                .add("client_id", tenantConfig.clientId())
+                .add("client_secret", tenantConfig.clientSecret());
+
+        return webClient.post()
+                .uri(tenant.tokenEndpointUri())
+                .addHeader(Http.Header.ACCEPT, "application/json")
+                .submit(form.build())
+                .flatMapSingle(response -> processRefreshResponse(response, providerRequest, idToken, tenantId))
+                .onErrorResume(t -> {
+                    LOGGER.log(Level.FINEST, "Failed to refresh access token, request failed: "
+                            + "Failed to invoke request", t);
+                    return AuthenticationResponse.failed("Failed to refresh access token, request failed: "
+                                                                 + "Failed to invoke request", t);
+                });
+    }
+
+    private Single<AuthenticationResponse> processRefreshResponse(WebClientResponse response,
+                                                                  ProviderRequest providerRequest,
+                                                                  Jwt idToken,
+                                                                  String tenantId) {
+        if (response.status().family() == Http.Status.Family.SUCCESSFUL) {
+            return response.content().as(JsonObject.class)
+                    .flatMapSingle(json -> {
+                        String accessToken = json.getString("access_token");
+                        String refreshToken = json.getString("refresh_token", null);
+
+                        SignedJwt signedAccessToken;
+                        try {
+                            signedAccessToken = SignedJwt.parseToken(accessToken);
+                        } catch (Exception e) {
+                            //invalid token
+                            LOGGER.log(Level.FINEST, "Could not parse refreshed access token", e);
+                            return Single.just(AuthenticationResponse.failed("Invalid access token", e));
+                        }
+
+                        return jwtValidator.apply(signedAccessToken, Errors.collector())
+                                .flatMapSingle(collector -> {
+                                    List<String> setCookieParts = new ArrayList<>();
+                                    return oidcConfig.tokenCookieHandler().createCookie(accessToken)
+                                            .flatMapSingle(builder -> {
+                                                setCookieParts.add(builder.build().toString());
+                                                if (refreshToken != null) {
+                                                    return oidcConfig.refreshTokenCookieHandler()
+                                                            .createCookie(refreshToken)
+                                                            .flatMapSingle(refBuilder -> {
+                                                                setCookieParts.add(refBuilder.build().toString());
+                                                                return Single.just(processValidationResult(providerRequest,
+                                                                                                           signedAccessToken,
+                                                                                                           idToken,
+                                                                                                           tenantId,
+                                                                                                           collector,
+                                                                                                           setCookieParts));
+                                                            });
+                                                }
+                                                return Single.just(processValidationResult(providerRequest,
+                                                                                           signedAccessToken,
+                                                                                           idToken,
+                                                                                           tenantId,
+                                                                                           collector,
+                                                                                           setCookieParts));
+
+                                            }).onErrorResume(throwable -> {
+                                                if (LOGGER.isLoggable(Level.FINEST)) {
+                                                    LOGGER.log(Level.FINEST, "Failed to refresh access token", throwable);
+                                                }
+                                                return errorResponse(providerRequest,
+                                                                     Http.Status.UNAUTHORIZED_401,
+                                                                     "refresh_access_token_failure",
+                                                                     "Failed to refresh access token",
+                                                                     tenantId);
+                                            });
+                                });
+
+                    })
+                    .onErrorResume(t -> {
+                        LOGGER.log(Level.FINEST, "Failed to validate refresh token", t);
+                        return AuthenticationResponse.failed("Failed to validate refresh token", t);
+                    });
+        } else {
+            return response.content()
+                    .as(String.class)
+                    .map(message -> errorResponse(providerRequest,
+                                                  Http.Status.UNAUTHORIZED_401,
+                                                  "access_token_refresh_failed",
+                                                  "Failed to refresh access token. Response status was: "
+                                                          + response.status() + " "
+                                                          + "with message: " + message,
+                                                  tenantId))
+                    .onErrorResume(e -> AuthenticationResponse.failed(
+                            "Failed to refresh access token, request failed: Failed to process error entity",
+                            e));
+        }
+    }
+
+    private CompletionStage<AuthenticationResponse> processIdTokenValidationResult(ProviderRequest providerRequest,
+                                                                                   SignedJwt signedJwt,
+                                                                                   String tenantId,
+                                                                                   Errors.Collector collector) {
+        Jwt jwt = signedJwt.getJwt();
+        Errors errors = collector.collect();
+        Errors validationErrors = jwt.validate(tenant.issuer(), tenantConfig.clientId());
+
+        if (errors.isValid() && validationErrors.isValid()) {
+            return processAccessToken(tenantId, providerRequest, jwt);
+        } else {
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                // only log errors when details requested
+                errors.log(LOGGER);
+                validationErrors.log(LOGGER);
+            }
+            return Single.just(errorResponse(providerRequest,
+                                             Http.Status.UNAUTHORIZED_401,
+                                             "invalid_id_token",
+                                             "Id token not valid",
+                                             tenantId));
+        }
+    }
+
     private AuthenticationResponse processValidationResult(ProviderRequest providerRequest,
                                                            SignedJwt signedJwt,
+                                                           Jwt idToken,
                                                            String tenantId,
                                                            Errors.Collector collector) {
+        return processValidationResult(providerRequest, signedJwt, idToken, tenantId, collector, List.of());
+    }
+
+    private AuthenticationResponse processValidationResult(ProviderRequest providerRequest,
+                                                           SignedJwt signedJwt,
+                                                           Jwt idToken,
+                                                           String tenantId,
+                                                           Errors.Collector collector,
+                                                           List<String> cookies) {
         Jwt jwt = signedJwt.getJwt();
         Errors errors = collector.collect();
         Errors validationErrors = jwt.validate(tenant.issuer(), tenantConfig.audience());
@@ -447,7 +683,7 @@ class TenantAuthenticationHandler {
         if (errors.isValid() && validationErrors.isValid()) {
 
             errors.log(LOGGER);
-            Subject subject = buildSubject(jwt, signedJwt);
+            Subject subject = buildSubject(jwt, signedJwt, idToken);
 
             Set<String> scopes = subject.grantsByType("scope")
                     .stream()
@@ -464,7 +700,11 @@ class TenantAuthenticationHandler {
             }
 
             if (missingScopes.isEmpty()) {
-                return AuthenticationResponse.success(subject);
+                return AuthenticationResponse.builder()
+                        .status(SecurityResponse.SecurityStatus.SUCCESS)
+                        .user(subject)
+                        .responseHeader(Http.Header.SET_COOKIE, cookies)
+                        .build();
             } else {
                 return errorResponse(providerRequest,
                                      Http.Status.FORBIDDEN_403,
@@ -486,8 +726,8 @@ class TenantAuthenticationHandler {
         }
     }
 
-    private Subject buildSubject(Jwt jwt, SignedJwt signedJwt) {
-        Principal principal = buildPrincipal(jwt);
+    private Subject buildSubject(Jwt jwt, SignedJwt signedJwt, Jwt idToken) {
+        Principal principal = buildPrincipal(jwt, idToken);
 
         TokenCredential.Builder builder = TokenCredential.builder();
         jwt.issueTime().ifPresent(builder::issueTime);
@@ -516,11 +756,16 @@ class TenantAuthenticationHandler {
 
     }
 
-    private Principal buildPrincipal(Jwt jwt) {
-        String subject = jwt.subject()
+    private Principal buildPrincipal(Jwt accessToken, Jwt idToken) {
+        Jwt tokenToUse = idToken;
+        if (idToken == null) {
+            tokenToUse = accessToken;
+        }
+
+        String subject = tokenToUse.subject()
                 .orElseThrow(() -> new JwtException("JWT does not contain subject claim, cannot create principal."));
 
-        String name = jwt.preferredUsername()
+        String name = tokenToUse.preferredUsername()
                 .orElse(subject);
 
         Principal.Builder builder = Principal.builder();
@@ -528,15 +773,15 @@ class TenantAuthenticationHandler {
         builder.name(name)
                 .id(subject);
 
-        jwt.payloadClaims()
+        tokenToUse.payloadClaims()
                 .forEach((key, jsonValue) -> builder.addAttribute(key, JwtUtil.toObject(jsonValue)));
 
-        jwt.email().ifPresent(value -> builder.addAttribute("email", value));
-        jwt.emailVerified().ifPresent(value -> builder.addAttribute("email_verified", value));
-        jwt.locale().ifPresent(value -> builder.addAttribute("locale", value));
-        jwt.familyName().ifPresent(value -> builder.addAttribute("family_name", value));
-        jwt.givenName().ifPresent(value -> builder.addAttribute("given_name", value));
-        jwt.fullName().ifPresent(value -> builder.addAttribute("full_name", value));
+        tokenToUse.email().ifPresent(value -> builder.addAttribute("email", value));
+        tokenToUse.emailVerified().ifPresent(value -> builder.addAttribute("email_verified", value));
+        tokenToUse.locale().ifPresent(value -> builder.addAttribute("locale", value));
+        tokenToUse.familyName().ifPresent(value -> builder.addAttribute("family_name", value));
+        tokenToUse.givenName().ifPresent(value -> builder.addAttribute("given_name", value));
+        tokenToUse.fullName().ifPresent(value -> builder.addAttribute("full_name", value));
 
         return builder.build();
     }

@@ -326,9 +326,29 @@ public final class OidcConfig extends TenantConfigImpl {
      */
     public static final String PARAM_HEADER_NAME = "X_OIDC_TOKEN_HEADER";
     /**
+     * Default name of the header we expect JWT in.
+     */
+    public static final String PARAM_ID_HEADER_NAME = "X_OIDC_ID_TOKEN_HEADER";
+    /**
      * Default tenant query param name.
      */
     public static final String DEFAULT_TENANT_PARAM_NAME = "h_tenant";
+    /**
+     * Default access token cookie name.
+     */
+    public static final String DEFAULT_COOKIE_NAME = "JSESSIONID";
+    /**
+     * Default id token cookie name.
+     */
+    public static final String DEFAULT_ID_COOKIE_NAME = DEFAULT_COOKIE_NAME + "_2";
+    /**
+     * Default refresh token cookie name.
+     */
+    public static final String DEFAULT_REFRESH_COOKIE_NAME = DEFAULT_COOKIE_NAME + "_3";
+    /**
+     * Default tenant cookie name.
+     */
+    public static final String DEFAULT_TENANT_COOKIE_NAME = "HELIDON_TENANT";
     static final String DEFAULT_REDIRECT_URI = "/oidc/redirect";
     static final String DEFAULT_LOGOUT_URI = "/oidc/logout";
     static final boolean DEFAULT_REDIRECT = true;
@@ -341,11 +361,10 @@ public final class OidcConfig extends TenantConfigImpl {
     static final String DEFAULT_PROXY_PROTOCOL = "http";
     static final String TENANT_IDENT = "name";
     static final String DEFAULT_PARAM_NAME = "accessToken";
+    static final String DEFAULT_ID_TOKEN_PARAM_NAME = "id_token";
     static final boolean DEFAULT_PARAM_USE = false;
     static final boolean DEFAULT_HEADER_USE = false;
     static final boolean DEFAULT_COOKIE_USE = true;
-    static final String DEFAULT_COOKIE_NAME = "JSESSIONID";
-    static final String DEFAULT_TENANT_COOKIE_NAME = "HELIDON_TENANT";
 
     private static final Logger LOGGER = Logger.getLogger(OidcConfig.class.getName());
 
@@ -370,13 +389,17 @@ public final class OidcConfig extends TenantConfigImpl {
     private final LazyValue<Tenant> defaultTenant;
     private final boolean useParam;
     private final String paramName;
+    private final String idTokenParamName;
     private final String tenantParamName;
     private final boolean useHeader;
     private final TokenHandler headerHandler;
     private final boolean useCookie;
     private final OidcCookieHandler tokenCookieHandler;
     private final OidcCookieHandler idTokenCookieHandler;
+    private final OidcCookieHandler refreshTokenCookieHandler;
     private final OidcCookieHandler tenantCookieHandler;
+    private final boolean tokenSignatureValidation;
+    private final boolean idTokenSignatureValidation;
 
     private OidcConfig(Builder builder) {
         super(builder);
@@ -398,6 +421,7 @@ public final class OidcConfig extends TenantConfigImpl {
 
         this.useParam = builder.useParam;
         this.paramName = builder.paramName;
+        this.idTokenParamName = builder.idTokenParamName;
         this.tenantParamName = builder.tenantParamName;
         this.useHeader = builder.useHeader;
         this.headerHandler = builder.headerHandler;
@@ -405,6 +429,9 @@ public final class OidcConfig extends TenantConfigImpl {
         this.tokenCookieHandler = builder.tokenCookieBuilder.build();
         this.idTokenCookieHandler = builder.idTokenCookieBuilder.build();
         this.tenantCookieHandler = builder.tenantCookieBuilder.build();
+        this.refreshTokenCookieHandler = builder.refreshTokenCookieBuilder.build();
+        this.tokenSignatureValidation = builder.tokenSignatureValidation;
+        this.idTokenSignatureValidation = builder.idTokenSignatureValidation;
 
         if (builder.validateJwtWithJwk()) {
             this.introspectEndpoint = LazyValue.create(Optional.empty());
@@ -506,6 +533,16 @@ public final class OidcConfig extends TenantConfigImpl {
     }
 
     /**
+     * Query id token parameter name.
+     *
+     * @return name of the query parameter to use
+     * @see Builder#idTokenParamName(String)
+     */
+    public String idTokenParamName() {
+        return idTokenParamName;
+    }
+
+    /**
      * Tenant query parameter name.
      *
      * @return name of the tenant query parameter to use
@@ -572,6 +609,14 @@ public final class OidcConfig extends TenantConfigImpl {
         return tenantCookieHandler;
     }
 
+    /**
+     * Cookie handler to create cookies or unset cookies for refresh token.
+     *
+     * @return a new cookie handler
+     */
+    public OidcCookieHandler refreshTokenCookieHandler() {
+        return refreshTokenCookieHandler;
+    }
 
     /**
      * Redirection URI.
@@ -636,7 +681,7 @@ public final class OidcConfig extends TenantConfigImpl {
 
     /**
      * Redirect URI with host information taken from request,
-     *  unless an explicit frontend uri is defined in configuration.
+     * unless an explicit frontend uri is defined in configuration.
      *
      * @param frontendUri the frontend uri
      * @return redirect URI
@@ -881,21 +926,22 @@ public final class OidcConfig extends TenantConfigImpl {
     }
 
     /**
-     * Update request that uses form params with authentication.
+     * Whether access token signature should be validated.
      *
-     * @param type type of the request
-     * @param request request builder
-     * @param form form params builder
-     * @deprecated this will be removed without replacement
+     * @return validate access token signature
      */
-    @Deprecated(since = "2.5.5", forRemoval = true)
-    public void updateRequest(RequestType type, WebClientRequestBuilder request, FormParams.Builder form) {
-        if (type == RequestType.CODE_TO_TOKEN && tokenEndpointAuthentication() == ClientAuthentication.CLIENT_SECRET_POST) {
-            form.add("client_id", clientId());
-            form.add("client_secret", clientSecret());
-        }
+    public boolean tokenSignatureValidation() {
+        return tokenSignatureValidation;
     }
 
+    /**
+     * Whether id token signature should be validated.
+     *
+     * @return validate id token signature
+     */
+    public boolean idTokenSignatureValidation() {
+        return idTokenSignatureValidation;
+    }
 
     Supplier<WebClient.Builder> webClientBuilderSupplier() {
         return webClientBuilderSupplier;
@@ -1008,16 +1054,22 @@ public final class OidcConfig extends TenantConfigImpl {
         private Supplier<WebClient.Builder> webClientBuilderSupplier;
         private Supplier<ClientBuilder> jaxrsClientBuilderSupplier;
         private String paramName = DEFAULT_PARAM_NAME;
+        private String idTokenParamName = DEFAULT_ID_TOKEN_PARAM_NAME;
         private String tenantParamName = DEFAULT_TENANT_PARAM_NAME;
         private boolean useHeader = DEFAULT_HEADER_USE;
         private boolean useParam = DEFAULT_PARAM_USE;
 
         private final OidcCookieHandler.Builder tenantCookieBuilder = OidcCookieHandler.builder()
+                .encryptionEnabled(true)
                 .cookieName(DEFAULT_TENANT_COOKIE_NAME);
         private final OidcCookieHandler.Builder tokenCookieBuilder = OidcCookieHandler.builder()
                 .cookieName(DEFAULT_COOKIE_NAME);
         private final OidcCookieHandler.Builder idTokenCookieBuilder = OidcCookieHandler.builder()
-                .cookieName(DEFAULT_COOKIE_NAME + "_2");
+                .encryptionEnabled(true)
+                .cookieName(DEFAULT_ID_COOKIE_NAME);
+        private final OidcCookieHandler.Builder refreshTokenCookieBuilder = OidcCookieHandler.builder()
+                .encryptionEnabled(true)
+                .cookieName(DEFAULT_REFRESH_COOKIE_NAME);
         private TokenHandler headerHandler = TokenHandler.builder()
                 .tokenHeader("Authorization")
                 .tokenPrefix("bearer ")
@@ -1025,6 +1077,8 @@ public final class OidcConfig extends TenantConfigImpl {
         private boolean useCookie = DEFAULT_COOKIE_USE;
         private boolean cookieSameSiteDefault = true;
         private boolean relativeUris = DEFAULT_RELATIVE_URIS;
+        private boolean tokenSignatureValidation = true;
+        private boolean idTokenSignatureValidation = true;
 
         protected Builder() {
         }
@@ -1062,10 +1116,6 @@ public final class OidcConfig extends TenantConfigImpl {
                 }
             }
 
-            if (logoutEnabled) {
-                idTokenCookieBuilder.encryptionEnabled(true);
-            }
-
             this.webClientBuilderSupplier = () -> OidcUtil.webClientBaseBuilder(proxyHost,
                                                                                 proxyPort,
                                                                                 relativeUris,
@@ -1074,6 +1124,17 @@ public final class OidcConfig extends TenantConfigImpl {
 
             this.generalClient = jaxrsClientBuilderSupplier.get().build();
             this.webClient = webClientBuilderSupplier.get().build();
+
+            if (!tokenSignatureValidation) {
+                LOGGER.warning(() -> "You have disabled access token signature validation. "
+                                       + "This option should never be disabled for production environment "
+                                       + "since it could cause security issues");
+            }
+            if (!idTokenSignatureValidation) {
+                LOGGER.warning(() -> "You have disabled id token signature validation. "
+                        + "This option should never be disabled for production environment "
+                        + "since it could cause security issues");
+            }
 
             return new OidcConfig(this);
         }
@@ -1100,6 +1161,7 @@ public final class OidcConfig extends TenantConfigImpl {
             // token handling
             config.get("query-param-use").asBoolean().ifPresent(this::useParam);
             config.get("query-param-name").asString().ifPresent(this::paramName);
+            config.get("query-id-token-param-name").asString().ifPresent(this::idTokenParamName);
             config.get("query-param-tenant-name").asString().ifPresent(this::paramTenantName);
             config.get("header-use").asBoolean().ifPresent(this::useHeader);
             config.get("header-token").as(TokenHandler.class).ifPresent(this::headerTokenHandler);
@@ -1107,6 +1169,7 @@ public final class OidcConfig extends TenantConfigImpl {
             config.get("cookie-name").asString().ifPresent(this::cookieName);
             config.get("cookie-name-id-token").asString().ifPresent(this::cookieNameIdToken);
             config.get("cookie-name-tenant").asString().ifPresent(this::cookieTenantName);
+            config.get("cookie-name-refresh-token").asString().ifPresent(this::cookieNameRefreshToken);
             config.get("cookie-domain").asString().ifPresent(this::cookieDomain);
             config.get("cookie-path").asString().ifPresent(this::cookiePath);
             config.get("cookie-max-age-seconds").asLong().ifPresent(this::cookieMaxAgeSeconds);
@@ -1117,6 +1180,7 @@ public final class OidcConfig extends TenantConfigImpl {
             config.get("cookie-encryption-enabled").asBoolean().ifPresent(this::cookieEncryptionEnabled);
             config.get("cookie-encryption-id-enabled").asBoolean().ifPresent(this::cookieEncryptionEnabledIdToken);
             config.get("cookie-encryption-tenant-enabled").asBoolean().ifPresent(this::cookieEncryptionEnabledTenantName);
+            config.get("cookie-encryption-refresh-enabled").asBoolean().ifPresent(this::cookieEncryptionEnabledRefreshToken);
             config.get("cookie-encryption-password").as(String.class)
                     .map(String::toCharArray)
                     .ifPresent(this::cookieEncryptionPassword);
@@ -1137,6 +1201,9 @@ public final class OidcConfig extends TenantConfigImpl {
             config.get("cors").as(CrossOriginConfig::create).ifPresent(this::crossOriginConfig);
 
             config.get("token-refresh-before-expiration").as(Duration.class).ifPresent(this::tokenRefreshSkew);
+
+            config.get("token-signature-validation").asBoolean().ifPresent(this::tokenSignatureValidation);
+            config.get("id-token-signature-validation").asBoolean().ifPresent(this::idTokenSignatureValidation);
 
             config.get("tenants").asList(Config.class)
                     .ifPresent(confList -> confList.forEach(tenantConfig -> tenantFromConfig(config, tenantConfig)));
@@ -1395,7 +1462,7 @@ public final class OidcConfig extends TenantConfigImpl {
         }
 
         /**
-         * Name of a query parameter that contains the JWT token when parameter is used.
+         * Name of a query parameter that contains the JWT access token when parameter is used.
          *
          * @param paramName name of the query parameter to expect
          * @return updated builder instance
@@ -1407,7 +1474,19 @@ public final class OidcConfig extends TenantConfigImpl {
         }
 
         /**
-         * Name of a query parameter that contains the tenant name when parameter is used.
+         * Name of a query parameter that contains the JWT id token when parameter is used.
+         *
+         * @param idTokenParamName name of the query parameter to expect
+         * @return updated builder instance
+         */
+        @ConfiguredOption(key = "query-id-token-param-name", value = DEFAULT_ID_TOKEN_PARAM_NAME)
+        public Builder idTokenParamName(String idTokenParamName) {
+            this.idTokenParamName = idTokenParamName;
+            return this;
+        }
+
+        /**
+         * Name of a query parameter that contains the tenant name when the parameter is used.
          * Defaults to {@link #DEFAULT_TENANT_PARAM_NAME}.
          *
          * @param paramName name of the query parameter to expect
@@ -1443,10 +1522,12 @@ public final class OidcConfig extends TenantConfigImpl {
          * @param cookieEncryptionName name of the encryption configuration in security used to encrypt/decrypt cookies
          * @return updated builder
          */
+        @ConfiguredOption
         public Builder cookieEncryptionName(String cookieEncryptionName) {
             this.tokenCookieBuilder.encryptionName(cookieEncryptionName);
             this.idTokenCookieBuilder.encryptionName(cookieEncryptionName);
             this.tenantCookieBuilder.encryptionName(cookieEncryptionName);
+            this.refreshTokenCookieBuilder.encryptionName(cookieEncryptionName);
             return this;
         }
 
@@ -1457,10 +1538,12 @@ public final class OidcConfig extends TenantConfigImpl {
          * @param cookieEncryptionPassword encryption password
          * @return updated builder
          */
+        @ConfiguredOption
         public Builder cookieEncryptionPassword(char[] cookieEncryptionPassword) {
             this.tokenCookieBuilder.encryptionPassword(cookieEncryptionPassword);
             this.idTokenCookieBuilder.encryptionPassword(cookieEncryptionPassword);
             this.tenantCookieBuilder.encryptionPassword(cookieEncryptionPassword);
+            this.refreshTokenCookieBuilder.encryptionPassword(cookieEncryptionPassword);
             return this;
         }
 
@@ -1469,9 +1552,10 @@ public final class OidcConfig extends TenantConfigImpl {
          * Defaults to {@code false}.
          *
          * @param cookieEncryptionEnabled whether cookie should be encrypted {@code true}, or as obtained from
-         *                               OIDC server {@code false}
+         *                                OIDC server {@code false}
          * @return updated builder instance
          */
+        @ConfiguredOption(value = "false")
         public Builder cookieEncryptionEnabled(boolean cookieEncryptionEnabled) {
             this.tokenCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
             return this;
@@ -1482,9 +1566,10 @@ public final class OidcConfig extends TenantConfigImpl {
          * Defaults to {@code true}.
          *
          * @param cookieEncryptionEnabled whether cookie should be encrypted {@code true}, or as obtained from
-         *                               OIDC server {@code false}
+         *                                OIDC server {@code false}
          * @return updated builder instance
          */
+        @ConfiguredOption(value = "true")
         public Builder cookieEncryptionEnabledIdToken(boolean cookieEncryptionEnabled) {
             this.idTokenCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
             return this;
@@ -1494,12 +1579,26 @@ public final class OidcConfig extends TenantConfigImpl {
          * Whether to encrypt tenant name cookie created by this microservice.
          * Defaults to {@code true}.
          *
-         * @param cookieEncryptionEnabled whether cookie should be encrypted {@code true}, or as obtained from
-         *                               OIDC server {@code false}
+         * @param cookieEncryptionEnabled whether cookie should be encrypted {@code true}, or as plain text name {@code false}
          * @return updated builder instance
          */
+        @ConfiguredOption(value = "true")
         public Builder cookieEncryptionEnabledTenantName(boolean cookieEncryptionEnabled) {
             this.tenantCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
+            return this;
+        }
+
+        /**
+         * Whether to encrypt refresh token cookie created by this microservice.
+         * Defaults to {@code true}.
+         *
+         * @param cookieEncryptionEnabled whether cookie should be encrypted {@code true}, or as obtained from
+         *                                OIDC server {@code false}
+         * @return updated builder instance
+         */
+        @ConfiguredOption(value = "true")
+        public Builder cookieEncryptionEnabledRefreshToken(boolean cookieEncryptionEnabled) {
+            this.refreshTokenCookieBuilder.encryptionEnabled(cookieEncryptionEnabled);
             return this;
         }
 
@@ -1526,6 +1625,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.sameSite(sameSite);
             this.idTokenCookieBuilder.sameSite(sameSite);
             this.tenantCookieBuilder.sameSite(sameSite);
+            this.refreshTokenCookieBuilder.sameSite(sameSite);
             this.cookieSameSiteDefault = false;
             return this;
         }
@@ -1542,6 +1642,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.secure(secure);
             this.idTokenCookieBuilder.secure(secure);
             this.tenantCookieBuilder.secure(secure);
+            this.refreshTokenCookieBuilder.secure(secure);
             return this;
         }
 
@@ -1557,6 +1658,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.httpOnly(httpOnly);
             this.idTokenCookieBuilder.httpOnly(httpOnly);
             this.tenantCookieBuilder.httpOnly(httpOnly);
+            this.refreshTokenCookieBuilder.httpOnly(httpOnly);
             return this;
         }
 
@@ -1573,6 +1675,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.maxAge(age);
             this.idTokenCookieBuilder.maxAge(age);
             this.tenantCookieBuilder.maxAge(age);
+            this.refreshTokenCookieBuilder.maxAge(age);
             return this;
         }
 
@@ -1588,6 +1691,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.path(path);
             this.idTokenCookieBuilder.path(path);
             this.tenantCookieBuilder.path(path);
+            this.refreshTokenCookieBuilder.path(path);
             return this;
         }
 
@@ -1603,6 +1707,7 @@ public final class OidcConfig extends TenantConfigImpl {
             this.tokenCookieBuilder.domain(domain);
             this.idTokenCookieBuilder.domain(domain);
             this.tenantCookieBuilder.domain(domain);
+            this.refreshTokenCookieBuilder.domain(domain);
             return this;
         }
 
@@ -1629,13 +1734,14 @@ public final class OidcConfig extends TenantConfigImpl {
          * @param cookieName name of a cookie
          * @return updated builder instance
          */
+        @ConfiguredOption(DEFAULT_ID_COOKIE_NAME)
         public Builder cookieNameIdToken(String cookieName) {
             this.idTokenCookieBuilder.cookieName(cookieName);
             return this;
         }
 
         /**
-         * Name of the cookie to use for tenant name.
+         * The name of the cookie to use for the tenant name.
          * Defaults to {@value #DEFAULT_TENANT_COOKIE_NAME}.
          *
          * @param cookieName name of a cookie
@@ -1644,6 +1750,19 @@ public final class OidcConfig extends TenantConfigImpl {
         @ConfiguredOption(key = "cookie-name-tenant", value = DEFAULT_TENANT_COOKIE_NAME)
         public Builder cookieTenantName(String cookieName) {
             this.tenantCookieBuilder.cookieName(cookieName);
+            return this;
+        }
+
+        /**
+         * The name of the cookie to use for the refresh token.
+         * Defaults to {@value #DEFAULT_REFRESH_COOKIE_NAME}.
+         *
+         * @param cookieName name of a cookie
+         * @return updated builder instance
+         */
+        @ConfiguredOption(DEFAULT_REFRESH_COOKIE_NAME)
+        public Builder cookieNameRefreshToken(String cookieName) {
+            this.refreshTokenCookieBuilder.cookieName(cookieName);
             return this;
         }
 
@@ -1669,6 +1788,34 @@ public final class OidcConfig extends TenantConfigImpl {
         @ConfiguredOption(key = "tenants", type = TenantConfig.class, description = "Configurations of the tenants")
         public Builder addTenantConfig(TenantConfig tenantConfig) {
             tenantConfigurations.put(tenantConfig.name(), tenantConfig);
+            return this;
+        }
+
+        /**
+         * Whether access token signature check should be enabled.
+         * Signature check is enabled by default, and it is highly recommended to not change that.
+         * Change this setting only when you really know what you are doing, otherwise it could case security issues.
+         *
+         * @param enabled whether access token signature check is enabled
+         * @return updated builder instance
+         */
+        @ConfiguredOption("true")
+        public Builder tokenSignatureValidation(boolean enabled) {
+            tokenSignatureValidation = enabled;
+            return this;
+        }
+
+        /**
+         * Whether id token signature check should be enabled.
+         * Signature check is enabled by default, and it is highly recommended to not change that.
+         * Change this setting only when you really know what you are doing, otherwise it could case security issues.
+         *
+         * @param enabled whether id token signature check is enabled
+         * @return updated builder instance
+         */
+        @ConfiguredOption("true")
+        public Builder idTokenSignatureValidation(boolean enabled) {
+            idTokenSignatureValidation = enabled;
             return this;
         }
 

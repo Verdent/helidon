@@ -28,6 +28,7 @@ import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
+import io.helidon.common.context.Contexts;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
 import io.helidon.config.Config;
 import io.helidon.jersey.common.InvokedResource;
@@ -56,6 +57,7 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import org.glassfish.jersey.server.ExtendedUriInfo;
 import org.glassfish.jersey.server.ServerConfig;
@@ -219,6 +221,17 @@ public class SecurityFilter extends SecurityFilterCommon implements ContainerReq
         } else {
             return;
         }
+
+        io.helidon.common.context.Context helidonContext = Contexts.context()
+                .orElseThrow(() -> new IllegalStateException("Context must be available in Jersey"));
+        helidonContext.get(CONTEXT_RESPONSE_HEADERS, Map.class)
+                .map(it -> (Map<String, List<String>>) it)
+                .ifPresent(it -> {
+                    MultivaluedMap<String, Object> headers = responseContext.getHeaders();
+                    for (Map.Entry<String, List<String>> entry : it.entrySet()) {
+                        entry.getValue().forEach(value -> headers.add(entry.getKey(), value));
+                    }
+                });
 
         FilterContext fc = (FilterContext) requestContext.getProperty(PROP_FILTER_CONTEXT);
         SecurityDefinition methodSecurity = jerseySecurityContext.methodSecurity();

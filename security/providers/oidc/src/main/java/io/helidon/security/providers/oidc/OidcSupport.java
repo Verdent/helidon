@@ -241,6 +241,7 @@ public final class OidcSupport implements Service {
         OidcCookieHandler idTokenCookieHandler = oidcConfig.idTokenCookieHandler();
         OidcCookieHandler tokenCookieHandler = oidcConfig.tokenCookieHandler();
         OidcCookieHandler tenantCookieHandler = oidcConfig.tenantCookieHandler();
+        OidcCookieHandler refreshTokenCookieHandler = oidcConfig.refreshTokenCookieHandler();
 
         Optional<String> idTokenCookie = req.headers()
                 .cookies()
@@ -269,6 +270,7 @@ public final class OidcSupport implements Service {
                     headers.addCookie(tokenCookieHandler.removeCookie().build());
                     headers.addCookie(idTokenCookieHandler.removeCookie().build());
                     headers.addCookie(tenantCookieHandler.removeCookie().build());
+                    headers.addCookie(refreshTokenCookieHandler.removeCookie().build());
 
                     res.status(Http.Status.TEMPORARY_REDIRECT_307)
                             .addHeader(Http.Header.LOCATION, sb.toString())
@@ -425,14 +427,18 @@ public final class OidcSupport implements Service {
                                        ServerResponse res,
                                        JsonObject json,
                                        String tenantName) {
-        String tokenValue = json.getString("access_token");
+        String accessToken = json.getString("access_token");
         String idToken = json.getString("id_token", null);
+        String refreshToken = json.getString("refresh_token", null);
 
         //redirect to "state"
         String state = req.queryParams().first(STATE_PARAM_NAME).orElse(DEFAULT_REDIRECT);
         res.status(Http.Status.TEMPORARY_REDIRECT_307);
         if (oidcConfig.useParam()) {
-            state += (state.contains("?") ? "&" : "?") + encode(oidcConfig.paramName()) + "=" + tokenValue;
+            state += (state.contains("?") ? "&" : "?") + encode(oidcConfig.paramName()) + "=" + accessToken;
+            if (idToken != null) {
+                state += "&" + encode(oidcConfig.idTokenParamName()) + "=" + idToken;
+            }
             if (!DEFAULT_TENANT_ID.equals(tenantName)) {
                 state += "&" + encode(oidcConfig.tenantParamName()) + "=" + encode(tenantName);
             }
@@ -450,20 +456,30 @@ public final class OidcSupport implements Service {
                     .exceptionallyAccept(t -> sendError(res, t));
 
             OidcCookieHandler tokenCookieHandler = oidcConfig.tokenCookieHandler();
-            tokenCookieHandler.createCookie(tokenValue)
-                    .forSingle(builder -> {
-                        headers.addCookie(builder.build());
-                        if (idToken != null && oidcConfig.logoutEnabled()) {
-                            oidcConfig.idTokenCookieHandler().createCookie(idToken)
+            tokenCookieHandler.createCookie(accessToken)
+                    .forSingle(builder -> headers.addCookie(builder.build()))
+                    .thenCompose(unused -> {
+                        if (idToken != null) {
+                            return oidcConfig.idTokenCookieHandler().createCookie(idToken)
+                                    .forSingle(it -> {
+                                        headers.addCookie(it.build());
+                                    });
+                        } else {
+                            return Single.empty();
+                        }
+                    })
+                    .thenCompose(builder -> {
+                        if (refreshToken != null) {
+                            return oidcConfig.refreshTokenCookieHandler().createCookie(refreshToken)
                                     .forSingle(it -> {
                                         headers.addCookie(it.build());
                                         res.send();
-                                    })
-                                    .exceptionallyAccept(t -> sendError(res, t));
+                                    });
                         } else {
-                            res.send();
+                            return Single.empty();
                         }
                     })
+                    .thenAccept(unused -> res.send())
                     .exceptionallyAccept(t -> sendError(res, t));
         } else {
             res.send();

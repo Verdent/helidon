@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.logging.Logger;
 
+import io.helidon.common.context.Contexts;
 import io.helidon.common.http.HashParameters;
 import io.helidon.common.http.Parameters;
 import io.helidon.common.serviceloader.HelidonServiceLoader;
@@ -50,6 +51,8 @@ import org.glassfish.jersey.server.ContainerRequest;
  */
 abstract class SecurityFilterCommon {
     static final String PROP_FILTER_CONTEXT = "io.helidon.security.jersey.FilterContext";
+
+    static final String CONTEXT_RESPONSE_HEADERS = "security.responseHeaders";
 
     private static final List<SecurityResponseMapper> RESPONSE_MAPPERS = HelidonServiceLoader
             .builder(ServiceLoader.load(SecurityResponseMapper.class)).build().asList();
@@ -187,6 +190,9 @@ abstract class SecurityFilterCommon {
         switch (responseStatus) {
         case SUCCESS:
             //everything is fine, we can continue with processing
+            io.helidon.common.context.Context helidonContext = Contexts.context()
+                    .orElseThrow(() -> new IllegalStateException("Context must be available in Jersey"));
+            helidonContext.register(CONTEXT_RESPONSE_HEADERS, response.responseHeaders());
             return;
         case FAILURE_FINISH:
             if (methodSecurity.authenticationOptional()) {

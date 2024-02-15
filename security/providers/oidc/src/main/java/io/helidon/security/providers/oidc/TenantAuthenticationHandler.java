@@ -591,8 +591,7 @@ class TenantAuthenticationHandler {
             Parameters.Builder form = Parameters.builder("oidc-form-params")
                     .add("grant_type", "refresh_token")
                     .add("refresh_token", refreshTokenString)
-                    .add("client_id", tenantConfig.clientId())
-                    .add("client_secret", tenantConfig.clientSecret());
+                    .add("client_id", tenantConfig.clientId());
 
             HttpClientRequest post = webClient.post()
                     .uri(tenant.tokenEndpointUri())

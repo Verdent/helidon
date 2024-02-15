@@ -106,6 +106,25 @@ jobs:
           mvn -B -e "-Dmaven.test.skip=true" $MAVEN_HTTP_ARGS -DskipTests -Ppipeline install 
           cd examples
           mvn -B verify
+  selenium-tests:
+    timeout-minutes: 30
+    name: "Selenium based tests"
+    strategy:
+      matrix:
+        os: [ ubuntu-20.04 ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v3.13.0
+        with:
+          distribution: ${{ env.JAVA_DISTRO }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Setup Chrome browser
+        uses: browser-actions/setup-chrome@latest
+      - name: Maven build
+        run: etc/scripts/mp-tck.sh
   mp-tck:
     timeout-minutes: 60
     name: "MicroProfile TCKs"

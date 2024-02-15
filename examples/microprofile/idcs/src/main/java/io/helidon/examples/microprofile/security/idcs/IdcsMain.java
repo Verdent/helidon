@@ -35,12 +35,14 @@ public final class IdcsMain {
 
         System.out.println("Endpoints:");
         System.out.println("Login");
-        System.out.println("  http://localhost:7987/rest/login");
+        System.out.println("  http://localhost:6789/rest/login");
         System.out.println("Full security with scopes and roles (see IdcsResource.java)");
-        System.out.println("  http://localhost:7987/rest/scopes");
+        System.out.println("  http://localhost:6789/rest/scopes");
         System.out.println("A protected service (see application.yaml - security.web-server)");
-        System.out.println("  http://localhost:7987/service");
+        System.out.println("  http://localhost:6789/service");
         System.out.println("A protected static resource (see application.yaml - security.web-server");
-        System.out.println("  http://localhost:7987/web/resource.html");
+        System.out.println("  http://localhost:6789/web/resource.html");
+        System.out.println("For logout");
+        System.out.println("  http://localhost:6789/oidc/logout");
     }
 }

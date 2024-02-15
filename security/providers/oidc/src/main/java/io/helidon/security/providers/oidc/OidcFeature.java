@@ -488,9 +488,9 @@ public final class OidcFeature implements HttpFeature {
         String idToken = json.getString("id_token", null);
         String refreshToken = json.getString("refresh_token", null);
 
-        Jwt accessTokenJwt = SignedJwt.parseToken(accessToken).getJwt();
+        Jwt idTokenJwt = SignedJwt.parseToken(idToken).getJwt();
         String nonceOriginal = stateCookie.getString("nonce");
-        String nonceAccess = accessTokenJwt.nonce()
+        String nonceAccess = idTokenJwt.nonce()
                 .orElseThrow(() -> new IllegalStateException("Nonce is required to be present in the access token"));
         if (!nonceAccess.equals(nonceOriginal)) {
             throw new IllegalStateException("Original nonce and the one obtained from access token does not match");
@@ -527,7 +527,9 @@ public final class OidcFeature implements HttpFeature {
 
                 headers.addCookie(tenantCookieHandler.createCookie(tenantName).build()); //Add tenant name cookie
                 headers.addCookie(tokenCookieHandler.createCookie(encodedAccessToken).build());  //Add token cookie
-                headers.addCookie(refreshTokenCookieHandler.createCookie(refreshToken).build());  //Add refresh token cookie
+                if (refreshToken != null) {
+                    headers.addCookie(refreshTokenCookieHandler.createCookie(refreshToken).build());  //Add refresh token cookie
+                }
 
                 if (idToken != null) {
                     headers.addCookie(idTokenCookieHandler.createCookie(idToken).build());  //Add token id cookie

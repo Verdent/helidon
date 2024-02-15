@@ -23,8 +23,11 @@ import io.helidon.security.annotations.Authenticated;
 
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
@@ -79,5 +82,16 @@ public class IdcsResource {
     @RoleValidator.Roles("my_admins")
     public String scopes(@Context SecurityContext context) {
         return context.user().toString();
+    }
+
+
+    @Path("/postLogout")
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String postLogout(@Context HttpHeaders httpHeaders) {
+        if (httpHeaders.getCookies().isEmpty()) {
+            return "Post loggout with no cookies";
+        }
+        return "Cookies are not cleared!";
     }
 }

@@ -24,6 +24,8 @@ server:
           methods: [ "get" ]
           authenticate: true
           roles-allowed: [ "my_admins" ]
+          oidc:
+            validate-jwt-with-jwk: false
           # abac:
           # scopes: ["first_scope", "second_scope"]
 
@@ -31,9 +33,9 @@ security:
   config.require-encryption: false
   properties:
     # This is a nice way to be able to override this with local properties or env-vars
-    idcs-uri: "https://your-tenant-id.identity.oracle.com"
-    idcs-client-id: "your-client-id"
-    idcs-client-secret: "${CLEAR=your-client-secret}"
+    idcs-uri: "https://idcs-5d783dd2b5f1428dadb3ef2e0588c2ae.identity.oraclecloud.com:443"
+    idcs-client-id: "1179a40fe127448f8ee59935f867409c"
+    idcs-client-secret: "96172dc2-a849-4b22-9097-30eb5609ab88"
     proxy-host: ""
   providers:
   - abac:

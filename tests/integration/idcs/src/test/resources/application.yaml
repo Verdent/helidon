@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018, 2023 Oracle and/or its affiliates.
+# Copyright (c) 2023 Oracle and/or its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,44 +14,40 @@
 # limitations under the License.
 #
 
-# Security requires Helidon config
+selenium:
+  timeout: 30
+  headless: true
+  oci-login: "david_kral@seznam.cz"
+  oci-password: "bm^KZW6kFpj!E76GbBKMx^Fv"
 
-server:
-  port: 6789
-  # location on classpath (e.g. src/main/resources/WEB in maven)
-  static.classpath:
-    location: "/WEB"
-    # this is optional, defaults to "/"
-    context: "/web"
+client:
+  cookie-manager:
+    automatic-store-enabled: true
+  send-expect-continue: false
+  follow-redirects: true
+
 security:
-  config.require-encryption: false
   properties:
     # This is a nice way to be able to override this with local properties or env-vars
     idcs-uri: "https://idcs-5d783dd2b5f1428dadb3ef2e0588c2ae.identity.oraclecloud.com:443"
     idcs-client-id: "1179a40fe127448f8ee59935f867409c"
     idcs-client-secret: "96172dc2-a849-4b22-9097-30eb5609ab88"
-    proxy-host: ""
-    # Used as a base for redirects back to us
-    frontend-uri: "http://localhost:6789"
   providers:
     - abac:
       # Adds ABAC Provider - it does not require any configuration
     - oidc:
+        server-type: "idcs"
+        redirect: true
+        redirect-uri: "/oidc/redirect"
+#        audience: "http://localhost:6789"
+        header-use: true
+        logout-enabled: true
+        post-logout-uri: "/test/postLogout"
         client-id: "${security.properties.idcs-client-id}"
         client-secret: "${security.properties.idcs-client-secret}"
         identity-uri: "${security.properties.idcs-uri}"
-        # A prefix used for custom scopes
-        scope-audience: "http://localhost:7987/test-application"
-        proxy-host: "${security.properties.proxy-host}"
-        frontend-uri: "${security.properties.frontend-uri}"
-        # We want to redirect to login page (and token can be received either through cookie or header)
-        server-type: "idcs"
-
-        logout-enabled: true
-        post-logout-uri: "/postLogout"
-
-        redirect: true
-        redirect-uri: "/oidc/redirect"
+        base-scopes: openid offline_access
+        validate-with-jwk: false
     - idcs-role-mapper:
         multitenant: false
         oidc-config:
@@ -61,9 +57,3 @@ security:
           client-id: "${security.properties.idcs-client-id}"
           client-secret: "${security.properties.idcs-client-secret}"
           identity-uri: "${security.properties.idcs-uri}"
-  web-server:
-    paths:
-      - path: "/web[/{*}]"
-        authenticate: true
-      - path: "/service[/{*}]"
-        authenticate: true

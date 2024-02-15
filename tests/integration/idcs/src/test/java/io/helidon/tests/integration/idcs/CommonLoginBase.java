@@ -22,6 +22,7 @@ import java.util.Map;
 import io.helidon.config.Config;
 import io.helidon.jersey.connector.HelidonConnectorProvider;
 import io.helidon.jersey.connector.HelidonProperties;
+import io.helidon.logging.common.LogConfig;
 import io.helidon.microprofile.testing.junit5.AddBean;
 import io.helidon.microprofile.testing.junit5.AddConfig;
 import io.helidon.microprofile.testing.junit5.HelidonTest;
@@ -75,7 +76,7 @@ class CommonLoginBase {
 
     @BeforeAll
     public static void beforeAll() {
-        WebDriverManager.chromedriver().setup();
+        WebDriverManager.chromedriver().remoteAddress("127.0.0.1").setup();
     }
 
     @BeforeEach
@@ -132,9 +133,9 @@ class CommonLoginBase {
         wait.until(webDriver -> webDriver.getTitle().isEmpty());
     }
 
-    String getRequestUri(String html) {
-        Document document = Jsoup.parse(html);
-        return document.getElementById("kc-form-login").attr("action");
+    String ipCheckWorkaround(WebTarget target) {
+        String uriString = target.getUri().toString();
+        return uriString.replace("localhost", "[0:0:0:0:0:0:0:1]");
     }
 
 }

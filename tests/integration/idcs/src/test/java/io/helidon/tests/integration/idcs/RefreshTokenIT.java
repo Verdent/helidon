@@ -66,12 +66,12 @@ class RefreshTokenIT extends CommonLoginBase {
         JsonObject original = JSON_READER_FACTORY.createReader(new StringReader(originalAccessValue)).readObject();
         JsonObject jsonObject = JSON_OBJECT_BUILDER_FACTORY.createObjectBuilder(original)
                 .add("accessToken", signedJwt.tokenContent())
+//                .add("remotePeer", "127.0.0.1") //Workaround for Chrome using IPv6
                 .build();
         String base64 = Base64.getEncoder().encodeToString(jsonObject.toString().getBytes(StandardCharsets.UTF_8));
 
-        Invocation.Builder request = client.target(webTarget.getUri())
+        Invocation.Builder request = client.target(ipCheckWorkaround(webTarget))
                 .path("/test")
-                //                .property(ClientProperties.FOLLOW_REDIRECTS, false)
                 .request();
 
         for (Cookie cookie : browserCookies) {
@@ -92,7 +92,7 @@ class RefreshTokenIT extends CommonLoginBase {
         }
 
         //next request should have cookie set, and we do not need to authenticate again
-        try (Response response = client.target(webTarget.getUri()).path("/test").request().get()) {
+        try (Response response = client.target(ipCheckWorkaround(webTarget)).path("/test").request().get()) {
             assertThat(response.getStatus(), is(Response.Status.OK.getStatusCode()));
             assertThat(response.readEntity(String.class), is(EXPECTED_TEST_MESSAGE));
             assertThat(response.getHeaderString(HttpHeaders.SET_COOKIE), nullValue());

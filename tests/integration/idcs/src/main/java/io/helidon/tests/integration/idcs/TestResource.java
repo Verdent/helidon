@@ -92,6 +92,5 @@ public class TestResource {
         return "Cookies are not cleared!";
     }
 
-
 }
 

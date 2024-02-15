@@ -18,7 +18,7 @@ selenium:
   timeout: 30
   headless: true
   oci-login: "david_kral@seznam.cz"
-  oci-password: "bm^KZW6kFpj!E76GbBKMx^Fv"
+  oci-password: "${GCM=1FX+HbnNzo81p5KjEHtJ9y+VHhH5+qzL3bSOrUSvxBXyso9kdIRorRnGSqspE1UAzf7eLSZNsyGSJ5CMsq1VQsPKemY=}"
 
 client:
   cookie-manager:
@@ -39,7 +39,6 @@ security:
         server-type: "idcs"
         redirect: true
         redirect-uri: "/oidc/redirect"
-#        audience: "http://localhost:6789"
         header-use: true
         logout-enabled: true
         post-logout-uri: "/test/postLogout"

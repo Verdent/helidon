@@ -45,7 +45,7 @@ class IdTokenIT extends CommonLoginBase {
         Set<Cookie> cookies = browser.manage().getCookies();
 
         //Ignore ID token cookie
-        Invocation.Builder request = client.target(webTarget.getUri()).path("/test").request();
+        Invocation.Builder request = client.target(ipCheckWorkaround(webTarget)).path("/test").request();
         for (Cookie cookie : cookies) {
             if (!cookie.getName().equals(DEFAULT_ID_COOKIE_NAME)) {
                 request.header(HttpHeaders.COOKIE, cookie.getName() + "=" + cookie.getValue());
@@ -74,7 +74,7 @@ class IdTokenIT extends CommonLoginBase {
         SignedJwt signedJwt = SignedJwt.sign(jwt, Jwk.NONE_JWK);
 
         //Ignore ID token cookie
-        Invocation.Builder request = client.target(webTarget.getUri())
+        Invocation.Builder request = client.target(ipCheckWorkaround(webTarget))
                 .path("/test")
                 .request()
                 .property(ClientProperties.FOLLOW_REDIRECTS, false);

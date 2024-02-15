@@ -491,9 +491,9 @@ public final class OidcFeature implements HttpFeature {
         Jwt idTokenJwt = SignedJwt.parseToken(idToken).getJwt();
         String nonceOriginal = stateCookie.getString("nonce");
         String nonceAccess = idTokenJwt.nonce()
-                .orElseThrow(() -> new IllegalStateException("Nonce is required to be present in the access token"));
+                .orElseThrow(() -> new IllegalStateException("Nonce is required to be present in the id token"));
         if (!nonceAccess.equals(nonceOriginal)) {
-            throw new IllegalStateException("Original nonce and the one obtained from access token does not match");
+            throw new IllegalStateException("Original nonce and the one obtained from id token does not match");
         }
 
         //redirect to "originalUri"

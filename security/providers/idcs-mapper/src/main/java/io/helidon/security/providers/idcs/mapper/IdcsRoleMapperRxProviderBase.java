@@ -125,7 +125,8 @@ public abstract class IdcsRoleMapperRxProviderBase implements SubjectMappingProv
 
         // create a new response
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
-                .requestHeaders(previousResponse.requestHeaders());
+                .requestHeaders(previousResponse.requestHeaders())
+                .responseHeaders(previousResponse.responseHeaders());
         previousResponse.description().ifPresent(builder::description);
 
         Single<AuthenticationResponse.Builder> result = Single.just(builder);

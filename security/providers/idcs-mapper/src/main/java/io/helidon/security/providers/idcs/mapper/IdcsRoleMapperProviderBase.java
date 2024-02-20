@@ -145,6 +145,7 @@ public abstract class IdcsRoleMapperProviderBase implements SubjectMappingProvid
 
         previousResponse.description().ifPresent(builder::description);
         builder.requestHeaders(previousResponse.requestHeaders());
+        builder.responseHeaders(previousResponse.responseHeaders());
 
         return complete(builder.build());
     }

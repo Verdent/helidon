@@ -544,8 +544,7 @@ class TenantAuthenticationHandler {
         FormParams.Builder form = FormParams.builder()
                 .add("grant_type", "refresh_token")
                 .add("refresh_token", refreshTokenString)
-                .add("client_id", tenantConfig.clientId())
-                .add("client_secret", tenantConfig.clientSecret());
+                .add("client_id", tenantConfig.clientId());
 
         return webClient.post()
                 .uri(tenant.tokenEndpointUri())

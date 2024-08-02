@@ -36,6 +36,9 @@
 
     <modules>
         <module>schema</module>
+        <module>codegen</module>
+        <module>binding</module>
+        <module>parser</module>
     </modules>
 
     <build>

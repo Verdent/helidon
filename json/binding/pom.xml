@@ -14,7 +14,7 @@
     <dependencies>
         <dependency>
             <groupId>io.helidon.json</groupId>
-            <artifactId>helidon-json-parser</artifactId>
+            <artifactId>helidon-json-processor</artifactId>
         </dependency>
     </dependencies>
 

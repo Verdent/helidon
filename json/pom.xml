@@ -19,7 +19,8 @@
     <modules>
         <module>codegen</module>
         <module>binding</module>
-        <module>parser</module>
+        <module>processor</module>
+        <module>tests</module>
     </modules>
 
 </project>

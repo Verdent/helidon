@@ -1,4 +1,4 @@
-package io.helidon.json.api;
+package io.helidon.json.binding;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

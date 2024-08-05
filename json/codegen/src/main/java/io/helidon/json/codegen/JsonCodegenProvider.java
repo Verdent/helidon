@@ -15,6 +15,6 @@ public class JsonCodegenProvider implements CodegenExtensionProvider {
 
     @Override
     public Set<TypeName> supportedAnnotations() {
-        return Set.of();
+        return Set.of(Types.JSON_AS_JSON);
     }
 }

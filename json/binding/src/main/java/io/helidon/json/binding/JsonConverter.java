@@ -1,4 +1,4 @@
-package io.helidon.json.api;
+package io.helidon.json.binding;
 
 /**
  * TODO javadoc

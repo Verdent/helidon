@@ -9,6 +9,6 @@
         <version>4.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>helidon-json-parser</artifactId>
+    <artifactId>helidon-json-processor</artifactId>
 
 </project>

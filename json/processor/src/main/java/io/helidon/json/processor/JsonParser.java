@@ -1,0 +1,34 @@
+package io.helidon.json.processor;
+
+/**
+ * TODO javadoc
+ */
+public interface JsonParser {
+
+    static JsonParser createParser(String json) {
+        return new JsonParserImpl(json);
+//        return new StreamJsonParser(new ByteArrayInputStream(json.getBytes()));
+    }
+
+    void reset(byte[] buffer);
+
+    byte readNextByte();
+    byte nextToken();
+    byte lastByte();
+
+    JsonObject readObject();
+
+    String readString();
+
+    int readStringAsHash();
+
+    JsonNumber readJsonNumber();
+    int readInt();
+//    int readLong();
+    boolean checkNull();
+    boolean checkTrue();
+    boolean checkFalse();
+    void skip();
+    void byteRollback();
+
+}

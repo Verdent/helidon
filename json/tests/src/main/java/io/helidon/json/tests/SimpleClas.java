@@ -11,4 +11,9 @@ public class SimpleClas {
         return name;
     }
 
+    @Json.Property("something")
+    public String get() {
+        return name;
+    }
+
 }

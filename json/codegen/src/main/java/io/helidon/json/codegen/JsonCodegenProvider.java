@@ -10,7 +10,7 @@ import io.helidon.common.types.TypeName;
 public class JsonCodegenProvider implements CodegenExtensionProvider {
     @Override
     public CodegenExtension create(CodegenContext ctx, TypeName generatorType) {
-        return new JsonCodegen();
+        return new JsonCodegen(ctx);
     }
 
     @Override

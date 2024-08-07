@@ -10,6 +10,9 @@ public interface Json {
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
     @interface AsJson {
+
+        boolean recordAccessors() default false;
+
     }
 
     @Retention(RetentionPolicy.RUNTIME)

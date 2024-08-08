@@ -25,6 +25,7 @@ import static io.helidon.common.types.TypeNames.PRIMITIVE_VOID;
 import static io.helidon.common.types.TypeNames.STRING;
 
 record ConvertedTypeInfo(TypeName converterType,
+                         TypeName originalType,
                          Map<String, JsonProperty> jsonProperties,
                          CreatorInfo creatorInfo) {
 
@@ -35,22 +36,25 @@ record ConvertedTypeInfo(TypeName converterType,
             new MethodSignature(STRING, "toString", List.of())
     );
 
-    public static ConvertedTypeInfo create(CodegenContext ctx, TypeInfo typeInfo) {
+    public static ConvertedTypeInfo create(TypeInfo typeInfo) {
         TypeName converterTypeName = TypeName.create(typeInfo.typeName().fqName() + "_GeneratedConverter");
-        Boolean recordAccessors = typeInfo.findAnnotation(Types.JSON_AS_JSON)
-                .flatMap(annotation -> annotation.booleanValue("recordAccessors"))
-                .orElse(typeInfo.kind() == ElementKind.RECORD);
+        boolean recordAccessors = typeInfo.annotation(Types.JSON_AS_JSON)
+                .booleanValue("recordAccessors")
+                .orElse(false);
+        if (typeInfo.kind() == ElementKind.RECORD) {
+            recordAccessors = true;
+        }
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
-        discoverFields(ctx, properties, typeInfo);
+        discoverFields(properties, typeInfo);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors);
         CreatorInfo creatorInfo = discoverCreator(properties, typeInfo);
         Map<String, JsonProperty> jsonProperties = finalizeJsonProperties(properties);
-        return new ConvertedTypeInfo(converterTypeName, jsonProperties, creatorInfo);
+        return new ConvertedTypeInfo(converterTypeName, typeInfo.typeName(), jsonProperties, creatorInfo);
     }
 
-    private static void discoverFields(CodegenContext ctx, Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo) {
+    private static void discoverFields(Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo) {
         typeInfo.superTypeInfo()
-                .ifPresent(superType -> discoverFields(ctx, properties, superType));
+                .ifPresent(superType -> discoverFields(properties, superType));
 
         List<TypedElementInfo> fields = typeInfo.elementInfo()
                 .stream()
@@ -61,7 +65,6 @@ record ConvertedTypeInfo(TypeName converterType,
         for (TypedElementInfo field : fields) {
             String fieldName = field.elementName();
             TypeName fieldType = resolveGenerics(field.typeName(), typeInfo);
-            //            TypeName fieldType = field.typeName();
             JsonProperty.Builder builder = JsonProperty.builder()
                     .fieldName(fieldName)
                     .deserializationName(fieldName)

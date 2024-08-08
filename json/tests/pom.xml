@@ -16,6 +16,10 @@
             <groupId>io.helidon.json</groupId>
             <artifactId>helidon-json-binding</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.helidon.json</groupId>
+            <artifactId>helidon-json-processor</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

@@ -30,7 +30,7 @@ import io.helidon.common.types.TypeName;
 import static io.helidon.codegen.classmodel.ClassModel.PADDING_TOKEN;
 import static io.helidon.codegen.classmodel.ClassModel.TYPE_TOKEN;
 
-class Content {
+public class Content {
 
     private final StringBuilder content;
     private final Set<String> toImport;
@@ -42,7 +42,12 @@ class Content {
         this.tokenPositions = List.copyOf(builder.tokenPositions);
     }
 
-    static Builder builder() {
+    /**
+     * Return new instance of {@link Builder}.
+     *
+     * @return new builder instance
+     */
+    public static Builder builder() {
         return new Builder();
     }
 
@@ -85,7 +90,7 @@ class Content {
     /**
      * Fluent API builder for {@link Content}.
      */
-    static final class Builder implements ContentBuilder<Builder>, io.helidon.common.Builder<Builder, Content> {
+    public static final class Builder implements ContentBuilder<Builder>, io.helidon.common.Builder<Builder, Content> {
         // @fully.qualified.TypeName@ can be used as a placeholder to be replaced with an import when written
         // the regexp must only use characters allowed in such a type name
         private static final Pattern TYPE_NAME_PATTERN = Pattern.compile(TYPE_TOKEN + "([.a-zA-Z0-9_]+)" + TYPE_TOKEN);

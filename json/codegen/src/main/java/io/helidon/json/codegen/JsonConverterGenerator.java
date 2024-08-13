@@ -283,7 +283,7 @@ class JsonConverterGenerator {
     }
 
     private static String ensureUpperStart(TypeName typeName) {
-        String str = typeName.className().endsWith("[]") ? removeArraySigns(typeName.className()) : typeName.className();
+        String str = typeName.className().replaceAll("\\[]", "Array");
         if (Character.isUpperCase(str.charAt(0))) {
             return str;
         } else if (str.length() == 1) {

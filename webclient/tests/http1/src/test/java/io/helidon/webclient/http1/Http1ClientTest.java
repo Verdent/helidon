@@ -565,12 +565,6 @@ class Http1ClientTest {
     }
 
     private static void responseHandler(ServerRequest req, ServerResponse res) throws IOException {
-        //        try {
-        //            System.out.println("SERVER: CEKAM");
-        //            TimeUnit.DAYS.sleep(5);
-        //        } catch (InterruptedException e) {
-        //            throw new RuntimeException(e);
-        //        }
         customHandler(req, res, false);
     }
 

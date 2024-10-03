@@ -50,19 +50,22 @@ class Http1ConnectionCache extends ClientConnectionCache {
     private static final Http1ConnectionCache SHARED = new Http1ConnectionCache(true);
     private static final List<String> ALPN_ID = List.of(Http1Client.PROTOCOL_ID);
     private static final Duration QUEUE_TIMEOUT = Duration.ofMillis(10);
-    private static final ConnectionLimitter NOOP_PERMITTER = new NoopLimitter();
-    private final ConnectionLimitter connectionLimitter;
+    private final ConnectionLimiter connectionLimiter;
     private final Map<ConnectionKey, LinkedBlockingDeque<TcpClientConnection>> cache = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     protected Http1ConnectionCache(boolean shared) {
         super(shared);
-        connectionLimitter = NOOP_PERMITTER;
+        connectionLimiter = new NoopLimiter();
     }
 
     protected Http1ConnectionCache(Http1ClientConfig clientConfig) {
         super(false);
-        connectionLimitter = new StrictLimitter(clientConfig);
+        if (clientConfig.maxAmountOfConnections() > 0) {
+            connectionLimiter = new StrictLimiter(clientConfig);
+        } else {
+            connectionLimiter = new NoopLimiter();
+        }
     }
 
     static Http1ConnectionCache shared() {
@@ -148,14 +151,14 @@ class Http1ConnectionCache extends ClientConnectionCache {
         }
 
         if (connection == null) {
-            if (!connectionLimitter.acquire(connectionKey)) {
+            if (!connectionLimiter.acquire(connectionKey)) {
                 //No other connection is allowed to be created, we need to reuse
                 //Lets try to find connection again, otherwise fail
-                LinkedBlockingDeque<TcpClientConnection> connectionQueue2 =
-                        cache.computeIfAbsent(connectionKey,
-                                              it -> new LinkedBlockingDeque<>(clientConfig.connectionCacheSize()));
-
-                while ((connection = connectionQueue2.poll()) != null && !connection.isConnected()) {
+                try {
+                    while ((connection = connectionQueue.poll(5, TimeUnit.SECONDS)) != null && !connection.isConnected()) {
+                    }
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
                 if (connection == null) {
                     throw new IllegalStateException("No connection available");
@@ -171,7 +174,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                                         connectionKey,
                                                         ALPN_ID,
                                                         conn -> finishRequest(connectionQueue, conn),
-                                                        conn -> connectionLimitter.release(connectionKey))
+                                                        conn -> connectionLimiter.release(connectionKey))
                         .connect();
             }
         } else {
@@ -198,7 +201,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                                         clientConfig.dnsAddressLookup(),
                                                         proxy);
 
-        if (!connectionLimitter.acquire(connectionKey)) {
+        if (!connectionLimiter.acquire(connectionKey)) {
             throw new IllegalStateException("Could not make a new HTTP connection. Maximum number of connections reached.");
         }
 
@@ -207,7 +210,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                           connectionKey,
                                           ALPN_ID,
                                           conn -> false, // always close connection
-                                          conn -> connectionLimitter.release(connectionKey))
+                                          conn -> connectionLimiter.release(connectionKey))
                 .connect();
     }
 
@@ -241,7 +244,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
         return false;
     }
 
-    private interface ConnectionLimitter {
+    private interface ConnectionLimiter {
 
         boolean acquire(ConnectionKey connectionKey);
 
@@ -249,7 +252,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     }
 
-    private static final class NoopLimitter implements ConnectionLimitter {
+    private static final class NoopLimiter implements ConnectionLimiter {
 
         @Override
         public boolean acquire(ConnectionKey connectionKey) {
@@ -262,27 +265,27 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     }
 
-    private static final class StrictLimitter implements ConnectionLimitter {
+    private static final class StrictLimiter implements ConnectionLimiter {
 
-        private final Map<ConnectionKey, Semaphore> connectionLimitersPerHost = new ConcurrentHashMap<>();
+        private final Map<String, Semaphore> connectionLimitersPerHost = new ConcurrentHashMap<>();
         private final Semaphore remainingTotalConnections;
         private final int hostConnectionLimit;
-        private final boolean hostLimitter;
+        private final boolean hostLimiter;
 
-        private StrictLimitter(Http1ClientConfig clientConfig) {
+        private StrictLimiter(Http1ClientConfig clientConfig) {
             remainingTotalConnections = new Semaphore(clientConfig.maxAmountOfConnections(), true);
             hostConnectionLimit = clientConfig.maxConnectionsPerHost();
-            hostLimitter = hostConnectionLimit > 0;
+            hostLimiter = hostConnectionLimit > 0;
         }
 
         @Override
         public boolean acquire(ConnectionKey connectionKey) {
             try {
                 System.out.println("CLIENT: Cache ping -> " + Thread.currentThread().getName());
-                if (hostLimitter) {
+                if (hostLimiter) {
                     boolean totalAcquired = remainingTotalConnections.tryAcquire(5, TimeUnit.SECONDS);
                     if (totalAcquired) {
-                        Semaphore semaphore = connectionLimitersPerHost.computeIfAbsent(connectionKey,
+                        Semaphore semaphore = connectionLimitersPerHost.computeIfAbsent(connectionKey.host(),
                                                                                         key -> new Semaphore(hostConnectionLimit,
                                                                                                              true));
                         boolean hostAcquired = semaphore.tryAcquire(5, TimeUnit.SECONDS);
@@ -303,7 +306,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
         @Override
         public void release(ConnectionKey connectionKey) {
             remainingTotalConnections.release();
-            if (hostLimitter) {
+            if (hostLimiter) {
                 connectionLimitersPerHost.get(connectionKey).release();
             }
         }

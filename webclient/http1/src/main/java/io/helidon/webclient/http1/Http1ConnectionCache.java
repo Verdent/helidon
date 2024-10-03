@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -49,11 +50,19 @@ class Http1ConnectionCache extends ClientConnectionCache {
     private static final Http1ConnectionCache SHARED = new Http1ConnectionCache(true);
     private static final List<String> ALPN_ID = List.of(Http1Client.PROTOCOL_ID);
     private static final Duration QUEUE_TIMEOUT = Duration.ofMillis(10);
+    private static final ConnectionLimitter NOOP_PERMITTER = new NoopLimitter();
+    private final ConnectionLimitter connectionLimitter;
     private final Map<ConnectionKey, LinkedBlockingDeque<TcpClientConnection>> cache = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     protected Http1ConnectionCache(boolean shared) {
         super(shared);
+        connectionLimitter = NOOP_PERMITTER;
+    }
+
+    protected Http1ConnectionCache(Http1ClientConfig clientConfig) {
+        super(false);
+        connectionLimitter = new StrictLimitter(clientConfig);
     }
 
     static Http1ConnectionCache shared() {
@@ -62,6 +71,10 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     static Http1ConnectionCache create() {
         return new Http1ConnectionCache(false);
+    }
+
+    static Http1ConnectionCache create(Http1ClientConfig clientConfig) {
+        return new Http1ConnectionCache(clientConfig);
     }
 
     ClientConnection connection(Http1ClientImpl http1Client,
@@ -135,13 +148,32 @@ class Http1ConnectionCache extends ClientConnectionCache {
         }
 
         if (connection == null) {
-            connection = TcpClientConnection.create(http1Client.webClient(),
-                                                    connectionKey,
-                                                    ALPN_ID,
-                                                    conn -> finishRequest(connectionQueue, conn),
-                                                    conn -> {
-                                                    })
-                    .connect();
+            if (!connectionLimitter.acquire(connectionKey)) {
+                //No other connection is allowed to be created, we need to reuse
+                //Lets try to find connection again, otherwise fail
+                LinkedBlockingDeque<TcpClientConnection> connectionQueue2 =
+                        cache.computeIfAbsent(connectionKey,
+                                              it -> new LinkedBlockingDeque<>(clientConfig.connectionCacheSize()));
+
+                while ((connection = connectionQueue2.poll()) != null && !connection.isConnected()) {
+                }
+                if (connection == null) {
+                    throw new IllegalStateException("No connection available");
+                } else {
+                    if (LOGGER.isLoggable(DEBUG)) {
+                        LOGGER.log(DEBUG, String.format("[%s] client connection obtained %s",
+                                                        connection.channelId(),
+                                                        Thread.currentThread().getName()));
+                    }
+                }
+            } else {
+                connection = TcpClientConnection.create(http1Client.webClient(),
+                                                        connectionKey,
+                                                        ALPN_ID,
+                                                        conn -> finishRequest(connectionQueue, conn),
+                                                        conn -> connectionLimitter.release(connectionKey))
+                        .connect();
+            }
         } else {
             if (LOGGER.isLoggable(DEBUG)) {
                 LOGGER.log(DEBUG, String.format("[%s] client connection obtained %s",
@@ -156,32 +188,34 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                               Tls tls,
                                               ClientUri uri,
                                               Proxy proxy) {
+        Http1ClientConfig clientConfig = http1Client.clientConfig();
+        ConnectionKey connectionKey = new ConnectionKey(uri.scheme(),
+                                                        uri.host(),
+                                                        uri.port(),
+                                                        clientConfig.readTimeout().orElse(Duration.ZERO),
+                                                        tls,
+                                                        clientConfig.dnsResolver(),
+                                                        clientConfig.dnsAddressLookup(),
+                                                        proxy);
+
+        if (!connectionLimitter.acquire(connectionKey)) {
+            throw new IllegalStateException("Could not make a new HTTP connection. Maximum number of connections reached.");
+        }
 
         WebClient webClient = http1Client.webClient();
-        Http1ClientConfig clientConfig = http1Client.clientConfig();
-
         return TcpClientConnection.create(webClient,
-                                          new ConnectionKey(uri.scheme(),
-                                                            uri.host(),
-                                                            uri.port(),
-                                                            clientConfig.readTimeout().orElse(Duration.ZERO),
-                                                            tls,
-                                                            clientConfig.dnsResolver(),
-                                                            clientConfig.dnsAddressLookup(),
-                                                            proxy),
+                                          connectionKey,
                                           ALPN_ID,
                                           conn -> false, // always close connection
-                                          conn -> {
-                                          })
-
+                                          conn -> connectionLimitter.release(connectionKey))
                 .connect();
     }
 
     private boolean finishRequest(LinkedBlockingDeque<TcpClientConnection> connectionQueue, TcpClientConnection conn) {
         if (conn.isConnected()) {
             try {
+                conn.helidonSocket().idle(); // mark it as idle to stay blocked at read for closed conn detection
                 if (connectionQueue.offer(conn, QUEUE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                    conn.helidonSocket().idle(); // mark it as idle to stay blocked at read for closed conn detection
                     if (LOGGER.isLoggable(DEBUG)) {
                         LOGGER.log(DEBUG, "[%s] client connection returned %s",
                                    conn.channelId(),
@@ -204,7 +238,75 @@ class Http1ConnectionCache extends ClientConnectionCache {
                 }
             }
         }
-
         return false;
     }
+
+    private interface ConnectionLimitter {
+
+        boolean acquire(ConnectionKey connectionKey);
+
+        void release(ConnectionKey connectionKey);
+
+    }
+
+    private static final class NoopLimitter implements ConnectionLimitter {
+
+        @Override
+        public boolean acquire(ConnectionKey connectionKey) {
+            return true;
+        }
+
+        @Override
+        public void release(ConnectionKey connectionKey) {
+        }
+
+    }
+
+    private static final class StrictLimitter implements ConnectionLimitter {
+
+        private final Map<ConnectionKey, Semaphore> connectionLimitersPerHost = new ConcurrentHashMap<>();
+        private final Semaphore remainingTotalConnections;
+        private final int hostConnectionLimit;
+        private final boolean hostLimitter;
+
+        private StrictLimitter(Http1ClientConfig clientConfig) {
+            remainingTotalConnections = new Semaphore(clientConfig.maxAmountOfConnections(), true);
+            hostConnectionLimit = clientConfig.maxConnectionsPerHost();
+            hostLimitter = hostConnectionLimit > 0;
+        }
+
+        @Override
+        public boolean acquire(ConnectionKey connectionKey) {
+            try {
+                System.out.println("CLIENT: Cache ping -> " + Thread.currentThread().getName());
+                if (hostLimitter) {
+                    boolean totalAcquired = remainingTotalConnections.tryAcquire(5, TimeUnit.SECONDS);
+                    if (totalAcquired) {
+                        Semaphore semaphore = connectionLimitersPerHost.computeIfAbsent(connectionKey,
+                                                                                        key -> new Semaphore(hostConnectionLimit,
+                                                                                                             true));
+                        boolean hostAcquired = semaphore.tryAcquire(5, TimeUnit.SECONDS);
+                        if (hostAcquired) {
+                            return true;
+                        }
+                        remainingTotalConnections.release();
+                    }
+                    return false;
+                } else {
+                    return remainingTotalConnections.tryAcquire(5, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public void release(ConnectionKey connectionKey) {
+            remainingTotalConnections.release();
+            if (hostLimitter) {
+                connectionLimitersPerHost.get(connectionKey).release();
+            }
+        }
+    }
+
 }

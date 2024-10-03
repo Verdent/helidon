@@ -32,4 +32,11 @@ interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory
      */
     @Option.Default("create()")
     Http1ClientProtocolConfig protocolConfig();
+
+    @Option.DefaultInt(0)
+    int maxAmountOfConnections();
+
+    @Option.DefaultInt(0)
+    int maxConnectionsPerHost();
+
 }

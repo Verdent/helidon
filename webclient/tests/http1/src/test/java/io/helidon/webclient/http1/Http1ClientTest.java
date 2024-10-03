@@ -26,6 +26,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.common.GenericType;
@@ -115,6 +119,62 @@ class Http1ClientTest {
         Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
                 .protocolConfig(it -> it.maxHeaderSize(500)));
         validateSuccessfulResponse(client);
+    }
+
+    @Test
+    void basicTest() {
+        Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
+                .maxAmountOfConnections(10)
+                .maxConnectionsPerHost(5)
+                .keepAlive(false));
+        for (int i = 0; i < 50; i++) {
+            validateSuccessfulResponse(client);
+        }
+    }
+
+    @Test
+    void concurrentTest() throws InterruptedException, ExecutionException {
+        try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
+            Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
+                    .maxAmountOfConnections(10)
+                    .maxConnectionsPerHost(5));
+            ArrayList<Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < 100000; i++) {
+                Future<?> future = executorService.submit(() -> validateSuccessfulResponse(client));
+                futures.add(future);
+            }
+            for (Future<?> future : futures) {
+                try {
+                    future.get();
+                } catch (ExecutionException ex) {
+                    ex.getCause().printStackTrace();
+                }
+            }
+            System.out.println();
+        }
+    }
+
+    @Test
+    void concurrentTestWithoutKeepAlive() throws InterruptedException, ExecutionException {
+        try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
+            Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
+                    .maxAmountOfConnections(10)
+                    .maxConnectionsPerHost(5)
+                    .keepAlive(false));
+            ArrayList<Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < 100; i++) {
+                Future<?> future = executorService.submit(() -> validateSuccessfulResponse(client));
+                futures.add(future);
+            }
+            for (Future<?> future : futures) {
+                try {
+                    future.get();
+                } catch (ExecutionException ex) {
+                    ex.getCause().printStackTrace();
+                }
+            }
+            System.out.println();
+        }
     }
 
     @Test
@@ -435,7 +495,6 @@ class Http1ClientTest {
         }
     }
 
-
     private static void validateSuccessfulResponse(Http1Client client) {
         String requestEntity = "Sending Something";
         Http1ClientRequest request = client.put("/test");
@@ -506,6 +565,12 @@ class Http1ClientTest {
     }
 
     private static void responseHandler(ServerRequest req, ServerResponse res) throws IOException {
+        //        try {
+        //            System.out.println("SERVER: CEKAM");
+        //            TimeUnit.DAYS.sleep(5);
+        //        } catch (InterruptedException e) {
+        //            throw new RuntimeException(e);
+        //        }
         customHandler(req, res, false);
     }
 

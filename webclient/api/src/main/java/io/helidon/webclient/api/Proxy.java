@@ -33,13 +33,19 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.helidon.common.HelidonServiceLoader;
+import io.helidon.common.concurrency.limits.FixedLimit;
+import io.helidon.common.concurrency.limits.Limit;
+import io.helidon.common.concurrency.limits.spi.LimitProvider;
 import io.helidon.common.config.Config;
+import io.helidon.common.config.ConfigException;
 import io.helidon.common.configurable.LruCache;
 import io.helidon.common.media.type.MediaTypes;
 import io.helidon.common.socket.SocketOptions;
@@ -89,6 +95,8 @@ public class Proxy {
     private final ProxySelector systemProxySelector;
     private final Optional<Header> proxyAuthHeader;
     private final boolean forceHttpConnect;
+    private final Limit maxConnections;
+    private final Limit maxPerHostConnections;
 
     private Proxy(Proxy.Builder builder) {
         this.host = builder.host();
@@ -102,6 +110,8 @@ public class Proxy {
         this.username = builder.username();
         this.password = builder.password();
         this.forceHttpConnect = builder.forceHttpConnect();
+        this.maxConnections = builder.maxConnections().orElseGet(FixedLimit::create);
+        this.maxPerHostConnections = builder.maxPerHostConnections();
 
         if (type == ProxyType.SYSTEM) {
             this.noProxy = inetSocketAddress -> true;
@@ -370,6 +380,14 @@ public class Proxy {
         return password;
     }
 
+    public Limit maxConnections() {
+        return maxConnections;
+    }
+
+    public Optional<Limit> maxPerHostConnections() {
+        return Optional.ofNullable(maxPerHostConnections);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -590,6 +608,8 @@ public class Proxy {
         private String username;
         private char[] password;
         private boolean forceHttpConnect = false;
+        private Limit maxConnections;
+        private Limit maxPerHostConnections;
 
         private Builder() {
         }
@@ -651,6 +671,8 @@ public class Proxy {
          */
         public Builder config(Config config) {
             config.get("type").asString().map(ProxyType::valueOf).ifPresent(this::type);
+            config.get("max-connection").as(Config.class).ifPresent(it -> maxConnections(findLimitProvider(it)));
+            config.get("max-per-host-connection").as(Config.class).ifPresent(it -> maxPerHostConnections(findLimitProvider(it)));
 
             if (this.type != ProxyType.SYSTEM && this.type != ProxyType.NONE) {
                 config.get("host").asString().ifPresent(this::host);
@@ -660,6 +682,15 @@ public class Proxy {
                 config.get("no-proxy").asList(String.class).ifPresent(hosts -> hosts.forEach(this::addNoProxy));
             }
             return this;
+        }
+
+        private Limit findLimitProvider(Config config) {
+            return HelidonServiceLoader.create(ServiceLoader.load(LimitProvider.class))
+                    .stream()
+                    .filter(limitProvider -> config.get(limitProvider.configKey()).exists())
+                    .findFirst()
+                    .map(limitProvider -> limitProvider.create(config.get(limitProvider.configKey()), limitProvider.configKey()))
+                    .orElseThrow(() -> new ConfigException("Unknown limit type configured for: " + config.name()));
         }
 
         /**
@@ -760,6 +791,18 @@ public class Proxy {
             return this;
         }
 
+        @ConfiguredOption
+        public Builder maxConnections(Limit maxConnections) {
+            this.maxConnections = maxConnections;
+            return this;
+        }
+
+        @ConfiguredOption
+        public Builder maxPerHostConnections(Limit maxPerHostConnections) {
+            this.maxPerHostConnections = maxPerHostConnections;
+            return this;
+        }
+
         ProxyType type() {
             return type;
         }
@@ -786,6 +829,14 @@ public class Proxy {
 
         Optional<char[]> password() {
             return Optional.ofNullable(password);
+        }
+
+        Optional<Limit> maxConnections() {
+            return Optional.ofNullable(maxConnections);
+        }
+
+        Limit maxPerHostConnections() {
+            return maxPerHostConnections;
         }
     }
 }

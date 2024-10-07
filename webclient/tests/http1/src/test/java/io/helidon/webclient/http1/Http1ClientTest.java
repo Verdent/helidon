@@ -33,6 +33,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.common.GenericType;
+import io.helidon.common.concurrency.limits.FixedLimit;
+import io.helidon.common.config.GlobalConfig;
+import io.helidon.config.Config;
 import io.helidon.http.Header;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
@@ -124,20 +127,57 @@ class Http1ClientTest {
     @Test
     void basicTest() {
         Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                .maxAmountOfConnections(10)
-                .maxConnectionsPerHost(5)
-                .keepAlive(false));
+                .maxConnections(FixedLimit.builder()
+                                        .permits(10)
+                                        .queueTimeout(Duration.ofSeconds(1))
+                                        .fair(true)
+                                        .build())
+                .maxConnectionsPerRoute(FixedLimit.builder()
+                                                .permits(5)
+                                                .queueTimeout(Duration.ofSeconds(1))
+                                                .fair(true)
+                                                .build()));
         for (int i = 0; i < 50; i++) {
             validateSuccessfulResponse(client);
+        }
+        System.out.println();
+    }
+
+    @Test
+    void concurrentTestConfig() throws InterruptedException, ExecutionException {
+        try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
+            Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI));
+            ArrayList<Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < 100000; i++) {
+                Future<?> future = executorService.submit(() -> validateSuccessfulResponse(client));
+                futures.add(future);
+            }
+            for (Future<?> future : futures) {
+                try {
+                    future.get();
+                } catch (ExecutionException ex) {
+                    ex.getCause().printStackTrace();
+                }
+            }
+            System.out.println();
         }
     }
 
     @Test
     void concurrentTest() throws InterruptedException, ExecutionException {
+        GlobalConfig.config(Config::create);
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                    .maxAmountOfConnections(10)
-                    .maxConnectionsPerHost(5));
+                    .maxConnections(FixedLimit.builder()
+                                            .permits(10)
+                                            .queueTimeout(Duration.ofSeconds(1))
+                                            .fair(true)
+                                            .build())
+                    .maxConnectionsPerRoute(FixedLimit.builder()
+                                                    .permits(5)
+                                                    .queueTimeout(Duration.ofSeconds(1))
+                                                    .fair(true)
+                                                    .build()));
             ArrayList<Future<?>> futures = new ArrayList<>();
             for (int i = 0; i < 100000; i++) {
                 Future<?> future = executorService.submit(() -> validateSuccessfulResponse(client));
@@ -158,8 +198,16 @@ class Http1ClientTest {
     void concurrentTestWithoutKeepAlive() throws InterruptedException, ExecutionException {
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                    .maxAmountOfConnections(10)
-                    .maxConnectionsPerHost(5)
+                    .maxConnections(FixedLimit.builder()
+                                            .permits(10)
+                                            .queueTimeout(Duration.ofSeconds(1))
+                                            .fair(true)
+                                            .build())
+                    .maxConnectionsPerRoute(FixedLimit.builder()
+                                                    .permits(5)
+                                                    .queueTimeout(Duration.ofSeconds(1))
+                                                    .fair(true)
+                                                    .build())
                     .keepAlive(false));
             ArrayList<Future<?>> futures = new ArrayList<>();
             for (int i = 0; i < 100; i++) {

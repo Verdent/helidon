@@ -1,0 +1,13 @@
+client:
+  max-connections:
+    fixed:
+      fair: true
+      permits: 10
+      queue-length: 20
+      queue-timeout: "PT1S"
+  max-connections-per-route:
+    fixed:
+      fair: true
+      permits: 5
+      queue-length: 20
+      queue-timeout: "PT1S"

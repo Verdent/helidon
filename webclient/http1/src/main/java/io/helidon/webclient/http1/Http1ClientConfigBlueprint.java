@@ -16,13 +16,19 @@
 
 package io.helidon.webclient.http1;
 
+import java.util.Optional;
+
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.common.concurrency.limits.Limit;
+import io.helidon.common.concurrency.limits.spi.LimitProvider;
+import io.helidon.http.media.spi.MediaSupportProvider;
 import io.helidon.webclient.api.HttpClientConfig;
 
 /**
  * HTTP/1.1. full webclient configuration.
  */
+@Prototype.Configured
 @Prototype.Blueprint
 interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory<Http1Client> {
     /**
@@ -33,10 +39,12 @@ interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory
     @Option.Default("create()")
     Http1ClientProtocolConfig protocolConfig();
 
-    @Option.DefaultInt(0)
-    int maxAmountOfConnections();
+    @Option.Provider(LimitProvider.class)
+    @Option.Configured
+    Optional<Limit> maxConnections();
 
-    @Option.DefaultInt(0)
-    int maxConnectionsPerHost();
+    @Option.Provider(LimitProvider.class)
+    @Option.Configured
+    Optional<Limit> maxConnectionsPerRoute();
 
 }

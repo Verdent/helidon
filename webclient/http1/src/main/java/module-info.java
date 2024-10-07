@@ -32,6 +32,7 @@ module io.helidon.webclient.http1 {
     requires static io.helidon.common.features.api;
 
     requires transitive io.helidon.webclient.api;
+    requires io.helidon.common.concurrency.limits;
 
     exports io.helidon.webclient.http1;
 

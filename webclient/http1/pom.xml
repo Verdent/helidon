@@ -102,6 +102,10 @@
             <artifactId>helidon-common-testing-http-junit5</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.helidon.common.concurrency</groupId>
+            <artifactId>helidon-common-concurrency-limits</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

@@ -127,12 +127,12 @@ class Http1ClientTest {
     @Test
     void basicTest() {
         Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                .maxConnections(FixedLimit.builder()
+                .maxConnectionLimit(FixedLimit.builder()
                                         .permits(10)
                                         .queueTimeout(Duration.ofSeconds(1))
                                         .fair(true)
                                         .build())
-                .maxConnectionsPerRoute(FixedLimit.builder()
+                .maxConnectionsPerRouteLimit(FixedLimit.builder()
                                                 .permits(5)
                                                 .queueTimeout(Duration.ofSeconds(1))
                                                 .fair(true)
@@ -168,12 +168,12 @@ class Http1ClientTest {
         GlobalConfig.config(Config::create);
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                    .maxConnections(FixedLimit.builder()
+                    .maxConnectionLimit(FixedLimit.builder()
                                             .permits(10)
                                             .queueTimeout(Duration.ofSeconds(1))
                                             .fair(true)
                                             .build())
-                    .maxConnectionsPerRoute(FixedLimit.builder()
+                    .maxConnectionsPerRouteLimit(FixedLimit.builder()
                                                     .permits(5)
                                                     .queueTimeout(Duration.ofSeconds(1))
                                                     .fair(true)
@@ -198,12 +198,12 @@ class Http1ClientTest {
     void concurrentTestWithoutKeepAlive() throws InterruptedException, ExecutionException {
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                    .maxConnections(FixedLimit.builder()
+                    .maxConnectionLimit(FixedLimit.builder()
                                             .permits(10)
                                             .queueTimeout(Duration.ofSeconds(1))
                                             .fair(true)
                                             .build())
-                    .maxConnectionsPerRoute(FixedLimit.builder()
+                    .maxConnectionsPerRouteLimit(FixedLimit.builder()
                                                     .permits(5)
                                                     .queueTimeout(Duration.ofSeconds(1))
                                                     .fair(true)

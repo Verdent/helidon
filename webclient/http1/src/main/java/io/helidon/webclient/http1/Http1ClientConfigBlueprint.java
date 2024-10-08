@@ -22,14 +22,13 @@ import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.concurrency.limits.Limit;
 import io.helidon.common.concurrency.limits.spi.LimitProvider;
-import io.helidon.http.media.spi.MediaSupportProvider;
 import io.helidon.webclient.api.HttpClientConfig;
 
 /**
  * HTTP/1.1. full webclient configuration.
  */
 @Prototype.Configured
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = Http1ClientConfigDecorator.class)
 interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory<Http1Client> {
     /**
      * HTTP/1.1 specific configuration.
@@ -39,12 +38,15 @@ interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory
     @Option.Default("create()")
     Http1ClientProtocolConfig protocolConfig();
 
-    @Option.Provider(LimitProvider.class)
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnections();
+    Optional<Limit> maxConnectionLimit();
 
-    @Option.Provider(LimitProvider.class)
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionsPerRoute();
+    Optional<Limit> maxConnectionsPerRouteLimit();
+
+    @Option.Configured
+    Boolean enableConnectionLimit();
 
 }

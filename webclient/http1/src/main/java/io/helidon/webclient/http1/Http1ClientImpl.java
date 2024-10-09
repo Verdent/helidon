@@ -34,12 +34,14 @@ class Http1ClientImpl implements Http1Client, HttpClientSpi {
         this.webClient = webClient;
         this.clientConfig = clientConfig;
         this.protocolConfig = clientConfig.protocolConfig();
-        if (clientConfig.enableConnectionLimit() || !clientConfig.shareConnectionCache()) {
-            this.connectionCache = Http1ConnectionCache.create(clientConfig);
-            this.clientCache = connectionCache;
-        } else {
+        if (clientConfig.connectionCache().isEmpty() && clientConfig.shareConnectionCache()) {
             this.connectionCache = Http1ConnectionCache.shared();
             this.clientCache = null;
+        } else {
+            this.connectionCache = clientConfig.connectionCache()
+                    .map(Http1ConnectionCache::create)
+                    .orElseGet(Http1ConnectionCache::create);
+            this.clientCache = connectionCache;
         }
     }
 

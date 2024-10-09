@@ -18,6 +18,7 @@ package io.helidon.webclient.http1;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,11 +26,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import io.helidon.common.concurrency.limits.FixedLimit;
 import io.helidon.common.concurrency.limits.Limit;
 import io.helidon.common.concurrency.limits.LimitAlgorithm;
+import io.helidon.common.config.Config;
+import io.helidon.common.config.GlobalConfig;
 import io.helidon.common.tls.Tls;
 import io.helidon.http.ClientRequestHeaders;
 import io.helidon.http.HeaderValues;
@@ -51,24 +56,33 @@ class Http1ConnectionCache extends ClientConnectionCache {
     private static final Tls NO_TLS = Tls.builder().enabled(false).build();
     private static final String HTTPS = "https";
     private static final ConnectionCreationStrategy UNLIMITED_STRATEGY = new UnlimitedConnectionStrategy();
-    private static final Http1ConnectionCache SHARED = new Http1ConnectionCache(true, Http1GlobalConfig.GLOBAL_CLIENT_CONFIG);;
     private static final List<String> ALPN_ID = List.of(Http1Client.PROTOCOL_ID);
     private static final Duration QUEUE_TIMEOUT = Duration.ofMillis(10);
-    private final Map<String, Limit> connectionLimitsPerHost = new ConcurrentHashMap<>();
+    private static final Http1ConnectionCacheConfig GLOBAL_CACHE_CONFIG;
+    static {
+        Config config = GlobalConfig.config();
+        GLOBAL_CACHE_CONFIG = Http1ConnectionCacheConfig.builder().config(config.get("client-shared-cache")).build();
+    }
+    private static final Http1ConnectionCacheConfig EMPTY_CONFIG = Http1ConnectionCacheConfig.create();
+    private static final Http1ConnectionCache SHARED = new Http1ConnectionCache(true, GLOBAL_CACHE_CONFIG);
     private final ConnectionCreationStrategy connectionCreationStrategy;
+    private final Lock connectionLimit = new ReentrantLock();
+    private final Lock hostsConnectionLimit = new ReentrantLock();
+    private final Map<String, Limit> connectionLimits = new HashMap<>();
+    private final Map<String, Limit> connectionLimitsPerHost = new HashMap<>();
     private final Map<ConnectionKey, LinkedBlockingDeque<TcpClientConnection>> cache = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    private Http1ConnectionCache(boolean shared, Http1ClientConfig clientConfig) {
+    private Http1ConnectionCache(boolean shared, Http1ConnectionCacheConfig cacheConfig) {
         super(shared);
-        if (clientConfig.enableConnectionLimit()) {
-            connectionCreationStrategy = new FullyLimitedConnectionStrategy(clientConfig);
+        if (cacheConfig.enableConnectionLimit()) {
+            connectionCreationStrategy = new FullyLimitedConnectionStrategy(cacheConfig);
         } else {
             connectionCreationStrategy = UNLIMITED_STRATEGY;
         }
     }
 
-    private Http1ConnectionCache(Http1ClientConfig clientConfig) {
+    private Http1ConnectionCache(Http1ConnectionCacheConfig clientConfig) {
         this(false, clientConfig);
     }
 
@@ -77,11 +91,11 @@ class Http1ConnectionCache extends ClientConnectionCache {
     }
 
     static Http1ConnectionCache create() {
-        return new Http1ConnectionCache(false, Http1GlobalConfig.GLOBAL_CLIENT_CONFIG);
+        return new Http1ConnectionCache(EMPTY_CONFIG);
     }
 
-    static Http1ConnectionCache create(Http1ClientConfig clientConfig) {
-        return new Http1ConnectionCache(clientConfig);
+    static Http1ConnectionCache create(Http1ConnectionCacheConfig cacheConfig) {
+        return new Http1ConnectionCache(cacheConfig);
     }
 
     ClientConnection connection(Http1ClientImpl http1Client,
@@ -158,7 +172,8 @@ class Http1ConnectionCache extends ClientConnectionCache {
             connection = connectionCreationStrategy.createConnection(connectionKey,
                                                                      http1Client,
                                                                      conn -> finishRequest(connectionQueue, conn),
-                                                                     this);
+                                                                     this,
+                                                                     true);
             if (connection == null) {
                 try {
                     while ((connection = connectionQueue.poll(5, TimeUnit.SECONDS)) != null && !connection.isConnected()) {
@@ -203,7 +218,8 @@ class Http1ConnectionCache extends ClientConnectionCache {
         TcpClientConnection connection = connectionCreationStrategy.createConnection(connectionKey,
                                                                                      http1Client,
                                                                                      conn -> false,
-                                                                                     this);
+                                                                                     this,
+                                                                                     false);
 
         if (connection == null) {
             throw new IllegalStateException("Could not make a new HTTP connection. Maximum number of connections reached.");
@@ -247,7 +263,8 @@ class Http1ConnectionCache extends ClientConnectionCache {
         TcpClientConnection createConnection(ConnectionKey connectionKey,
                                              Http1ClientImpl http1Client,
                                              Function<TcpClientConnection, Boolean> releaseFunction,
-                                             Http1ConnectionCache cache);
+                                             Http1ConnectionCache cache,
+                                             boolean keepAlive);
 
     }
 
@@ -257,7 +274,8 @@ class Http1ConnectionCache extends ClientConnectionCache {
         public TcpClientConnection createConnection(ConnectionKey connectionKey,
                                                     Http1ClientImpl http1Client,
                                                     Function<TcpClientConnection, Boolean> releaseFunction,
-                                                    Http1ConnectionCache cache) {
+                                                    Http1ConnectionCache cache,
+                                                    boolean keepAlive) {
             return TcpClientConnection.create(http1Client.webClient(),
                                               connectionKey,
                                               ALPN_ID,
@@ -268,22 +286,46 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     }
 
-    private static final class ProxyLimitedConnectionStrategy implements ConnectionCreationStrategy {
+    private static class ProxyLimitedConnectionStrategy implements ConnectionCreationStrategy {
+
+
 
         @Override
         public TcpClientConnection createConnection(ConnectionKey connectionKey,
                                                     Http1ClientImpl http1Client,
                                                     Function<TcpClientConnection, Boolean> releaseFunction,
-                                                    Http1ConnectionCache cache) {
+                                                    Http1ConnectionCache cache,
+                                                    boolean keepAlive) {
+            Proxy proxy = connectionKey.proxy();
+            return evaluateProxyAndHostLimit(connectionKey,
+                                             http1Client,
+                                             releaseFunction,
+                                             key -> proxy.maxPerHostConnections().map(Limit::copy).orElseGet(FixedLimit::create),
+                                             Optional.empty(),
+                                             cache,
+                                             keepAlive);
+        }
+
+        TcpClientConnection evaluateProxyAndHostLimit(ConnectionKey connectionKey,
+                                                      Http1ClientImpl http1Client,
+                                                      Function<TcpClientConnection, Boolean> releaseFunction,
+                                                      Function<String, Limit> hostLimitFunction,
+                                                      Optional<LimitAlgorithm.Token> maxConnectionsToken,
+                                                      Http1ConnectionCache cache,
+                                                      boolean keepAlive) {
             Proxy proxy = connectionKey.proxy();
             //Maximum connections was not reached
             Optional<LimitAlgorithm.Token> maxProxyConnectionToken = proxy.maxConnections().tryAcquire();
             if (maxProxyConnectionToken.isPresent()) {
                 //Maximum proxy connections was not reached
                 String hostKey = connectionKey.host() + "|" + proxy.host();
-                Limit hostLimit = cache.connectionLimitsPerHost.computeIfAbsent(hostKey,
-                                                                          key -> proxy.maxPerHostConnections()
-                                                                                  .orElseGet(FixedLimit::create));
+                Limit hostLimit;
+                try {
+                    cache.hostsConnectionLimit.lock();
+                    hostLimit = cache.connectionLimitsPerHost.computeIfAbsent(hostKey, hostLimitFunction);
+                } finally {
+                    cache.hostsConnectionLimit.unlock();
+                }
                 Optional<LimitAlgorithm.Token> maxConnectionPerRouteLimitToken = hostLimit.tryAcquire();
                 if (maxConnectionPerRouteLimitToken.isPresent()) {
                     //Maximum host connections was not reached
@@ -292,70 +334,54 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                                       ALPN_ID,
                                                       releaseFunction,
                                                       conn -> {
+                                                          maxConnectionsToken.ifPresent(LimitAlgorithm.Token::success);
                                                           maxProxyConnectionToken.get().success();
                                                           maxConnectionPerRouteLimitToken.get().success();
                                                       })
                             .connect();
                 } else {
+                    maxConnectionsToken.ifPresent(LimitAlgorithm.Token::dropped);
                     maxProxyConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
                     maxConnectionPerRouteLimitToken.ifPresent(LimitAlgorithm.Token::dropped);
                 }
             } else {
+                maxConnectionsToken.ifPresent(LimitAlgorithm.Token::dropped);
                 maxProxyConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
             }
             return null;
         }
+
     }
 
-    private static final class FullyLimitedConnectionStrategy implements ConnectionCreationStrategy {
+    private static final class FullyLimitedConnectionStrategy extends ProxyLimitedConnectionStrategy {
 
         private final Limit maxConnectionLimit;
         private final Limit maxConnectionPerRouteLimit;
 
-        FullyLimitedConnectionStrategy(Http1ClientConfig clientConfig) {
-            maxConnectionLimit = clientConfig.maxConnectionLimit().orElseGet(FixedLimit::create);
-            maxConnectionPerRouteLimit = clientConfig.maxConnectionsPerRouteLimit().orElseGet(FixedLimit::create);
+        FullyLimitedConnectionStrategy(Http1ConnectionCacheConfig cacheConfig) {
+            maxConnectionLimit = cacheConfig.maxConnectionLimit().orElseGet(FixedLimit::create);
+            maxConnectionPerRouteLimit = cacheConfig.maxConnectionPerRouteLimit().orElseGet(FixedLimit::create);
         }
 
         @Override
         public TcpClientConnection createConnection(ConnectionKey connectionKey,
                                                     Http1ClientImpl http1Client,
                                                     Function<TcpClientConnection, Boolean> releaseFunction,
-                                                    Http1ConnectionCache cache) {
-            Proxy proxy = connectionKey.proxy();
+                                                    Http1ConnectionCache cache,
+                                                    boolean keepAlive) {
             //Maximum connections was not reached
             //New connection should be created
             Optional<LimitAlgorithm.Token> maxConnectionToken = maxConnectionLimit.tryAcquire();
             if (maxConnectionToken.isPresent()) {
                 //Maximum connections was not reached
-                Optional<LimitAlgorithm.Token> maxProxyConnectionToken = proxy.maxConnections().tryAcquire();
-                if (maxProxyConnectionToken.isPresent()) {
-                    //Maximum proxy connections was not reached
-                    Limit hostLimit = cache.connectionLimitsPerHost.computeIfAbsent(connectionKey.host(),
-                                                                              key -> proxy.maxPerHostConnections()
-                                                                                      .orElse(maxConnectionPerRouteLimit).copy());
-                    Optional<LimitAlgorithm.Token> maxConnectionPerRouteLimitToken = hostLimit.tryAcquire();
-                    if (maxConnectionPerRouteLimitToken.isPresent()) {
-                        //Maximum host connections was not reached
-                        return TcpClientConnection.create(http1Client.webClient(),
-                                                          connectionKey,
-                                                          ALPN_ID,
-                                                          releaseFunction,
-                                                          conn -> {
-                                                              maxConnectionToken.get().success();
-                                                              maxProxyConnectionToken.get().success();
-                                                              maxConnectionPerRouteLimitToken.get().success();
-                                                          })
-                                .connect();
-                    } else {
-                        maxConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
-                        maxProxyConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
-                        maxConnectionPerRouteLimitToken.ifPresent(LimitAlgorithm.Token::dropped);
-                    }
-                } else {
-                    maxConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
-                    maxProxyConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
-                }
+                Proxy proxy = connectionKey.proxy();
+                return evaluateProxyAndHostLimit(connectionKey,
+                                                 http1Client,
+                                                 releaseFunction,
+                                                 key -> proxy.maxPerHostConnections().orElse(maxConnectionPerRouteLimit).copy(),
+                                                 maxConnectionToken,
+                                                 cache,
+                                                 keepAlive);
             } else {
                 maxConnectionToken.ifPresent(LimitAlgorithm.Token::dropped);
             }

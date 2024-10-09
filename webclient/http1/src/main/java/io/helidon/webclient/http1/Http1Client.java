@@ -45,7 +45,7 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
      * @return fluent API builder
      */
     static Http1ClientConfig.Builder builder() {
-        return Http1ClientConfig.builder(Http1GlobalConfig.GLOBAL_CLIENT_CONFIG);
+        return Http1ClientConfig.builder();
     }
 
     /**
@@ -65,7 +65,7 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
      * @return a new client
      */
     static Http1Client create(Consumer<Http1ClientConfig.Builder> consumer) {
-        return Http1ClientConfig.builder(Http1GlobalConfig.GLOBAL_CLIENT_CONFIG)
+        return Http1ClientConfig.builder()
                 .update(consumer)
                 .build();
     }

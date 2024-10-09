@@ -1,11 +1,11 @@
-client:
-  max-connections:
+client-shared-cache:
+  max-connection-limit:
     fixed:
       fair: true
       permits: 10
       queue-length: 20
       queue-timeout: "PT1S"
-  max-connections-per-route:
+  max-connection-per-route-limit:
     fixed:
       fair: true
       permits: 5

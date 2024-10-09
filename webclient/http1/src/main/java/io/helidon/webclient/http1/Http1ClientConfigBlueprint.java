@@ -28,7 +28,7 @@ import io.helidon.webclient.api.HttpClientConfig;
  * HTTP/1.1. full webclient configuration.
  */
 @Prototype.Configured
-@Prototype.Blueprint(decorator = Http1ClientConfigDecorator.class)
+@Prototype.Blueprint
 interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory<Http1Client> {
     /**
      * HTTP/1.1 specific configuration.
@@ -38,15 +38,7 @@ interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory
     @Option.Default("create()")
     Http1ClientProtocolConfig protocolConfig();
 
-    @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionLimit();
-
-    @Option.Provider(value = LimitProvider.class, discoverServices = false)
-    @Option.Configured
-    Optional<Limit> maxConnectionsPerRouteLimit();
-
-    @Option.Configured
-    Boolean enableConnectionLimit();
+    Optional<Http1ConnectionCacheConfig> connectionCache();
 
 }

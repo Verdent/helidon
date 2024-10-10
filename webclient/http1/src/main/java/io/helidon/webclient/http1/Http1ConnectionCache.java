@@ -71,9 +71,12 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     private Http1ConnectionCache(boolean shared, Http1ConnectionCacheConfig cacheConfig) {
         super(shared);
-//        if (cacheConfig.enableConnectionLimit()) {
-        if (cacheConfig.enableConnectionLimit()) {
+        if (cacheConfig.maxConnectionLimit().isPresent()
+                || cacheConfig.maxConnectionPerRouteLimit().isPresent()
+                || !cacheConfig.hostLimits().isEmpty()) {
             connectionCreationStrategy = new FullyLimitedConnectionStrategy(cacheConfig);
+        } else if (!cacheConfig.proxyLimits().isEmpty()) {
+            connectionCreationStrategy = new ProxyLimitedConnectionStrategy(cacheConfig);
         } else {
             connectionCreationStrategy = UNLIMITED_STRATEGY;
         }
@@ -285,7 +288,9 @@ class Http1ConnectionCache extends ClientConnectionCache {
 
     private static class ProxyLimitedConnectionStrategy implements ConnectionCreationStrategy {
 
+        public ProxyLimitedConnectionStrategy(Http1ConnectionCacheConfig cacheConfig) {
 
+        }
 
         @Override
         public TcpClientConnection createConnection(ConnectionKey connectionKey,
@@ -356,6 +361,7 @@ class Http1ConnectionCache extends ClientConnectionCache {
         private final Limit maxConnectionPerRouteLimit;
 
         FullyLimitedConnectionStrategy(Http1ConnectionCacheConfig cacheConfig) {
+            super(cacheConfig);
             maxConnectionLimit = cacheConfig.maxConnectionLimit().orElseGet(FixedLimit::create);
             maxConnectionPerRouteLimit = cacheConfig.maxConnectionPerRouteLimit().orElseGet(FixedLimit::create);
         }

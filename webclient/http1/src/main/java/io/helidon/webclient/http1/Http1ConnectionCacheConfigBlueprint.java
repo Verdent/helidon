@@ -10,7 +10,7 @@ import io.helidon.common.concurrency.limits.Limit;
 import io.helidon.common.concurrency.limits.spi.LimitProvider;
 
 @Prototype.Configured
-@Prototype.Blueprint(decorator = Http1ConnectionCacheConfigDecorator.class)
+@Prototype.Blueprint
 interface Http1ConnectionCacheConfigBlueprint {
 
     @Option.Provider(value = LimitProvider.class, discoverServices = false)
@@ -21,15 +21,16 @@ interface Http1ConnectionCacheConfigBlueprint {
     @Option.Configured
     Optional<Limit> maxConnectionPerRouteLimit();
 
-    @Option.Singular("hostLimit")
+    @Option.Singular
     @Option.Configured
     Map<String, Limit> hostLimits();
+
+    @Option.Singular
+    @Option.Configured
+    Map<String, Http1ProxyLimit> proxyLimits();
 
     @Option.Configured
     @Option.Default("PT5S")
     Duration keepAliveWaiting();
-
-    @Option.Configured
-    Boolean enableConnectionLimit();
 
 }

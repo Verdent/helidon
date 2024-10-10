@@ -16,6 +16,12 @@
 
 package io.helidon.webclient.http1;
 
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.helidon.common.LazyValue;
+import io.helidon.common.config.Config;
+import io.helidon.common.config.GlobalConfig;
 import io.helidon.http.Method;
 import io.helidon.webclient.api.ClientRequest;
 import io.helidon.webclient.api.ClientUri;
@@ -24,6 +30,12 @@ import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.spi.HttpClientSpi;
 
 class Http1ClientImpl implements Http1Client, HttpClientSpi {
+    static final AtomicReference<Http1ClientConfig> GLOBAL_CONFIG = new AtomicReference<>();
+    private static final LazyValue<Http1ClientConfig> LAZY_GLOBAL_CONFIG = LazyValue.create(() -> {
+        Config config = GlobalConfig.config();
+        return Http1ClientConfig.create(config.get("client"));
+    });
+
     private final WebClient webClient;
     private final Http1ClientConfig clientConfig;
     private final Http1ClientProtocolConfig protocolConfig;
@@ -34,15 +46,18 @@ class Http1ClientImpl implements Http1Client, HttpClientSpi {
         this.webClient = webClient;
         this.clientConfig = clientConfig;
         this.protocolConfig = clientConfig.protocolConfig();
-        if (clientConfig.connectionCache().isEmpty() && clientConfig.shareConnectionCache()) {
+        if (clientConfig.shareConnectionCache()) {
             this.connectionCache = Http1ConnectionCache.shared();
             this.clientCache = null;
         } else {
-            this.connectionCache = clientConfig.connectionCache()
-                    .map(Http1ConnectionCache::create)
-                    .orElseGet(Http1ConnectionCache::create);
+            this.connectionCache = Http1ConnectionCache.create(clientConfig.connectionCache());
             this.clientCache = connectionCache;
         }
+    }
+
+    static Http1ClientConfig globalConfig() {
+        return Optional.ofNullable(Http1ClientImpl.GLOBAL_CONFIG.get())
+                .orElseGet(Http1ClientImpl.LAZY_GLOBAL_CONFIG);
     }
 
     @Override

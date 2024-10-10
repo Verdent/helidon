@@ -16,6 +16,7 @@
 
 package io.helidon.webclient.http1;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import io.helidon.builder.api.RuntimeType;
@@ -45,7 +46,8 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
      * @return fluent API builder
      */
     static Http1ClientConfig.Builder builder() {
-        return Http1ClientConfig.builder();
+        return Http1ClientConfig.builder()
+                .update(it -> it.from(Http1ClientImpl.globalConfig()));
     }
 
     /**
@@ -65,8 +67,7 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
      * @return a new client
      */
     static Http1Client create(Consumer<Http1ClientConfig.Builder> consumer) {
-        return Http1ClientConfig.builder()
-                .update(consumer)
+        return builder().update(consumer)
                 .build();
     }
 
@@ -87,5 +88,9 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
      */
     static Http1Client create(Config config) {
         return create(it -> it.config(config));
+    }
+
+    static void configureDefaults(Http1ClientConfig clientConfig) {
+        Http1ClientImpl.GLOBAL_CONFIG.compareAndSet(null, clientConfig);
     }
 }

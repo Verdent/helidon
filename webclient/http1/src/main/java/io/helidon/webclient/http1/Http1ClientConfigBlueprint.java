@@ -38,7 +38,7 @@ interface Http1ClientConfigBlueprint extends HttpClientConfig, Prototype.Factory
     @Option.Default("create()")
     Http1ClientProtocolConfig protocolConfig();
 
-    @Option.Configured
-    Optional<Http1ConnectionCacheConfig> connectionCache();
+    @Option.Default("create()")
+    Http1ConnectionCacheConfig connectionCache();
 
 }

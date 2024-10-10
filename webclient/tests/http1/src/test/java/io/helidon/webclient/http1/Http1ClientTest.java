@@ -169,6 +169,7 @@ class Http1ClientTest {
         GlobalConfig.config(Config::create);
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
+                    .shareConnectionCache(false)
                     .connectionCache(builder -> builder
                             .maxConnectionLimit(FixedLimit.builder()
                                                         .permits(10)

@@ -1,6 +1,5 @@
 package io.helidon.webclient.http1;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,13 +10,12 @@ import io.helidon.common.concurrency.limits.spi.LimitProvider;
 
 @Prototype.Configured
 @Prototype.Blueprint
-interface Http1ConnectionCacheConfigBlueprint {
+interface ProxyLimitConfigBlueprint {
 
-    @Option.DefaultBoolean(true)
     @Option.Configured
-    boolean enableConnectionLimits();
+    String proxy();
 
-    @Option.Provider(value = LimitProvider.class)
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
     Optional<Limit> maxConnectionLimit();
 
@@ -25,16 +23,12 @@ interface Http1ConnectionCacheConfigBlueprint {
     @Option.Configured
     Optional<Limit> maxConnectionPerRouteLimit();
 
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
+    @Option.Configured
+    Optional<Limit> maxNonProxyConnectionLimit();
+
     @Option.Singular
     @Option.Configured
     List<HostLimitConfig> hostLimits();
-
-    @Option.Singular
-    @Option.Configured
-    List<ProxyLimitConfig> proxyLimits();
-
-    @Option.Configured
-    @Option.Default("PT5S")
-    Duration keepAliveWaiting();
 
 }

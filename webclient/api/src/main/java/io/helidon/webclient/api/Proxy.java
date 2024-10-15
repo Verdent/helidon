@@ -95,8 +95,6 @@ public class Proxy {
     private final ProxySelector systemProxySelector;
     private final Optional<Header> proxyAuthHeader;
     private final boolean forceHttpConnect;
-    private final Limit maxConnections;
-    private final Limit maxPerHostConnections;
 
     private Proxy(Proxy.Builder builder) {
         this.host = builder.host();
@@ -110,8 +108,6 @@ public class Proxy {
         this.username = builder.username();
         this.password = builder.password();
         this.forceHttpConnect = builder.forceHttpConnect();
-        this.maxConnections = builder.maxConnectionLimit();
-        this.maxPerHostConnections = builder.maxPerHostConnectionLimit();
 
         if (type == ProxyType.SYSTEM) {
             this.noProxy = inetSocketAddress -> true;
@@ -322,7 +318,7 @@ public class Proxy {
         if (systemProxySelector != null) {
             List<java.net.Proxy> proxies = systemProxySelector
                     .select(URI.create(uri));
-            return !proxies.isEmpty() && !proxies.get(0).equals(java.net.Proxy.NO_PROXY);
+            return !proxies.isEmpty() && !proxies.getFirst().equals(java.net.Proxy.NO_PROXY);
         }
         return false;
     }
@@ -378,14 +374,6 @@ public class Proxy {
      */
     public Optional<char[]> password() {
         return password;
-    }
-
-    public Limit maxConnections() {
-        return maxConnections;
-    }
-
-    public Optional<Limit> maxPerHostConnections() {
-        return Optional.ofNullable(maxPerHostConnections);
     }
 
     @Override
@@ -608,8 +596,6 @@ public class Proxy {
         private String username;
         private char[] password;
         private boolean forceHttpConnect = false;
-        private Limit maxConnectionLimit = FixedLimit.create();
-        private Limit maxPerHostConnectionLimit;
 
         private Builder() {
         }
@@ -671,8 +657,6 @@ public class Proxy {
          */
         public Builder config(Config config) {
             config.get("type").asString().map(ProxyType::valueOf).ifPresent(this::type);
-            config.get("max-connection-limit").as(Config.class).ifPresent(it -> maxConnectionLimit(findLimitProvider(it)));
-            config.get("max-per-host-connection-limit").as(Config.class).ifPresent(it -> maxPerHostConnectionLimit(findLimitProvider(it)));
 
             if (this.type != ProxyType.SYSTEM && this.type != ProxyType.NONE) {
                 config.get("host").asString().ifPresent(this::host);
@@ -791,18 +775,6 @@ public class Proxy {
             return this;
         }
 
-        @ConfiguredOption
-        public Builder maxConnectionLimit(Limit maxConnectionLimit) {
-            this.maxConnectionLimit = maxConnectionLimit;
-            return this;
-        }
-
-        @ConfiguredOption
-        public Builder maxPerHostConnectionLimit(Limit maxPerHostConnectionLimit) {
-            this.maxPerHostConnectionLimit = maxPerHostConnectionLimit;
-            return this;
-        }
-
         ProxyType type() {
             return type;
         }
@@ -831,12 +803,5 @@ public class Proxy {
             return Optional.ofNullable(password);
         }
 
-        Limit maxConnectionLimit() {
-            return maxConnectionLimit;
-        }
-
-        Limit maxPerHostConnectionLimit() {
-            return maxPerHostConnectionLimit;
-        }
     }
 }

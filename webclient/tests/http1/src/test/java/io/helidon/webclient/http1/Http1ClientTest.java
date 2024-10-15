@@ -180,7 +180,10 @@ class Http1ClientTest {
                                                                 .permits(5)
                                                                 .queueTimeout(Duration.ofSeconds(1))
                                                                 .fair(true)
-                                                                .build())));
+                                                                .build())
+                            .addHostLimit(hostBuilder -> hostBuilder.host("localhost").limit(FixedLimit.builder()
+                                                                                                     .permits(2)
+                                                                                                     .build()))));
             ArrayList<Future<?>> futures = new ArrayList<>();
             for (int i = 0; i < 100000; i++) {
                 Future<?> future = executorService.submit(() -> validateSuccessfulResponse(client));

@@ -16,10 +16,8 @@
 
 package io.helidon.webclient.http1;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
 import java.net.ProxySelector;
-import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.URI;
 import java.time.Duration;
@@ -361,7 +359,11 @@ class Http1ConnectionCache extends ClientConnectionCache {
                                 proxyIdent = "";
                             } else {
                                 SocketAddress proxyAddress = jnProxy.address();
-                                proxyIdent = proxyAddress.toString();
+                                if (proxyAddress instanceof InetSocketAddress inetSocketAddress) {
+                                    proxyIdent = inetSocketAddress.getHostName() + ":" + inetSocketAddress.getPort();
+                                } else {
+                                    proxyIdent = proxyAddress.toString();
+                                }
                                 Limit proxyConnectionLimit = proxyConnectionLimits.getOrDefault(proxyIdent, NOOP);
                                 maxProxyConnectionToken = proxyConnectionLimit.tryAcquire(!keepAlive);
                             }

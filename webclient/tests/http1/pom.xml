@@ -73,4 +73,39 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+<!--    <build>-->
+<!--        <plugins>-->
+<!--            <plugin>-->
+<!--                <groupId>org.mock-server</groupId>-->
+<!--                <artifactId>mockserver-maven-plugin</artifactId>-->
+<!--                <version>5.14.0</version>-->
+<!--                <configuration>-->
+<!--                    <serverPort>1080</serverPort>-->
+<!--                    <properties>-->
+<!--                        <property>-->
+<!--                            <name>listener</name>-->
+<!--                            <value>org.mockserver.maven.StopMockServerTestListener</value>-->
+<!--                        </property>-->
+<!--                    </properties>-->
+<!--                </configuration>-->
+<!--                <executions>-->
+<!--                    <execution>-->
+<!--                        <id>process-test-classes</id>-->
+<!--                        <phase>process-test-classes</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>runForked</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                    <execution>-->
+<!--                        <id>verify</id>-->
+<!--                        <phase>verify</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>stopForked</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                </executions>-->
+<!--            </plugin>-->
+<!--        </plugins>-->
+<!--    </build>-->
 </project>

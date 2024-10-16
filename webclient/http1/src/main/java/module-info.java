@@ -41,6 +41,7 @@ module io.helidon.webclient.http1 {
     provides io.helidon.webclient.spi.ProtocolConfigProvider
             with io.helidon.webclient.http1.Http1ProtocolConfigProvider;
 
+    uses io.helidon.common.concurrency.limits.spi.LimitProvider;
     uses io.helidon.webclient.spi.SourceHandlerProvider;
 
 }

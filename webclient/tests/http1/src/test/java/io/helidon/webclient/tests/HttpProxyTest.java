@@ -190,6 +190,12 @@ class HttpProxyTest {
         }
     }
 
+    @Test
+    void testDefaultProxySelector() {
+        Proxy proxy = Proxy.create();
+        successVerify(proxy, clientHttp2);
+    }
+
     private void noHosts(HttpClient<?> client) {
         Proxy proxy = Proxy.builder().host(PROXY_HOST).port(proxyPort).addNoProxy(PROXY_HOST).build();
         try (HttpClientResponse response = client.get("/get").proxy(proxy).request()) {

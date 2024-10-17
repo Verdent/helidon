@@ -17,15 +17,11 @@ interface ProxyLimitConfigBlueprint {
 
     @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionLimit();
+    Optional<Limit> connectionLimit();
 
     @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionPerRouteLimit();
-
-    @Option.Provider(value = LimitProvider.class, discoverServices = false)
-    @Option.Configured
-    Optional<Limit> maxNonProxyConnectionLimit();
+    Optional<Limit> connectionPerRouteLimit();
 
     @Option.Singular
     @Option.Configured

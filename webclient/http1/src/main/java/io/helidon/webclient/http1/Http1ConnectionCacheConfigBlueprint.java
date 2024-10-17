@@ -17,13 +17,17 @@ interface Http1ConnectionCacheConfigBlueprint {
     @Option.Configured
     boolean enableConnectionLimits();
 
-    @Option.Provider(value = LimitProvider.class)
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionLimit();
+    Optional<Limit> connectionLimit();
 
     @Option.Provider(value = LimitProvider.class, discoverServices = false)
     @Option.Configured
-    Optional<Limit> maxConnectionPerRouteLimit();
+    Optional<Limit> connectionPerRouteLimit();
+
+    @Option.Provider(value = LimitProvider.class, discoverServices = false)
+    @Option.Configured
+    Optional<Limit> nonProxyConnectionLimit();
 
     @Option.Singular
     @Option.Configured

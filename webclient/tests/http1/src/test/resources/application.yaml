@@ -1,14 +1,14 @@
-client:
-  shared-cache:
-    max-connection-limit:
+client2:
+  share-connection-cache: false
+  connection-cache-config:
+    connection-limit:
       fixed:
-        fair: true
-        permits: 10
-        queue-length: 20
-        queue-timeout: "PT1S"
-    max-connection-per-route-limit:
+        permits: 100
+    connection-per-host-limit:
       fixed:
-        fair: true
         permits: 5
-        queue-length: 20
-        queue-timeout: "PT1S"
+    host-limits:
+      - host: some-host
+        limit:
+          fixed:
+            permits: 2

@@ -16,7 +16,6 @@
 
 package io.helidon.webclient.http1;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,26 +25,24 @@ import io.helidon.common.concurrency.limits.Limit;
 import io.helidon.common.concurrency.limits.spi.LimitProvider;
 
 /**
- * Configuration of the HTTP/1.1 client cache.
+ * Configuration of the HTTP/1.1 client proxy limit.
  */
 @Prototype.Configured
 @Prototype.Blueprint
-interface Http1ConnectionCacheConfigBlueprint {
+interface Http1ProxyLimitConfigBlueprint {
 
     /**
-     * Whether to enable connection limits, if they are set.
-     * Default value is {@code true}.
+     * Authority of the proxy.
+     * Example: {@code example-host:80}.
      *
-     * @return whether to use configured connection limits
+     * @return configured authority
      */
-    @Option.DefaultBoolean(true)
     @Option.Configured
-    boolean enableConnectionLimits();
+    String authority();
 
     /**
-     * Total connection limit of the client.
-     * This limit cannot be overridden on any underling level.
-     * Set as unlimited if not configured.
+     * Total connection limit of the proxy.
+     * This limit does not override {@link Http1ConnectionCacheConfig#connectionLimit()}.
      *
      * @return configured connection limit
      */
@@ -64,15 +61,6 @@ interface Http1ConnectionCacheConfigBlueprint {
     Optional<Limit> connectionPerHostLimit();
 
     /**
-     * Limit of how many connections can be created without proxy.
-     *
-     * @return configured non-proxy connection limit
-     */
-    @Option.Provider(value = LimitProvider.class, discoverServices = false)
-    @Option.Configured
-    Optional<Limit> nonProxyConnectionLimit();
-
-    /**
      * Specific host connection limit configuration.
      * Limit specified for each host will override the one defined by {@link #connectionPerHostLimit()}.
      *
@@ -81,23 +69,5 @@ interface Http1ConnectionCacheConfigBlueprint {
     @Option.Singular
     @Option.Configured
     List<Http1HostLimitConfig> hostLimits();
-
-    /**
-     * Specific proxy limit configurations.
-     *
-     * @return proxy limit configurations
-     */
-    @Option.Singular
-    @Option.Configured
-    List<Http1ProxyLimitConfig> proxyLimits();
-
-    /**
-     * Keep alive timeout, how long should the client wait for the connection, when all the connections are taken.
-     *
-     * @return keep alive connection timeout
-     */
-    @Option.Configured
-    @Option.Default("PT5S")
-    Duration keepAliveTimeout();
 
 }

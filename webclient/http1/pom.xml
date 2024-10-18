@@ -69,6 +69,10 @@
             <artifactId>helidon-common-context</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.common.concurrency</groupId>
+            <artifactId>helidon-common-concurrency-limits</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.common.features</groupId>
             <artifactId>helidon-common-features-api</artifactId>
             <optional>true</optional>
@@ -103,8 +107,14 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.helidon.common.concurrency</groupId>
-            <artifactId>helidon-common-concurrency-limits</artifactId>
+            <groupId>io.helidon.config</groupId>
+            <artifactId>helidon-config</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.config</groupId>
+            <artifactId>helidon-config-yaml</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

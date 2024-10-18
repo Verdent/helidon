@@ -90,7 +90,14 @@ public interface Http1Client extends HttpClient<Http1ClientRequest>, RuntimeType
         return create(it -> it.config(config));
     }
 
+    /**
+     * Configure the default Http1 client configuration.
+     * Note: This method needs to be used before Helidon is started to have the full effect.
+     *
+     * @param clientConfig global client config
+     */
     static void configureDefaults(Http1ClientConfig clientConfig) {
         Http1ClientImpl.GLOBAL_CONFIG.compareAndSet(null, clientConfig);
     }
+
 }

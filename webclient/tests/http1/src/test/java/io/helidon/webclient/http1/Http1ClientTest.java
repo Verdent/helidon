@@ -127,17 +127,17 @@ class Http1ClientTest {
     @Test
     void basicTest() {
         Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                .connectionCache(builder -> builder
-                        .maxConnectionLimit(FixedLimit.builder()
-                                                    .permits(10)
-                                                    .queueTimeout(Duration.ofSeconds(1))
-                                                    .fair(true)
-                                                    .build())
-                        .maxConnectionPerRouteLimit(FixedLimit.builder()
-                                                            .permits(5)
-                                                            .queueTimeout(Duration.ofSeconds(1))
-                                                            .fair(true)
-                                                            .build())));
+                .connectionCacheConfig(builder -> builder
+                        .connectionLimit(FixedLimit.builder()
+                                                 .permits(10)
+                                                 .queueTimeout(Duration.ofSeconds(1))
+                                                 .fair(true)
+                                                 .build())
+                        .connectionPerHostLimit(FixedLimit.builder()
+                                                         .permits(5)
+                                                         .queueTimeout(Duration.ofSeconds(1))
+                                                         .fair(true)
+                                                         .build())));
         for (int i = 0; i < 50; i++) {
             validateSuccessfulResponse(client);
         }
@@ -170,17 +170,17 @@ class Http1ClientTest {
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
                     .shareConnectionCache(false)
-                    .connectionCache(builder -> builder
-                            .maxConnectionLimit(FixedLimit.builder()
-                                                        .permits(10)
-                                                        .queueTimeout(Duration.ofSeconds(1))
-                                                        .fair(true)
-                                                        .build())
-                            .maxConnectionPerRouteLimit(FixedLimit.builder()
-                                                                .permits(5)
-                                                                .queueTimeout(Duration.ofSeconds(1))
-                                                                .fair(true)
-                                                                .build())
+                    .connectionCacheConfig(builder -> builder
+                            .connectionLimit(FixedLimit.builder()
+                                                     .permits(10)
+                                                     .queueTimeout(Duration.ofSeconds(1))
+                                                     .fair(true)
+                                                     .build())
+                            .connectionPerHostLimit(FixedLimit.builder()
+                                                             .permits(5)
+                                                             .queueTimeout(Duration.ofSeconds(1))
+                                                             .fair(true)
+                                                             .build())
                             .addHostLimit(hostBuilder -> hostBuilder.host("localhost").limit(FixedLimit.builder()
                                                                                                      .permits(2)
                                                                                                      .build()))));
@@ -201,20 +201,28 @@ class Http1ClientTest {
     }
 
     @Test
+    void testik() {
+        Config config = Config.create();
+        Http1Client client = Http1Client.create(config.get("client2"));
+
+        System.out.println();
+    }
+
+    @Test
     void concurrentTestWithoutKeepAlive() throws InterruptedException, ExecutionException {
         try (ExecutorService executorService = Executors.newFixedThreadPool(8)) {
             Http1Client client = Http1Client.create(clientConfig -> clientConfig.baseUri(baseURI)
-                    .connectionCache(builder -> builder
-                            .maxConnectionLimit(FixedLimit.builder()
-                                                        .permits(10)
-                                                        .queueTimeout(Duration.ofSeconds(1))
-                                                        .fair(true)
-                                                        .build())
-                            .maxConnectionPerRouteLimit(FixedLimit.builder()
-                                                                .permits(5)
-                                                                .queueTimeout(Duration.ofSeconds(1))
-                                                                .fair(true)
-                                                                .build()))
+                    .connectionCacheConfig(builder -> builder
+                            .connectionLimit(FixedLimit.builder()
+                                                     .permits(10)
+                                                     .queueTimeout(Duration.ofSeconds(1))
+                                                     .fair(true)
+                                                     .build())
+                            .connectionPerHostLimit(FixedLimit.builder()
+                                                             .permits(5)
+                                                             .queueTimeout(Duration.ofSeconds(1))
+                                                             .fair(true)
+                                                             .build()))
                     .keepAlive(false));
             ArrayList<Future<?>> futures = new ArrayList<>();
             for (int i = 0; i < 100; i++) {

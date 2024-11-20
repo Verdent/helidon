@@ -16,11 +16,16 @@
 
 package io.helidon.tests.functional.context.hello;
 
+import java.util.logging.Logger;
+
 import io.helidon.webserver.http.ServerRequest;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.container.AsyncResponse;
+import jakarta.ws.rs.container.Suspended;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
@@ -92,5 +97,42 @@ public class HelloResource {
     public String getRemoteAddress() {
         ServerRequest serverRequest = supplier.get();
         return serverRequest.remotePeer().host();
+    }
+
+
+    private static final Logger LOGGER = Logger.getLogger(HelloResource.class.getName());
+
+    /**
+     * Long-running asynchronous post.
+     *
+     * @param asyncResponse async response.
+     * @param id            post request id (received as request payload).
+     */
+    @POST
+    @Path("async")
+    public void asyncPost(@Suspended final AsyncResponse asyncResponse, final String id) {
+        System.out.println("PRDEEEEL - " + id);
+        LOGGER.info("Long running post operation called with id " + id + " on thread " + Thread.currentThread().getName());
+        new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                final String result = veryExpensiveOperation();
+                asyncResponse.resume(result);
+            }
+
+            private String veryExpensiveOperation() {
+                // ... very expensive operation that typically finishes within 1 seconds, simulated using sleep()
+                try {
+                    Thread.sleep(1000);
+                    return "DONE-" + id;
+                } catch (final InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return "INTERRUPTED-" + id;
+                } finally {
+                    LOGGER.info("Long running post operation finished on thread " + Thread.currentThread().getName());
+                }
+            }
+        }, "async-post-runner-" + id).start();
     }
 }

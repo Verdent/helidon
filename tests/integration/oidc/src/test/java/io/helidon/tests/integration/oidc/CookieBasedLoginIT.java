@@ -67,7 +67,9 @@ class CookieBasedLoginIT extends CommonLoginBase {
         String formUri;
 
         //greet endpoint is protected, and we need to get JWT token out of the Keycloak. We will get redirected to the Keycloak.
-        try (Response response = client.target(webTarget.getUri()).path("/test")
+        try (Response response = client.target(webTarget.getUri())
+                .path("/test")
+                .queryParam("something", "1")
                 .request()
                 .header("helidon-tenant", "nonexistent")
                 .get()) {
@@ -107,7 +109,9 @@ class CookieBasedLoginIT extends CommonLoginBase {
         String formUri;
 
         //greet endpoint is protected, and we need to get JWT token out of the Keycloak. We will get redirected to the Keycloak.
-        try (Response response = client.target(webTarget.getUri()).path("/test")
+        try (Response response = client.target(webTarget.getUri())
+                .path("/test")
+                .queryParam("index", 11)
                 .request()
                 .get()) {
             assertThat(response.getStatus(), is(Response.Status.OK.getStatusCode()));

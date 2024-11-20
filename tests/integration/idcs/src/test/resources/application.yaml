@@ -1,0 +1,77 @@
+#
+# Copyright (c) 2023 Oracle and/or its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+selenium:
+  timeout: 30
+  headless: true
+  oci-login: "david_kral@seznam.cz"
+  oci-password: ZADAT
+
+client:
+  cookie-manager:
+    automatic-store-enabled: true
+  send-expect-continue: false
+  follow-redirects: true
+
+security:
+  properties:
+    # This is a nice way to be able to override this with local properties or env-vars
+    idcs-uri: ZADAT
+    idcs-client-id: ZADAT
+    idcs-client-secret: ZADAT
+  providers:
+    - abac:
+      # Adds ABAC Provider - it does not require any configuration
+    - oidc:
+        server-type: "idcs"
+        redirect: true
+        redirect-uri: "/oidc/redirect"
+        header-use: true
+        logout-enabled: true
+        post-logout-uri: "/test/postLogout"
+        client-id: "${security.properties.idcs-client-id}"
+        client-secret: "${security.properties.idcs-client-secret}"
+        identity-uri: "${security.properties.idcs-uri}"
+        base-scopes: openid offline_access
+        validate-with-jwk: false
+    - idcs-role-mapper:
+        multitenant: false
+        oidc-config:
+          # we must repeat IDCS configuration, as in this case
+          # IDCS serves both as open ID connect authenticator and
+          # as a role mapper. Using minimal configuration here
+          client-id: "${security.properties.idcs-client-id}"
+          client-secret: "${security.properties.idcs-client-secret}"
+          identity-uri: "${security.properties.idcs-uri}"
+
+#security:
+#  enabled: "true"
+#  providers:
+#    - oidc:
+#        server-type: "idcs"
+#        client-id: "1179a40fe127448f8ee59935f867409c"
+#        client-secret: "96172dc2-a849-4b22-9097-30eb5609ab88"
+#        identity-uri: "https://idcs-5d783dd2b5f1428dadb3ef2e0588c2ae.identity.oraclecloud.com:443"
+#        base-scopes: openid offline_access
+#    - idcs-role-mapper:
+#        multitenant: false
+#        oidc-config:
+#          # we must repeat IDCS configuration, as in this case
+#          # IDCS serves both as open ID connect authenticator and
+#          # as a role mapper. Using minimal configuration here
+#          client-id: "${security.properties.idcs-client-id}"
+#          client-secret: "${security.properties.idcs-client-secret}"
+#          identity-uri: "${security.properties.idcs-uri}"

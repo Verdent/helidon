@@ -167,6 +167,7 @@ record ConvertedTypeInfo(TypeName converterType,
             String parameterName = parameter.elementName();
             parameterNames.add(parameterName);
             properties.computeIfAbsent(parameterName, name -> JsonProperty.builder())
+                    .usedInCreator(true)
                     .deserializationName(parameterName)
                     .deserializationType(resolveGenerics(parameter.typeName(), typeInfo))
                     .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY, "value"))

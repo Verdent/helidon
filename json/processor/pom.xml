@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.helidon.json</groupId>
         <artifactId>helidon-json-project</artifactId>
-        <version>4.1.0-SNAPSHOT</version>
+        <version>4.2.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>helidon-json-processor</artifactId>

@@ -30,12 +30,12 @@ class JsonCodegen implements CodegenExtension {
         TypeName generatedType;
         ClassModel.Builder builder;
         if (annotatedTypeName.typeParameters().isEmpty()) {
+            //We can create just regular Converter, no generics need to be resolved later
             ConvertedTypeInfo convertedTypeInfo = ConvertedTypeInfo.create(typeInfo);
             generatedType = convertedTypeInfo.converterType();
             builder = ClassModel.builder().type(generatedType);
             JsonConverterGenerator.generateConverter(builder, convertedTypeInfo, typeInfo, false);
         } else {
-            //We can create just regular Converter, no generics need to be resolved later
             generatedType = TypeName.builder()
                     .from(annotatedTypeName)
                     .className(annotatedTypeName.className()+"_BindingFactory")

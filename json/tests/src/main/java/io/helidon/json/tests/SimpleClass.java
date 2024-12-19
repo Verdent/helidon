@@ -3,7 +3,7 @@ package io.helidon.json.tests;
 import io.helidon.json.binding.Json;
 
 @Json.AsJson
-public class SimpleClas {
+public class SimpleClass {
 
     public String name;
 

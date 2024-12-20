@@ -1,10 +1,12 @@
 package io.helidon.json.processor;
 
+import java.io.OutputStream;
+
 public interface Generator extends AutoCloseable {
 
-//    static Generator create(OutputStream outputStream) {
-//        return new GeneratorImpl(outputStream);
-//    }
+    static Generator create(OutputStream outputStream) {
+        return new GeneratorImpl(outputStream);
+    }
 
     void writeKey(String key);
 

@@ -7,7 +7,8 @@ import io.helidon.builder.api.Prototype;
 
 @Prototype.Blueprint
 @Prototype.Configured
-interface JsonBindingConfigBlueprint {
+//Prototype.RegistrySupport
+interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
 
     /**
      * Map of the registered serializers.
@@ -15,8 +16,11 @@ interface JsonBindingConfigBlueprint {
      * @return registered serializers
      */
     @Option.Singular
+    //@Option.RegistryService
     Map<Class<?>, JsonSerializer<?>> serializers();
 
+
+//    List<TypedJsonSerializer>
     /**
      * Map of the registered deserializers.
      *

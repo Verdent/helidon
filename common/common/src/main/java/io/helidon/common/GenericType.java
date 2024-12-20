@@ -198,6 +198,9 @@ public class GenericType<T> implements Type {
         if (obj instanceof GenericType) {
             return ((GenericType<?>) obj).type.equals(this.type);
         }
+        if (obj instanceof Type t) {
+            return t.equals(type);
+        }
         return false;
     }
 

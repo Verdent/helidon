@@ -281,29 +281,23 @@ class JsonConverterGenerator {
             classBuilder.addField(builder -> builder.name(fieldName)
                     .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
                     .defaultValue("null"));
-            String helperName = "desType" + ensureUpperStart(jsonProperty.deserializationName().orElseThrow());
-            //Creates for example: TypeName desTypeName = TypeName.create("java.util.List<java.lang.String>");
-            configMethod.addContent(TypeName.class)
-                    .addContent(" " + helperName + " = ")
+            configMethod.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(")
                     .addContent(TypeName.class)
-                    .addContentLine(".create(\"" + deserializationType.resolvedName() + "\");");
-            configMethod.addContentLine(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(" + helperName + ");");
+                    .addContentLine(".create(\"" + deserializationType.resolvedName() + "\"));");
             valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
-        } else if (processedTypes.contains(deserializationType)) {
-            //Deserializer for this type has been already processed. Reuse
-            String converterFieldName = "deserializer" + ensureUpperStart(deserializationType);
-            valueWritingMethod(jsonProperty, method, hasCreator, converterFieldName);
         } else {
-            //Type has not been processed yet
-            processedTypes.add(deserializationType); //To ensure deserializer reusability
-            String fieldName = "deserializer" + ensureUpperStart(deserializationType);
-            classBuilder.addField(builder -> builder.name(fieldName)
-                    .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
-                    .defaultValue("null"));
-            String configLine = fieldName + " = "
-                    + CONFIGURE_PARAM + ".getDeserializer(" + deserializationType.resolvedName() + ".class);";
-            configMethod.addContentLine(configLine);
-            valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
+            String converterFieldName = "deserializer" + ensureUpperStart(deserializationType);
+            if (!processedTypes.contains(deserializationType)) {
+                //Deserializer for this type has not been created yet.
+                processedTypes.add(deserializationType); //To ensure deserializer reusability
+                classBuilder.addField(builder -> builder.name(converterFieldName)
+                        .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
+                        .defaultValue("null"));
+                String configLine = converterFieldName + " = "
+                        + CONFIGURE_PARAM + ".getDeserializer(" + deserializationType.resolvedName() + ".class);";
+                configMethod.addContentLine(configLine);
+            }
+            valueWritingMethod(jsonProperty, method, hasCreator, converterFieldName);
         }
     }
 

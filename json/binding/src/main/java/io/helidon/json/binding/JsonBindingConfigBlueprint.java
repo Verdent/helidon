@@ -1,5 +1,6 @@
 package io.helidon.json.binding;
 
+import java.util.List;
 import java.util.Map;
 
 import io.helidon.builder.api.Option;
@@ -7,26 +8,35 @@ import io.helidon.builder.api.Prototype;
 
 @Prototype.Blueprint
 @Prototype.Configured
-//Prototype.RegistrySupport
+@Prototype.RegistrySupport
+@Prototype.CustomMethods(JsonBindingConfigCustomMethods.class)
 interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
 
     /**
-     * Map of the registered serializers.
+     * Registered type serializers.
      *
      * @return registered serializers
      */
     @Option.Singular
-    //@Option.RegistryService
-    Map<Class<?>, JsonSerializer<?>> serializers();
+    @Option.RegistryService
+    List<TypedJsonSerializer<?>> serializers();
 
-
-//    List<TypedJsonSerializer>
     /**
-     * Map of the registered deserializers.
+     * Registered type deserializers.
      *
      * @return registered deserializers
      */
     @Option.Singular
-    Map<Class<?>, JsonDeserializer<?>> deserializers();
+    @Option.RegistryService
+    List<TypedJsonDeserializer<?>> deserializers();
+
+    /**
+     * Registered generic type binding factories.
+     *
+     * @return registered binding factories
+     */
+    @Option.Singular
+    @Option.RegistryService
+    List<TypedGenericTypeBindingFactory<?>> bindingFactories();
 
 }

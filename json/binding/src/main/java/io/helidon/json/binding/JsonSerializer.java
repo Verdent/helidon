@@ -5,8 +5,6 @@ import io.helidon.json.processor.Generator;
 
 public interface JsonSerializer<T> {
 
-    GenericType<T> type();
-
     void toJson(Generator generator, T instance);
 
 }

@@ -21,6 +21,10 @@
             <groupId>io.helidon.codegen</groupId>
             <artifactId>helidon-codegen-class-model</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.helidon.service</groupId>
+            <artifactId>helidon-service-registry</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

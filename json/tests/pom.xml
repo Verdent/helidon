@@ -20,6 +20,12 @@
             <groupId>io.helidon.json</groupId>
             <artifactId>helidon-json-processor</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.helidon.builder.tests</groupId>
+            <artifactId>helidon-builder-tests-builder</artifactId>
+            <version>4.2.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -39,12 +45,22 @@
                             <artifactId>helidon-codegen-apt</artifactId>
                             <version>${helidon.version}</version>
                         </path>
+                        <path>
+                            <groupId>io.helidon.service</groupId>
+                            <artifactId>helidon-service-codegen</artifactId>
+                            <version>${helidon.version}</version>
+                        </path>
                     </annotationProcessorPaths>
                 </configuration>
                 <dependencies>
                     <dependency>
                         <groupId>io.helidon.json</groupId>
                         <artifactId>helidon-json-codegen</artifactId>
+                        <version>${helidon.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>io.helidon.service</groupId>
+                        <artifactId>helidon-service-codegen</artifactId>
                         <version>${helidon.version}</version>
                     </dependency>
                     <dependency>

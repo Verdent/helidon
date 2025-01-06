@@ -1,12 +1,24 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.GenericType;
+import io.helidon.common.Weight;
+import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
+import io.helidon.service.registry.Service;
 
-public final class StringConverter implements JsonConverter<String> {
+@Service.Singleton
+@Weight(Weighted.DEFAULT_WEIGHT - 10)
+final class StringConverter implements TypedJsonConverter<String> {
 
-    public static final StringConverter INSTANCE = new StringConverter();
+    private static final GenericType<String> TYPE = GenericType.create(String.class);
+
+    @Override
+    public GenericType<String> type() {
+        return TYPE;
+    }
 
     @Override
     public void toJson(Generator generator, String instance) {
@@ -21,4 +33,5 @@ public final class StringConverter implements JsonConverter<String> {
     public String fromJson(JsonParser parser) {
         return parser.readString();
     }
+
 }

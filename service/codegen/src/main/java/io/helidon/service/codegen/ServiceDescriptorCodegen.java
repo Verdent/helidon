@@ -2115,8 +2115,22 @@ public class ServiceDescriptorCodegen {
 
     private TypeName descriptorInstanceType(TypeName serviceType, TypeName descriptorType) {
         return TypeName.builder(descriptorType)
-                .addTypeArgument(serviceType)
+                .addTypeArgument(changeGenericTypesToWildcard(serviceType))
                 .build();
+    }
+
+    private TypeName changeGenericTypesToWildcard(TypeName typeName) {
+        TypeName.Builder builder = TypeName.builder(typeName.genericTypeName());
+        for (TypeName typeArgument : typeName.typeArguments()) {
+            if (typeArgument.generic()) {
+                builder.addTypeArgument(TypeArgument.create("?"));
+            } else if (!typeArgument.typeArguments().isEmpty()) {
+                builder.addTypeArgument(changeGenericTypesToWildcard(typeArgument));
+            } else {
+                builder.addTypeArgument(typeArgument);
+            }
+        }
+        return builder.build();
     }
 
     private TypeName generateProvidedInterceptionDelegate(RegistryRoundContext roundContext, DescribedService service) {

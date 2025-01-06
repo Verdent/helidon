@@ -1,7 +1,6 @@
 package io.helidon.json.codegen;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -13,10 +12,15 @@ import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassBase;
 import io.helidon.codegen.classmodel.Content;
 import io.helidon.codegen.classmodel.Method;
+import io.helidon.codegen.classmodel.Returns;
+import io.helidon.common.GenericType;
+import io.helidon.common.Weighted;
 import io.helidon.common.types.ElementKind;
+import io.helidon.common.types.ResolvedType;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
+import io.helidon.service.registry.Service;
 
 import static java.util.function.Predicate.not;
 
@@ -45,7 +49,7 @@ class JsonConverterGenerator {
                                   TypeInfo annotatedType,
                                   boolean useConstructorToConfigure) {
         TypeName converterInterfaceType = TypeName.builder()
-                .from(Types.JSON_CONVERTER_TYPE)
+                .from(Types.TYPED_JSON_CONVERTER_TYPE)
                 .addTypeArgument(annotatedType.typeName())
                 .build();
 
@@ -53,10 +57,16 @@ class JsonConverterGenerator {
 
         classBuilder.name(converterInfo.converterType().className())
                 .addInterface(converterInterfaceType)
+                .addAnnotation(Annotation.create(Service.Singleton.class))
+                .addAnnotation(Annotation.builder()
+                                       .type(TypeName.create("io.helidon.common.Weight"))
+                                       .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)
+                                       .build())
                 .addInterface(Types.JSON_CONFIGURABLE)
                 .addMethod(method -> generateToJsonMethod(classBuilder, method, converterInfo, configBuilder))
                 .addMethod(method -> generateFromJsonMethod(classBuilder, method, converterInfo, configBuilder))
-                .addMethod(method -> addConfigureMethod(method, configBuilder));
+                .addMethod(method -> addConfigureMethod(method, configBuilder))
+                .addMethod(method -> addTypeMethod(method, converterInfo));
     }
 
     private static void generateToJsonMethod(ClassBase.Builder<?, ?> classBuilder,
@@ -88,7 +98,7 @@ class JsonConverterGenerator {
             String fieldName;
             if (!resolved.typeArguments().isEmpty()) {
                 fieldName = "serializer" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
-            } else  {
+            } else {
                 fieldName = "serializer" + ensureUpperStart(type);
             }
             if (!createdSerializers.contains(fieldName)) {
@@ -101,23 +111,24 @@ class JsonConverterGenerator {
                         .type(converterType)
                         .defaultValueContent("null"));
             }
-//            if (!resolved.typeArguments().isEmpty()) {
-//                String helperName = "serType" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
-//                //Creates for example: TypeName serTypeName = TypeName.create("java.util.List<java.lang.String>");
-//                configBuilder.addContent(TypeName.class)
-//                        .addContent(" " + helperName + " = ")
-//                        .addContent(TypeName.class)
-//                        .addContentLine(".create(\"" + resolved.resolvedName() + "\");");
-//                configBuilder.addContentLine(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(" + helperName + ");");
-//            } else {
-//                configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
-//                        .addContent(type)
-//                        .addContentLine(".class);");
-//            }
+            //            if (!resolved.typeArguments().isEmpty()) {
+            //                String helperName = "serType" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
+            //                //Creates for example: TypeName serTypeName = TypeName.create("java.util.List<java.lang.String>");
+            //                configBuilder.addContent(TypeName.class)
+            //                        .addContent(" " + helperName + " = ")
+            //                        .addContent(TypeName.class)
+            //                        .addContentLine(".create(\"" + resolved.resolvedName() + "\");");
+            //                configBuilder.addContentLine(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(" + helperName
+            //                + ");");
+            //            } else {
+            //                configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
+            //                        .addContent(type)
+            //                        .addContentLine(".class);");
+            //            }
 
             if (!resolved.typeArguments().isEmpty()) {
                 configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
-                        .addContent(TypeName.class)
+                        .addContent(ResolvedType.class)
                         .addContentLine(".create(\"" + resolved.resolvedName() + "\"));");
             } else {
                 configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
@@ -225,10 +236,12 @@ class JsonConverterGenerator {
                 if (!property.usedInCreator()) {
                     if (property.directFieldAccess()) {
                         method.addContentLine("generatedInstance." + property.fieldName().orElseThrow() + " = "
-                                               + property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
+                                                      + property.deserializationName()
+                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
                     } else {
                         method.addContentLine("generatedInstance." + property.setterName().orElseThrow() + "("
-                                               + property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
+                                                      + property.deserializationName()
+                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
                     }
                 }
             }
@@ -241,6 +254,20 @@ class JsonConverterGenerator {
                 .addAnnotation(Annotation.create(Override.class))
                 .addParameter(param -> param.type(Types.JSON_BINDING).name(CONFIGURE_PARAM))
                 .content(configBuilder.build().toString());
+    }
+
+    private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo converterInfo) {
+        method.name("type")
+                .returnType(builder -> builder.type(TypeName.builder()
+                                                            .type(GenericType.class)
+                                                            .addTypeArgument(converterInfo.originalType())
+                                                            .build()))
+                .addAnnotation(Annotation.create(Override.class))
+                .addContent("return ")
+                .addContent(GenericType.class)
+                .addContent(".create(")
+                .addContent(converterInfo.originalType())
+                .addContentLine(".class);");
     }
 
     private static void addTypeHandling(JsonProperty jsonProperty,
@@ -282,7 +309,7 @@ class JsonConverterGenerator {
                     .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
                     .defaultValue("null"));
             configMethod.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(")
-                    .addContent(TypeName.class)
+                    .addContent(ResolvedType.class)
                     .addContentLine(".create(\"" + deserializationType.resolvedName() + "\"));");
             valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
         } else {

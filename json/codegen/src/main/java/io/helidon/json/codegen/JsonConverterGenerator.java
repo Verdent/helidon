@@ -127,9 +127,11 @@ class JsonConverterGenerator {
             //            }
 
             if (!resolved.typeArguments().isEmpty()) {
-                configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
-                        .addContent(ResolvedType.class)
-                        .addContentLine(".create(\"" + resolved.resolvedName() + "\"));");
+                configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(new ")
+                        .addContent(GenericType.class)
+                        .addContent("<")
+                        .addContent(resolved)
+                        .addContentLine(">() {});");
             } else {
                 configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
                         .addContent(type)
@@ -308,9 +310,11 @@ class JsonConverterGenerator {
             classBuilder.addField(builder -> builder.name(fieldName)
                     .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
                     .defaultValue("null"));
-            configMethod.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(")
-                    .addContent(ResolvedType.class)
-                    .addContentLine(".create(\"" + deserializationType.resolvedName() + "\"));");
+            configMethod.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(new ")
+                    .addContent(GenericType.class)
+                    .addContent("<")
+                    .addContent(deserializationType)
+                    .addContentLine(">() {});");
             valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
         } else {
             String converterFieldName = "deserializer" + ensureUpperStart(deserializationType);

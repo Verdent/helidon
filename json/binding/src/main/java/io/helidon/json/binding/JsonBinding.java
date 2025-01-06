@@ -25,9 +25,7 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
 
     private final JsonBindingConfig config;
     private final Map<Type, JsonSerializer<?>> serializers = new HashMap<>();
-    private final Map<ResolvedType, JsonSerializer<?>> resolvedTypeSerializers = new HashMap<>();
     private final Map<Type, JsonDeserializer<?>> deserializers = new HashMap<>();
-    private final Map<ResolvedType, JsonDeserializer<?>> resolvedTypeDeserializers = new HashMap<>();
     private final Map<Type, JsonGenericTypeBindingFactory<?>> bindingFactories = new HashMap<>();
 
     private JsonBinding(JsonBindingConfig config) {
@@ -36,13 +34,11 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
         for (TypedJsonSerializer<?> serializer : config.serializers()) {
             serializers.putIfAbsent(serializer.type(), serializer);
             serializers.putIfAbsent(serializer.type().type(), serializer);
-            resolvedTypeSerializers.putIfAbsent(ResolvedType.create(serializer.type().type()), serializer);
         }
         //Fill in deserializers
         for (TypedJsonDeserializer<?> deserializer : config.deserializers()) {
             deserializers.putIfAbsent(deserializer.type(), deserializer);
             deserializers.putIfAbsent(deserializer.type().type(), deserializer);
-            resolvedTypeDeserializers.putIfAbsent(ResolvedType.create(deserializer.type().type()), deserializer);
         }
         //Fill in binding factories
         for (TypedGenericTypeBindingFactory<?> bindingFactory : config.bindingFactories()) {
@@ -166,7 +162,8 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
                 JsonGenericTypeBindingFactory<T> factory =
                         (JsonGenericTypeBindingFactory<T>) bindingFactories.get(genericType.rawType());
                 if (factory == null) {
-                    throw new IllegalStateException("Serializer/Converter/BinderFactory for type " + type + " is not registered.");
+                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
                 }
                 serializer = factory.createSerializer(this, (GenericType<T>) genericType);
                 serializers.put(type, serializer);
@@ -178,33 +175,25 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(ResolvedType type) {
-        return (JsonSerializer<T>) resolvedTypeSerializers.get(type);
-    }
-
-    @SuppressWarnings("unchecked")
     public <T> JsonDeserializer<T> getDeserializer(Type type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializers.get(type);
 
-//        if (deserializer == null) {
-//            if (type instanceof ParameterizedType parameterizedType) {
-//                JsonGenericTypeBindingFactory<T> factory =
-//                        (JsonGenericTypeBindingFactory<T>) bindingFactories.get(parameterizedType.getRawType());
-//                if (factory == null) {
-//                    throw new IllegalStateException("Deserializer/Converter/BinderFactory for type "
-//                                                            + type + " is not registered.");
-//                }
-//                deserializer = factory.createDeserializer(this, parameterizedType);
-//            } else {
-//                throw new IllegalStateException("Deserializer/Converter for type " + type + " is not registered.");
-//            }
-//        }
+        if (deserializer == null) {
+            if (type instanceof GenericType<?> genericType) {
+                JsonGenericTypeBindingFactory<T> factory =
+                        (JsonGenericTypeBindingFactory<T>) bindingFactories.get(genericType.rawType());
+                if (factory == null) {
+                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
+                deserializer = factory.createDeserializer(this, (GenericType<T>) genericType);
+                deserializers.put(type, deserializer);
+                deserializers.put(genericType.type(), deserializer);
+            } else {
+                throw new IllegalStateException("Deserializer/Converter for type " + type + " is not registered.");
+            }
+        }
         return deserializer;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(ResolvedType type) {
-        return (JsonDeserializer<T>) resolvedTypeDeserializers.get(type);
     }
 
 }

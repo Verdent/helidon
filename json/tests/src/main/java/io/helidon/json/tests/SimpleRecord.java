@@ -5,7 +5,7 @@ import java.util.List;
 import io.helidon.json.binding.Json;
 
 @Json.AsJson
-public record SimpleRecord(String test, List<Integer> ints, int primitiveInt) {
+public record SimpleRecord(String test, List<Integer> ints, List<Integer> ints2, int primitiveInt) {
 
     public void something() {
 

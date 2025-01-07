@@ -1,7 +1,6 @@
 package io.helidon.json.binding;
 
 import java.util.List;
-import java.util.Map;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
@@ -37,6 +36,6 @@ interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
      */
     @Option.Singular
     @Option.RegistryService
-    List<TypedGenericTypeBindingFactory<?>> bindingFactories();
+    List<TypedJsonBindingFactory<?>> bindingFactories();
 
 }

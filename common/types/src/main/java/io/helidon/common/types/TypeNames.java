@@ -31,6 +31,7 @@ import java.util.function.Supplier;
 import io.helidon.common.Generated;
 import io.helidon.common.GenericType;
 import io.helidon.common.Size;
+import io.helidon.common.Weight;
 
 /**
  * Commonly used type names.
@@ -207,6 +208,10 @@ public final class TypeNames {
      * Helidon {@link io.helidon.common.GenericType}.
      */
     public static final TypeName GENERIC_TYPE = TypeName.create(GenericType.class);
+    /**
+     * Helidon {@link io.helidon.common.Weight}.
+     */
+    public static final TypeName WEIGHT = TypeName.create(Weight.class);
     /**
      * Type name for {@link io.helidon.common.Size}.
      */

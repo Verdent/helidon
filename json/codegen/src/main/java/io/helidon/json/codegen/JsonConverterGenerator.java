@@ -1,5 +1,6 @@
 package io.helidon.json.codegen;
 
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
@@ -10,17 +11,15 @@ import java.util.stream.Collectors;
 
 import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassBase;
+import io.helidon.codegen.classmodel.Constructor;
 import io.helidon.codegen.classmodel.Content;
 import io.helidon.codegen.classmodel.Method;
-import io.helidon.codegen.classmodel.Returns;
 import io.helidon.common.GenericType;
-import io.helidon.common.Weighted;
+import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.ElementKind;
-import io.helidon.common.types.ResolvedType;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
-import io.helidon.service.registry.Service;
 
 import static java.util.function.Predicate.not;
 
@@ -47,9 +46,10 @@ class JsonConverterGenerator {
     static void generateConverter(ClassBase.Builder<?, ?> classBuilder,
                                   ConvertedTypeInfo converterInfo,
                                   TypeInfo annotatedType,
-                                  boolean useConstructorToConfigure) {
+                                  boolean constructorConfiguration,
+                                  boolean typedConverter) {
         TypeName converterInterfaceType = TypeName.builder()
-                .from(Types.TYPED_JSON_CONVERTER_TYPE)
+                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_CONVERTER_TYPE)
                 .addTypeArgument(annotatedType.typeName())
                 .build();
 
@@ -57,22 +57,32 @@ class JsonConverterGenerator {
 
         classBuilder.name(converterInfo.converterType().className())
                 .addInterface(converterInterfaceType)
-                .addAnnotation(Annotation.create(Service.Singleton.class))
-                .addAnnotation(Annotation.builder()
-                                       .type(TypeName.create("io.helidon.common.Weight"))
-                                       .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)
-                                       .build())
-                .addInterface(Types.JSON_CONFIGURABLE)
-                .addMethod(method -> generateToJsonMethod(classBuilder, method, converterInfo, configBuilder))
-                .addMethod(method -> generateFromJsonMethod(classBuilder, method, converterInfo, configBuilder))
-                .addMethod(method -> addConfigureMethod(method, configBuilder))
-                .addMethod(method -> addTypeMethod(method, converterInfo));
+                .addMethod(method -> generateToJsonMethod(classBuilder,
+                                                          method,
+                                                          converterInfo,
+                                                          configBuilder,
+                                                          constructorConfiguration))
+                .addMethod(method -> generateFromJsonMethod(classBuilder,
+                                                            method,
+                                                            converterInfo,
+                                                            configBuilder,
+                                                            constructorConfiguration));
+        if (constructorConfiguration) {
+            classBuilder.addConstructor(method -> addConstructorConfigureMethod(method, configBuilder));
+        } else {
+            classBuilder.addInterface(Types.JSON_CONFIGURABLE)
+                    .addMethod(method -> addConfigureMethod(method, configBuilder));
+        }
+        if (typedConverter) {
+            classBuilder.addMethod(method -> addTypeMethod(method, converterInfo));
+        }
     }
 
     private static void generateToJsonMethod(ClassBase.Builder<?, ?> classBuilder,
                                              Method.Builder method,
                                              ConvertedTypeInfo converterInfo,
-                                             Content.Builder configBuilder) {
+                                             Content.Builder configBuilder,
+                                             boolean useConstructorToConfigure) {
         method.name("toJson")
                 .addParameter(param -> param.name("generator").type(Types.JSON_GENERATOR))
                 .addParameter(param -> param.name("instance").type(converterInfo.originalType()))
@@ -108,8 +118,8 @@ class JsonConverterGenerator {
                         .addTypeArgument(resolved)
                         .build();
                 classBuilder.addField(fieldBuilder -> fieldBuilder.name(fieldName)
-                        .type(converterType)
-                        .defaultValueContent("null"));
+                        .isFinal(useConstructorToConfigure)
+                        .type(converterType));
             }
             //            if (!resolved.typeArguments().isEmpty()) {
             //                String helperName = "serType" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
@@ -152,7 +162,8 @@ class JsonConverterGenerator {
     private static void generateFromJsonMethod(ClassBase.Builder<?, ?> classBuilder,
                                                Method.Builder method,
                                                ConvertedTypeInfo converterInfo,
-                                               Content.Builder configBuilder) {
+                                               Content.Builder configBuilder,
+                                               boolean useConstructorToConfigure) {
         CreatorInfo creatorInfo = converterInfo.creatorInfo();
         boolean hasCreator = creatorInfo.creatorKind() == ElementKind.CONSTRUCTOR && !creatorInfo.parameters().isEmpty();
         List<JsonProperty> jsonProperties = converterInfo.jsonProperties()
@@ -208,7 +219,13 @@ class JsonConverterGenerator {
                 JsonProperty jsonProperty = entry.getValue().getFirst();
                 method.addContentLine("case " + entry.getKey() + ": //" + jsonProperty.deserializationName().orElseThrow());
                 method.increaseContentPadding();
-                addTypeHandling(jsonProperty, method, configBuilder, classBuilder, hasCreator, processedTypes);
+                addTypeHandling(jsonProperty,
+                                method,
+                                configBuilder,
+                                classBuilder,
+                                hasCreator,
+                                processedTypes,
+                                useConstructorToConfigure);
                 method.decreaseContentPadding();
             }
         }
@@ -251,6 +268,13 @@ class JsonConverterGenerator {
         method.addContentLine("return generatedInstance;");
     }
 
+    private static void addConstructorConfigureMethod(Constructor.Builder constructor, Content.Builder configBuilder) {
+        constructor.accessModifier(AccessModifier.PRIVATE)
+                .addParameter(builder -> builder.type(Types.JSON_BINDING).name(CONFIGURE_PARAM))
+                .addParameter(builder -> builder.type(Type.class).name("type"))
+                .content(configBuilder.build().toString());
+    }
+
     private static void addConfigureMethod(Method.Builder method, Content.Builder configBuilder) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
@@ -277,7 +301,8 @@ class JsonConverterGenerator {
                                         Content.Builder configBuilder,
                                         ClassBase.Builder<?, ?> classBuilder,
                                         boolean hasCreator,
-                                        Set<TypeName> processedTypes) {
+                                        Set<TypeName> processedTypes,
+                                        boolean useConstructorToConfigure) {
         jsonProperty.deserializer()
                 .ifPresentOrElse(deserializer -> addUserDeserializer(jsonProperty,
                                                                      deserializer,
@@ -293,7 +318,8 @@ class JsonConverterGenerator {
                                                             classBuilder,
                                                             hasCreator,
                                                             configBuilder,
-                                                            processedTypes);
+                                                            processedTypes,
+                                                            useConstructorToConfigure);
                                  });
     }
 
@@ -303,13 +329,14 @@ class JsonConverterGenerator {
                                                ClassBase.Builder<?, ?> classBuilder,
                                                boolean hasCreator,
                                                Content.Builder configMethod,
-                                               Set<TypeName> processedTypes) {
+                                               Set<TypeName> processedTypes,
+                                               boolean useConstructorToConfigure) {
         if (!deserializationType.typeArguments().isEmpty()) {
             //Type contains generics
             String fieldName = "deserializer" + ensureUpperStart(jsonProperty.deserializationName().orElseThrow());
             classBuilder.addField(builder -> builder.name(fieldName)
-                    .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
-                    .defaultValue("null"));
+                    .isFinal(useConstructorToConfigure)
+                    .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build()));
             configMethod.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(new ")
                     .addContent(GenericType.class)
                     .addContent("<")
@@ -322,11 +349,11 @@ class JsonConverterGenerator {
                 //Deserializer for this type has not been created yet.
                 processedTypes.add(deserializationType); //To ensure deserializer reusability
                 classBuilder.addField(builder -> builder.name(converterFieldName)
-                        .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build())
-                        .defaultValue("null"));
-                String configLine = converterFieldName + " = "
-                        + CONFIGURE_PARAM + ".getDeserializer(" + deserializationType.resolvedName() + ".class);";
-                configMethod.addContentLine(configLine);
+                        .isFinal(useConstructorToConfigure)
+                        .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(deserializationType).build()));
+                configMethod.addContent(converterFieldName + " = " + CONFIGURE_PARAM + ".getDeserializer(")
+                        .addContent(deserializationType)
+                        .addContentLine(".class);");
             }
             valueWritingMethod(jsonProperty, method, hasCreator, converterFieldName);
         }

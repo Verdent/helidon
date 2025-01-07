@@ -181,6 +181,9 @@ record ConvertedTypeInfo(TypeName converterType,
         if (needsResolving(elementTypeName)) {
             if (elementTypeName.generic()) {
                 int index = typeInfo.typeName().typeParameters().indexOf(elementTypeName.className());
+                if (index == -1) {
+                    return elementTypeName;
+                }
                 return typeInfo.typeName().typeArguments().get(index);
             }
             TypeName.Builder builder = TypeName.builder()

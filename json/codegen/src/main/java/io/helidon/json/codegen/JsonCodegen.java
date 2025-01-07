@@ -4,10 +4,14 @@ import java.util.Collection;
 
 import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.RoundContext;
+import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassModel;
 import io.helidon.codegen.spi.CodegenExtension;
+import io.helidon.common.Weighted;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
+import io.helidon.common.types.TypeNames;
+import io.helidon.service.registry.Service;
 
 class JsonCodegen implements CodegenExtension {
 
@@ -29,12 +33,18 @@ class JsonCodegen implements CodegenExtension {
         TypeName annotatedTypeName = typeInfo.typeName();
         TypeName generatedType;
         ClassModel.Builder builder;
-        if (annotatedTypeName.typeParameters().isEmpty()) {
+        if (annotatedTypeName.typeArguments().isEmpty()) {
             //We can create just regular Converter, no generics need to be resolved later
             ConvertedTypeInfo convertedTypeInfo = ConvertedTypeInfo.create(typeInfo);
             generatedType = convertedTypeInfo.converterType();
-            builder = ClassModel.builder().type(generatedType);
-            JsonConverterGenerator.generateConverter(builder, convertedTypeInfo, typeInfo, false);
+            builder = ClassModel.builder()
+                    .type(generatedType)
+                    .addAnnotation(Annotation.create(Service.Singleton.class))
+                    .addAnnotation(Annotation.builder()
+                                           .type(TypeNames.WEIGHT)
+                                           .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)
+                                           .build());
+            JsonConverterGenerator.generateConverter(builder, convertedTypeInfo, typeInfo, false, true);
         } else {
             generatedType = TypeName.builder()
                     .from(annotatedTypeName)

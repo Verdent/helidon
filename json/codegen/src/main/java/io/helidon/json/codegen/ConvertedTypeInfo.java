@@ -273,7 +273,13 @@ record ConvertedTypeInfo(TypeName converterType,
     private static Map<String, JsonProperty> finalizeJsonProperties(Map<String, JsonProperty.Builder> properties) {
         Map<String, JsonProperty> finalProperties = new LinkedHashMap<>(properties.size());
         for (Map.Entry<String, JsonProperty.Builder> entry : properties.entrySet()) {
-            finalProperties.put(entry.getKey(), entry.getValue().build());
+            JsonProperty.Builder builder = entry.getValue();
+            if (!builder.directFieldAccess() && builder.setterName().isEmpty() && builder.getterName().isEmpty()) {
+                //Ignore
+                //This is a private field with no accessor method set
+                continue;
+            }
+            finalProperties.put(entry.getKey(), builder.build());
         }
         return finalProperties;
     }

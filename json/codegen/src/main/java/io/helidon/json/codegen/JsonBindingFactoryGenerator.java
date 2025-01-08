@@ -35,9 +35,9 @@ class JsonBindingFactoryGenerator {
         InnerClass.Builder converterClassBuilder = InnerClass.builder()
                 .name(convertedTypeInfo.converterType().className())
                 .accessModifier(AccessModifier.PRIVATE)
+                .addGenericArgument(TypeArgument.create("T"))
                 .isFinal(true)
-                .isStatic(true)
-                .addGenericArgument(TypeArgument.create("T"));
+                .isStatic(true);
         JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true, false);
         classBuilder.addInnerClass(converterClassBuilder)
                 .addMethod(method -> addCreateDeserializerMethod(method, convertedTypeInfo))

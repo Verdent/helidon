@@ -17,7 +17,10 @@ package io.helidon.common;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Represents a full type including generics declaration, to avoid information loss due to type erasure.
@@ -208,4 +211,47 @@ public class GenericType<T> implements Type {
     public String toString() {
         return type.toString();
     }
+
+    public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
+
+        private Class<T> baseType;
+        private List<GenericType<?>> genericParameters = new ArrayList<>();
+
+        @Override
+        public GenericType<T> build() {
+            if (baseType == null) {
+                throw new IllegalStateException("Base type has to be set");
+            }
+            if (genericParameters.isEmpty()) {
+                return new GenericType<>(baseType, baseType);
+            }
+            Type[] genericParametersArray = genericParameters.toArray(new Type[0]);
+            HelidonParameterizedType parameterizedType = new HelidonParameterizedType(baseType, genericParametersArray);
+            return new GenericType<>(parameterizedType, baseType);
+        }
+
+        public Builder<T> baseType(Class<T> baseType) {
+            this.baseType = baseType;
+            return this;
+        }
+
+        public Builder<T> genericParameters(List<GenericType<?>> genericParameters) {
+            this.genericParameters = genericParameters;
+            return this;
+        }
+
+        public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
+            this.genericParameters.add(genericParameter);
+            return this;
+        }
+
+        public Builder<T> addGenericParameter(Consumer<Builder<?>> consumer) {
+            Builder<?> builder = new Builder<>();
+            consumer.accept(builder);
+            this.genericParameters.add(builder.build());
+            return this;
+        }
+
+    }
+
 }

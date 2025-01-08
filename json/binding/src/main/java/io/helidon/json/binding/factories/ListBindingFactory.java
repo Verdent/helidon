@@ -13,7 +13,6 @@ import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
-import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;

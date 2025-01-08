@@ -5,11 +5,14 @@ import java.util.List;
 
 import io.helidon.json.binding.Json;
 
-//@Json.AsJson
+@Json.AsJson
 public class ClassWithGenerics<T> {
 
     private T field;
     private List<T> collection = new ArrayList<>();
+    private List<? extends SimpleClass> collection2 = new ArrayList<>();
+    //widlcard
+    //upper/lower bounds
     private int myInt;
 
     public T getField() {

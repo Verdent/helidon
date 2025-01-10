@@ -116,6 +116,10 @@ public class GenericType<T> implements Type {
         return GenericType.<N>create(object.getClass());
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     private GenericType(Type type, Class<?> rawType) {
         this.type = type;
         this.rawType = rawType;
@@ -212,13 +216,13 @@ public class GenericType<T> implements Type {
         return type.toString();
     }
 
-    public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
+    public static final class Builder implements io.helidon.common.Builder<Builder, GenericType<?>> {
 
-        private Class<T> baseType;
+        private Class<?> baseType;
         private List<GenericType<?>> genericParameters = new ArrayList<>();
 
         @Override
-        public GenericType<T> build() {
+        public GenericType<?> build() {
             if (baseType == null) {
                 throw new IllegalStateException("Base type has to be set");
             }
@@ -230,23 +234,23 @@ public class GenericType<T> implements Type {
             return new GenericType<>(parameterizedType, baseType);
         }
 
-        public Builder<T> baseType(Class<T> baseType) {
+        public Builder baseType(Class<?> baseType) {
             this.baseType = baseType;
             return this;
         }
 
-        public Builder<T> genericParameters(List<GenericType<?>> genericParameters) {
+        public Builder genericParameters(List<GenericType<?>> genericParameters) {
             this.genericParameters = genericParameters;
             return this;
         }
 
-        public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
+        public Builder addGenericParameter(GenericType<?> genericParameter) {
             this.genericParameters.add(genericParameter);
             return this;
         }
 
-        public Builder<T> addGenericParameter(Consumer<Builder<?>> consumer) {
-            Builder<?> builder = new Builder<>();
+        public Builder addGenericParameter(Consumer<Builder> consumer) {
+            Builder builder = new Builder();
             consumer.accept(builder);
             this.genericParameters.add(builder.build());
             return this;

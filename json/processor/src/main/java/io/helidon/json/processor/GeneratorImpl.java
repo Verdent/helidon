@@ -2,77 +2,109 @@ package io.helidon.json.processor;
 
 import java.io.OutputStream;
 
-public class GeneratorImpl implements Generator {
-    public GeneratorImpl(OutputStream outputStream) {
+class GeneratorImpl implements Generator {
+
+    private static final byte QUOTES = '"';
+    private static final byte COMMA = ',';
+    private static final byte COLON = ':';
+    private static final byte ARRAY_START = '[';
+    private static final byte ARRAY_END = ']';
+    private static final byte OBJECT_START = '{';
+    private static final byte OBJECT_END = '}';
+
+    private final OutputStream outputStream;
+    private final byte[] osBuffer = new byte[5120];
+    private int index = 0;
+
+    GeneratorImpl(OutputStream outputStream) {
+        this.outputStream = outputStream;
     }
 
     @Override
     public void writeKey(String key) {
-
+        writeQuoted(key);
+        writeColon();
     }
 
     @Override
     public void write(String key, String value) {
-
+        writeQuoted(key);
+        writeColon();
+        writeQuoted(value);
     }
 
     @Override
     public void write(String key, int value) {
-
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
     }
 
     @Override
     public void writeValue(String value) {
-
+        write(value);
     }
 
     @Override
     public void writeValue(int value) {
-
+        write(Integer.toString(value));
     }
 
     @Override
     public void writeComma() {
-
+        osBuffer[index++] = COMMA;
     }
 
     @Override
     public void writeColon() {
-
+        osBuffer[index++] = COLON;
     }
 
     @Override
     public void writeNull() {
-
+        osBuffer[index++] = 'n';
+        osBuffer[index++] = 'u';
+        osBuffer[index++] = 'l';
+        osBuffer[index++] = 'l';
     }
 
     @Override
     public void writeArrayStart() {
-
+        osBuffer[index++] = ARRAY_START;
     }
 
     @Override
     public void writeArrayEnd() {
-
+        osBuffer[index++] = ARRAY_END;
     }
 
     @Override
     public void writeObjectStart() {
-
+        osBuffer[index++] = OBJECT_START;
     }
 
     @Override
     public void writeObjectEnd() {
-
+        osBuffer[index++] = OBJECT_END;
     }
 
     @Override
     public void writeQuoted(String value) {
+        osBuffer[index++] = QUOTES;
+        write(value);
+        osBuffer[index++] = QUOTES;
+    }
 
+    private void write(String value) {
+        byte[] bytes = value.getBytes();
+        System.arraycopy(bytes, 0, osBuffer, index, bytes.length);
+        index += bytes.length;
     }
 
     @Override
     public void close() throws Exception {
-
+        outputStream.write(osBuffer, 0, index);
+        outputStream.flush();
     }
+
 }

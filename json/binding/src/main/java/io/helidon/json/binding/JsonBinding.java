@@ -23,6 +23,8 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
     private final Map<Type, JsonSerializer<?>> serializers = new HashMap<>();
     private final Map<Type, JsonDeserializer<?>> deserializers = new HashMap<>();
     private final Map<Type, JsonBindingFactory<?>> bindingFactories = new HashMap<>();
+    private final Map<Type, JsonSerializer<?>> serializersNotConfigured = new HashMap<>();
+    private final Map<Type, JsonDeserializer<?>> deserializersNotConfigured = new HashMap<>();
 
     private JsonBinding(JsonBindingConfig config) {
         this.config = config;
@@ -159,9 +161,6 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
             if (type instanceof GenericType<?> genericType) {
                 factory = (JsonBindingFactory<T>) bindingFactories.get(genericType.rawType());
                 toProcess = genericType.type();
-            } else if (type instanceof ParameterizedType parameterizedType) {
-                factory = (JsonBindingFactory<T>) bindingFactories.get(parameterizedType.getRawType());
-                toProcess = type;
             } else {
                 factory = (JsonBindingFactory<T>) bindingFactories.get(type);
                 toProcess = type;
@@ -187,9 +186,6 @@ public final class JsonBinding implements RuntimeType.Api<JsonBindingConfig> {
             if (type instanceof GenericType<?> genericType) {
                 factory = (JsonBindingFactory<T>) bindingFactories.get(genericType.rawType());
                 toProcess = genericType.type();
-            } else if (type instanceof ParameterizedType parameterizedType) {
-                factory = (JsonBindingFactory<T>) bindingFactories.get(parameterizedType.getRawType());
-                toProcess = type;
             } else {
                 factory = (JsonBindingFactory<T>) bindingFactories.get(type);
                 toProcess = type;

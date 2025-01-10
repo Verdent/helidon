@@ -10,7 +10,8 @@ public class ClassWithGenerics<T> {
 
     private T field;
     private List<T> collection = new ArrayList<>();
-    private List<? extends SimpleClass> collection2 = new ArrayList<>();
+    private List<List<T>> collection2 = new ArrayList<>();
+    private List<? extends SimpleClass> collection23 = new ArrayList<>();
     //widlcard
     //upper/lower bounds
     private int myInt;
@@ -29,6 +30,14 @@ public class ClassWithGenerics<T> {
 
     public void setCollection(List<T> collection) {
         this.collection = collection;
+    }
+
+    public List<List<T>> getCollection2() {
+        return collection2;
+    }
+
+    public void setCollection2(List<List<T>> collection2) {
+        this.collection2 = collection2;
     }
 
     public int getMyInt() {

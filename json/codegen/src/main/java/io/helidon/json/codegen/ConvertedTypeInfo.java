@@ -195,7 +195,7 @@ record ConvertedTypeInfo(TypeName converterType,
         return elementTypeName;
     }
 
-    private static boolean needsResolving(TypeName typeName) {
+    static boolean needsResolving(TypeName typeName) {
         for (TypeName typeArgument : typeName.typeArguments()) {
             if (needsResolving(typeArgument)) {
                 return true;

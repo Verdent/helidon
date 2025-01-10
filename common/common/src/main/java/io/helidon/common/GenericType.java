@@ -91,7 +91,8 @@ public class GenericType<T> implements Type {
     public static <N> GenericType<N> create(Type genericType) throws IllegalArgumentException {
         Objects.requireNonNull(genericType);
 
-        return new GenericType<>(genericType, GenericTypeUtil.rawClass(genericType));
+        Type type = genericType instanceof GenericType<?> genType ? genType.type : genericType;
+        return new GenericType<>(type, GenericTypeUtil.rawClass(type));
     }
 
     /**
@@ -116,8 +117,8 @@ public class GenericType<T> implements Type {
         return GenericType.<N>create(object.getClass());
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static <N> Builder<N> builder1() {
+        return new Builder<>();
     }
 
     private GenericType(Type type, Class<?> rawType) {
@@ -216,13 +217,13 @@ public class GenericType<T> implements Type {
         return type.toString();
     }
 
-    public static final class Builder implements io.helidon.common.Builder<Builder, GenericType<?>> {
+//    public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
+    public static final class Builder<T> {
 
-        private Class<?> baseType;
+        private Class<? extends T> baseType;
         private List<GenericType<?>> genericParameters = new ArrayList<>();
 
-        @Override
-        public GenericType<?> build() {
+        public GenericType<T> build() {
             if (baseType == null) {
                 throw new IllegalStateException("Base type has to be set");
             }
@@ -234,23 +235,23 @@ public class GenericType<T> implements Type {
             return new GenericType<>(parameterizedType, baseType);
         }
 
-        public Builder baseType(Class<?> baseType) {
+        public Builder<T> baseType(Class<? extends T> baseType) {
             this.baseType = baseType;
             return this;
         }
 
-        public Builder genericParameters(List<GenericType<?>> genericParameters) {
+        public Builder<T> genericParameters(List<GenericType<?>> genericParameters) {
             this.genericParameters = genericParameters;
             return this;
         }
 
-        public Builder addGenericParameter(GenericType<?> genericParameter) {
+        public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
             this.genericParameters.add(genericParameter);
             return this;
         }
 
-        public Builder addGenericParameter(Consumer<Builder> consumer) {
-            Builder builder = new Builder();
+        public Builder<T> addGenericParameter(Consumer<Builder<T>> consumer) {
+            Builder<T> builder = new Builder<T>();
             consumer.accept(builder);
             this.genericParameters.add(builder.build());
             return this;

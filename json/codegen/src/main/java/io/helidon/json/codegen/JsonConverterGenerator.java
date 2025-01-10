@@ -200,7 +200,7 @@ class JsonConverterGenerator {
             constructor.addContent(TypeNames.GENERIC_TYPE)
                     .addContent("<?> " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    .addContentLine(".builder()")
+                    .addContentLine(".builder1()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");

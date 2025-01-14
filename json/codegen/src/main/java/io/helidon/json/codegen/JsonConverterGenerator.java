@@ -31,8 +31,8 @@ import static io.helidon.json.codegen.Types.PRIMITIVE_TO_BOXED;
 
 class JsonConverterGenerator {
 
+    static final String CONFIGURE_PARAM = "jsonBindingConfigurer";
     private static final String PROPERTY_NAME_SUFFIX = "_";
-    private static final String CONFIGURE_PARAM = "jsonBinding";
     private static final Supplier<?> DEFAULT_TYPE_VALUE = () -> null;
     private static final Map<TypeName, Supplier<?>> DEFAULT_TYPE_VALUES = Map.of(
             TypeNames.PRIMITIVE_BOOLEAN, () -> false,
@@ -85,14 +85,14 @@ class JsonConverterGenerator {
     private static void addConfigurationMethod(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
-                .addParameter(param -> param.type(Types.JSON_BINDING).name(CONFIGURE_PARAM));
+                .addParameter(param -> param.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM));
 
         initializeNoRuntimeResolving(method, toConfigure);
     }
 
     private static void addConfigurationConstructor(Constructor.Builder constructor, Map<String, TypeToConfigure> toConfigure) {
         constructor.accessModifier(AccessModifier.PRIVATE)
-                .addParameter(builder -> builder.type(Types.JSON_BINDING).name(CONFIGURE_PARAM))
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
                 .addParameter(builder -> builder.type(Type.class).name("type"));
 
         initializeNoRuntimeResolving(constructor, toConfigure);
@@ -199,7 +199,7 @@ class JsonConverterGenerator {
             String variableName = "genericType" + counter.count++;
             constructor.addContent("var " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    .addContent(".<").addContent(TypeNames.OBJECT).addContentLine(">builder()")
+                    .addContent(".<").addContent(typeName).addContentLine(">builder()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");

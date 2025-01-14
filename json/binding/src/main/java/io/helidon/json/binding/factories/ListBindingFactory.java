@@ -9,6 +9,7 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -23,13 +24,13 @@ import io.helidon.service.registry.Service;
 final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
 
     @Override
-    public JsonDeserializer<List<T>> createDeserializer(JsonBinding jsonBinding, Type type) {
-        return new ListConverter<>(jsonBinding, type);
+    public JsonDeserializer<List<T>> createDeserializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
+        return new ListConverter<>(jsonBindingConfigurer, type);
     }
 
     @Override
-    public JsonSerializer<List<T>> createSerializer(JsonBinding jsonBinding, Type type) {
-        return new ListConverter<>(jsonBinding, type);
+    public JsonSerializer<List<T>> createSerializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
+        return new ListConverter<>(jsonBindingConfigurer, type);
     }
 
     @Override
@@ -42,13 +43,14 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         private final JsonDeserializer<T> deserializer;
         private final JsonSerializer<T> serializer;
 
-        private ListConverter(JsonBinding jsonBinding, Type type) {
+        @SuppressWarnings("unchecked")
+        private ListConverter(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
             if (type instanceof ParameterizedType parameterizedType) {
-                deserializer = jsonBinding.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
-                serializer = jsonBinding.getSerializer(parameterizedType.getActualTypeArguments()[0]);
+                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
+                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
             } else {
-                deserializer = jsonBinding.getDeserializer(GenericType.OBJECT);
-                serializer = jsonBinding.getSerializer(GenericType.OBJECT);
+                deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
+                serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
             }
         }
 

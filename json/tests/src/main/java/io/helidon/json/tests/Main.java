@@ -8,9 +8,6 @@ import io.helidon.json.binding.JsonBinding;
 public class Main {
 
     public static void main(String[] args) {
-
-        GenericType<List<String>> genericType = new GenericType<>() { };
-        GenericType<List<String>> genericType2 = new GenericType<>() { };
 //        SimpleClass deserialize = JsonBinding.deserialize("{\"name\":\"value\"}", SimpleClass.class);
 //        SimpleRecord record = JsonBinding.deserialize("{\"ints\":[1,2,3]}", SimpleRecord.class);
 //        System.out.println();

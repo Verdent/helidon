@@ -15,10 +15,10 @@ final class IntegerConverter implements TypedJsonConverter<Integer> {
 
     private static final GenericType<Integer> TYPE = GenericType.create(Integer.class);
 
-    @Override
-    public GenericType<Integer> type() {
-        return TYPE;
-    }
+//    @Override
+//    public GenericType<Integer> type() {
+//        return TYPE;
+//    }
 
     @Override
     public void toJson(Generator generator, Integer instance) {

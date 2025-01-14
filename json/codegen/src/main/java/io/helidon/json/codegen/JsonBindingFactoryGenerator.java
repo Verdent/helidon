@@ -14,6 +14,8 @@ import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 import io.helidon.service.registry.Service;
 
+import static io.helidon.json.codegen.JsonConverterGenerator.CONFIGURE_PARAM;
+
 class JsonBindingFactoryGenerator {
 
     private JsonBindingFactoryGenerator() {
@@ -52,11 +54,11 @@ class JsonBindingFactoryGenerator {
                                                             .from(Types.JSON_DESERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING).name("jsonBinding"))
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
                 .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("(jsonBinding, type);");
+                .addContentLine("(" + CONFIGURE_PARAM + ", type);");
     }
 
     private static void addCreateSerializerMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
@@ -66,11 +68,11 @@ class JsonBindingFactoryGenerator {
                                                             .from(Types.JSON_SERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING).name("jsonBinding"))
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
                 .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("(jsonBinding, type);");
+                .addContentLine("(" + CONFIGURE_PARAM + ", type);");
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {

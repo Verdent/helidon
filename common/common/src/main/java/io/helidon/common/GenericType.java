@@ -117,7 +117,7 @@ public class GenericType<T> implements Type {
         return GenericType.<N>create(object.getClass());
     }
 
-    public static <N> Builder<N> builder1() {
+    public static <N> Builder<N> builder() {
         return new Builder<>();
     }
 
@@ -217,8 +217,7 @@ public class GenericType<T> implements Type {
         return type.toString();
     }
 
-//    public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
-    public static final class Builder<T> {
+    public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
 
         private Class<? extends T> baseType;
         private List<GenericType<?>> genericParameters = new ArrayList<>();

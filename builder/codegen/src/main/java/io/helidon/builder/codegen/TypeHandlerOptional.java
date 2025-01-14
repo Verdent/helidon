@@ -193,7 +193,11 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
                             if (iterator.hasNext()) {
                                 it.addContent("<");
                                 while (iterator.hasNext()) {
-                                    it.addContent(iterator.next());
+                                    TypeName next = iterator.next();
+                                    if (next.wildcard()) {
+                                        next = TypeNames.OBJECT;
+                                    }
+                                    it.addContent(next);
                                     if (iterator.hasNext()) {
                                         it.addContent(", ");
                                     }

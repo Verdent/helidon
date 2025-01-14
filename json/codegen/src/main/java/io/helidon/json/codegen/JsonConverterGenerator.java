@@ -197,10 +197,9 @@ class JsonConverterGenerator {
                 }
             }
             String variableName = "genericType" + counter.count++;
-            constructor.addContent(TypeNames.GENERIC_TYPE)
-                    .addContent("<?> " + variableName + " = ")
+            constructor.addContent("var " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    .addContentLine(".builder1()")
+                    .addContent(".<").addContent(TypeNames.OBJECT).addContentLine(">builder()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");

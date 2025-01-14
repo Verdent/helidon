@@ -76,6 +76,7 @@ public class GenericType<T> implements Type {
 
     private final Type type;
     private final Class<?> rawType;
+    private final boolean isClass;
 
     /**
      * Constructs a new generic type, using the provided generic type information and
@@ -121,9 +122,15 @@ public class GenericType<T> implements Type {
         return new Builder<>();
     }
 
+    public static <N> Builder<N> builder(Class<N> base) {
+        return new Builder<N>()
+                .baseType(base);
+    }
+
     private GenericType(Type type, Class<?> rawType) {
         this.type = type;
         this.rawType = rawType;
+        this.isClass = rawType.equals(type);
     }
 
     /**
@@ -137,6 +144,7 @@ public class GenericType<T> implements Type {
     protected GenericType() throws IllegalArgumentException {
         this.type = GenericTypeUtil.typeArgument(getClass(), GenericType.class);
         this.rawType = GenericTypeUtil.rawClass(type);
+        this.isClass = rawType.equals(type);
     }
 
     /**
@@ -172,7 +180,7 @@ public class GenericType<T> implements Type {
      *         List<String>}
      */
     public boolean isClass() {
-        return rawType.equals(type);
+        return isClass;
     }
 
     /**

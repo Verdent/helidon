@@ -6,6 +6,7 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -19,11 +20,11 @@ import io.helidon.service.registry.Service;
 final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
 
     private static final GenericType<Object> TYPE = GenericType.OBJECT;
-    private JsonBinding jsonBinding;
+    private JsonBindingConfigurer jsonBindingConfigurer;
 
     @Override
-    public void configure(JsonBinding jsonBinding) {
-        this.jsonBinding = jsonBinding;
+    public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
+        this.jsonBindingConfigurer = jsonBindingConfigurer;
     }
 
     @Override
@@ -37,8 +38,9 @@ final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigura
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public void toJson(Generator generator, Object instance) {
-        JsonSerializer<Object> serializer = jsonBinding.getSerializer(instance.getClass());
+        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(instance.getClass());
         serializer.toJson(generator, instance);
     }
 

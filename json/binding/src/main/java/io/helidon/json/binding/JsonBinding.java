@@ -48,11 +48,11 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
         return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj);
     }
 
-    static <T> String serialize(T obj, Class<? extends T> type) {
+    static <T> String serialize(T obj, Class<T> type) {
         return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj, type);
     }
 
-    static <T> String serialize(T obj, GenericType<? extends T> type) {
+    static <T> String serialize(T obj, GenericType<T> type) {
         return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj, type);
     }
 
@@ -64,13 +64,11 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
         return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(jsonStr, type);
     }
 
-    default String toJson(Object obj) {
-        return toJson(obj, obj.getClass());
-    }
+    String toJson(Object obj);
 
-    <T> String toJson(T obj, Class<? extends T> type);
+    <T> String toJson(T obj, Class<T> type);
 
-    <T> String toJson(T obj, GenericType<? extends T> type);
+    <T> String toJson(T obj, GenericType<T> type);
 
     <T> T fromJson(String jsonStr, Class<T> type);
 

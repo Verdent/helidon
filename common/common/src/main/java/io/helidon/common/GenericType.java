@@ -122,11 +122,6 @@ public class GenericType<T> implements Type {
         return new Builder<>();
     }
 
-    public static <N> Builder<N> builder(Class<N> base) {
-        return new Builder<N>()
-                .baseType(base);
-    }
-
     private GenericType(Type type, Class<?> rawType) {
         this.type = type;
         this.rawType = rawType;
@@ -228,7 +223,7 @@ public class GenericType<T> implements Type {
     public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
 
         private Class<? extends T> baseType;
-        private List<GenericType<?>> genericParameters = new ArrayList<>();
+        private List<Type> genericParameters = new ArrayList<>();
 
         public GenericType<T> build() {
             if (baseType == null) {
@@ -247,12 +242,12 @@ public class GenericType<T> implements Type {
             return this;
         }
 
-        public Builder<T> genericParameters(List<GenericType<?>> genericParameters) {
-            this.genericParameters = genericParameters;
+        public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
+            this.genericParameters.add(genericParameter);
             return this;
         }
 
-        public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
+        public Builder<T> addGenericParameter(Type genericParameter) {
             this.genericParameters.add(genericParameter);
             return this;
         }

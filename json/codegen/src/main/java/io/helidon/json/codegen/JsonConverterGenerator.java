@@ -134,7 +134,9 @@ class JsonConverterGenerator {
             TypeName typeName = typeToConfigure.resolved;
             String obtainMethod = typeToConfigure.mode.method;
             if (typeName.typeArguments().isEmpty()) {
-                constructor.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(")
+                constructor.addContent(fieldName + " = (")
+                        .addContent(typeToConfigure.fieldType)
+                        .addContent(") " + CONFIGURE_PARAM + "." + obtainMethod + "(")
                         .addContent(Object.class)
                         .addContentLine(".class);");
             } else {
@@ -199,7 +201,9 @@ class JsonConverterGenerator {
             String variableName = "genericType" + counter.count++;
             constructor.addContent("var " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    .addContent(".<").addContent(typeName).addContentLine(">builder()")
+                    //TODO UPRAVIT ???
+//                    .addContent(".<").addContent(typeName).addContentLine(">builder()")
+                    .addContent(".<").addContent(TypeNames.OBJECT).addContentLine(">builder()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");
@@ -282,23 +286,14 @@ class JsonConverterGenerator {
                 classBuilder.addField(fieldBuilder -> fieldBuilder.name(fieldName)
                         .isFinal(useConstructorToConfigure)
                         .type(converterType));
+                toConfigure.putIfAbsent(fieldName,
+                                        new TypeToConfigure(TypeConfigMode.SERIALIZATION,
+                                                            fieldName,
+                                                            resolved,
+                                                            type,
+                                                            converterType));
             }
-            //            if (!resolved.typeArguments().isEmpty()) {
-            //                String helperName = "serType" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
-            //                //Creates for example: TypeName serTypeName = TypeName.create("java.util.List<java.lang.String>");
-            //                configBuilder.addContent(TypeName.class)
-            //                        .addContent(" " + helperName + " = ")
-            //                        .addContent(TypeName.class)
-            //                        .addContentLine(".create(\"" + resolved.resolvedName() + "\");");
-            //                configBuilder.addContentLine(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(" + helperName
-            //                + ");");
-            //            } else {
-            //                configBuilder.addContent(fieldName + " = " + CONFIGURE_PARAM + ".getSerializer(")
-            //                        .addContent(type)
-            //                        .addContentLine(".class);");
-            //            }
 
-            toConfigure.putIfAbsent(fieldName, new TypeToConfigure(TypeConfigMode.SERIALIZATION, fieldName, resolved, type));
 
             method.addContentLine("generator.writeKey(\"" + jsonProperty.serializationName().orElseThrow() + "\");");
             String accessor = jsonProperty.getterName()
@@ -472,20 +467,30 @@ class JsonConverterGenerator {
         if (!type.typeArguments().isEmpty()) {
             //Type contains generics
             String fieldName = "deserializer" + ensureUpperStart(jsonProperty.deserializationName().orElseThrow());
+            TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
             classBuilder.addField(builder -> builder.name(fieldName)
                     .isFinal(useConstructorToConfigure)
-                    .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build()));
-            toConfigure.putIfAbsent(fieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION, fieldName, resolvedType, type));
+                    .type(fieldType));
+            toConfigure.putIfAbsent(fieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
+                                                                   fieldName,
+                                                                   resolvedType,
+                                                                   type,
+                                                                   fieldType));
             valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
         } else {
             String converterFieldName = "deserializer" + ensureUpperStart(type);
             if (!processedTypes.contains(type)) {
                 //Deserializer for this type has not been created yet.
                 processedTypes.add(type); //To ensure deserializer reusability
+                TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
                 classBuilder.addField(builder -> builder.name(converterFieldName)
                         .isFinal(useConstructorToConfigure)
-                        .type(TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build()));
-                toConfigure.putIfAbsent(converterFieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION, converterFieldName, resolvedType, type));
+                        .type(fieldType));
+                toConfigure.putIfAbsent(converterFieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
+                                                                                converterFieldName,
+                                                                                resolvedType,
+                                                                                type,
+                                                                                fieldType));
             }
             valueWritingMethod(jsonProperty, method, hasCreator, converterFieldName);
         }
@@ -558,7 +563,11 @@ class JsonConverterGenerator {
         return (int) fnvHash;
     }
 
-    private record TypeToConfigure(TypeConfigMode mode, String fieldName, TypeName resolved, TypeName original) {
+    private record TypeToConfigure(TypeConfigMode mode,
+                                   String fieldName,
+                                   TypeName resolved,
+                                   TypeName original,
+                                   TypeName fieldType) {
     }
 
     private enum TypeConfigMode {

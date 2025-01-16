@@ -125,21 +125,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             return (JsonDeserializer<T>) getDeserializer(clazz);
         } else if (type instanceof GenericType<?> genericType) {
             return getDeserializer(genericType);
-        } else if (type instanceof ParameterizedType parameterizedType) {
-            return getDeserializer((Class<T>) parameterizedType.getRawType());
+        } else {
+            return getDeserializer(GenericType.create(type));
         }
-        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializers.get(type);
-        if (deserializer != null) {
-            return deserializer;
-        }
-        JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
-        if (factory == null) {
-            throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                    + type + " is not registered.");
-        }
-        deserializer = factory.createDeserializer(this, type);
-        deserializers.putIfAbsent(type, deserializer);
-        return deserializer;
     }
 
     @Override
@@ -181,8 +169,15 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> JsonSerializer<T> getSerializer(Type type) {
-        return null;
+        if (type instanceof Class<?> clazz) {
+            return (JsonSerializer<T>) getSerializer(clazz);
+        } else if (type instanceof GenericType<?> genericType) {
+            return getSerializer(genericType);
+        } else {
+            return getSerializer(GenericType.create(type));
+        }
     }
 
     @Override

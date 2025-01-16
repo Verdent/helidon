@@ -37,8 +37,11 @@ final class Types {
 
     //Types
     static final TypeName JSON_DESERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.JsonDeserializer");
+    static final TypeName JSON_FACTORY_DESERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.BindingFactoryDeserializer");
     static final TypeName JSON_SERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.JsonSerializer");
+    static final TypeName JSON_FACTORY_SERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.BindingFactorySerializer");
     static final TypeName JSON_CONVERTER_TYPE = TypeName.create("io.helidon.json.binding.JsonConverter");
+    static final TypeName JSON_FACTORY_CONVERTER_TYPE = TypeName.create("io.helidon.json.binding.BindingFactoryConverter");
     static final TypeName TYPED_JSON_DESERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.TypedJsonDeserializer");
     static final TypeName TYPED_JSON_SERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.TypedJsonSerializer");
     static final TypeName TYPED_JSON_CONVERTER_TYPE = TypeName.create("io.helidon.json.binding.TypedJsonConverter");

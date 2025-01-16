@@ -32,32 +32,36 @@ class HelidonParameterizedType implements ParameterizedType {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
+        if (o instanceof ParameterizedType) {
+            // Check that information is equivalent
+            ParameterizedType that = (ParameterizedType) o;
+
+            if (this == that)
+                return true;
+
+            Type thatRawType = that.getRawType();
+
+            return Objects.equals(type, thatRawType) &&
+                    Arrays.equals(typeArgs,
+                                  that.getActualTypeArguments());
+        } else {
             return false;
         }
-        HelidonParameterizedType that = (HelidonParameterizedType) o;
-        return Objects.equals(type, that.type)
-                && Arrays.equals(typeArgs, that.typeArgs);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(type);
-        result = 31 * result + Arrays.hashCode(typeArgs);
-        return result;
+        return Arrays.hashCode(typeArgs) ^ Objects.hashCode(type);
     }
 
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append(type.toString());
+        sb.append(type.getName());
         if (typeArgs.length > 0) {
             sb.append("<");
             for (Type typeArg : typeArgs) {
-                sb.append(typeArg);
+                sb.append(typeArg.getTypeName());
             }
             sb.append(">");
         }

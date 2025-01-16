@@ -243,7 +243,7 @@ public class GenericType<T> implements Type {
         }
 
         public Builder<T> addGenericParameter(GenericType<?> genericParameter) {
-            this.genericParameters.add(genericParameter);
+            this.genericParameters.add(genericParameter.type());
             return this;
         }
 

@@ -8,13 +8,13 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonBinding;
+import io.helidon.json.binding.BindingFactoryConverter;
+import io.helidon.json.binding.BindingFactoryDeserializer;
+import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.JsonBindingConfigurer;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
-import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -25,13 +25,13 @@ import io.helidon.service.registry.Service;
 final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
 
     @Override
-    public JsonDeserializer<Set<T>> createDeserializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-        return new SetConverter<>(jsonBindingConfigurer, type);
+    public BindingFactoryDeserializer<Set<T>> createDeserializer() {
+        return new SetConverter<>();
     }
 
     @Override
-    public JsonSerializer<Set<T>> createSerializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-        return new SetConverter<>(jsonBindingConfigurer, type);
+    public BindingFactorySerializer<Set<T>> createSerializer() {
+        return new SetConverter<>();
     }
 
     @Override
@@ -39,21 +39,10 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         return Set.class;
     }
 
-    private static final class SetConverter<T> implements JsonConverter<Set<T>> {
+    private static final class SetConverter<T> implements BindingFactoryConverter<Set<T>> {
 
-        private final JsonDeserializer<T> deserializer;
-        private final JsonSerializer<T> serializer;
-
-        @SuppressWarnings("unchecked")
-        private SetConverter(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-            if (type instanceof ParameterizedType parameterizedType) {
-                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
-                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
-            } else {
-                deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
-                serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
-            }
-        }
+        private JsonDeserializer<T> deserializer;
+        private JsonSerializer<T> serializer;
 
         @Override
         public void toJson(Generator generator, Set<T> instance) {
@@ -101,6 +90,16 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
             return set;
         }
 
+        @Override
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
+            if (type instanceof ParameterizedType parameterizedType) {
+                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
+                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
+            } else {
+                deserializer = jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
+                serializer = jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
+            }
+        }
     }
 
 }

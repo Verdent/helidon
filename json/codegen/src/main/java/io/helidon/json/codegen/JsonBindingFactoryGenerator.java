@@ -51,28 +51,24 @@ class JsonBindingFactoryGenerator {
         method.name("createDeserializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
-                                                            .from(Types.JSON_DESERIALIZER_TYPE)
+                                                            .from(Types.JSON_FACTORY_DESERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
-                .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("(" + CONFIGURE_PARAM + ", type);");
+                .addContentLine("<>();");
     }
 
     private static void addCreateSerializerMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
         method.name("createSerializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
-                                                            .from(Types.JSON_SERIALIZER_TYPE)
+                                                            .from(Types.JSON_FACTORY_SERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
-                .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("(" + CONFIGURE_PARAM + ", type);");
+                .addContentLine("<>();");
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {

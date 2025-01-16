@@ -50,10 +50,10 @@ class JsonConverterGenerator {
     static void generateConverter(ClassBase.Builder<?, ?> classBuilder,
                                   ConvertedTypeInfo converterInfo,
                                   TypeInfo annotatedType,
-                                  boolean constructorConfiguration,
+                                  boolean factoryConfiguration,
                                   boolean typedConverter) {
         TypeName converterInterfaceType = TypeName.builder()
-                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_CONVERTER_TYPE)
+                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_FACTORY_CONVERTER_TYPE)
                 .addTypeArgument(annotatedType.typeName())
                 .build();
 
@@ -63,16 +63,16 @@ class JsonConverterGenerator {
                 .addMethod(method -> generateToJsonMethod(classBuilder,
                                                           method,
                                                           converterInfo,
-                                                          constructorConfiguration,
+                                                          factoryConfiguration,
                                                           toConfigure))
                 .addMethod(method -> generateFromJsonMethod(classBuilder,
                                                             method,
                                                             converterInfo,
-                                                            constructorConfiguration,
+                                                            factoryConfiguration,
                                                             toConfigure));
 
-        if (constructorConfiguration) {
-            classBuilder.addConstructor(method -> addConfigurationConstructor(method, toConfigure));
+        if (factoryConfiguration) {
+            classBuilder.addMethod(method -> addConfigurationFactory(method, toConfigure));
         } else {
             classBuilder.addInterface(Types.JSON_CONFIGURABLE)
                     .addMethod(method -> addConfigurationMethod(method, toConfigure));
@@ -90,92 +90,93 @@ class JsonConverterGenerator {
         initializeNoRuntimeResolving(method, toConfigure);
     }
 
-    private static void addConfigurationConstructor(Constructor.Builder constructor, Map<String, TypeToConfigure> toConfigure) {
-        constructor.accessModifier(AccessModifier.PRIVATE)
+    private static void addConfigurationFactory(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
+        method.name("configure")
+                .addAnnotation(Annotation.create(Override.class))
                 .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
                 .addParameter(builder -> builder.type(Type.class).name("type"));
 
-        initializeNoRuntimeResolving(constructor, toConfigure);
+        initializeNoRuntimeResolving(method, toConfigure);
 
         List<TypeToConfigure> needsRuntimeResolving = toConfigure.values()
                 .stream()
                 .filter(it -> needsResolving(it.resolved))
                 .toList();
 
-        constructor.addContent("if (type instanceof ")
+        method.addContent("if (type instanceof ")
                 .addContent(ParameterizedType.class)
                 .addContentLine(" parameterizedType) {");
 
-        Map<String, Consumer<Constructor.Builder>> createdTypeSetters = new HashMap<>();
+        Map<String, Consumer<Method.Builder>> createdTypeSetters = new HashMap<>();
         MethodNameCounter counter = new MethodNameCounter();
         for (TypeToConfigure typeToConfigure : needsRuntimeResolving) {
             String fieldName = typeToConfigure.fieldName();
             TypeName typeName = typeToConfigure.resolved;
             String obtainMethod = typeToConfigure.mode.method;
             if (typeName.typeArguments().isEmpty()) {
-                constructor.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(")
+                method.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(")
                         .addContentLine("parameterizedType.getActualTypeArguments()[0]);");
             } else {
-                Consumer<Constructor.Builder> builderConsumer;
+                Consumer<Method.Builder> builderConsumer;
                 if (createdTypeSetters.containsKey(typeName.resolvedName())) {
                     builderConsumer = createdTypeSetters.get(typeName.resolvedName());
                 } else {
-                    builderConsumer = constructComplexGenericType(constructor, typeName, createdTypeSetters, counter);
+                    builderConsumer = constructComplexGenericType(method, typeName, createdTypeSetters, counter);
                     createdTypeSetters.put(typeName.resolvedName(), builderConsumer);
                 }
-                constructor.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(");
-                builderConsumer.accept(constructor);
-                constructor.addContentLine(");");
+                method.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(");
+                builderConsumer.accept(method);
+                method.addContentLine(");");
             }
         }
-        constructor.addContent("}").addContentLine(" else {");
+        method.addContent("}").addContentLine(" else {");
         for (TypeToConfigure typeToConfigure : needsRuntimeResolving) {
             String fieldName = typeToConfigure.fieldName();
             TypeName typeName = typeToConfigure.resolved;
             String obtainMethod = typeToConfigure.mode.method;
             if (typeName.typeArguments().isEmpty()) {
-                constructor.addContent(fieldName + " = (")
+                method.addContent(fieldName + " = (")
                         .addContent(typeToConfigure.fieldType)
                         .addContent(") " + CONFIGURE_PARAM + "." + obtainMethod + "(")
                         .addContent(Object.class)
                         .addContentLine(".class);");
             } else {
-                constructor.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(")
+                method.addContent(fieldName + " = " + CONFIGURE_PARAM + "." + obtainMethod + "(")
                         .addContent("new ").addContent(TypeNames.GENERIC_TYPE).addContent("<");
-                buildSimpleGenericTypeWithObject(constructor, typeName);
-                constructor.addContentLine(">() {});");
+                buildSimpleGenericTypeWithObject(method, typeName);
+                method.addContentLine(">() {});");
             }
         }
-        constructor.addContentLine("}");
+        method.addContentLine("}");
     }
 
-    private static void buildSimpleGenericTypeWithObject(Constructor.Builder constructor, TypeName typeName) {
+    private static void buildSimpleGenericTypeWithObject(Method.Builder method, TypeName typeName) {
         if (typeName.typeArguments().isEmpty()) {
             //We have no more generics available
             if (needsResolving(typeName)) {
-                constructor.addContent(Object.class);
+                method.addContent(Object.class);
             } else {
-                constructor.addContent(typeName);
+                method.addContent(typeName);
             }
         } else {
             boolean first = true;
-            constructor.addContent(typeName.genericTypeName()).addContent("<");
+            method.addContent(typeName.genericTypeName()).addContent("<");
             for (TypeName typeArgument : typeName.typeArguments()) {
                 if (first) {
                     first = false;
                 } else {
-                    constructor.addContent(",");
+                    method.addContent(",");
                 }
-                buildSimpleGenericTypeWithObject(constructor, typeArgument);
+                buildSimpleGenericTypeWithObject(method, typeArgument);
             }
-            constructor.addContent(">");
+            method.addContent(">");
         }
     }
 
-    private static Consumer<Constructor.Builder> constructComplexGenericType(Constructor.Builder constructor,
-                                                                             TypeName typeName,
-                                                                             Map<String, Consumer<Constructor.Builder>> createdTypeSetters,
-                                                                             MethodNameCounter counter) {
+    private static Consumer<Method.Builder> constructComplexGenericType(Method.Builder method,
+                                                                        TypeName typeName,
+                                                                        Map<String, Consumer<Method.Builder>> createdTypeSetters,
+                                                                        MethodNameCounter counter) {
         if (typeName.typeArguments().isEmpty()) {
             if (needsResolving(typeName)) {
                 return builder -> builder.addContent(TypeNames.GENERIC_TYPE)
@@ -185,34 +186,32 @@ class JsonConverterGenerator {
                         .addContent(".create(").addContent(typeName).addContent(")");
             }
         } else {
-            List<Consumer<Constructor.Builder>> parameterValueSetters = new ArrayList<>();
+            List<Consumer<Method.Builder>> parameterValueSetters = new ArrayList<>();
             for (TypeName typeArgument : typeName.typeArguments()) {
                 if (createdTypeSetters.containsKey(typeArgument.resolvedName())) {
                     parameterValueSetters.add(createdTypeSetters.get(typeArgument.resolvedName()));
                 } else {
-                    Consumer<Constructor.Builder> parameterValue = constructComplexGenericType(constructor,
-                                                                                               typeArgument,
-                                                                                               createdTypeSetters,
-                                                                                               counter);
+                    Consumer<Method.Builder> parameterValue = constructComplexGenericType(method,
+                                                                                          typeArgument,
+                                                                                          createdTypeSetters,
+                                                                                          counter);
                     parameterValueSetters.add(parameterValue);
                     createdTypeSetters.putIfAbsent(typeArgument.resolvedName(), parameterValue);
                 }
             }
             String variableName = "genericType" + counter.count++;
-            constructor.addContent("var " + variableName + " = ")
+            method.addContent("var " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    //TODO UPRAVIT ???
-//                    .addContent(".<").addContent(typeName).addContentLine(">builder()")
                     .addContent(".<").addContent(TypeNames.OBJECT).addContentLine(">builder()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");
-            for (Consumer<Constructor.Builder> parameterValue : parameterValueSetters) {
-                constructor.addContent(".addGenericParameter(");
-                parameterValue.accept(constructor);
-                constructor.addContentLine(")");
+            for (Consumer<Method.Builder> parameterValue : parameterValueSetters) {
+                method.addContent(".addGenericParameter(");
+                parameterValue.accept(method);
+                method.addContentLine(")");
             }
-            constructor.addContentLine(".build();")
+            method.addContentLine(".build();")
                     .decreaseContentPadding()
                     .decreaseContentPadding();
 
@@ -284,7 +283,6 @@ class JsonConverterGenerator {
                         .addTypeArgument(resolved)
                         .build();
                 classBuilder.addField(fieldBuilder -> fieldBuilder.name(fieldName)
-                        .isFinal(useConstructorToConfigure)
                         .type(converterType));
                 toConfigure.putIfAbsent(fieldName,
                                         new TypeToConfigure(TypeConfigMode.SERIALIZATION,
@@ -469,7 +467,6 @@ class JsonConverterGenerator {
             String fieldName = "deserializer" + ensureUpperStart(jsonProperty.deserializationName().orElseThrow());
             TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
             classBuilder.addField(builder -> builder.name(fieldName)
-                    .isFinal(useConstructorToConfigure)
                     .type(fieldType));
             toConfigure.putIfAbsent(fieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
                                                                    fieldName,
@@ -484,7 +481,6 @@ class JsonConverterGenerator {
                 processedTypes.add(type); //To ensure deserializer reusability
                 TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
                 classBuilder.addField(builder -> builder.name(converterFieldName)
-                        .isFinal(useConstructorToConfigure)
                         .type(fieldType));
                 toConfigure.putIfAbsent(converterFieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
                                                                                 converterFieldName,

@@ -8,9 +8,10 @@ import java.util.List;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonBinding;
+import io.helidon.json.binding.BindingFactoryConverter;
+import io.helidon.json.binding.BindingFactoryDeserializer;
+import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.JsonBindingConfigurer;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
@@ -24,13 +25,13 @@ import io.helidon.service.registry.Service;
 final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
 
     @Override
-    public JsonDeserializer<List<T>> createDeserializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-        return new ListConverter<>(jsonBindingConfigurer, type);
+    public BindingFactoryDeserializer<List<T>> createDeserializer() {
+        return new ListConverter<>();
     }
 
     @Override
-    public JsonSerializer<List<T>> createSerializer(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-        return new ListConverter<>(jsonBindingConfigurer, type);
+    public BindingFactorySerializer<List<T>> createSerializer() {
+        return new ListConverter<>();
     }
 
     @Override
@@ -38,21 +39,10 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         return List.class;
     }
 
-    private static final class ListConverter<T> implements JsonConverter<List<T>> {
+    private static final class ListConverter<T> implements BindingFactoryConverter<List<T>> {
 
-        private final JsonDeserializer<T> deserializer;
-        private final JsonSerializer<T> serializer;
-
-        @SuppressWarnings("unchecked")
-        private ListConverter(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-            if (type instanceof ParameterizedType parameterizedType) {
-                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
-                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
-            } else {
-                deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
-                serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
-            }
-        }
+        private JsonDeserializer<T> deserializer;
+        private JsonSerializer<T> serializer;
 
         @Override
         public void toJson(Generator generator, List<T> instance) {
@@ -100,6 +90,15 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
             return list;
         }
 
+        @Override
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
+            if (type instanceof ParameterizedType parameterizedType) {
+                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
+                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
+            } else {
+                deserializer = jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
+                serializer = jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
+            }
+        }
     }
-
 }

@@ -11,7 +11,7 @@ public class ClassWithGenerics<T> {
     private T field;
     private List<T> collection = new ArrayList<>();
     private List<List<T>> collection2 = new ArrayList<>();
-//    public ClassWithGenerics<T> test;
+    public ClassWithGenerics<T> test;
     private List<? extends SimpleClass> collection23 = new ArrayList<>();
     //widlcard
     //upper/lower bounds

@@ -1,12 +1,11 @@
 package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
-import java.lang.reflect.Parameter;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
@@ -17,13 +16,16 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
 
     private final JsonBindingConfig config;
-    private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new HashMap<>();
-    private final Map<Class<?>, JsonDeserializer<?>> identityDeserializers = new HashMap<>();
-    private final Map<Class<?>, JsonBindingFactory<?>> bindingFactories = new HashMap<>();
+    private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new IdentityHashMap<>();
+    private final Map<Class<?>, JsonDeserializer<?>> identityDeserializers = new IdentityHashMap<>();
+    private final Map<Class<?>, JsonBindingFactory<?>> bindingFactories = new IdentityHashMap<>();
     private final Map<Type, JsonSerializer<?>> serializers = new HashMap<>();
     private final Map<Type, JsonDeserializer<?>> deserializers = new HashMap<>();
+
     private final Map<Type, JsonSerializer<?>> serializersNotConfigured = new HashMap<>();
     private final Map<Type, JsonDeserializer<?>> deserializersNotConfigured = new HashMap<>();
+    private final ReentrantLock serNotConfiguredLock = new ReentrantLock();
+    private final ReentrantLock desNotConfiguredLock = new ReentrantLock();
 
     JsonBindingImpl(JsonBindingConfig config) {
         this.config = config;
@@ -79,7 +81,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<T> converter = getFinishedSerializer(type);
             converter.toJson(generator, obj);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -94,7 +96,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<T> converter = getFinishedSerializer(type);
             converter.toJson(generator, obj);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -104,7 +106,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T fromJson(String jsonStr, Class<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = getFinishedDeserializer(type);
         JsonParser parser = JsonParser.createParser(jsonStr);
         parser.nextToken();
         return deserializer.fromJson(parser);
@@ -112,27 +114,14 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T fromJson(String jsonStr, GenericType<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = getFinishedDeserializer(type);
         JsonParser parser = JsonParser.createParser(jsonStr);
         parser.nextToken();
         return deserializer.fromJson(parser);
     }
 
-    @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return (JsonDeserializer<T>) getDeserializer(clazz);
-        } else if (type instanceof GenericType<?> genericType) {
-            return getDeserializer(genericType);
-        } else {
-            return getDeserializer(GenericType.create(type));
-        }
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(Class<T> type) {
+    private <T> JsonDeserializer<T> getFinishedDeserializer(Class<T> type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) identityDeserializers.get(type);
         if (deserializer != null) {
             return deserializer;
@@ -142,15 +131,19 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
                                                     + type + " is not registered.");
         }
-        deserializer = factory.createDeserializer(this, type);
-        deserializers.putIfAbsent(type, deserializer);
-        identityDeserializers.putIfAbsent(type, deserializer);
-        return deserializer;
+        BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
+
+        deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
+        factoryDeserializer.configure(this, type);
+        deserializersNotConfigured.remove(type);
+
+        deserializers.putIfAbsent(type, factoryDeserializer);
+        identityDeserializers.putIfAbsent(type, factoryDeserializer);
+        return factoryDeserializer;
     }
 
-    @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(GenericType<?> type) {
+    private <T> JsonDeserializer<T> getFinishedDeserializer(GenericType<?> type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializers.get(type);
         if (deserializer == null) {
             JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type.rawType());
@@ -158,31 +151,24 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                 throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
                                                         + type + " is not registered.");
             }
-            deserializer = factory.createDeserializer(this, type.type());
-            deserializers.putIfAbsent(type, deserializer);
-            deserializers.putIfAbsent(type.type(), deserializer);
+            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
+
+            deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
+            factoryDeserializer.configure(this, type.type());
+            deserializersNotConfigured.remove(type);
+
+            deserializers.putIfAbsent(type, factoryDeserializer);
+            deserializers.putIfAbsent(type.type(), factoryDeserializer);
             if (type.isClass()) {
-                identityDeserializers.putIfAbsent(type.rawType(), deserializer);
+                identityDeserializers.putIfAbsent(type.rawType(), factoryDeserializer);
             }
+            return factoryDeserializer;
         }
         return deserializer;
     }
 
-    @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return (JsonSerializer<T>) getSerializer(clazz);
-        } else if (type instanceof GenericType<?> genericType) {
-            return getSerializer(genericType);
-        } else {
-            return getSerializer(GenericType.create(type));
-        }
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(Class<T> type) {
+    private <T> JsonSerializer<T> getFinishedSerializer(Class<T> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) identitySerializers.get(type);
         if (serializer == null) {
             JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
@@ -190,16 +176,20 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                 throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
                                                         + type + " is not registered.");
             }
-            serializer = factory.createSerializer(this, type);
-            serializers.putIfAbsent(type, serializer);
-            identitySerializers.putIfAbsent(type, serializer);
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
+            serializersNotConfigured.putIfAbsent(type, factorySerializer);
+            factorySerializer.configure(this, type);
+            serializersNotConfigured.remove(type);
+
+            serializers.putIfAbsent(type, factorySerializer);
+            identitySerializers.putIfAbsent(type, factorySerializer);
+            return factorySerializer;
         }
         return serializer;
     }
 
-    @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(GenericType<?> type) {
+    private <T> JsonSerializer<T> getFinishedSerializer(GenericType<?> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) serializers.get(type);
         if (serializer == null) {
             JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type.rawType());
@@ -207,13 +197,78 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                 throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
                                                         + type + " is not registered.");
             }
-            serializer = factory.createSerializer(this, type.type());
-            serializers.putIfAbsent(type, serializer);
-            serializers.putIfAbsent(type.type(), serializer);
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
+            serializersNotConfigured.putIfAbsent(type.type(), factorySerializer);
+            factorySerializer.configure(this, type.type());
+            serializersNotConfigured.remove(type.type());
+
+            serializers.putIfAbsent(type, factorySerializer);
+            serializers.putIfAbsent(type.type(), factorySerializer);
             if (type.isClass()) {
-                identitySerializers.putIfAbsent(type.rawType(), serializer);
+                identitySerializers.putIfAbsent(type.rawType(), factorySerializer);
             }
+            return factorySerializer;
         }
         return serializer;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonDeserializer<T> getDeserializer(Type type) {
+        return switch (type) {
+            case Class<?> clazz -> (JsonDeserializer<T>) getDeserializer(clazz);
+            case GenericType<?> genericType -> getDeserializer(genericType);
+            case null, default -> getDeserializer(GenericType.create(type));
+        };
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonDeserializer<T> getDeserializer(Class<T> type) {
+        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializersNotConfigured.get(type);
+        if (deserializer != null) {
+            return deserializer;
+        }
+        return getFinishedDeserializer(type);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonDeserializer<T> getDeserializer(GenericType<?> type) {
+        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializersNotConfigured.get(type);
+        if (deserializer != null) {
+            return deserializer;
+        }
+        return getFinishedDeserializer(type);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonSerializer<T> getSerializer(Type type) {
+        return switch (type) {
+            case Class<?> clazz -> (JsonSerializer<T>) getSerializer(clazz);
+            case GenericType<?> genericType -> getSerializer(genericType);
+            case null, default -> getSerializer(GenericType.create(type));
+        };
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonSerializer<T> getSerializer(Class<T> type) {
+        JsonSerializer<T> serializer = (JsonSerializer<T>) serializersNotConfigured.get(type);
+        if (serializer != null) {
+            return serializer;
+        }
+        return getFinishedSerializer(type);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> JsonSerializer<T> getSerializer(GenericType<?> type) {
+        JsonSerializer<T> serializer = (JsonSerializer<T>) serializersNotConfigured.get(type.type());
+        if (serializer != null) {
+            return serializer;
+        }
+        return getFinishedSerializer(type);
     }
 }

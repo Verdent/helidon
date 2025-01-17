@@ -3,7 +3,6 @@ package io.helidon.json.codegen;
 import java.util.Map;
 
 import io.helidon.common.types.TypeName;
-import io.helidon.common.types.TypeNames;
 
 import static io.helidon.common.types.TypeNames.BOXED_BOOLEAN;
 import static io.helidon.common.types.TypeNames.BOXED_BYTE;
@@ -27,7 +26,7 @@ import static io.helidon.common.types.TypeNames.PRIMITIVE_VOID;
 final class Types {
 
     //Annotations
-    static final TypeName JSON_AS_JSON = TypeName.create("io.helidon.json.binding.Json.AsJson");
+    static final TypeName JSON_ENTITY = TypeName.create("io.helidon.json.binding.Json.Entity");
     static final TypeName JSON_DESERIALIZER = TypeName.create("io.helidon.json.binding.Json.Deserializer");
     static final TypeName JSON_SERIALIZER = TypeName.create("io.helidon.json.binding.Json.Serializer");
     static final TypeName JSON_CONVERTER = TypeName.create("io.helidon.json.binding.Json.Converter");

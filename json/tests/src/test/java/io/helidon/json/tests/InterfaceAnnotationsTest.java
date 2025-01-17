@@ -1,0 +1,70 @@
+package io.helidon.json.tests;
+
+import io.helidon.json.binding.Json;
+import io.helidon.json.binding.JsonBinding;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class InterfaceAnnotationsTest {
+
+    @Test
+    public void testJsonbPropertyIfcInheritance() {
+        InterfacedPojoB pojo = new InterfacedPojoImpl();
+        pojo.setPropertyA("AA");
+        pojo.setPropertyB("BB");
+
+        String json = "{\"propA\":\"AA\",\"propB\":\"BB\"}";
+        assertEquals(json, JsonBinding.serialize(pojo));
+    }
+
+    interface InterfacedPojoA {
+
+        @Json.Property("propA")
+        String getPropertyA();
+
+        @Json.Property("propA")
+        void setPropertyA(String property);
+
+    }
+
+    interface InterfacedPojoB extends InterfacedPojoA {
+
+        @Json.Property("propB")
+        String getPropertyB();
+
+        @Json.Property("propB")
+        void setPropertyB(String propertyB);
+
+    }
+
+    @Json.Entity
+    static class InterfacedPojoImpl implements InterfacedPojoB {
+
+        private String propertyA;
+        private String propertyB;
+
+        @Override
+        public String getPropertyA() {
+            return propertyA;
+        }
+
+        @Override
+        public void setPropertyA(String propertyA) {
+            this.propertyA = propertyA;
+        }
+
+        @Override
+        public String getPropertyB() {
+            return propertyB;
+        }
+
+        @Override
+        public void setPropertyB(String propertyB) {
+            this.propertyB = propertyB;
+        }
+
+    }
+
+}

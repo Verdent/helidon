@@ -23,7 +23,7 @@ class JsonCodegen implements CodegenExtension {
 
     @Override
     public void process(RoundContext roundContext) {
-        Collection<TypeInfo> typeInfos = roundContext.annotatedTypes(Types.JSON_AS_JSON);
+        Collection<TypeInfo> typeInfos = roundContext.annotatedTypes(Types.JSON_ENTITY);
         for (TypeInfo typeInfo : typeInfos) {
             process(typeInfo, roundContext);
         }

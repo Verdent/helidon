@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.ElementKind;
@@ -37,8 +36,11 @@ record ConvertedTypeInfo(TypeName converterType,
     );
 
     public static ConvertedTypeInfo create(TypeInfo typeInfo) {
-        TypeName converterTypeName = TypeName.create(typeInfo.typeName().fqName() + "_GeneratedConverter");
-        boolean recordAccessors = typeInfo.annotation(Types.JSON_AS_JSON)
+        String classNameWithEnclosingNames = typeInfo.typeName().classNameWithEnclosingNames();
+        String replacedDot = classNameWithEnclosingNames.replace(".", "_");
+        String nameBase = typeInfo.typeName().fqName().replace(classNameWithEnclosingNames, replacedDot);
+        TypeName converterTypeName = TypeName.create(nameBase + "_GeneratedConverter");
+        boolean recordAccessors = typeInfo.annotation(Types.JSON_ENTITY)
                 .booleanValue("recordAccessors")
                 .orElse(false);
         if (typeInfo.kind() == ElementKind.RECORD) {
@@ -94,6 +96,10 @@ record ConvertedTypeInfo(TypeName converterType,
         typeInfo.superTypeInfo()
                 .ifPresent(superType -> discoverGetAndSetMethods(properties, superType, record));
 
+        for (TypeInfo interf : typeInfo.interfaceTypeInfo()) {
+            discoverGetAndSetMethods(properties, interf, record);
+        }
+
         List<TypedElementInfo> methods = typeInfo.elementInfo()
                 .stream()
                 .filter(ElementInfoPredicates::isMethod)
@@ -106,25 +112,27 @@ record ConvertedTypeInfo(TypeName converterType,
             if (isGetter(method, record)) {
                 String prefix = record ? "" : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
                 String propertyName = methodToFieldName(prefix, methodName, record);
-                properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
+                JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .getterName(methodName)
-                        .deserializationName(propertyName)
+                        .deserializationNameIfNotSet(propertyName)
                         .deserializationType(resolveGenerics(method.typeName(), typeInfo))
                         .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
                         .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"))
-                        .getterIgnored(method.hasAnnotation(Types.JSON_IGNORE));
+                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"));
+                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
+                        .ifPresent(property::getterIgnored);
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, record)) {
                 String prefix = record ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName, record);
-                properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
+                JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .setterName(methodName)
-                        .serializationName(propertyName)
+                        .serializationNameIfNotSet(propertyName)
                         .serializationType(resolveGenerics(method.parameterArguments().getFirst().typeName(), typeInfo))
                         .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
                         .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_SERIALIZER, "value"))
-                        .setterIgnored(method.hasAnnotation(Types.JSON_IGNORE));
+                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_SERIALIZER, "value"));
+                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
+                        .ifPresent(property::setterIgnored);
             }
             //Not valid getter or setter
         }
@@ -268,6 +276,13 @@ record ConvertedTypeInfo(TypeName converterType,
                                                                    String attributeName) {
         return elementInfo.findAnnotation(annotationType)
                 .flatMap(annotation -> annotation.typeValue(attributeName));
+    }
+
+    private static Optional<Boolean> obtainBooleanFromAnnotation(TypedElementInfo elementInfo,
+                                                                 TypeName annotationType,
+                                                                 String attributeName) {
+        return elementInfo.findAnnotation(annotationType)
+                .flatMap(annotation -> annotation.booleanValue(attributeName));
     }
 
     private static Map<String, JsonProperty> finalizeJsonProperties(Map<String, JsonProperty.Builder> properties) {

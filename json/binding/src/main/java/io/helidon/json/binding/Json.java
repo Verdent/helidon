@@ -9,7 +9,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
-    @interface AsJson {
+    @interface Entity {
 
         boolean recordAccessors() default false;
 
@@ -50,6 +50,9 @@ public interface Json {
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD})
     @interface Ignore {
+
+        boolean value() default true;
+
     }
 
     @Retention(RetentionPolicy.RUNTIME)

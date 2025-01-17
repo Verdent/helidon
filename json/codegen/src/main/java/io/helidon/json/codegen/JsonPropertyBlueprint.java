@@ -6,6 +6,7 @@ import io.helidon.builder.api.Prototype;
 import io.helidon.common.types.TypeName;
 
 @Prototype.Blueprint(isPublic = false)
+@Prototype.CustomMethods(JsonPropertyCustomMethods.class)
 interface JsonPropertyBlueprint {
 
     Optional<String> fieldName();

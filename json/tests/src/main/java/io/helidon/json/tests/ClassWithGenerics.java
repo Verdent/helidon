@@ -5,7 +5,7 @@ import java.util.List;
 
 import io.helidon.json.binding.Json;
 
-@Json.AsJson
+@Json.Entity
 public class ClassWithGenerics<T> {
 
     private T field;

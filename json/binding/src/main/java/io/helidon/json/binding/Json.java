@@ -56,7 +56,7 @@ public interface Json {
     }
 
     @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.FIELD, ElementType.METHOD})
+    @Target({ElementType.CONSTRUCTOR})
     @interface Creator {
     }
 

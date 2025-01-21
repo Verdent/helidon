@@ -68,6 +68,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
             converter.toJson(generator, obj);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -83,6 +85,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<T> converter = getFinishedSerializer(type);
             converter.toJson(generator, obj);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -98,6 +102,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<T> converter = getFinishedSerializer(type);
             converter.toJson(generator, obj);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

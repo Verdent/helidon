@@ -114,11 +114,11 @@ record ConvertedTypeInfo(TypeName converterType,
                 String propertyName = methodToFieldName(prefix, methodName, record);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .getterName(methodName)
-                        .deserializationNameIfNotSet(propertyName)
-                        .deserializationType(resolveGenerics(method.typeName(), typeInfo))
-                        .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"));
+                        .serializationNameIfNotSet(propertyName)
+                        .serializationType(resolveGenerics(method.typeName(), typeInfo))
+                        .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
+                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
+                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
                         .ifPresent(property::getterIgnored);
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, record)) {
@@ -126,11 +126,11 @@ record ConvertedTypeInfo(TypeName converterType,
                 String propertyName = methodToFieldName(prefix, methodName, record);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .setterName(methodName)
-                        .serializationNameIfNotSet(propertyName)
-                        .serializationType(resolveGenerics(method.parameterArguments().getFirst().typeName(), typeInfo))
-                        .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_SERIALIZER, "value"));
+                        .deserializationNameIfNotSet(propertyName)
+                        .deserializationType(resolveGenerics(method.parameterArguments().getFirst().typeName(), typeInfo))
+                        .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
+                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
+                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_SERIALIZER, "value"));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
                         .ifPresent(property::setterIgnored);
             }

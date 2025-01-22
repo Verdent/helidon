@@ -56,6 +56,14 @@ public interface Json {
     }
 
     @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD})
+    @interface Nullable {
+
+        boolean value() default true;
+
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.CONSTRUCTOR})
     @interface Creator {
     }

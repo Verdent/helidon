@@ -37,4 +37,6 @@ interface JsonPropertyBlueprint {
 
     boolean directFieldAccess();
 
+    boolean nullable();
+
 }

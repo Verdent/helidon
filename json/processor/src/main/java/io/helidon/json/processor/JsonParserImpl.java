@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * TODO javadoc
  */
-final class JsonParserImpl implements JsonParser {
+final class JsonParserImpl implements ReusableJsonParser {
 
     //We need this to check if the next number digit overflows int max capacity
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;

@@ -37,6 +37,7 @@
     <modules>
         <module>schema</module>
         <module>codegen</module>
+        <module>benchamark</module>
         <module>binding</module>
         <module>processor</module>
         <module>tests</module>

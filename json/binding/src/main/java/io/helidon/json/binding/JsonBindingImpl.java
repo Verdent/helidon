@@ -2,9 +2,13 @@ package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
@@ -14,6 +18,17 @@ import io.helidon.json.processor.JsonParser;
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
+    private static final JsonParser JSON_PARSER = JsonParser.createParser("");
+
+//    private static final Queue<JsonParser> PARSERS = new ArrayDeque<>();
+//    private static final Queue<JsonParser> PARSERS = new ArrayBlockingQueue<>(1);
+    private static final Queue<JsonParser> PARSERS = new ConcurrentLinkedQueue<>();
+    static {
+        PARSERS.add(JSON_PARSER);
+    }
+    private static final ReentrantLock LOCK = new ReentrantLock();
+
+    private final ThreadLocal<JsonParser> parsers = new ThreadLocal<>();
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new IdentityHashMap<>();
@@ -113,9 +128,43 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     public <T> T fromJson(String jsonStr, Class<T> type) {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type);
-        JsonParser parser = JsonParser.createParser(jsonStr);
+        JsonParser parser;
+        boolean isVirtual = Thread.currentThread().isVirtual();
+        if (isVirtual) {
+            parser = JsonParser.createParser(jsonStr);
+        } else {
+            parser = this.parsers.get();
+            if (parser == null) {
+                parser = JsonParser.createParser(jsonStr);
+            } else {
+                this.parsers.set(null);
+                parser.reset(jsonStr.getBytes());
+            }
+        }
         parser.nextToken();
-        return deserializer.fromJson(parser);
+        T deserialized = deserializer.fromJson(parser);
+        if (!isVirtual) {
+            this.parsers.set(parser);
+        }
+        return deserialized;
+//        JsonParser parser = JsonParser.createParser(jsonStr);
+//        JsonParser parser = JSON_PARSER;
+//        parser.reset(jsonStr.getBytes());
+//        JsonParser parser = PARSERS.poll();
+//        if (parser == null) {
+//            System.out.println("BLEEEEEE");
+//            parser = JsonParser.createParser(jsonStr);
+//            parser.nextToken();
+//            return deserializer.fromJson(parser);
+//        } else {
+//            parser.reset(jsonStr.getBytes());
+//            parser.nextToken();
+//            T deserialized = deserializer.fromJson(parser);
+//            PARSERS.offer(parser);
+//            return deserialized;
+//        }
+//        parser.nextToken();
+//        return deserializer.fromJson(parser);
     }
 
     @Override

@@ -2,33 +2,32 @@ package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Type;
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
+import io.helidon.json.processor.ReusableJsonParser;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
-    private static final JsonParser JSON_PARSER = JsonParser.createParser("");
+    private static final ReusableJsonParser JSON_PARSER = (ReusableJsonParser) JsonParser.createParser("");
 
 //    private static final Queue<JsonParser> PARSERS = new ArrayDeque<>();
 //    private static final Queue<JsonParser> PARSERS = new ArrayBlockingQueue<>(1);
-    private static final Queue<JsonParser> PARSERS = new ConcurrentLinkedQueue<>();
+    private static final Queue<ReusableJsonParser> PARSERS = new ConcurrentLinkedQueue<>();
     static {
         PARSERS.add(JSON_PARSER);
     }
     private static final ReentrantLock LOCK = new ReentrantLock();
 
-    private final ThreadLocal<JsonParser> parsers = new ThreadLocal<>();
+    private final ThreadLocal<ReusableJsonParser> parsers = new ThreadLocal<>();
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new IdentityHashMap<>();
@@ -128,14 +127,14 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     public <T> T fromJson(String jsonStr, Class<T> type) {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type);
-        JsonParser parser;
+        ReusableJsonParser parser;
         boolean isVirtual = Thread.currentThread().isVirtual();
         if (isVirtual) {
-            parser = JsonParser.createParser(jsonStr);
+            parser = (ReusableJsonParser) JsonParser.createParser(jsonStr);
         } else {
             parser = this.parsers.get();
             if (parser == null) {
-                parser = JsonParser.createParser(jsonStr);
+                parser = (ReusableJsonParser) JsonParser.createParser(jsonStr);
             } else {
                 this.parsers.set(null);
                 parser.reset(jsonStr.getBytes());

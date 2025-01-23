@@ -10,8 +10,6 @@ public interface JsonParser {
 //        return new StreamJsonParser(new ByteArrayInputStream(json.getBytes()));
     }
 
-    void reset(byte[] buffer);
-
     byte readNextByte();
     byte nextToken();
     byte lastByte();

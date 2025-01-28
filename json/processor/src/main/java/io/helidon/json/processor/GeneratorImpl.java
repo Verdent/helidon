@@ -51,6 +51,22 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
+    public void writeValue(boolean value) {
+        if (value) {
+            osBuffer[index++] = 't';
+            osBuffer[index++] = 'r';
+            osBuffer[index++] = 'u';
+            osBuffer[index++] = 'e';
+        } else {
+            osBuffer[index++] = 'f';
+            osBuffer[index++] = 'a';
+            osBuffer[index++] = 'l';
+            osBuffer[index++] = 's';
+            osBuffer[index++] = 'e';
+        }
+    }
+
+    @Override
     public void writeComma() {
         osBuffer[index++] = COMMA;
     }

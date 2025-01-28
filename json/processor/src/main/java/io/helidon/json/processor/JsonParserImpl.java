@@ -14,6 +14,7 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
+    public static final byte[] NULL_BYTES = {'n', 'u', 'l', 'l'};
 
     static {
         Arrays.fill(WHOLE_NUMBER_PARTS, -1);
@@ -226,6 +227,43 @@ final class JsonParserImpl implements ReusableJsonParser {
 //        return new String(Arrays.copyOf(stringBuffer, i));
     }
 
+//    @Override
+//    public byte[] readAsBytes() {
+//        if (checkNull()) {
+//            return NULL_BYTES;
+//        }
+//        int start = currentIndex;
+//        int end = -1;
+//        if (lastByte() == '"') {
+//            start++;
+//            byte b;
+//            for (int i = currentIndex + 1; i < bufferLength; i++) {
+//                b = buffer[i];
+//                if (b == '"') {
+//                    end = i - 1;
+//                    currentIndex = i;
+//                    break;
+//                }
+//            }
+//        } else {
+//            byte b;
+//            for (int i = currentIndex + 1; i < bufferLength; i++) {
+//                b = buffer[i];
+//                switch (b) {
+//                    case ',':
+//                    case ':':
+//                    case '}':
+//                    case ']':
+//                    case ' ':
+//                        end = i - 1;
+//                        currentIndex = i;
+//                        break;
+//                }
+//            }
+//        }
+//        return Arrays.copyOfRange(buffer, start, end);
+//    }
+
     private void processEscapedSequence(int bufferIndex) {
         byte c = readNextByte();
         switch (c) {
@@ -334,37 +372,27 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     private int parseInt(boolean negative) {
         int i = currentIndex;
-        byte b = buffer[i];
-        int digit1 = WHOLE_NUMBER_PARTS[b];
+        int digit1 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit1 == -1) {
-            //TODO UPRAVIT
-            throw new IllegalStateException();
+            throw new JsonException("Expected number, but was: " + (char) buffer[i]);
         }
-        i = i + 1;
-        b = buffer[i];
-        int digit2 = WHOLE_NUMBER_PARTS[b];
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit2 == -1) {
             return digit1;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit3 = WHOLE_NUMBER_PARTS[b];
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit3 == -1) {
             currentIndex = --i;
             return digit1 * 10 + digit2;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit4 = WHOLE_NUMBER_PARTS[b];
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit4 == -1) {
             currentIndex = --i;
             return digit1 * 100
                     + digit2 * 10
                     + digit3;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit5 = WHOLE_NUMBER_PARTS[b];
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit5 == -1) {
             currentIndex = --i;
             return digit1 * 1000
@@ -372,9 +400,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit3 * 10
                     + digit4;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit6 = WHOLE_NUMBER_PARTS[b];
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit6 == -1) {
             currentIndex = --i;
             return digit1 * 10000
@@ -383,9 +409,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit4 * 10
                     + digit5;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit7 = WHOLE_NUMBER_PARTS[b];
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit7 == -1) {
             currentIndex = --i;
             return digit1 * 100000
@@ -395,9 +419,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit5 * 10
                     + digit6;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit8 = WHOLE_NUMBER_PARTS[b];
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit8 == -1) {
             currentIndex = --i;
             return digit1 * 1000000
@@ -408,9 +430,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit6 * 10
                     + digit7;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit9 = WHOLE_NUMBER_PARTS[b];
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit9 == -1) {
             currentIndex = --i;
             return digit1 * 10000000
@@ -422,9 +442,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit7 * 10
                     + digit8;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit10 = WHOLE_NUMBER_PARTS[b];
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[i++]];
         int possibleResult = digit1 * 100000000
                 + digit2 * 10000000
                 + digit3 * 1000000
@@ -438,9 +456,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             currentIndex = --i;
             return possibleResult;
         }
-        i = i + 1;
-        b = buffer[i];;
-        int digit11 = WHOLE_NUMBER_PARTS[b];
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[i++]];
         if (digit11 == -1) {
             currentIndex = --i;
             if (negative) {
@@ -451,6 +467,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                 return possibleResult * 10 + digit10;
             }
         }
+        //The Number is too big. Lets read it all and report in the exception
         i++;
         StringBuilder number = new StringBuilder();
         if (negative) {
@@ -587,7 +604,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             if (buffer[currentIndex + 1] == 'r'
                     && buffer[currentIndex + 2] == 'u'
                     && buffer[currentIndex + 3] == 'e') {
-                currentIndex = currentIndex + 4;
+                currentIndex = currentIndex + 3;
                 return true;
             }
             throw new JsonException("Expected value true at index: " + realIndex());
@@ -602,7 +619,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     && buffer[currentIndex + 2] == 'l'
                     && buffer[currentIndex + 3] == 's'
                     && buffer[currentIndex + 4] == 'e') {
-                currentIndex = currentIndex + 5;
+                currentIndex = currentIndex + 4;
                 return true;
             }
             throw new JsonException("Expected value false at index: " + realIndex());

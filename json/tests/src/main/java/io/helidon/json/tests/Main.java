@@ -14,11 +14,13 @@ public class Main {
 
         //        SimpleRecord record = new SimpleRecord("testValue", List.of(1, 2, 3), 1);
 
-        ClassUsingClassWithGenerics deserialize = JsonBinding.deserialize("{\"test\":{\"collection\":[1,2,3]}}",
-                                                                          ClassUsingClassWithGenerics.class);
+//        ClassUsingClassWithGenerics deserialize = JsonBinding.deserialize("{\"test\":{\"collection\":[1,2,3]}}",
+//                                                                          ClassUsingClassWithGenerics.class);
+//
+//        System.out.println();
 
+        RecordWithArray deserialize = JsonBinding.deserialize("{\"intArray\":[1,2,3]}", RecordWithArray.class);
         System.out.println();
-
     }
 
 }

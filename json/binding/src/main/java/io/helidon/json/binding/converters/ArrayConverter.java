@@ -11,7 +11,6 @@ import io.helidon.json.processor.JsonParser;
 
 public abstract class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigurable {
 
-
     private JsonDeserializer<T> deserializer;
     private JsonSerializer<T> serializer;
     private T[] emptyArray;

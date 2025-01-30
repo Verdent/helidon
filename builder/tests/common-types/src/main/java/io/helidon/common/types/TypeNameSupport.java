@@ -452,6 +452,17 @@ final class TypeNameSupport {
             addArrayBrackets(instance, nameBuilder, true);
         }
 
+        Optional<TypeName> maybeComponentType = instance.componentType();
+        while (maybeComponentType.isPresent()) {
+            TypeName typeName = maybeComponentType.get();
+            if (typeName.array()) {
+                nameBuilder.append("[]");
+                maybeComponentType = typeName.componentType();
+            } else {
+                break;
+            }
+        }
+
         return nameBuilder.toString();
     }
 

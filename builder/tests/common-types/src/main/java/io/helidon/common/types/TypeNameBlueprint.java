@@ -182,6 +182,9 @@ interface TypeNameBlueprint {
     @Option.Redundant
     List<TypeName> upperBounds();
 
+    @Option.Redundant
+    Optional<TypeName> componentType();
+
     /**
      * Component type of array.
      *

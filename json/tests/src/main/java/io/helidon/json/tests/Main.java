@@ -19,7 +19,7 @@ public class Main {
 //
 //        System.out.println();
 
-        RecordWithArray deserialize = JsonBinding.deserialize("{\"intArray\":[1,2,3]}", RecordWithArray.class);
+        RecordWithArray deserialize = JsonBinding.deserialize("{\"intArray\":[1,2,3],\"intArray2\":[[1,2,3], [4,5]]}", RecordWithArray.class);
         System.out.println();
     }
 

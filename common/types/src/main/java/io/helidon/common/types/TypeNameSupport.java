@@ -152,6 +152,16 @@ final class TypeNameSupport {
         if (instance.array()) {
             addArrayBrackets(instance, nameBuilder, false);
         }
+        Optional<TypeName> maybeComponentType = instance.componentType();
+        while (maybeComponentType.isPresent()) {
+            TypeName typeName = maybeComponentType.get();
+            if (typeName.array()) {
+                nameBuilder.append("[]");
+                maybeComponentType = typeName.componentType();
+            } else {
+                break;
+            }
+        }
         return nameBuilder.toString();
     }
 
@@ -450,6 +460,17 @@ final class TypeNameSupport {
 
         if (instance.array()) {
             addArrayBrackets(instance, nameBuilder, true);
+        }
+
+        Optional<TypeName> maybeComponentType = instance.componentType();
+        while (maybeComponentType.isPresent()) {
+            TypeName typeName = maybeComponentType.get();
+            if (typeName.array()) {
+                nameBuilder.append("[]");
+                maybeComponentType = typeName.componentType();
+            } else {
+                break;
+            }
         }
 
         return nameBuilder.toString();

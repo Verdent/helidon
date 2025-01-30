@@ -145,7 +145,9 @@ public final class AptTypeFactory {
         }
 
         if (typeMirror instanceof ArrayType arrayType) {
-            return Optional.of(TypeName.builder(createTypeName(inProgress, arrayType.getComponentType()).orElseThrow())
+            TypeName typeName = createTypeName(inProgress, arrayType.getComponentType()).orElseThrow();
+            return Optional.of(TypeName.builder(typeName)
+                                       .componentType(typeName)
                                        .array(true)
                                        .build());
         }

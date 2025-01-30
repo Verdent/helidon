@@ -25,6 +25,7 @@ import java.util.function.Consumer;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.Errors;
+import io.helidon.common.Generated;
 
 /**
  * TypeName is similar to {@link java.lang.reflect.Type} in its most basic use case. The {@link #name()} returns the package +
@@ -122,8 +123,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
      * @param <BUILDER> type of the builder extending this abstract builder
      * @param <PROTOTYPE> type of the prototype interface that would be built by {@link #buildPrototype()}
      */
-    abstract class BuilderBase<BUILDER extends TypeName.BuilderBase<BUILDER, PROTOTYPE>, PROTOTYPE extends TypeName>
-            implements Prototype.Builder<BUILDER, PROTOTYPE> {
+    abstract class BuilderBase<BUILDER extends TypeName.BuilderBase<BUILDER, PROTOTYPE>, PROTOTYPE extends TypeName> implements Prototype.Builder<BUILDER, PROTOTYPE> {
 
         private final List<TypeName> lowerBounds = new ArrayList<>();
         private final List<TypeName> typeArguments = new ArrayList<>();
@@ -141,6 +141,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
         private boolean wildcard = false;
         private String className;
         private String packageName = "";
+        private TypeName componentType;
 
         /**
          * Protected to support extensibility.
@@ -181,6 +182,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
                 upperBounds.clear();
             }
             addUpperBounds(prototype.upperBounds());
+            componentType(prototype.componentType());
             return self();
         }
 
@@ -237,6 +239,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
                 upperBounds.clear();
                 addUpperBounds(builder.upperBounds);
             }
+            builder.componentType().ifPresent(this::componentType);
             return self();
         }
 
@@ -633,6 +636,45 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
         }
 
         /**
+         * Clear existing value of this property.
+         *
+         * @return updated builder instance
+         * @see #componentType()
+         */
+        public BUILDER clearComponentType() {
+            this.componentType = null;
+            return self();
+        }
+
+        /**
+         *
+         *
+         * @param componentType
+         * @return updated builder instance
+         * @see #componentType()
+         */
+        public BUILDER componentType(TypeName componentType) {
+            Objects.requireNonNull(componentType);
+            this.componentType = componentType;
+            return self();
+        }
+
+        /**
+         *
+         *
+         * @param consumer
+         * @return updated builder instance
+         * @see #componentType()
+         */
+        public BUILDER componentType(Consumer<TypeName.Builder> consumer) {
+            Objects.requireNonNull(consumer);
+            var builder = TypeName.builder();
+            consumer.accept(builder);
+            this.componentType(builder.build());
+            return self();
+        }
+
+        /**
          * Functions the same as {@link Class#getPackageName()}.
          *
          * @return the package name
@@ -752,6 +794,15 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
         }
 
         /**
+         *
+         *
+         * @return the component type
+         */
+        public Optional<TypeName> componentType() {
+            return Optional.ofNullable(componentType);
+        }
+
+        /**
          * Handles providers and decorators.
          */
         protected void preBuildPrototype() {
@@ -770,6 +821,19 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
         }
 
         /**
+         *
+         *
+         * @param componentType
+         * @return updated builder instance
+         * @see #componentType()
+         */
+        BUILDER componentType(Optional<? extends TypeName> componentType) {
+            Objects.requireNonNull(componentType);
+            this.componentType = componentType.map(TypeName.class::cast).orElse(this.componentType);
+            return self();
+        }
+
+        /**
          * Generated implementation of the prototype, can be extended by descendant prototype implementations.
          */
         protected static class TypeNameImpl implements TypeName {
@@ -783,6 +847,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
             private final List<TypeName> upperBounds;
             private final List<String> enclosingNames;
             private final List<String> typeParameters;
+            private final Optional<TypeName> componentType;
             private final String className;
             private final String packageName;
 
@@ -803,6 +868,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
                 this.typeParameters = List.copyOf(builder.typeParameters());
                 this.lowerBounds = List.copyOf(builder.lowerBounds());
                 this.upperBounds = List.copyOf(builder.upperBounds());
+                this.componentType = builder.componentType();
             }
 
             @Override
@@ -896,6 +962,11 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
             }
 
             @Override
+            public Optional<TypeName> componentType() {
+                return componentType;
+            }
+
+            @Override
             public boolean equals(Object o) {
                 if (o == this) {
                     return true;
@@ -922,8 +993,7 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
     /**
      * Fluent API builder for {@link TypeName}.
      */
-    class Builder extends TypeName.BuilderBase<TypeName.Builder, TypeName>
-            implements io.helidon.common.Builder<TypeName.Builder, TypeName> {
+    class Builder extends TypeName.BuilderBase<TypeName.Builder, TypeName> implements io.helidon.common.Builder<TypeName.Builder, TypeName> {
 
         private Builder() {
         }

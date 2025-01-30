@@ -18,6 +18,7 @@ package io.helidon.common.types;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import io.helidon.builder.api.Option;
@@ -169,6 +170,9 @@ interface TypeNameBlueprint {
     @Option.Singular
     @Option.Redundant
     List<TypeName> upperBounds();
+
+    @Option.Redundant
+    Optional<TypeName> componentType();
 
     /**
      * Indicates whether this type is a {@code java.util.List}.

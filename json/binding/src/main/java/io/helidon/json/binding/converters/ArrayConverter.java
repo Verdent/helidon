@@ -1,5 +1,8 @@
 package io.helidon.json.binding.converters;
 
+import java.lang.reflect.Array;
+
+import io.helidon.common.GenericType;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
@@ -9,11 +12,19 @@ import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 
-public abstract class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigurable {
+import java.lang.reflect.Type;
+
+public class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigurable {
 
     private JsonDeserializer<T> deserializer;
     private JsonSerializer<T> serializer;
     private T[] emptyArray;
+
+    private final Class<?> type;
+
+    public ArrayConverter(Class<?> type) {
+        this.type = type;
+    }
 
     @Override
     public void toJson(Generator generator, T[] instance) {
@@ -73,16 +84,20 @@ public abstract class ArrayConverter<T> implements TypedJsonConverter<T[]>, Json
         return emptyArray;
     }
 
-    public T[] test(T... array) {
-        return array;
+    @SuppressWarnings("unchecked")
+    protected T[] createArrayInstance(int size) {
+        return (T[]) Array.newInstance(type.componentType(), size);
     }
 
-    protected abstract T[] createArrayInstance(int size);
+    @Override
+    public GenericType<T[]> type() {
+        throw new UnsupportedOperationException("This should not be called");
+    }
 
     @Override
     @SuppressWarnings("unchecked")
     public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        Class<?> componentType = type().rawType().componentType();
+        Class<?> componentType = type.componentType();
         deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(componentType);
         serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(componentType);
         emptyArray = createArrayInstance(0);

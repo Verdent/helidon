@@ -6,9 +6,13 @@ import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.service.registry.Service;
 
-@Service.Singleton
-@Weight(Weighted.DEFAULT_WEIGHT - 10)
-class IntArrayConverter extends ArrayConverter<Integer>{
+//@Service.Singleton
+//@Weight(Weighted.DEFAULT_WEIGHT - 10)
+class IntArrayConverter extends ArrayConverter<Integer> {
+
+    IntArrayConverter() {
+        super(Integer.class);
+    }
 
     @Override
     protected Integer[] createArrayInstance(int size) {

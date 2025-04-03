@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
+import io.helidon.json.binding.converters.ArrayConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.json.processor.ReusableJsonParser;
@@ -180,6 +181,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         if (deserializer != null) {
             return deserializer;
         }
+        if (type.isArray()) {
+            ArrayConverter<T> de = new ArrayConverter<>(type);
+
+//            addDeserializer(type, de);
+            de.configure(this);
+            return (JsonDeserializer<T>) de;
+        }
         JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
         if (factory == null) {
             throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
@@ -191,9 +199,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         factoryDeserializer.configure(this, type);
         deserializersNotConfigured.remove(type);
 
-        deserializers.putIfAbsent(type, factoryDeserializer);
-        identityDeserializers.putIfAbsent(type, factoryDeserializer);
+        addDeserializer(type, factoryDeserializer);
         return factoryDeserializer;
+    }
+
+    private <T> void addDeserializer(Class<T> type, JsonDeserializer<T> deserializer) {
+        deserializers.putIfAbsent(type, deserializer);
+        identityDeserializers.putIfAbsent(type, deserializer);
     }
 
     @SuppressWarnings("unchecked")
@@ -225,6 +237,11 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     private <T> JsonSerializer<T> getFinishedSerializer(Class<T> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) identitySerializers.get(type);
         if (serializer == null) {
+            if (type.isArray()) {
+                ArrayConverter<T> se = new ArrayConverter<T>(type);
+                se.configure(this);
+                return (JsonSerializer<T>) se;
+            }
             JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
             if (factory == null) {
                 throw new IllegalStateException("Serializer/Converter/BindingFactory for type "

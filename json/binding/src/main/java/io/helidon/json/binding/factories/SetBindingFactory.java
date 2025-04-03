@@ -65,10 +65,7 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         }
 
         @Override
-        public Set<T> fromJson(JsonParser parser) {
-            if (parser.checkNull()) {
-                return null;
-            }
+        public Set<T> fromJsonValue(JsonParser parser) {
             Set<T> set = new HashSet<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {

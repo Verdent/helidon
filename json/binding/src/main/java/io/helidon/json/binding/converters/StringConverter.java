@@ -30,7 +30,7 @@ final class StringConverter implements TypedJsonConverter<String> {
     }
 
     @Override
-    public String fromJson(JsonParser parser) {
+    public String fromJsonValue(JsonParser parser) {
         return parser.readString();
     }
 

@@ -30,12 +30,9 @@ class PrimitiveBooleanConverter implements TypedJsonConverter<Boolean> {
     }
 
     @Override
-    public Boolean fromJson(JsonParser parser) {
+    public Boolean fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
         switch (lastByte) {
-        case 'n':
-            parser.checkNull();
-            return false;
         case '\"':
             lastByte = parser.readNextByte();
             boolean toReturn;
@@ -70,5 +67,8 @@ class PrimitiveBooleanConverter implements TypedJsonConverter<Boolean> {
         }
     }
 
-
+    @Override
+    public Boolean fromNull() {
+        return false;
+    }
 }

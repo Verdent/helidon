@@ -26,22 +26,21 @@ final class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
     }
 
     @Override
-    public Integer fromJson(JsonParser parser) {
+    public Integer fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
-        switch (lastByte) {
-        case 'n':
-            parser.checkNull();
-            return 0;
-        case '\"':
+        if (lastByte == '\"') {
             parser.readNextByte();
             int value = parser.readInt();
             if (parser.readNextByte() != '\"') {
                 throw new JsonException("Expected end of the integer value was '\"' but got '" + (char) lastByte + "'");
             }
             return value;
-        default:
-            return parser.readInt();
         }
+        return parser.readInt();
     }
 
+    @Override
+    public Integer fromNull() {
+        return 0;
+    }
 }

@@ -44,10 +44,7 @@ public class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigura
     }
 
     @Override
-    public T[] fromJson(JsonParser parser) {
-        if (parser.checkNull()) {
-            return null;
-        }
+    public T[] fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));

@@ -65,10 +65,7 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         }
 
         @Override
-        public List<T> fromJson(JsonParser parser) {
-            if (parser.checkNull()) {
-                return null;
-            }
+        public List<T> fromJsonValue(JsonParser parser) {
             List<T> list = new ArrayList<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {

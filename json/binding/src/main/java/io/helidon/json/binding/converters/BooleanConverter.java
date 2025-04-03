@@ -23,12 +23,9 @@ class BooleanConverter implements TypedJsonConverter<Boolean> {
     }
 
     @Override
-    public Boolean fromJson(JsonParser parser) {
+    public Boolean fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
         switch (lastByte) {
-        case 'n':
-            parser.checkNull();
-            return null;
         case '\"':
             lastByte = parser.readNextByte();
             Boolean toReturn;

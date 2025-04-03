@@ -19,7 +19,7 @@ class DefaultTypedJsonDeserializer<T> implements TypedJsonDeserializer<T> {
     }
 
     @Override
-    public T fromJson(JsonParser parser) {
+    public T fromJsonValue(JsonParser parser) {
         return deserializer.fromJson(parser);
     }
 }

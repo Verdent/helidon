@@ -317,7 +317,7 @@ class JsonConverterGenerator {
                 .filter(it -> !it.setterIgnored() || it.directFieldAccess())
                 .toList();
 
-        method.name("fromJson")
+        method.name("fromJsonValue")
                 .returnType(converterInfo.originalType())
                 .addParameter(param -> param.name("parser").type(Types.JSON_PARSER))
                 .addAnnotation(Annotation.create(Override.class))

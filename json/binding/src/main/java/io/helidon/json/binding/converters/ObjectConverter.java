@@ -33,7 +33,7 @@ final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigura
     }
 
     @Override
-    public Object fromJson(JsonParser parser) {
+    public Object fromJsonValue(JsonParser parser) {
         throw new JsonException("Deserialization into the Object is not supported.");
     }
 

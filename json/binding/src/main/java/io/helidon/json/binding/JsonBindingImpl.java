@@ -1,6 +1,7 @@
 package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -181,17 +182,16 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         if (deserializer != null) {
             return deserializer;
         }
-        if (type.isArray()) {
-            ArrayConverter<T> de = new ArrayConverter<>(type);
 
-//            addDeserializer(type, de);
-            de.configure(this);
-            return (JsonDeserializer<T>) de;
-        }
         JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
         if (factory == null) {
-            throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                    + type + " is not registered.");
+            if (type.isArray()) {
+                factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+            }
+            if (factory == null) {
+                throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
+                                                        + type + " is not registered.");
+            }
         }
         BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
 
@@ -199,23 +199,25 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         factoryDeserializer.configure(this, type);
         deserializersNotConfigured.remove(type);
 
-        addDeserializer(type, factoryDeserializer);
+        deserializers.putIfAbsent(type, factoryDeserializer);
+        identityDeserializers.putIfAbsent(type, factoryDeserializer);
         return factoryDeserializer;
-    }
-
-    private <T> void addDeserializer(Class<T> type, JsonDeserializer<T> deserializer) {
-        deserializers.putIfAbsent(type, deserializer);
-        identityDeserializers.putIfAbsent(type, deserializer);
     }
 
     @SuppressWarnings("unchecked")
     private <T> JsonDeserializer<T> getFinishedDeserializer(GenericType<?> type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializers.get(type);
         if (deserializer == null) {
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type.rawType());
+            Class<?> rawType = type.rawType();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
             if (factory == null) {
-                throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                        + type + " is not registered.");
+                if (rawType.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
             }
             BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
 
@@ -226,7 +228,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             deserializers.putIfAbsent(type, factoryDeserializer);
             deserializers.putIfAbsent(type.type(), factoryDeserializer);
             if (type.isClass()) {
-                identityDeserializers.putIfAbsent(type.rawType(), factoryDeserializer);
+                identityDeserializers.putIfAbsent(rawType, factoryDeserializer);
             }
             return factoryDeserializer;
         }
@@ -237,15 +239,15 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     private <T> JsonSerializer<T> getFinishedSerializer(Class<T> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) identitySerializers.get(type);
         if (serializer == null) {
-            if (type.isArray()) {
-                ArrayConverter<T> se = new ArrayConverter<T>(type);
-                se.configure(this);
-                return (JsonSerializer<T>) se;
-            }
             JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
             if (factory == null) {
-                throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                        + type + " is not registered.");
+                if (type.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
             }
             BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
             serializersNotConfigured.putIfAbsent(type, factorySerializer);
@@ -263,10 +265,16 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     private <T> JsonSerializer<T> getFinishedSerializer(GenericType<?> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) serializers.get(type);
         if (serializer == null) {
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type.rawType());
+            Class<?> rawType = type.rawType();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
             if (factory == null) {
-                throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                        + type + " is not registered.");
+                if (rawType.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
             }
             BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
             serializersNotConfigured.putIfAbsent(type.type(), factorySerializer);
@@ -276,7 +284,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             serializers.putIfAbsent(type, factorySerializer);
             serializers.putIfAbsent(type.type(), factorySerializer);
             if (type.isClass()) {
-                identitySerializers.putIfAbsent(type.rawType(), factorySerializer);
+                identitySerializers.putIfAbsent(rawType, factorySerializer);
             }
             return factorySerializer;
         }

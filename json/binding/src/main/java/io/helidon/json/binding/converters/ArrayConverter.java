@@ -12,8 +12,6 @@ import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 
-import java.lang.reflect.Type;
-
 public class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigurable {
 
     private JsonDeserializer<T> deserializer;

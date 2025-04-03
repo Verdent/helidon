@@ -15,10 +15,8 @@ import java.util.stream.Collectors;
 
 import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassBase;
-import io.helidon.codegen.classmodel.Constructor;
 import io.helidon.codegen.classmodel.Executable;
 import io.helidon.codegen.classmodel.Method;
-import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.ElementKind;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
@@ -310,7 +308,8 @@ class JsonConverterGenerator {
                                                boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
         CreatorInfo creatorInfo = converterInfo.creatorInfo();
-        boolean hasCreator = creatorInfo.creatorKind() == ElementKind.CONSTRUCTOR && !creatorInfo.parameters().isEmpty();
+        ElementKind creatorKind = creatorInfo.creatorKind();
+        boolean hasCreator = creatorKind != null && !creatorInfo.parameters().isEmpty();
         List<JsonProperty> jsonProperties = converterInfo.jsonProperties()
                 .values()
                 .stream()
@@ -340,6 +339,10 @@ class JsonConverterGenerator {
                         .addContent(" " + jsonProperty.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
                         .addContentLine(DEFAULT_TYPE_VALUES.getOrDefault(type, DEFAULT_TYPE_VALUE).get() + ";");
             }
+        } else if (creatorKind == ElementKind.METHOD) {
+            TypeName originalType = converterInfo.originalType();
+            method.addContent(originalType).addContent(" generatedInstance = ")
+                    .addContent(originalType).addContent("." + creatorInfo.method() + "();");
         } else {
             TypeName originalType = converterInfo.originalType();
             method.addContent(originalType).addContent(" generatedInstance = new ")
@@ -382,8 +385,13 @@ class JsonConverterGenerator {
         method.addContentLine("}");
         if (hasCreator) {
             TypeName originalType = converterInfo.originalType();
-            method.addContent(originalType).addContent(" generatedInstance = new ")
-                    .addContent(originalType).addContent("(");
+            if (creatorKind == ElementKind.METHOD) {
+                method.addContent(originalType).addContent(" generatedInstance = ")
+                        .addContent(originalType).addContent("." + creatorInfo.method() + "(");
+            } else {
+                method.addContent(originalType).addContent(" generatedInstance = new ")
+                        .addContent(originalType).addContent("(");
+            }
             boolean first = true;
             for (JsonProperty property : jsonProperties) {
                 if (property.usedInCreator()) {

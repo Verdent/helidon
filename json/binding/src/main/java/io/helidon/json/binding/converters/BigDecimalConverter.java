@@ -7,6 +7,7 @@ import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
+import io.helidon.json.processor.JsonNumber;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
@@ -16,7 +17,14 @@ class BigDecimalConverter implements TypedJsonConverter<BigDecimal> {
 
     @Override
     public BigDecimal fromJson(JsonParser parser) {
-        return new BigDecimal(parser.readString());
+        if (parser.checkNull()) {
+            return null;
+        }
+        if (parser.lastByte() == '\"') {
+            return new BigDecimal(parser.readString());
+        } else {
+            return new BigDecimal(parser.readNumberAsArray());
+        }
     }
 
     @Override

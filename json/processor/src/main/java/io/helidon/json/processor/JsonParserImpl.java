@@ -320,6 +320,11 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     @Override
     public JsonNumber readJsonNumber() {
+        return new JsonNumber(readNumberAsArray());
+    }
+
+    @Override
+    public char[] readNumberAsArray() {
         int i = 0;
         stringBuffer[i++] = (char) buffer[currentIndex];
         while (true) {
@@ -329,9 +334,10 @@ final class JsonParserImpl implements ReusableJsonParser {
                 stringBuffer[i++] = (char) c;
                 break;
             default:
+                byteRollback();
                 char[] numberBuffer = new char[i];
                 System.arraycopy(stringBuffer, 0, numberBuffer, 0, i);
-                return new JsonNumber(numberBuffer);
+                return numberBuffer;
             }
         }
     }

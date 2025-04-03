@@ -21,6 +21,7 @@ public interface JsonParser {
     int readStringAsHash();
 
     JsonNumber readJsonNumber();
+    char[] readNumberAsArray();
     int readInt();
 //    int readLong();
     boolean checkNull();

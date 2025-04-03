@@ -21,6 +21,15 @@ public class CreatorTest {
         assertThat(pojo.bigDec, is(new BigDecimal("25")));
     }
 
+    @Test
+    public void testRootFactoryMethod() {
+        String json = "{\"str1\":\"abc\",\"str2\":\"def\",\"bigDec\":25}";
+        CreatorFactoryMethodPojo pojo = JsonBinding.deserialize(json, CreatorFactoryMethodPojo.class);
+        assertThat(pojo.str1, is("abc"));
+        assertThat(pojo.str2, is("def"));
+        assertThat(pojo.bigDec, is(new BigDecimal("25")));
+    }
+
     @Json.Entity
     static final class CreatorConstructorPojo {
 
@@ -36,15 +45,24 @@ public class CreatorTest {
 
     }
 
+    @Json.Entity
+    static final class CreatorFactoryMethodPojo {
 
-//    @Test
-//    public void testRootFactoryMethod() {
-//        String json = "{\"par1\":\"abc\",\"par2\":\"def\",\"bigDec\":25}";
-//        CreatorFactoryMethodPojo pojo = defaultJsonb.fromJson(json, CreatorFactoryMethodPojo.class);
-//        assertEquals("abc", pojo.str1);
-//        assertEquals("def", pojo.str2);
-//        assertEquals(new BigDecimal("25"), pojo.bigDec);
-//    }
+        public final String str1;
+        public final String str2;
+        public BigDecimal bigDec;
+
+        private CreatorFactoryMethodPojo(String str1, String str2) {
+            this.str1 = str1;
+            this.str2 = str2;
+        }
+
+        @Json.Creator
+        public static CreatorFactoryMethodPojo createInstance(String str1, String str2) {
+            return new CreatorFactoryMethodPojo(str1, str2);
+        }
+    }
+
 //
 //    @Test
 //    public void testRootCreatorWithInnerCreator() {

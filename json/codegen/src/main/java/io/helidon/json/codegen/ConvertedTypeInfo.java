@@ -157,7 +157,7 @@ record ConvertedTypeInfo(TypeName converterType,
                                                             + Types.JSON_CREATOR); //TODO UPRAVIT ne exceptiona
                 }
             } else {
-                return new CreatorInfo(ElementKind.CONSTRUCTOR, "", List.of());
+                return new CreatorInfo(null, "", List.of());
             }
         } else if (creators.size() > 1) {
             throw new IllegalStateException("Only one Creator is allowed to be set"); //TODO UPRAVIT ne exceptiona

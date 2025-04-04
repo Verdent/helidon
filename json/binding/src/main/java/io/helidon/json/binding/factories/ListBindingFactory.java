@@ -45,7 +45,7 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         private JsonSerializer<T> serializer;
 
         @Override
-        public void toJson(Generator generator, List<T> instance) {
+        public void toJson(Generator generator, List<T> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -53,10 +53,13 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
             generator.writeArrayStart();
             boolean first = true;
             for (T value : instance) {
+                if (value == null && !writeNulls) {
+                    continue;
+                }
                 if (!first) {
                     generator.writeComma();
                 }
-                serializer.toJson(generator, value);
+                serializer.toJson(generator, value, writeNulls);
                 if (first) {
                     first = false;
                 }

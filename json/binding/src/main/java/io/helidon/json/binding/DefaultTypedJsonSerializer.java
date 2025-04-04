@@ -19,7 +19,7 @@ class DefaultTypedJsonSerializer<T> implements TypedJsonSerializer<T> {
     }
 
     @Override
-    public void toJson(Generator generator, T instance) {
-        serializer.toJson(generator, instance);
+    public void toJson(Generator generator, T instance, boolean writeNulls) {
+        serializer.toJson(generator, instance, writeNulls);
     }
 }

@@ -19,16 +19,19 @@ public class Main {
 //
 //        System.out.println();
 
-        RecordWithArray deserialize = JsonBinding.deserialize("""
-                                                                      {
-                                                                      "intArray":[1,2,3],
-                                                                      "intArray2":[[1,2,3], [4,5]],
-                                                                      "intArray3":[[[1,2,3], [4,5]], [[6], [7,8,9,0]], [[1,2,3,4,5,6], [7]]],
-                                                                      "strArray":["Hi", "I", "am","String", "array"],
-                                                                      "simpleClassArray":[{"name":"custom name"}]
-                                                                      }
-                                                                      """, RecordWithArray.class);
-        System.out.println();
+//        RecordWithArray deserialize = JsonBinding.deserialize("""
+//                                                                      {
+//                                                                      "intArray":[1,2,3],
+//                                                                      "intArray2":[[1,2,3], [4,5]],
+//                                                                      "intArray3":[[[1,2,3], [4,5]], [[6], [7,8,9,0]], [[1,2,3,4,5,6], [7]]],
+//                                                                      "strArray":["Hi", "I", "am","String", "array"],
+//                                                                      "simpleClassArray":[{"name":"custom name"}]
+//                                                                      }
+//                                                                      """, RecordWithArray.class);
+//        System.out.println();
+
+        String json = JsonBinding.serialize(new SimpleRecord(null, null, List.of(1, 2), 4321));
+        System.out.println(json);
     }
 
 }

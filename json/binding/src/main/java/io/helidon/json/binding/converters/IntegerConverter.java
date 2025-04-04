@@ -15,12 +15,8 @@ import io.helidon.service.registry.Service;
 final class IntegerConverter implements TypedJsonConverter<Integer> {
 
     @Override
-    public void toJson(Generator generator, Integer instance) {
-        if (instance == null) {
-            generator.writeNull();
-        } else {
-            generator.writeValue(instance);
-        }
+    public void toJson(Generator generator, Integer instance, boolean writeNulls) {
+        generator.writeValue(instance);
     }
 
     @Override

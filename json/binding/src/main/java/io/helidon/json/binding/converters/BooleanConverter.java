@@ -14,12 +14,8 @@ import io.helidon.service.registry.Service;
 class BooleanConverter implements TypedJsonConverter<Boolean> {
 
     @Override
-    public void toJson(Generator generator, Boolean instance) {
-        if (instance == null) {
-            generator.writeNull();
-        } else {
-            generator.writeValue(instance);
-        }
+    public void toJson(Generator generator, Boolean instance, boolean writeNulls) {
+        generator.writeValue(instance);
     }
 
     @Override

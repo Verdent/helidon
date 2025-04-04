@@ -25,7 +25,7 @@ class BigDecimalConverter implements TypedJsonConverter<BigDecimal> {
     }
 
     @Override
-    public void toJson(Generator generator, BigDecimal instance) {
+    public void toJson(Generator generator, BigDecimal instance, boolean writeNulls) {
         generator.writeValue(instance.toString());
     }
 

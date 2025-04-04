@@ -21,7 +21,7 @@ final class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
     }
 
     @Override
-    public void toJson(Generator generator, Integer instance) {
+    public void toJson(Generator generator, Integer instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 

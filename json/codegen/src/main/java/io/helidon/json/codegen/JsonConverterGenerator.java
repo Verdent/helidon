@@ -41,6 +41,7 @@ class JsonConverterGenerator {
             TypeNames.PRIMITIVE_FLOAT, () -> "0.0F",
             TypeNames.PRIMITIVE_DOUBLE, () -> "0.0"
     );
+    private static final String WRITE_NULLS = "writeNulls";
 
     private JsonConverterGenerator() {
     }
@@ -249,6 +250,7 @@ class JsonConverterGenerator {
         method.name("toJson")
                 .addParameter(param -> param.name("generator").type(Types.JSON_GENERATOR))
                 .addParameter(param -> param.name("instance").type(converterInfo.originalType()))
+                .addParameter(param -> param.name(WRITE_NULLS).type(boolean.class))
                 .addAnnotation(Annotation.create(Override.class))
                 .addContentLine("generator.writeObjectStart();");
         List<JsonProperty> jsonProperties = converterInfo.jsonProperties()
@@ -261,11 +263,11 @@ class JsonConverterGenerator {
         Set<String> createdSerializers = new HashSet<>();
         boolean first = true;
         for (JsonProperty jsonProperty : jsonProperties) {
-            if (!first) {
-                method.addContentLine("generator.writeComma();");
-            } else {
+            if (first) {
+                method.addContentLine("boolean isFirst = true;");
                 first = false;
             }
+            method.addContent("isFirst = ");
             TypeName type = jsonProperty.serializationType().orElseThrow();
             TypeName resolved = PRIMITIVE_TO_BOXED.getOrDefault(type, type);
             String fieldName;
@@ -290,14 +292,15 @@ class JsonConverterGenerator {
                                                             converterType));
             }
 
-
-            method.addContentLine("generator.writeKey(\"" + jsonProperty.serializationName().orElseThrow() + "\");");
             String accessor = jsonProperty.getterName()
                     .filter(getterName -> !jsonProperty.getterIgnored())
                     .map(getterName -> getterName + "()")
                     .or(jsonProperty::fieldName)
                     .orElseThrow();
-            method.addContentLine(fieldName + ".toJson(generator, instance." + accessor + ");");
+
+            String key = jsonProperty.serializationName().orElseThrow();
+            method.addContent(Types.JSON_SERIALIZER_TYPE)
+                    .addContentLine(".writeToJson(generator, " + fieldName + ", instance." + accessor + ", \"" + key + "\", isFirst, writeNulls);");
         }
         method.addContentLine("generator.writeObjectEnd();");
     }

@@ -45,7 +45,7 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         private JsonSerializer<T> serializer;
 
         @Override
-        public void toJson(Generator generator, Set<T> instance) {
+        public void toJson(Generator generator, Set<T> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -53,10 +53,13 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
             generator.writeArrayStart();
             boolean first = true;
             for (T value : instance) {
+                if (value == null && !writeNulls) {
+                    continue;
+                }
                 if (!first) {
                     generator.writeComma();
                 }
-                serializer.toJson(generator, value);
+                serializer.toJson(generator, value, writeNulls);
                 if (first) {
                     first = false;
                 }

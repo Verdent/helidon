@@ -21,12 +21,8 @@ final class StringConverter implements TypedJsonConverter<String> {
     }
 
     @Override
-    public void toJson(Generator generator, String instance) {
-        if (instance == null) {
-            generator.writeNull();
-        } else {
-            generator.writeQuoted(instance);
-        }
+    public void toJson(Generator generator, String instance, boolean writeNulls) {
+        generator.writeQuoted(instance);
     }
 
     @Override

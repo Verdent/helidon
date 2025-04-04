@@ -25,20 +25,19 @@ public class ArrayConverter<T> implements TypedJsonConverter<T[]>, JsonConfigura
     }
 
     @Override
-    public void toJson(Generator generator, T[] instance) {
-        if (instance == null) {
-            generator.writeNull();
-            return;
-        }
+    public void toJson(Generator generator, T[] instance, boolean writeNulls) {
         generator.writeArrayStart();
         boolean first = true;
         for (T value : instance) {
+            if (value == null && writeNulls) {
+                continue;
+            }
             if (!first) {
                 generator.writeComma();
             } else {
                 first = false;
             }
-            serializer.toJson(generator, value);
+            serializer.toJson(generator, value, writeNulls);
         }
         generator.writeArrayEnd();
     }

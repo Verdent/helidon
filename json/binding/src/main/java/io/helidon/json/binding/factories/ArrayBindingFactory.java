@@ -48,7 +48,7 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
         private T[] emptyArray;
 
         @Override
-        public void toJson(Generator generator, T[] instance) {
+        public void toJson(Generator generator, T[] instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -56,12 +56,15 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
             generator.writeArrayStart();
             boolean first = true;
             for (T value : instance) {
+                if (value == null && !writeNulls) {
+                    continue;
+                }
                 if (!first) {
                     generator.writeComma();
                 } else {
                     first = false;
                 }
-                serializer.toJson(generator, value);
+                serializer.toJson(generator, value, writeNulls);
             }
             generator.writeArrayEnd();
         }

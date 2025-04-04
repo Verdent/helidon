@@ -39,9 +39,9 @@ final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigura
 
     @Override
     @SuppressWarnings("unchecked")
-    public void toJson(Generator generator, Object instance) {
+    public void toJson(Generator generator, Object instance, boolean writeNulls) {
         JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(instance.getClass());
-        serializer.toJson(generator, instance);
+        serializer.toJson(generator, instance, writeNulls);
     }
 
 }

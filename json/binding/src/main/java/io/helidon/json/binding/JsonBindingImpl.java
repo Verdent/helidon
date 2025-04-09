@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
-import io.helidon.json.binding.converters.ArrayConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.json.processor.ReusableJsonParser;
@@ -42,6 +41,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     private final Map<Type, JsonDeserializer<?>> deserializersNotConfigured = new HashMap<>();
     private final ReentrantLock serNotConfiguredLock = new ReentrantLock();
     private final ReentrantLock desNotConfiguredLock = new ReentrantLock();
+    private final boolean writeNulls;
 
     JsonBindingImpl(JsonBindingConfig config) {
         this.config = config;
@@ -67,6 +67,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         for (TypedJsonBindingFactory<?> bindingFactory : config.bindingFactories()) {
             bindingFactories.putIfAbsent(bindingFactory.type(), bindingFactory);
         }
+        this.writeNulls = config.writeNulls();
     }
 
     @Override
@@ -83,7 +84,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
-            converter.toJson(generator, obj, false);
+            converter.toJson(generator, obj, writeNulls);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -100,7 +101,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<T> converter = getFinishedSerializer(type);
-            converter.toJson(generator, obj, false);
+            converter.toJson(generator, obj, writeNulls);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -117,7 +118,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<T> converter = getFinishedSerializer(type);
-            converter.toJson(generator, obj, false);
+            converter.toJson(generator, obj, writeNulls);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -138,7 +139,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             if (parser == null) {
                 parser = (ReusableJsonParser) JsonParser.createParser(jsonStr);
             } else {
-                this.parsers.set(null);
+                this.parsers.remove();
                 parser.reset(jsonStr.getBytes());
             }
         }

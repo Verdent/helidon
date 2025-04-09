@@ -33,6 +33,8 @@ final class Types {
     static final TypeName JSON_PROPERTY = TypeName.create("io.helidon.json.binding.Json.Property");
     static final TypeName JSON_IGNORE = TypeName.create("io.helidon.json.binding.Json.Ignore");
     static final TypeName JSON_CREATOR = TypeName.create("io.helidon.json.binding.Json.Creator");
+    static final TypeName JSON_NULLABLE = TypeName.create("io.helidon.json.binding.Json.Nullable");
+    static final TypeName JSON_PROPERTY_ORDER = TypeName.create("io.helidon.json.binding.Json.PropertyOrder");
 
     //Types
     static final TypeName JSON_DESERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.JsonDeserializer");

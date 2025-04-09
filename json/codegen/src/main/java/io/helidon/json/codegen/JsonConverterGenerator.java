@@ -300,7 +300,11 @@ class JsonConverterGenerator {
 
             String key = jsonProperty.serializationName().orElseThrow();
             method.addContent(Types.JSON_SERIALIZER_TYPE)
-                    .addContentLine(".writeToJson(generator, " + fieldName + ", instance." + accessor + ", \"" + key + "\", isFirst, writeNulls);");
+                    .addContentLine(".writeToJson(generator, " + fieldName + ", "
+                                            + "instance." + accessor + ", "
+                                            + "\"" + key + "\", "
+                                            + "isFirst, "
+                                            + jsonProperty.nullable() + ");");
         }
         method.addContentLine("generator.writeObjectEnd();");
     }

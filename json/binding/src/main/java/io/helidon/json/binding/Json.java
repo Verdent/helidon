@@ -68,4 +68,12 @@ public interface Json {
     @interface Creator {
     }
 
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @interface PropertyOrder {
+
+        Order value() default Order.ALPHABETICAL;
+
+    }
+
 }

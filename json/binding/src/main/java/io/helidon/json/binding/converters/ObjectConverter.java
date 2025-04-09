@@ -1,11 +1,8 @@
 package io.helidon.json.binding.converters;
 
-import java.util.Map;
-
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonBinding;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonSerializer;
@@ -19,7 +16,6 @@ import io.helidon.service.registry.Service;
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
 final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
 
-    private static final GenericType<Object> TYPE = GenericType.OBJECT;
     private JsonBindingConfigurer jsonBindingConfigurer;
 
     @Override
@@ -29,7 +25,7 @@ final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigura
 
     @Override
     public GenericType<Object> type() {
-        return TYPE;
+        return GenericType.OBJECT;
     }
 
     @Override

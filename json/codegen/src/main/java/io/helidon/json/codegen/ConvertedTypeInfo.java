@@ -6,9 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.common.types.AccessModifier;
+import io.helidon.common.types.Annotation;
 import io.helidon.common.types.ElementKind;
 import io.helidon.common.types.Modifier;
 import io.helidon.common.types.TypeInfo;
@@ -25,6 +27,7 @@ import static io.helidon.common.types.TypeNames.STRING;
 
 record ConvertedTypeInfo(TypeName converterType,
                          TypeName originalType,
+                         boolean nullable,
                          Map<String, JsonProperty> jsonProperties,
                          CreatorInfo creatorInfo) {
 
@@ -46,17 +49,20 @@ record ConvertedTypeInfo(TypeName converterType,
         if (typeInfo.kind() == ElementKind.RECORD) {
             recordAccessors = true;
         }
+        boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_NULLABLE, typeInfo)
+                .flatMap(annotation -> annotation.booleanValue("value"))
+                .orElse(false);
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
-        discoverFields(properties, typeInfo);
+        discoverFields(properties, typeInfo, nullable);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors);
         CreatorInfo creatorInfo = discoverCreator(properties, typeInfo);
         Map<String, JsonProperty> jsonProperties = finalizeJsonProperties(properties);
-        return new ConvertedTypeInfo(converterTypeName, typeInfo.typeName(), jsonProperties, creatorInfo);
+        return new ConvertedTypeInfo(converterTypeName, typeInfo.typeName(), nullable, jsonProperties, creatorInfo);
     }
 
-    private static void discoverFields(Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo) {
+    private static void discoverFields(Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo, boolean nullable) {
         typeInfo.superTypeInfo()
-                .ifPresent(superType -> discoverFields(properties, superType));
+                .ifPresent(superType -> discoverFields(properties, superType, nullable));
 
         List<TypedElementInfo> fields = typeInfo.elementInfo()
                 .stream()
@@ -73,7 +79,8 @@ record ConvertedTypeInfo(TypeName converterType,
                     .serializationName(fieldName)
                     .deserializationType(fieldType)
                     .serializationType(fieldType)
-                    .directFieldAccess(field.accessModifier() != AccessModifier.PRIVATE);
+                    .directFieldAccess(field.accessModifier() != AccessModifier.PRIVATE)
+                    .nullable(nullable);
 
             obtainStringFromAnnotation(field, Types.JSON_PROPERTY, "value")
                     .ifPresent(value -> builder.serializationName(value).deserializationName(value));
@@ -85,7 +92,8 @@ record ConvertedTypeInfo(TypeName converterType,
                     .ifPresent(builder::deserializer);
             field.findAnnotation(Types.JSON_IGNORE)
                     .ifPresent(annotation -> builder.propertyIgnored(true));
-
+            obtainBooleanFromAnnotation(field, Types.JSON_NULLABLE, "value")
+                    .ifPresent(builder::nullable);
             properties.put(fieldName, builder);
         }
     }
@@ -121,6 +129,8 @@ record ConvertedTypeInfo(TypeName converterType,
                         .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
                         .ifPresent(property::getterIgnored);
+                obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE, "value")
+                        .ifPresent(property::nullable);
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, record)) {
                 String prefix = record ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName, record);
@@ -297,6 +307,24 @@ record ConvertedTypeInfo(TypeName converterType,
             finalProperties.put(entry.getKey(), builder.build());
         }
         return finalProperties;
+    }
+
+    private static Optional<Annotation> obtainClassAnnotationFromHierarchy(TypeName annotationType, TypeInfo currentType) {
+        if (currentType.hasAnnotation(annotationType)) {
+            return currentType.findAnnotation(annotationType);
+        }
+        return currentType.superTypeInfo()
+                .flatMap(superType -> obtainClassAnnotationFromHierarchy(annotationType, superType))
+                .or(() -> {
+                    for (TypeInfo interf : currentType.interfaceTypeInfo()) {
+                        Optional<Annotation> annotation = obtainClassAnnotationFromHierarchy(annotationType, interf);
+                        if (annotation.isPresent()) {
+                            return annotation;
+                        }
+                    }
+                    return Optional.empty();
+                });
+
     }
 
 }

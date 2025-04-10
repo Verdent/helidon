@@ -1,7 +1,6 @@
 package io.helidon.json.codegen;
 
-import java.lang.reflect.Type;
-
+import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassBase;
 import io.helidon.codegen.classmodel.InnerClass;
@@ -14,14 +13,12 @@ import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 import io.helidon.service.registry.Service;
 
-import static io.helidon.json.codegen.JsonConverterGenerator.CONFIGURE_PARAM;
-
 class JsonBindingFactoryGenerator {
 
     private JsonBindingFactoryGenerator() {
     }
 
-    static void generateBindingFactory(ClassBase.Builder<?,?> classBuilder, TypeInfo annotatedType) {
+    static void generateBindingFactory(ClassBase.Builder<?,?> classBuilder, TypeInfo annotatedType, CodegenContext ctx) {
         classBuilder.addAnnotation(Annotation.create(Service.Singleton.class))
                 .addGenericArgument(TypeArgument.create("T"))
                 .addAnnotation(Annotation.builder()
@@ -33,7 +30,7 @@ class JsonBindingFactoryGenerator {
                                       .addTypeArgument(annotatedType.typeName())
                                       .build());
 
-        ConvertedTypeInfo convertedTypeInfo = ConvertedTypeInfo.create(annotatedType);
+        ConvertedTypeInfo convertedTypeInfo = ConvertedTypeInfo.create(annotatedType, ctx);
         InnerClass.Builder converterClassBuilder = InnerClass.builder()
                 .name(convertedTypeInfo.converterType().className())
                 .accessModifier(AccessModifier.PRIVATE)

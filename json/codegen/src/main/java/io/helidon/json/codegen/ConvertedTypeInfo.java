@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 
+import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
@@ -38,7 +38,7 @@ record ConvertedTypeInfo(TypeName converterType,
             new MethodSignature(STRING, "toString", List.of())
     );
 
-    public static ConvertedTypeInfo create(TypeInfo typeInfo) {
+    public static ConvertedTypeInfo create(TypeInfo typeInfo, CodegenContext ctx) {
         String classNameWithEnclosingNames = typeInfo.typeName().classNameWithEnclosingNames();
         String replacedDot = classNameWithEnclosingNames.replace(".", "_");
         String nameBase = typeInfo.typeName().fqName().replace(classNameWithEnclosingNames, replacedDot);
@@ -51,7 +51,7 @@ record ConvertedTypeInfo(TypeName converterType,
         }
         boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_NULLABLE, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
-                .orElse(false);
+                .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
         discoverFields(properties, typeInfo, nullable);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors);

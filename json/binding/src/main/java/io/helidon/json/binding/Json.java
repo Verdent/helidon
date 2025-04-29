@@ -5,11 +5,14 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-public interface Json {
+public class Json {
+
+    private Json() {
+    }
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
-    @interface Entity {
+    public @interface Entity {
 
         boolean recordAccessors() default false;
 
@@ -17,7 +20,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.TYPE, ElementType.TYPE_USE, ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
-    @interface Deserializer {
+    public @interface Deserializer {
 
         Class<? extends JsonDeserializer<?>> value();
 
@@ -25,7 +28,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.TYPE, ElementType.TYPE_USE, ElementType.FIELD, ElementType.METHOD})
-    @interface Serializer {
+    public @interface Serializer {
 
         Class<JsonSerializer<?>> value();
 
@@ -33,7 +36,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.TYPE, ElementType.TYPE_USE, ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
-    @interface Converter {
+    public @interface Converter {
 
         Class<JsonConverter<?>> value();
 
@@ -41,7 +44,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
-    @interface Property {
+    public @interface Property {
 
         String value();
 
@@ -49,7 +52,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD})
-    @interface Ignore {
+    public @interface Ignore {
 
         boolean value() default true;
 
@@ -57,7 +60,7 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD})
-    @interface Nullable {
+    public @interface Nullable {
 
         boolean value() default true;
 
@@ -65,12 +68,12 @@ public interface Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.CONSTRUCTOR, ElementType.METHOD, ElementType.ANNOTATION_TYPE})
-    @interface Creator {
+    public @interface Creator {
     }
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
-    @interface PropertyOrder {
+    public @interface PropertyOrder {
 
         Order value() default Order.ALPHABETICAL;
 

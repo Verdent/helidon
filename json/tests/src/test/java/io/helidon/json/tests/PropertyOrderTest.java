@@ -19,6 +19,13 @@ public class PropertyOrderTest {
     }
 
     @Test
+    public void testAnyPropertyOrder() {
+        AnyOrderRecord testRecord = new AnyOrderRecord("Full value", "first name", "last name");
+        assertThat(JsonBinding.serialize(testRecord),
+                   is("{\"fullName\":\"Full value\",\"firstName\":\"first name\",\"lastName\":\"last name\"}"));
+    }
+
+    @Test
     public void testAlphabeticalPropertyOrder() {
         AlphabeticalOrderRecord testRecord = new AlphabeticalOrderRecord("Full value", "first name", "last name");
         assertThat(JsonBinding.serialize(testRecord),
@@ -34,6 +41,11 @@ public class PropertyOrderTest {
 
     @Json.Entity
     record DefaultPropertyOrderRecord(String fullName, String firstName, String lastName) {
+    }
+
+    @Json.Entity
+    @Json.PropertyOrder(Order.ANY)
+    record AnyOrderRecord(String fullName, String firstName, String lastName) {
     }
 
     @Json.Entity

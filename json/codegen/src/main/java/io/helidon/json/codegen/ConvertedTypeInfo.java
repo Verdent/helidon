@@ -1,6 +1,7 @@
 package io.helidon.json.codegen;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,7 @@ record ConvertedTypeInfo(TypeName converterType,
                          TypeName originalType,
                          boolean nullable,
                          Map<String, JsonProperty> jsonProperties,
-                         CreatorInfo creatorInfo) {
+                         Comparator<String> orderedProperties, CreatorInfo creatorInfo) {
 
     private static final Set<MethodSignature> IGNORED_METHODS = Set.of(
             // equals, hash code and toString
@@ -37,6 +38,10 @@ record ConvertedTypeInfo(TypeName converterType,
             new MethodSignature(PRIMITIVE_INT, "hashCode", List.of()),
             new MethodSignature(STRING, "toString", List.of())
     );
+
+    private static final Map<String, Comparator<String>> PROPERTY_ORDER = Map.of(
+            "ALPHABETICAL", Comparator.naturalOrder(),
+            "REVERSE_ALPHABETICAL", Comparator.reverseOrder());
 
     public static ConvertedTypeInfo create(TypeInfo typeInfo, CodegenContext ctx) {
         String classNameWithEnclosingNames = typeInfo.typeName().classNameWithEnclosingNames();
@@ -52,12 +57,21 @@ record ConvertedTypeInfo(TypeName converterType,
         boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_NULLABLE, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
+        String orderStrategy = obtainClassAnnotationFromHierarchy(Types.JSON_PROPERTY_ORDER, typeInfo)
+                .flatMap(annotation -> annotation.stringValue("value"))
+                .orElse(CodegenOptions.CODEGEN_JSON_ORDER.value(ctx.options()));
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
         discoverFields(properties, typeInfo, nullable);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors);
         CreatorInfo creatorInfo = discoverCreator(properties, typeInfo);
         Map<String, JsonProperty> jsonProperties = finalizeJsonProperties(properties);
-        return new ConvertedTypeInfo(converterTypeName, typeInfo.typeName(), nullable, jsonProperties, creatorInfo);
+        Comparator<String> orderComparator = PROPERTY_ORDER.getOrDefault(orderStrategy, (o1, o2) -> 0);
+        return new ConvertedTypeInfo(converterTypeName,
+                                     typeInfo.typeName(),
+                                     nullable,
+                                     jsonProperties,
+                                     orderComparator,
+                                     creatorInfo);
     }
 
     private static void discoverFields(Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo, boolean nullable) {

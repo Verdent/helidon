@@ -258,6 +258,9 @@ class JsonConverterGenerator {
                 .stream()
                 .filter(not(JsonProperty::propertyIgnored))
                 .filter(it -> !it.getterIgnored() || it.directFieldAccess())
+                .sorted((o1, o2) -> converterInfo.orderedProperties()
+                        .compare(o1.serializationName().orElseThrow(),
+                                 o2.serializationName().orElseThrow()))
                 .toList();
 
         Set<String> createdSerializers = new HashSet<>();
@@ -372,7 +375,13 @@ class JsonConverterGenerator {
                 throw new UnsupportedOperationException("Naming collision, not implemented yet");
             } else {
                 JsonProperty jsonProperty = entry.getValue().getFirst();
-                method.addContentLine("case " + entry.getKey() + ": //" + jsonProperty.deserializationName().orElseThrow());
+                String constantName = constantName(jsonProperty.deserializationName().orElseThrow());
+                classBuilder.addField(builder -> builder.isFinal(true)
+                        .isStatic(true)
+                        .type(int.class)
+                        .name(constantName)
+                        .defaultValue(String.valueOf(entry.getKey())));
+                method.addContentLine("case " + constantName + ":");
                 method.increaseContentPadding();
                 addTypeHandling(jsonProperty,
                                 method,
@@ -426,6 +435,18 @@ class JsonConverterGenerator {
             }
         }
         method.addContentLine("return generatedInstance;");
+    }
+
+    private static String constantName(String propertyName) {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < propertyName.length(); i++) {
+            char c = propertyName.charAt(i);
+            if (Character.isUpperCase(c)) {
+                result.append('_');
+            }
+            result.append(Character.toUpperCase(c));
+        }
+        return result.toString();
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo converterInfo) {

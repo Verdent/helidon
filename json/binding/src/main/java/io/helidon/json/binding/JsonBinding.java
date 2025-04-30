@@ -17,6 +17,10 @@ import io.helidon.json.processor.JsonParser;
 @RuntimeType.PrototypedBy(JsonBindingConfig.class)
 public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
+    static JsonBinding create() {
+        return builder().build();
+    }
+
     static JsonBindingConfig.Builder builder() {
         return JsonBindingConfig.builder();
     }

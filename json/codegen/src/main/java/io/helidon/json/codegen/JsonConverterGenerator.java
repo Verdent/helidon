@@ -270,29 +270,43 @@ class JsonConverterGenerator {
                 first = false;
             }
             method.addContent("isFirst = ");
-            TypeName type = jsonProperty.serializationType().orElseThrow();
-            TypeName resolved = PRIMITIVE_TO_BOXED.getOrDefault(type, type);
-            String fieldName;
-            if (!resolved.typeArguments().isEmpty()) {
-                fieldName = "serializer" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
-            } else {
-                fieldName = "serializer" + ensureUpperStart(type);
-            }
-            if (!createdSerializers.contains(fieldName)) {
-                createdSerializers.add(fieldName);
-                TypeName converterType = TypeName.builder()
-                        .from(Types.JSON_SERIALIZER_TYPE)
-                        .addTypeArgument(resolved)
-                        .build();
-                classBuilder.addField(fieldBuilder -> fieldBuilder.name(fieldName)
-                        .type(converterType));
-                toConfigure.putIfAbsent(fieldName,
-                                        new TypeToConfigure(TypeConfigMode.SERIALIZATION,
-                                                            fieldName,
-                                                            resolved,
-                                                            type,
-                                                            converterType));
-            }
+
+            String fieldName = jsonProperty.serializer()
+                    .map(serializer -> {
+                        String constantName = constantName(jsonProperty.serializationName().orElseThrow()) + "_SERIALIZER";
+                        classBuilder.addField(field -> field.name(constantName)
+                                .type(serializer)
+                                .isStatic(true)
+                                .isFinal(true)
+                                .addContent("new ").addContent(serializer).addContent("()"));
+                        return constantName;
+                    })
+                    .orElseGet(() -> {
+                        TypeName type = jsonProperty.serializationType().orElseThrow();
+                        TypeName resolved = PRIMITIVE_TO_BOXED.getOrDefault(type, type);
+                        String fn;
+                        if (!resolved.typeArguments().isEmpty()) {
+                            fn = "serializer" + ensureUpperStart(jsonProperty.serializationName().orElseThrow());
+                        } else {
+                            fn = "serializer" + ensureUpperStart(type);
+                        }
+                        if (!createdSerializers.contains(fn)) {
+                            createdSerializers.add(fn);
+                            TypeName converterType = TypeName.builder()
+                                    .from(Types.JSON_SERIALIZER_TYPE)
+                                    .addTypeArgument(resolved)
+                                    .build();
+                            classBuilder.addField(fieldBuilder -> fieldBuilder.name(fn)
+                                    .type(converterType));
+                            toConfigure.putIfAbsent(fn,
+                                                    new TypeToConfigure(TypeConfigMode.SERIALIZATION,
+                                                                        fn,
+                                                                        resolved,
+                                                                        type,
+                                                                        converterType));
+                        }
+                        return fn;
+                    });
 
             String accessor = jsonProperty.getterName()
                     .filter(getterName -> !jsonProperty.getterIgnored())
@@ -532,7 +546,7 @@ class JsonConverterGenerator {
                                             Method.Builder method,
                                             ClassBase.Builder<?, ?> classBuilder,
                                             boolean hasCreator) {
-        String constantName = property.deserializationName().orElseThrow().toUpperCase() + "_DESERIALIZER";
+        String constantName = constantName(property.deserializationName().orElseThrow()) + "_DESERIALIZER";
         classBuilder.addField(field -> field.name(constantName)
                 .type(deserializer)
                 .isStatic(true)

@@ -30,7 +30,7 @@ public class Json {
     @Target({ElementType.TYPE, ElementType.TYPE_USE, ElementType.FIELD, ElementType.METHOD})
     public @interface Serializer {
 
-        Class<JsonSerializer<?>> value();
+        Class<? extends JsonSerializer<?>> value();
 
     }
 
@@ -38,7 +38,7 @@ public class Json {
     @Target({ElementType.TYPE, ElementType.TYPE_USE, ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
     public @interface Converter {
 
-        Class<JsonConverter<?>> value();
+        Class<? extends JsonConverter<?>> value();
 
     }
 

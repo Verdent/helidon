@@ -1,5 +1,6 @@
 package io.helidon.json.tests;
 
+import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
@@ -13,7 +14,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 public class CustomConverterTest {
 
     @Test
-    public void testCustomConverterOverBuilder() {
+    public void testCustomConverterOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
                 .addConverter(new StringConverter())
                 .build();
@@ -26,7 +27,7 @@ public class CustomConverterTest {
     }
 
     @Test
-    public void testCustomDeserializerOverBuilder() {
+    public void testCustomDeserializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
                 .addDeserializer(new StringConverter())
                 .build();
@@ -39,7 +40,7 @@ public class CustomConverterTest {
     }
 
     @Test
-    public void testCustomSerializerOverBuilder() {
+    public void testCustomSerializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
                 .addSerializer(new StringConverter())
                 .build();
@@ -49,6 +50,30 @@ public class CustomConverterTest {
         String expectedDeserialized = "string value_custom_converter";
         assertThat(jsonBinding.toJson(original), is(expected));
         assertThat(jsonBinding.fromJson(expected, String.class), is(expectedDeserialized));
+    }
+    
+    @Test
+    public void testCustomSerializerOnTheField() {
+        JsonBinding jsonBinding = JsonBinding.create();
+        CustomFieldSerializer instance = new CustomFieldSerializer("without serializer", "with serializer");
+        String expected = "{\"fieldWithoutSerializer\":\"without serializer\","
+                + "\"fieldWithSerializer\":\"with serializer_custom_converter\"}";
+        CustomFieldSerializer expectedDeserialized = new CustomFieldSerializer("without serializer",
+                                                                               "with serializer_custom_converter");
+        assertThat(jsonBinding.toJson(instance), is(expected));
+        assertThat(jsonBinding.fromJson(expected, CustomFieldSerializer.class), is(expectedDeserialized));
+    }
+
+    @Test
+    public void testCustomDeserializerOnTheField() {
+        JsonBinding jsonBinding = JsonBinding.create();
+        CustomFieldDeserializer instance = new CustomFieldDeserializer("without deserializer", "with deserializer");
+        String expected = "{\"fieldWithoutDeserializer\":\"without deserializer\","
+                + "\"fieldWithDeserializer\":\"with deserializer\"}";
+        CustomFieldDeserializer expectedDeserialized = new CustomFieldDeserializer("without deserializer",
+                                                                                   "with deserializer_deserialized");
+        assertThat(jsonBinding.toJson(instance), is(expected));
+        assertThat(jsonBinding.fromJson(expected, CustomFieldDeserializer.class), is(expectedDeserialized));
     }
 
     static class StringConverter implements TypedJsonConverter<String> {
@@ -66,6 +91,16 @@ public class CustomConverterTest {
         public void toJson(Generator generator, String instance, boolean writeNulls) {
             generator.writeQuoted(instance + "_custom_converter");
         }
+    }
+
+    @Json.Entity
+    record CustomFieldSerializer(String fieldWithoutSerializer,
+                                 @Json.Serializer(StringConverter.class) String fieldWithSerializer) {
+    }
+
+    @Json.Entity
+    record CustomFieldDeserializer(String fieldWithoutDeserializer,
+                                   @Json.Deserializer(StringConverter.class) String fieldWithDeserializer) {
     }
 
 }

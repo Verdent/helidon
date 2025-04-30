@@ -139,8 +139,7 @@ record ConvertedTypeInfo(TypeName converterType,
                         .serializationNameIfNotSet(propertyName)
                         .serializationType(resolveGenerics(method.typeName(), typeInfo))
                         .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_DESERIALIZER, "value"));
+                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
                         .ifPresent(property::getterIgnored);
                 obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE, "value")
@@ -153,8 +152,7 @@ record ConvertedTypeInfo(TypeName converterType,
                         .deserializationNameIfNotSet(propertyName)
                         .deserializationType(resolveGenerics(method.parameterArguments().getFirst().typeName(), typeInfo))
                         .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_SERIALIZER, "value"));
+                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
                         .ifPresent(property::setterIgnored);
             }

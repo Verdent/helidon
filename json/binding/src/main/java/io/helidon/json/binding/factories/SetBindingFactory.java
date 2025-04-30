@@ -25,13 +25,13 @@ import io.helidon.service.registry.Service;
 final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
 
     @Override
-    public BindingFactoryDeserializer<Set<T>> createDeserializer() {
-        return new SetConverter<>();
+    public BindingFactoryDeserializer<Set<T>> createDeserializer(Type type) {
+        return new SetConverter<>(type);
     }
 
     @Override
-    public BindingFactorySerializer<Set<T>> createSerializer() {
-        return new SetConverter<>();
+    public BindingFactorySerializer<Set<T>> createSerializer(Type type) {
+        return new SetConverter<>(type);
     }
 
     @Override
@@ -41,8 +41,17 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
 
     private static final class SetConverter<T> implements BindingFactoryConverter<Set<T>> {
 
+        private final Type componentType;
         private JsonDeserializer<T> deserializer;
         private JsonSerializer<T> serializer;
+
+        public SetConverter(Type type) {
+            if (type instanceof ParameterizedType parameterizedType) {
+                componentType = parameterizedType.getActualTypeArguments()[0];
+            } else {
+                componentType = GenericType.OBJECT;
+            }
+        }
 
         @Override
         public void toJson(Generator generator, Set<T> instance, boolean writeNulls) {
@@ -91,14 +100,9 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-            if (type instanceof ParameterizedType parameterizedType) {
-                deserializer = jsonBindingConfigurer.getDeserializer(parameterizedType.getActualTypeArguments()[0]);
-                serializer = jsonBindingConfigurer.getSerializer(parameterizedType.getActualTypeArguments()[0]);
-            } else {
-                deserializer = jsonBindingConfigurer.getDeserializer(GenericType.OBJECT);
-                serializer = jsonBindingConfigurer.getSerializer(GenericType.OBJECT);
-            }
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
+            deserializer = jsonBindingConfigurer.getDeserializer(componentType);
+            serializer = jsonBindingConfigurer.getSerializer(componentType);
         }
     }
 

@@ -11,6 +11,26 @@ class JsonBindingConfigCustomMethods {
     }
 
     @Prototype.BuilderMethod
+    static <T> void addConverter(JsonBindingConfig.BuilderBase<?, ?> builder, TypedJsonConverter<T> converter) {
+        builder.addSerializer(converter)
+                .addDeserializer(converter);
+    }
+
+    @Prototype.BuilderMethod
+    static <T> void addConverter(JsonBindingConfig.BuilderBase<?, ?> builder, Class<T> type, JsonConverter<T> converter) {
+        GenericType<T> genericType = GenericType.create(type);
+        builder.addSerializer(new DefaultTypedJsonSerializer<>(genericType, converter))
+                .addDeserializer(new DefaultTypedJsonDeserializer<>(genericType, converter));
+    }
+
+    @Prototype.BuilderMethod
+    static <T> void addConverter(JsonBindingConfig.BuilderBase<?, ?> builder, Type type, JsonConverter<T> converter) {
+        GenericType<T> genericType = GenericType.create(type);
+        builder.addSerializer(new DefaultTypedJsonSerializer<>(genericType, converter))
+                .addDeserializer(new DefaultTypedJsonDeserializer<>(genericType, converter));
+    }
+
+    @Prototype.BuilderMethod
     static <T> void addSerializer(JsonBindingConfig.BuilderBase<?, ?> builder, Class<T> type, JsonSerializer<T> serializer) {
         GenericType<T> genericType = GenericType.create(type);
         builder.addSerializer(new DefaultTypedJsonSerializer<>(genericType, serializer));

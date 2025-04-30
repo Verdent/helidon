@@ -26,13 +26,13 @@ import io.helidon.service.registry.Service;
 class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
 
     @Override
-    public BindingFactoryDeserializer<T[]> createDeserializer() {
-        return new ArrayConverter<>();
+    public BindingFactoryDeserializer<T[]> createDeserializer(Type type) {
+        return new ArrayConverter<>(type);
     }
 
     @Override
-    public BindingFactorySerializer<T[]> createSerializer() {
-        return new ArrayConverter<>();
+    public BindingFactorySerializer<T[]> createSerializer(Type type) {
+        return new ArrayConverter<>(type);
     }
 
     @Override
@@ -42,10 +42,15 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
 
     private static class ArrayConverter<T> implements BindingFactoryConverter<T[]> {
 
-        private Class<?> componentType;
+        private final Class<?> componentType;
         private JsonDeserializer<T> deserializer;
         private JsonSerializer<T> serializer;
         private T[] emptyArray;
+
+        private ArrayConverter(Type type) {
+            Class<?> classType = (Class<?>) type;
+            this.componentType = classType.componentType();
+        }
 
         @Override
         public void toJson(Generator generator, T[] instance, boolean writeNulls) {
@@ -106,15 +111,13 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
         }
 
         @SuppressWarnings("unchecked")
-        protected T[] createArrayInstance(int size) {
+        private T[] createArrayInstance(int size) {
             return (T[]) Array.newInstance(componentType, size);
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer, Type type) {
-            Class<?> classType = (Class<?>) type;
-            this.componentType = classType.componentType();
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
             deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(componentType);
             serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(componentType);
             emptyArray = createArrayInstance(0);

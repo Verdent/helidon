@@ -92,8 +92,7 @@ class JsonConverterGenerator {
     private static void addConfigurationFactory(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
-                .addParameter(builder -> builder.type(Type.class).name("type"));
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM));
 
         initializeNoRuntimeResolving(method, toConfigure);
 

@@ -13,6 +13,8 @@ import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 import io.helidon.service.registry.Service;
 
+import java.lang.reflect.Type;
+
 class JsonBindingFactoryGenerator {
 
     private JsonBindingFactoryGenerator() {
@@ -36,7 +38,10 @@ class JsonBindingFactoryGenerator {
                 .accessModifier(AccessModifier.PRIVATE)
                 .addGenericArgument(TypeArgument.create("T"))
                 .isFinal(true)
-                .isStatic(true);
+                .isStatic(true)
+                .addField(builder -> builder.isFinal(true).type(Type.class).name("type"))
+                .addConstructor(builder -> builder.addParameter(param -> param.type(Type.class).name("type"))
+                        .addContent("this.type = type;"));
         JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true, false);
         classBuilder.addInnerClass(converterClassBuilder)
                 .addMethod(method -> addCreateDeserializerMethod(method, convertedTypeInfo))
@@ -51,9 +56,10 @@ class JsonBindingFactoryGenerator {
                                                             .from(Types.JSON_FACTORY_DESERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
+                .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("<>();");
+                .addContentLine("<>(type);");
     }
 
     private static void addCreateSerializerMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
@@ -63,9 +69,10 @@ class JsonBindingFactoryGenerator {
                                                             .from(Types.JSON_FACTORY_SERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
+                .addParameter(builder -> builder.type(Type.class).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("<>();");
+                .addContentLine("<>(type);");
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {

@@ -1,13 +1,9 @@
 package io.helidon.json.binding.converters;
 
-import java.lang.reflect.Array;
-
-import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -16,19 +12,19 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-@Service.Singleton
-@Weight(Weighted.DEFAULT_WEIGHT - 10)
-class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
+//@Service.Singleton
+//@Weight(Weighted.DEFAULT_WEIGHT - 10)
+class FloatArrayConverter implements TypedJsonConverter<float[]>, JsonConfigurable {
 
-    private final int[] emptyArray = new int[0];
-    private JsonDeserializer<Integer> deserializer;
-    private JsonSerializer<Integer> serializer;
+    private final float[] emptyArray = new float[0];
+    private JsonDeserializer<Float> deserializer;
+    private JsonSerializer<Float> serializer;
 
     @Override
-    public void toJson(Generator generator, int[] instance, boolean writeNulls) {
+    public void toJson(Generator generator, float[] instance, boolean writeNulls) {
         generator.writeArrayStart();
         boolean first = true;
-        for (int value : instance) {
+        for (float value : instance) {
             if (!first) {
                 generator.writeComma();
             } else {
@@ -40,12 +36,12 @@ class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
     }
 
     @Override
-    public int[] fromJsonValue(JsonParser parser) {
+    public float[] fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
         }
-        int[] array = new int[5];
+        float[] array = new float[5];
         lastByte = parser.nextToken();
         int index = 0;
         if (lastByte != ']') {
@@ -53,7 +49,7 @@ class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
             lastByte = parser.nextToken();
             while (lastByte == ',') {
                 if (index == array.length) {
-                    int[] tmp = new int[array.length * 2];
+                    float[] tmp = new float[array.length * 2];
                     System.arraycopy(array, 0, tmp, 0, array.length);
                     array = tmp;
                 }
@@ -68,7 +64,7 @@ class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
         if (index == array.length) {
             return array;
         } else if (index > 0) {
-            int[] toReturn = new int[index];
+            float[] toReturn = new float[index];
             System.arraycopy(array, 0, toReturn, 0, toReturn.length);
             return toReturn;
         }
@@ -77,7 +73,7 @@ class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
 
     @Override
     public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        deserializer = jsonBindingConfigurer.getDeserializer(int.class);
-        serializer = jsonBindingConfigurer.getSerializer(int.class);
+        deserializer = jsonBindingConfigurer.getDeserializer(float.class);
+        serializer = jsonBindingConfigurer.getSerializer(float.class);
     }
 }

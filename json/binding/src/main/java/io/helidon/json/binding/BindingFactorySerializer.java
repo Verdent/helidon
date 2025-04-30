@@ -4,6 +4,6 @@ import java.lang.reflect.Type;
 
 public interface BindingFactorySerializer<T> extends JsonSerializer<T> {
 
-    void configure(JsonBindingConfigurer jsonBindingConfigurer, Type type);
+    void configure(JsonBindingConfigurer jsonBindingConfigurer);
 
 }

@@ -3,6 +3,8 @@ package io.helidon.json.binding;
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
+import java.text.DateFormat;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -194,10 +196,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                                                         + type + " is not registered.");
             }
         }
-        BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
+        BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
 
         deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
-        factoryDeserializer.configure(this, type);
+        factoryDeserializer.configure(this);
         deserializersNotConfigured.remove(type);
 
         deserializers.putIfAbsent(type, factoryDeserializer);
@@ -220,10 +222,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer();
+            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
 
             deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
-            factoryDeserializer.configure(this, type.type());
+            factoryDeserializer.configure(this);
             deserializersNotConfigured.remove(type);
 
             deserializers.putIfAbsent(type, factoryDeserializer);
@@ -250,9 +252,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type);
             serializersNotConfigured.putIfAbsent(type, factorySerializer);
-            factorySerializer.configure(this, type);
+            factorySerializer.configure(this);
             serializersNotConfigured.remove(type);
 
             serializers.putIfAbsent(type, factorySerializer);
@@ -277,9 +279,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer();
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type.type());
             serializersNotConfigured.putIfAbsent(type.type(), factorySerializer);
-            factorySerializer.configure(this, type.type());
+            factorySerializer.configure(this);
             serializersNotConfigured.remove(type.type());
 
             serializers.putIfAbsent(type, factorySerializer);

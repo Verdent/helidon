@@ -43,6 +43,10 @@ public class CreatorTest {
             this.str2 = str2;
         }
 
+        public CreatorConstructorPojo() {
+            throw new IllegalStateException("This should have not been called");
+        }
+
     }
 
     @Json.Entity
@@ -50,7 +54,15 @@ public class CreatorTest {
 
         public final String str1;
         public final String str2;
-        public BigDecimal bigDec;
+        BigDecimal bigDec;
+
+        public CreatorFactoryMethodPojo() {
+            throw new IllegalStateException("This should have not been called");
+        }
+
+        public CreatorFactoryMethodPojo(String str1, String str2, BigDecimal bigDec) {
+            throw new IllegalStateException("This should have not been called");
+        }
 
         private CreatorFactoryMethodPojo(String str1, String str2) {
             this.str1 = str1;

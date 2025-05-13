@@ -21,7 +21,7 @@ class JsonBindingFactoryGenerator {
     }
 
     static void generateBindingFactory(ClassBase.Builder<?,?> classBuilder, TypeInfo annotatedType, CodegenContext ctx) {
-        classBuilder.addAnnotation(Annotation.create(Service.Singleton.class))
+        classBuilder.addAnnotation(Annotation.create(Service.PerLookup.class))
                 .addGenericArgument(TypeArgument.create("T"))
                 .addAnnotation(Annotation.builder()
                                        .type(TypeNames.WEIGHT)

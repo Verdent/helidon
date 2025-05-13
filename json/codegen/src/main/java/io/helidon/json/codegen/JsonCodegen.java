@@ -39,7 +39,7 @@ class JsonCodegen implements CodegenExtension {
             generatedType = convertedTypeInfo.converterType();
             builder = ClassModel.builder()
                     .type(generatedType)
-                    .addAnnotation(Annotation.create(Service.Singleton.class))
+                    .addAnnotation(Annotation.create(Service.PerLookup.class))
                     .addAnnotation(Annotation.builder()
                                            .type(TypeNames.WEIGHT)
                                            .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)

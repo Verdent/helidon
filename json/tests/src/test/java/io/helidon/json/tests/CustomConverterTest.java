@@ -54,26 +54,24 @@ public class CustomConverterTest {
     
     @Test
     public void testCustomSerializerOnTheField() {
-        JsonBinding jsonBinding = JsonBinding.create();
         CustomFieldSerializer instance = new CustomFieldSerializer("without serializer", "with serializer");
         String expected = "{\"fieldWithoutSerializer\":\"without serializer\","
                 + "\"fieldWithSerializer\":\"with serializer_custom_converter\"}";
         CustomFieldSerializer expectedDeserialized = new CustomFieldSerializer("without serializer",
                                                                                "with serializer_custom_converter");
-        assertThat(jsonBinding.toJson(instance), is(expected));
-        assertThat(jsonBinding.fromJson(expected, CustomFieldSerializer.class), is(expectedDeserialized));
+        assertThat(JsonBinding.serialize(instance), is(expected));
+        assertThat(JsonBinding.deserialize(expected, CustomFieldSerializer.class), is(expectedDeserialized));
     }
 
     @Test
     public void testCustomDeserializerOnTheField() {
-        JsonBinding jsonBinding = JsonBinding.create();
         CustomFieldDeserializer instance = new CustomFieldDeserializer("without deserializer", "with deserializer");
         String expected = "{\"fieldWithoutDeserializer\":\"without deserializer\","
                 + "\"fieldWithDeserializer\":\"with deserializer\"}";
         CustomFieldDeserializer expectedDeserialized = new CustomFieldDeserializer("without deserializer",
                                                                                    "with deserializer_deserialized");
-        assertThat(jsonBinding.toJson(instance), is(expected));
-        assertThat(jsonBinding.fromJson(expected, CustomFieldDeserializer.class), is(expectedDeserialized));
+        assertThat(JsonBinding.serialize(instance), is(expected));
+        assertThat(JsonBinding.deserialize(expected, CustomFieldDeserializer.class), is(expectedDeserialized));
     }
 
     static class StringConverter implements TypedJsonConverter<String> {

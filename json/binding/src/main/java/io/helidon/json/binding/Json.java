@@ -79,4 +79,10 @@ public class Json {
 
     }
 
+    public @interface DateFormat {
+
+
+
+    }
+
 }

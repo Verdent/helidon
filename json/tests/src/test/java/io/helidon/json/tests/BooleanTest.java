@@ -1,15 +1,3 @@
-/*
- * Copyright (c) 2016, 2022 Oracle and/or its affiliates. All rights reserved.
- *
- * This program and the accompanying materials are made available under the
- * terms of the Eclipse Public License v. 2.0 which is available at
- * http://www.eclipse.org/legal/epl-2.0,
- * or the Eclipse Distribution License v. 1.0 which is available at
- * http://www.eclipse.org/org/documents/edl-v10.php.
- *
- * SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
- */
-
 package io.helidon.json.tests;
 
 import io.helidon.json.binding.Json;
@@ -23,8 +11,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 /**
  * Tests serialization and deserialization of boolean values.
- *
- * @author Ehsan Zaery Moghaddam (zaerymoghaddam@gmail.com)
  */
 public class BooleanTest {
 
@@ -71,14 +57,18 @@ public class BooleanTest {
         assertThat(result, is("false"));
     }
 
-//    @Test
-//    public void testBooleanArrays() {
-//        assertArrayEquals(new boolean[] {true, false}, defaultJsonb.fromJson("[true, false]", boolean[].class));
-//        assertArrayEquals(new Boolean[] {true, false}, defaultJsonb.fromJson("[true, false]", Boolean[].class));
-//
-//        assertEquals("[true,false]", defaultJsonb.toJson(new boolean[] {true, false}));
-//        assertEquals("[true,false]", defaultJsonb.toJson(new Boolean[] {true, false}));
-//    }
+    @Test
+    public void testBooleanArrays() {
+        boolean[] primitives = {true, false};
+        Boolean[] referenceTypes = {true, false};
+        String arrayJson = "[true,false]";
+
+        assertThat(JsonBinding.create().toJson(primitives), is(arrayJson));
+        assertThat(JsonBinding.create().toJson(referenceTypes), is(arrayJson));
+
+        assertThat(JsonBinding.deserialize(arrayJson, boolean[].class), is(primitives));
+        assertThat(JsonBinding.deserialize(arrayJson, Boolean[].class), is(referenceTypes));
+    }
 
     @Json.Entity
     public static class BooleanModel {

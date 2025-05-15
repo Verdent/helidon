@@ -1,5 +1,7 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.Weight;
+import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
@@ -8,9 +10,10 @@ import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
+import io.helidon.service.registry.Service;
 
-//@Service.Singleton
-//@Weight(Weighted.DEFAULT_WEIGHT - 10)
+@Service.PerLookup
+@Weight(Weighted.DEFAULT_WEIGHT - 10)
 class BooleanArrayConverter implements TypedJsonConverter<boolean[]>, JsonConfigurable {
 
     private final boolean[] emptyArray = new boolean[0];

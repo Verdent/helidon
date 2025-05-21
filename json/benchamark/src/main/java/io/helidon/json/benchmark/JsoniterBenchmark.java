@@ -24,16 +24,20 @@ public class JsoniterBenchmark {
         JsonIterator.setMode(DecodingMode.DYNAMIC_MODE_AND_MATCH_FIELD_WITH_HASH);
     }
 
-    @Benchmark
-    public void javaBeanWithOtherBean(Blackhole bh) {
-        bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-    }
+//    @Benchmark
+//    public void javaBeanWithOtherBean(Blackhole bh) {
+//        bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+//    }
+//
+//    @Benchmark
+//    public void classWithList(Blackhole bh) {
+//        bh.consume(JsonIterator.deserialize(CLASS_WITH_LIST, ClassWithList.class));
+//    }
+
 
     @Benchmark
-    public void classWithList(Blackhole bh) {
-        bh.consume(JsonIterator.deserialize(CLASS_WITH_LIST, ClassWithList.class));
+    public void rawLong(Blackhole bh) {
+        bh.consume(JsonIterator.deserialize("12345", long.class));
     }
-
-
 
 }

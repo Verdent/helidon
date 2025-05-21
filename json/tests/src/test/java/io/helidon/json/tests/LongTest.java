@@ -3,7 +3,6 @@ package io.helidon.json.tests;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 
-import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;

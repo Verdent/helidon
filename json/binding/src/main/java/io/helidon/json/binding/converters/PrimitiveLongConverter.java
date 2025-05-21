@@ -31,7 +31,7 @@ final class PrimitiveLongConverter implements TypedJsonConverter<Long> {
         if (lastByte == '\"') {
             parser.readNextByte();
             long value = parser.readLong();
-            lastByte = parser.lastByte();
+            lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw new JsonException("Expected end of the long value was '\"' but got '" + (char) lastByte + "'");
             }

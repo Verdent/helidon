@@ -379,27 +379,27 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     private int parseInt(boolean negative) {
         int i = currentIndex;
-        int digit1 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit1 = WHOLE_NUMBER_PARTS[buffer[i]];
         if (digit1 == -1) {
             throw new JsonException("Expected number, but was: " + (char) buffer[i]);
         }
-        int digit2 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit2 == -1) {
             return digit1;
         }
-        int digit3 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit3 == -1) {
             currentIndex = --i;
             return digit1 * 10 + digit2;
         }
-        int digit4 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit4 == -1) {
             currentIndex = --i;
             return digit1 * 100
                     + digit2 * 10
                     + digit3;
         }
-        int digit5 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit5 == -1) {
             currentIndex = --i;
             return digit1 * 1000
@@ -407,7 +407,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit3 * 10
                     + digit4;
         }
-        int digit6 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit6 == -1) {
             currentIndex = --i;
             return digit1 * 10000
@@ -416,7 +416,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit4 * 10
                     + digit5;
         }
-        int digit7 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit7 == -1) {
             currentIndex = --i;
             return digit1 * 100000
@@ -426,7 +426,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit5 * 10
                     + digit6;
         }
-        int digit8 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit8 == -1) {
             currentIndex = --i;
             return digit1 * 1000000
@@ -437,7 +437,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit6 * 10
                     + digit7;
         }
-        int digit9 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit9 == -1) {
             currentIndex = --i;
             return digit1 * 10000000
@@ -449,7 +449,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit7 * 10
                     + digit8;
         }
-        int digit10 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[++i]];
         int possibleResult = digit1 * 100000000
                 + digit2 * 10000000
                 + digit3 * 1000000
@@ -463,7 +463,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             currentIndex = --i;
             return possibleResult;
         }
-        int digit11 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit11 == -1) {
             currentIndex = --i;
             if (negative) {
@@ -485,7 +485,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             int digit = digit11;
             while (digit != -1) {
                 number.append(digit);
-                digit = WHOLE_NUMBER_PARTS[buffer[i++]];
+                digit = WHOLE_NUMBER_PARTS[buffer[++i]];
             }
         }
         currentIndex = --i;
@@ -504,52 +504,52 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     private long parseLong(boolean negative) {
         int i = currentIndex;
-        int digit1 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit1 = WHOLE_NUMBER_PARTS[buffer[i]];
         if (digit1 == -1) {
             throw new IllegalStateException("Expected number, but was: " + (char) buffer[i]);
         }
-        int digit2 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit2 == -1) {
             currentIndex = --i;
             return digit1;
         }
-        int digit3 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit3 == -1) {
             currentIndex = --i;
             return digit1 * 10L + digit2;
         }
-        int digit4 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit4 == -1) {
             currentIndex = --i;
             return digit1 * 100L + digit2 * 10L + digit3;
         }
-        int digit5 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit5 == -1) {
             currentIndex = --i;
             return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
         }
-        int digit6 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit6 == -1) {
             currentIndex = --i;
             return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
         }
-        int digit7 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit7 == -1) {
             currentIndex = --i;
             return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
         }
-        int digit8 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit8 == -1) {
             currentIndex = --i;
             return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
         }
-        int digit9 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit9 == -1) {
             currentIndex = --i;
             return digit1 * 10000000L + digit2 * 1000000L + digit3 * 100000L + digit4 * 10000L + digit5 * 1000L + digit6 * 100L
                     + digit7 * 10L + digit8;
         }
-        int digit10 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit10 == -1) {
             currentIndex = --i;
             return digit1 * 100000000L
@@ -562,7 +562,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit8 * 10L
                     + digit9;
         }
-        int digit11 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit11 == -1) {
             currentIndex = --i;
             return digit1 * 1000000000L
@@ -576,7 +576,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit9 * 10L
                     + digit10;
         }
-        int digit12 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit12 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit12 == -1) {
             currentIndex = --i;
             return digit1 * 10000000000L
@@ -591,7 +591,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit10 * 10L
                     + digit11;
         }
-        int digit13 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit13 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit13 == -1) {
             currentIndex = --i;
             return digit1 * 100000000000L
@@ -607,7 +607,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit11 * 10L
                     + digit12;
         }
-        int digit14 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit14 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit14 == -1) {
             currentIndex = --i;
             return digit1 * 1000000000000L
@@ -624,7 +624,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit12 * 10L
                     + digit13;
         }
-        int digit15 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit15 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit15 == -1) {
             currentIndex = --i;
             return digit1 * 10000000000000L
@@ -642,7 +642,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit13 * 10L
                     + digit14;
         }
-        int digit16 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit16 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit16 == -1) {
             currentIndex = --i;
             return digit1 * 100000000000000L
@@ -661,7 +661,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit14 * 10L
                     + digit15;
         }
-        int digit17 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit17 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit17 == -1) {
             currentIndex = --i;
             return digit1 * 1000000000000000L
@@ -681,7 +681,7 @@ final class JsonParserImpl implements ReusableJsonParser {
                     + digit15 * 10L
                     + digit16;
         }
-        int digit18 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit18 = WHOLE_NUMBER_PARTS[buffer[++i]];
         long possibleResult = digit1 * 10000000000000000L
                 + digit2 * 1000000000000000L
                 + digit3 * 100000000000000L
@@ -703,7 +703,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             currentIndex = --i;
             return possibleResult;
         }
-        int digit19 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        int digit19 = WHOLE_NUMBER_PARTS[buffer[++i]];
         if (digit19 == -1) {
             currentIndex = --i;
             if (negative) {
@@ -715,7 +715,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             }
         }
         //The Number is too big. Lets read it all and report in the exception
-        i++;
+        ++i;
         StringBuilder number = new StringBuilder();
         if (negative) {
             number.insert(0, "-");
@@ -725,7 +725,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             int digit = digit19;
             while (digit != -1) {
                 number.append(digit);
-                digit = WHOLE_NUMBER_PARTS[buffer[i++]];
+                digit = WHOLE_NUMBER_PARTS[buffer[++i]];
             }
         }
         currentIndex = --i;

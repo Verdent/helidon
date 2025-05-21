@@ -20,7 +20,7 @@ public class LongTest {
     }
 
     @Test
-    public void testBooleanDeserializationFromBooleanAsStringValue() {
+    public void testLongDeserializationFromLongAsStringValue() {
         LongModel longModel = JsonBinding.deserialize("{\"object\":\"123\",\"primitive\":\"456\"}", LongModel.class);
         assertThat(longModel.object, is(123L));
         assertThat(longModel.primitive, is(456L));

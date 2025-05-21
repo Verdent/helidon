@@ -11,6 +11,7 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     //We need this to check if the next number digit overflows int max capacity
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
+    private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
@@ -491,103 +492,244 @@ final class JsonParserImpl implements ReusableJsonParser {
         throw new JsonException("Number is too big for int value: " + number);
     }
 
-    private int calculateIntNumber(int i, boolean negative) {
-        switch (i) {
-//        case -1:
-//            throw new JsonException("Invalid number \"-\"");
-        case 0:
-            return numberBuffer[0];
-        case 1:
-            return numberBuffer[0] * 10
-                    + numberBuffer[1];
-        case 2:
-            return numberBuffer[0] * 100
-                    + numberBuffer[1] * 10
-                    + numberBuffer[2];
-        case 3:
-            return numberBuffer[0] * 1000
-                    + numberBuffer[1] * 100
-                    + numberBuffer[2] * 10
-                    + numberBuffer[3];
-        case 4:
-            return numberBuffer[0] * 10000
-                    + numberBuffer[1] * 1000
-                    + numberBuffer[2] * 100
-                    + numberBuffer[3] * 10
-                    + numberBuffer[4];
-        case 5:
-            return numberBuffer[0] * 100000
-                    + numberBuffer[1] * 10000
-                    + numberBuffer[2] * 1000
-                    + numberBuffer[3] * 100
-                    + numberBuffer[4] * 10
-                    + numberBuffer[5];
-        case 6:
-            return numberBuffer[0] * 1000000
-                    + numberBuffer[1] * 100000
-                    + numberBuffer[2] * 10000
-                    + numberBuffer[3] * 1000
-                    + numberBuffer[4] * 100
-                    + numberBuffer[5] * 10
-                    + numberBuffer[6];
-        case 7:
-            return numberBuffer[0] * 10000000
-                    + numberBuffer[1] * 1000000
-                    + numberBuffer[2] * 100000
-                    + numberBuffer[3] * 10000
-                    + numberBuffer[4] * 1000
-                    + numberBuffer[5] * 100
-                    + numberBuffer[6] * 10
-                    + numberBuffer[7];
-        case 8:
-            return numberBuffer[0] * 100000000
-                    + numberBuffer[1] * 10000000
-                    + numberBuffer[2] * 1000000
-                    + numberBuffer[3] * 100000
-                    + numberBuffer[4] * 10000
-                    + numberBuffer[5] * 1000
-                    + numberBuffer[6] * 100
-                    + numberBuffer[7] * 10
-                    + numberBuffer[8];
-        case 9:
-            int result = numberBuffer[0] * 100000000
-                    + numberBuffer[1] * 10000000
-                    + numberBuffer[2] * 1000000
-                    + numberBuffer[3] * 100000
-                    + numberBuffer[4] * 10000
-                    + numberBuffer[5] * 1000
-                    + numberBuffer[6] * 100
-                    + numberBuffer[7] * 10
-                    + numberBuffer[8];
-            if (negative) {
-                if (-result < -INT_SIZE_BORDER || (-result == -INT_SIZE_BORDER && numberBuffer[9] > 8)) {
-                    String number = Arrays.stream(numberBuffer)
-                            .limit(i + 1)
-                            .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
-                            .toString();
-                    throw new JsonException("Number is too big for int value: -" + number);
-                }
-            } else {
-                if (result > INT_SIZE_BORDER || (result == INT_SIZE_BORDER && numberBuffer[9] > 7)) {
-                    String number = Arrays.stream(numberBuffer)
-                            .limit(i + 1)
-                            .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
-                            .toString();
-                    throw new JsonException("Number is too big for int value: " + number);
-                }
-            }
-            return result * 10 + numberBuffer[9];
-        default:
-            //int has maximum of 10 digits. Variable i counts also 0 as number since it is array index
-            String number = Arrays.stream(numberBuffer)
-                    .limit(i + 1)
-                    .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
-                    .toString();
-            if (negative) {
-                number = "-" + number;
-            }
-            throw new JsonException("Number is too big for int value: " + number);
+    @Override
+    public long readLong() {
+        if (lastByte() == '-') {
+            currentIndex = currentIndex + 1;
+            return -parseLong(true);
+        } else {
+            return parseLong(false);
         }
+    }
+
+    private long parseLong(boolean negative) {
+        int i = currentIndex;
+        int digit1 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit1 == -1) {
+            throw new IllegalStateException("Expected number, but was: " + (char) buffer[i]);
+        }
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit2 == -1) {
+            currentIndex = --i;
+            return digit1;
+        }
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit3 == -1) {
+            currentIndex = --i;
+            return digit1 * 10L + digit2;
+        }
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit4 == -1) {
+            currentIndex = --i;
+            return digit1 * 100L + digit2 * 10L + digit3;
+        }
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit5 == -1) {
+            currentIndex = --i;
+            return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
+        }
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit6 == -1) {
+            currentIndex = --i;
+            return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
+        }
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit7 == -1) {
+            currentIndex = --i;
+            return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
+        }
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit8 == -1) {
+            currentIndex = --i;
+            return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
+        }
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit9 == -1) {
+            currentIndex = --i;
+            return digit1 * 10000000L + digit2 * 1000000L + digit3 * 100000L + digit4 * 10000L + digit5 * 1000L + digit6 * 100L
+                    + digit7 * 10L + digit8;
+        }
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit10 == -1) {
+            currentIndex = --i;
+            return digit1 * 100000000L
+                    + digit2 * 10000000L
+                    + digit3 * 1000000L
+                    + digit4 * 100000L
+                    + digit5 * 10000L
+                    + digit6 * 1000L
+                    + digit7 * 100L
+                    + digit8 * 10L
+                    + digit9;
+        }
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit11 == -1) {
+            currentIndex = --i;
+            return digit1 * 1000000000L
+                    + digit2 * 100000000L
+                    + digit3 * 10000000L
+                    + digit4 * 1000000L
+                    + digit5 * 100000L
+                    + digit6 * 10000L
+                    + digit7 * 1000L
+                    + digit8 * 100L
+                    + digit9 * 10L
+                    + digit10;
+        }
+        int digit12 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit12 == -1) {
+            currentIndex = --i;
+            return digit1 * 10000000000L
+                    + digit2 * 1000000000L
+                    + digit3 * 100000000L
+                    + digit4 * 10000000L
+                    + digit5 * 1000000L
+                    + digit6 * 100000L
+                    + digit7 * 10000L
+                    + digit8 * 1000L
+                    + digit9 * 100L
+                    + digit10 * 10L
+                    + digit11;
+        }
+        int digit13 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit13 == -1) {
+            currentIndex = --i;
+            return digit1 * 100000000000L
+                    + digit2 * 10000000000L
+                    + digit3 * 1000000000L
+                    + digit4 * 100000000L
+                    + digit5 * 10000000L
+                    + digit6 * 1000000L
+                    + digit7 * 100000L
+                    + digit8 * 10000L
+                    + digit9 * 1000L
+                    + digit10 * 100L
+                    + digit11 * 10L
+                    + digit12;
+        }
+        int digit14 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit14 == -1) {
+            currentIndex = --i;
+            return digit1 * 1000000000000L
+                    + digit2 * 100000000000L
+                    + digit3 * 10000000000L
+                    + digit4 * 1000000000L
+                    + digit5 * 100000000L
+                    + digit6 * 10000000L
+                    + digit7 * 1000000L
+                    + digit8 * 100000L
+                    + digit9 * 10000L
+                    + digit10 * 1000L
+                    + digit11 * 100L
+                    + digit12 * 10L
+                    + digit13;
+        }
+        int digit15 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit15 == -1) {
+            currentIndex = --i;
+            return digit1 * 10000000000000L
+                    + digit2 * 1000000000000L
+                    + digit3 * 100000000000L
+                    + digit4 * 10000000000L
+                    + digit5 * 1000000000L
+                    + digit6 * 100000000L
+                    + digit7 * 10000000L
+                    + digit8 * 1000000L
+                    + digit9 * 100000L
+                    + digit10 * 10000L
+                    + digit11 * 1000L
+                    + digit12 * 100L
+                    + digit13 * 10L
+                    + digit14;
+        }
+        int digit16 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit16 == -1) {
+            currentIndex = --i;
+            return digit1 * 100000000000000L
+                    + digit2 * 10000000000000L
+                    + digit3 * 1000000000000L
+                    + digit4 * 100000000000L
+                    + digit5 * 10000000000L
+                    + digit6 * 1000000000L
+                    + digit7 * 100000000L
+                    + digit8 * 10000000L
+                    + digit9 * 1000000L
+                    + digit10 * 100000L
+                    + digit11 * 10000L
+                    + digit12 * 1000L
+                    + digit13 * 100L
+                    + digit14 * 10L
+                    + digit15;
+        }
+        int digit17 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit17 == -1) {
+            currentIndex = --i;
+            return digit1 * 1000000000000000L
+                    + digit2 * 100000000000000L
+                    + digit3 * 10000000000000L
+                    + digit4 * 1000000000000L
+                    + digit5 * 100000000000L
+                    + digit6 * 10000000000L
+                    + digit7 * 1000000000L
+                    + digit8 * 100000000L
+                    + digit9 * 10000000L
+                    + digit10 * 1000000L
+                    + digit11 * 100000L
+                    + digit12 * 10000L
+                    + digit13 * 1000L
+                    + digit14 * 100L
+                    + digit15 * 10L
+                    + digit16;
+        }
+        int digit18 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        long possibleResult = digit1 * 10000000000000000L
+                + digit2 * 1000000000000000L
+                + digit3 * 100000000000000L
+                + digit4 * 10000000000000L
+                + digit5 * 1000000000000L
+                + digit6 * 100000000000L
+                + digit7 * 10000000000L
+                + digit8 * 1000000000L
+                + digit9 * 100000000L
+                + digit10 * 10000000L
+                + digit11 * 1000000L
+                + digit12 * 100000L
+                + digit13 * 10000L
+                + digit14 * 1000L
+                + digit15 * 100L
+                + digit16 * 10L
+                + digit17;
+        if (digit18 == -1) {
+            currentIndex = --i;
+            return possibleResult;
+        }
+        int digit19 = WHOLE_NUMBER_PARTS[buffer[i++]];
+        if (digit19 == -1) {
+            currentIndex = --i;
+            if (negative) {
+                if (-possibleResult > -LONG_SIZE_BORDER || (-possibleResult == -LONG_SIZE_BORDER && digit18 <= 8)) {
+                    return possibleResult * 10 + digit18;
+                }
+            } else if (possibleResult < LONG_SIZE_BORDER || (possibleResult == LONG_SIZE_BORDER && digit18 <= 7)) {
+                return possibleResult * 10 + digit18;
+            }
+        }
+        //The Number is too big. Lets read it all and report in the exception
+        i++;
+        StringBuilder number = new StringBuilder();
+        if (negative) {
+            number.insert(0, "-");
+        }
+        number.append(possibleResult).append(digit18);
+        if (digit19 != -1) {
+            int digit = digit19;
+            while (digit != -1) {
+                number.append(digit);
+                digit = WHOLE_NUMBER_PARTS[buffer[i++]];
+            }
+        }
+        currentIndex = --i;
+        throw new JsonException("Number is too big for long value: " + number);
     }
 
     @Override

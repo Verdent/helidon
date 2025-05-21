@@ -23,7 +23,7 @@ public interface JsonParser {
     JsonNumber readJsonNumber();
     char[] readNumberAsArray();
     int readInt();
-//    int readLong();
+    long readLong();
     boolean checkNull();
     boolean checkTrue();
     boolean checkFalse();

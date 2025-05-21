@@ -12,6 +12,7 @@ import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
@@ -100,7 +101,7 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
             deserializer = jsonBindingConfigurer.getDeserializer(componentType);
             serializer = jsonBindingConfigurer.getSerializer(componentType);
         }

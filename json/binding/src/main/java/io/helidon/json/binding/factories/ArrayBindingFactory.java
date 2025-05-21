@@ -2,20 +2,17 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
-import java.util.List;
 
-import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.JsonBindingConfigurer;
-import io.helidon.json.binding.JsonConfigurable;
+import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
-import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -117,7 +114,7 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
 
         @Override
         @SuppressWarnings("unchecked")
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
+        public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
             deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(componentType);
             serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(componentType);
             emptyArray = createArrayInstance(0);

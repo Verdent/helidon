@@ -38,6 +38,7 @@ public class JsonNumber implements JsonValue {
 
     private final char[] numberChars;
     private Double value;
+    private Long longValue;
     private int index = 0;
 
     public JsonNumber(char[] numberChars) {
@@ -86,6 +87,20 @@ public class JsonNumber implements JsonValue {
             throw new IllegalStateException("Should not be here");
         }
         return value;
+    }
+
+    public long asLong() {
+        if (longValue != null) {
+            return longValue;
+        }
+        boolean negative = numberChars[0] == '-';
+        if (negative || numberChars[0] == '+') {
+            index++;
+        }
+        if (index == numberChars.length) {
+            throw new JsonException("Number should not be only - or +");
+        }
+        return negative ? -readLong() : readLong();
     }
 
     private long readLong() {

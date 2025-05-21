@@ -48,6 +48,7 @@ final class Types {
     static final TypeName TYPED_JSON_CONVERTER_TYPE = TypeName.create("io.helidon.json.binding.TypedJsonConverter");
     static final TypeName JSON_BINDING = TypeName.create("io.helidon.json.binding.JsonBinding");
     static final TypeName JSON_BINDING_CONFIGURER = TypeName.create("io.helidon.json.binding.JsonBindingConfigurer");
+    static final TypeName JSON_CONTEXT = TypeName.create("io.helidon.json.binding.JsonContext");
     static final TypeName JSON_BINDING_FACTORY = TypeName.create("io.helidon.json.binding.JsonBindingFactory");
     static final TypeName JSON_BINDING_FACTORY_TYPED = TypeName.create("io.helidon.json.binding.TypedJsonBindingFactory");
     static final TypeName JSON_CONFIGURABLE = TypeName.create("io.helidon.json.binding.JsonConfigurable");

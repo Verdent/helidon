@@ -2,11 +2,13 @@ package io.helidon.json.benchmark;
 
 class JsonTemplates {
 
-    static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{\"fieldTwo\":2147,"
+    static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
+//            + "\"fieldTwo\":2147,"
             + "\"fieldOne\":\"Hello\","
             + "\"fieldThree\":\"World\","
             + "\"fieldFour\":   null ,"
-            + "\"fieldFive\":\"1234\", "
+//            + "\"fieldFive\":\"1234\", "
+//            + "\"fieldSix\":4567, "
             + "\"otherBean\":{"
             + "\"otherString\":\"Hello there!\""
             + "}}";

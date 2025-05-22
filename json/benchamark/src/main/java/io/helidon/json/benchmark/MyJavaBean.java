@@ -17,6 +17,7 @@ public class MyJavaBean {
     private String fieldThree;
     private String fieldFour;
     private String fieldFive;
+    private long fieldSix;
     private OtherBean otherBean;
 
     public MyJavaBean() {
@@ -60,6 +61,14 @@ public class MyJavaBean {
 
     public void setFieldFive(String fieldFive) {
         this.fieldFive = fieldFive;
+    }
+
+    public long getFieldSix() {
+        return fieldSix;
+    }
+
+    public void setFieldSix(long fieldSix) {
+        this.fieldSix = fieldSix;
     }
 
     public OtherBean getOtherBean() {

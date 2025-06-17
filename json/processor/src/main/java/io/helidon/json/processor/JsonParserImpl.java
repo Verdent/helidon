@@ -12,6 +12,7 @@ final class JsonParserImpl implements ReusableJsonParser {
     //We need this to check if the next number digit overflows int max capacity
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
     private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
+    private static final byte[] EMPTY_BUFFER = new byte[0];
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
@@ -63,6 +64,10 @@ final class JsonParserImpl implements ReusableJsonParser {
     int currentIndex = -1;
     int bufferLength;
 
+    JsonParserImpl() {
+        this(EMPTY_BUFFER);
+    }
+
     JsonParserImpl(String json) {
 //        this(json.getBytes(StandardCharsets.UTF_8));
         this(json.getBytes());
@@ -87,7 +92,30 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     @Override
     public byte nextToken() {
-        byte b;
+        //Optimization for faster reading data without a space
+        //No loop is used.
+        byte b = readNextByte();
+        switch (b) {
+        case '\r':
+        case '\t':
+        case '\n':
+        case ' ':
+            break;
+        default:
+            return b;
+        }
+        //If since space or why character was used between tokens, we should still try to optimize
+        b = readNextByte();
+        switch (b) {
+        case '\r':
+        case '\t':
+        case '\n':
+        case ' ':
+            break;
+        default:
+            return b;
+        }
+        //We dont know how many spaces, new lines etc is there present, lets start looping
         for (int i = currentIndex + 1; i < bufferLength; i++) {
             b = buffer[i];
             switch (b) {

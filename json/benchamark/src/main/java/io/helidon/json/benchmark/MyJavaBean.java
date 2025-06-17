@@ -3,13 +3,14 @@ package io.helidon.json.benchmark;
 import io.helidon.json.binding.Json;
 
 import com.fasterxml.jackson.annotation.JsonClassDescription;
-import com.fasterxml.jackson.annotation.JsonProperty;
+//import io.micronaut.serde.annotation.Serdeable;
 
 /**
  * TODO javadoc
  */
 @Json.Entity
 @JsonClassDescription
+//@Serdeable
 public class MyJavaBean {
 
     private String fieldOne;

@@ -3,6 +3,8 @@ module helidon.json.benchmark {
     requires jsoniter;
     requires com.fasterxml.jackson.annotation;
     requires helidon.json.binding;
+    requires com.fasterxml.jackson.databind;
+    requires com.fasterxml.jackson.module.blackbird;
 
     exports io.helidon.json.benchmark;
 }

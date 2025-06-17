@@ -3,14 +3,14 @@ package io.helidon.json.benchmark;
 class JsonTemplates {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
-//            + "\"fieldTwo\":2147,"
+            + "\"fieldTwo\":2147,"
             + "\"fieldOne\":\"Hello\","
             + "\"fieldThree\":\"World\","
             + "\"fieldFour\":   null ,"
-//            + "\"fieldFive\":\"1234\", "
-//            + "\"fieldSix\":4567, "
-            + "\"otherBean\":{"
-            + "\"otherString\":\"Hello there!\""
+            + "\"fieldFive\":\"1234\"   , "
+            + "\"fieldSix\":4567,   "
+            + "\"otherBean\":   {"
+            + "   \"otherString\"   :   \"Hello there!\""
             + "}}";
 
     static final String CLASS_WITH_LIST = "{\"list\":[123, 321],"

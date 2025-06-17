@@ -5,9 +5,13 @@ package io.helidon.json.processor;
  */
 public interface JsonParser {
 
-    static JsonParser createParser(String json) {
+    static JsonParser create(String json) {
         return new JsonParserImpl(json);
 //        return new StreamJsonParser(new ByteArrayInputStream(json.getBytes()));
+    }
+
+    static JsonParser create() {
+        return new JsonParserImpl();
     }
 
     byte readNextByte();

@@ -6,8 +6,6 @@ import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
@@ -18,18 +16,9 @@ import io.helidon.json.processor.ReusableJsonParser;
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
-    private static final ReusableJsonParser JSON_PARSER = (ReusableJsonParser) JsonParser.createParser("");
+    private static final ReusableJsonParser JSON_PARSER = (ReusableJsonParser) JsonParser.create("");
     private static final JsonContext EMPTY_CONTEXT = JsonContext.create();
-
-//    private static final Queue<JsonParser> PARSERS = new ArrayDeque<>();
-//    private static final Queue<JsonParser> PARSERS = new ArrayBlockingQueue<>(1);
-    private static final Queue<ReusableJsonParser> PARSERS = new ConcurrentLinkedQueue<>();
-    static {
-        PARSERS.add(JSON_PARSER);
-    }
-    private static final ReentrantLock LOCK = new ReentrantLock();
-
-    private final ThreadLocal<ReusableJsonParser> parsers = new ThreadLocal<>();
+    private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new IdentityHashMap<>();
@@ -131,49 +120,19 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     public <T> T fromJson(String jsonStr, Class<T> type) {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
-        ReusableJsonParser parser;
-        boolean isVirtual = Thread.currentThread().isVirtual();
-        if (isVirtual) {
-            parser = (ReusableJsonParser) JsonParser.createParser(jsonStr);
-        } else {
-            parser = this.parsers.get();
-            if (parser == null) {
-                parser = (ReusableJsonParser) JsonParser.createParser(jsonStr);
-            } else {
-                this.parsers.remove();
-                parser.reset(jsonStr.getBytes());
-            }
-        }
+        CachedParser cachedParser = parserCache.get();
+        ReusableJsonParser parser = cachedParser.get();
+        parser.reset(jsonStr.getBytes());
         parser.nextToken();
         T deserialized = deserializer.fromJson(parser);
-        if (!isVirtual) {
-            this.parsers.set(parser);
-        }
+        cachedParser.set(parser);
         return deserialized;
-//        JsonParser parser = JsonParser.createParser(jsonStr);
-//        JsonParser parser = JSON_PARSER;
-//        parser.reset(jsonStr.getBytes());
-//        JsonParser parser = PARSERS.poll();
-//        if (parser == null) {
-//            System.out.println("BLEEEEEE");
-//            parser = JsonParser.createParser(jsonStr);
-//            parser.nextToken();
-//            return deserializer.fromJson(parser);
-//        } else {
-//            parser.reset(jsonStr.getBytes());
-//            parser.nextToken();
-//            T deserialized = deserializer.fromJson(parser);
-//            PARSERS.offer(parser);
-//            return deserialized;
-//        }
-//        parser.nextToken();
-//        return deserializer.fromJson(parser);
     }
 
     @Override
     public <T> T fromJson(String jsonStr, GenericType<T> type) {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
-        JsonParser parser = JsonParser.createParser(jsonStr);
+        JsonParser parser = JsonParser.create(jsonStr);
         parser.nextToken();
         return deserializer.fromJson(parser);
     }

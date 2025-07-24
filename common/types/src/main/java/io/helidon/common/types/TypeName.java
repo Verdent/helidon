@@ -25,7 +25,6 @@ import java.util.function.Consumer;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.Errors;
-import io.helidon.common.Generated;
 
 /**
  * TypeName is similar to {@link java.lang.reflect.Type} in its most basic use case. The {@link #name()} returns the package +

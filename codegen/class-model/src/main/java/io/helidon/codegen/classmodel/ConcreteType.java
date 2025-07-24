@@ -74,6 +74,9 @@ class ConcreteType extends Type {
             }
             writer.write(">");
         }
+        if (isArray()) {
+            writer.write("[]");
+        }
     }
 
     @Override

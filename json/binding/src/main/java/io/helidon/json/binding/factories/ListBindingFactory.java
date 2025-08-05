@@ -23,16 +23,16 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
+class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
     @Override
-    public BindingFactoryDeserializer<List<T>> createDeserializer(Type type) {
-        return new ListConverter<>(type);
+    public BindingFactoryDeserializer<List<?>> createDeserializer(Type type) {
+        return new ListConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<List<T>> createSerializer(Type type) {
-        return new ListConverter<>(type);
+    public BindingFactorySerializer<List<?>> createSerializer(Type type) {
+        return new ListConverter(type);
     }
 
     @Override
@@ -40,11 +40,11 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         return List.class;
     }
 
-    private static final class ListConverter<T> implements BindingFactoryConverter<List<T>> {
+    private static final class ListConverter implements BindingFactoryConverter<List<?>> {
 
         private final Type componentType;
-        private JsonDeserializer<T> deserializer;
-        private JsonSerializer<T> serializer;
+        private JsonDeserializer<Object> deserializer;
+        private JsonSerializer<Object> serializer;
 
         public ListConverter(Type type) {
             if (type instanceof ParameterizedType parameterizedType) {
@@ -55,14 +55,14 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         }
 
         @Override
-        public void toJson(Generator generator, List<T> instance, boolean writeNulls) {
+        public void toJson(Generator generator, List<?> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
             }
             generator.writeArrayStart();
             boolean first = true;
-            for (T value : instance) {
+            for (Object value : instance) {
                 if (value == null && !writeNulls) {
                     continue;
                 }
@@ -78,8 +78,8 @@ final class ListBindingFactory<T> implements TypedJsonBindingFactory<List<T>> {
         }
 
         @Override
-        public List<T> fromJsonValue(JsonParser parser) {
-            List<T> list = new ArrayList<>();
+        public List<?> fromJsonValue(JsonParser parser) {
+            List<Object> list = new ArrayList<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));

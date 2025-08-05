@@ -20,16 +20,16 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
+class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
 
     @Override
-    public BindingFactoryDeserializer<T[]> createDeserializer(Type type) {
-        return new ArrayConverter<>(type);
+    public BindingFactoryDeserializer<Object[]> createDeserializer(Type type) {
+        return new ArrayConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<T[]> createSerializer(Type type) {
-        return new ArrayConverter<>(type);
+    public BindingFactorySerializer<Object[]> createSerializer(Type type) {
+        return new ArrayConverter(type);
     }
 
     @Override
@@ -37,27 +37,28 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
         return Array.class;
     }
 
-    private static class ArrayConverter<T> implements BindingFactoryConverter<T[]> {
+    private static class ArrayConverter implements BindingFactoryConverter<Object[]> {
 
         private final Class<?> componentType;
-        private JsonDeserializer<T> deserializer;
-        private JsonSerializer<T> serializer;
-        private T[] emptyArray;
+        private final Object[] emptyArray;
+        private JsonDeserializer<Object> deserializer;
+        private JsonSerializer<Object> serializer;
 
         private ArrayConverter(Type type) {
             Class<?> classType = (Class<?>) type;
             this.componentType = classType.componentType();
+            emptyArray = createArrayInstance(0);
         }
 
         @Override
-        public void toJson(Generator generator, T[] instance, boolean writeNulls) {
+        public void toJson(Generator generator, Object[] instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
             }
             generator.writeArrayStart();
             boolean first = true;
-            for (T value : instance) {
+            for (Object value : instance) {
                 if (value == null && !writeNulls) {
                     continue;
                 }
@@ -72,12 +73,12 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
         }
 
         @Override
-        public T[] fromJsonValue(JsonParser parser) {
+        public Object[] fromJsonValue(JsonParser parser) {
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
             }
-            T[] array = createArrayInstance(5);
+            Object[] array = createArrayInstance(5);
             lastByte = parser.nextToken();
             int index = 0;
             if (lastByte != ']') {
@@ -85,7 +86,7 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
                 lastByte = parser.nextToken();
                 while (lastByte == ',') {
                     if (index == array.length) {
-                        T[] tmp = createArrayInstance(array.length * 2);
+                        Object[] tmp = createArrayInstance(array.length * 2);
                         System.arraycopy(array, 0, tmp, 0, array.length);
                         array = tmp;
                     }
@@ -98,7 +99,7 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
                 }
             }
             if (index > 0) {
-                T[] toReturn = createArrayInstance(index);
+                Object[] toReturn = createArrayInstance(index);
                 System.arraycopy(array, 0, toReturn, 0, toReturn.length);
                 return toReturn;
             } else if (index == array.length) {
@@ -107,17 +108,15 @@ class ArrayBindingFactory<T> implements TypedJsonBindingFactory<T[]> {
             return emptyArray;
         }
 
-        @SuppressWarnings("unchecked")
-        private T[] createArrayInstance(int size) {
-            return (T[]) Array.newInstance(componentType, size);
+        private Object[] createArrayInstance(int size) {
+            return (Object[]) Array.newInstance(componentType, size);
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
-            deserializer = (JsonDeserializer<T>) jsonBindingConfigurer.getDeserializer(componentType);
-            serializer = (JsonSerializer<T>) jsonBindingConfigurer.getSerializer(componentType);
-            emptyArray = createArrayInstance(0);
+            deserializer = (JsonDeserializer<Object>) jsonBindingConfigurer.getDeserializer(componentType);
+            serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(componentType);
         }
     }
 }

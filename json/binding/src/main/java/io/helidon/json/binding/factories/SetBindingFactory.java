@@ -23,16 +23,16 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
+class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
 
     @Override
-    public BindingFactoryDeserializer<Set<T>> createDeserializer(Type type) {
-        return new SetConverter<>(type);
+    public BindingFactoryDeserializer<Set<?>> createDeserializer(Type type) {
+        return new SetConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<Set<T>> createSerializer(Type type) {
-        return new SetConverter<>(type);
+    public BindingFactorySerializer<Set<?>> createSerializer(Type type) {
+        return new SetConverter(type);
     }
 
     @Override
@@ -40,11 +40,11 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         return Set.class;
     }
 
-    private static final class SetConverter<T> implements BindingFactoryConverter<Set<T>> {
+    private static final class SetConverter implements BindingFactoryConverter<Set<?>> {
 
         private final Type componentType;
-        private JsonDeserializer<T> deserializer;
-        private JsonSerializer<T> serializer;
+        private JsonDeserializer<Object> deserializer;
+        private JsonSerializer<Object> serializer;
 
         public SetConverter(Type type) {
             if (type instanceof ParameterizedType parameterizedType) {
@@ -55,14 +55,14 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         }
 
         @Override
-        public void toJson(Generator generator, Set<T> instance, boolean writeNulls) {
+        public void toJson(Generator generator, Set<?> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
             }
             generator.writeArrayStart();
             boolean first = true;
-            for (T value : instance) {
+            for (Object value : instance) {
                 if (value == null && !writeNulls) {
                     continue;
                 }
@@ -78,8 +78,8 @@ final class SetBindingFactory<T> implements TypedJsonBindingFactory<Set<T>> {
         }
 
         @Override
-        public Set<T> fromJsonValue(JsonParser parser) {
-            Set<T> set = new HashSet<>();
+        public Set<?> fromJsonValue(JsonParser parser) {
+            Set<Object> set = new HashSet<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));

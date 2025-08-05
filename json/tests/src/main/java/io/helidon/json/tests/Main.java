@@ -30,14 +30,26 @@ public class Main {
         //                                                                      """, RecordWithArray.class);
         //        System.out.println();
 
-        SimpleRecord record = new SimpleRecord(null, null, List.of(1, 2), 4321);
-        String json = JsonBinding.serialize(record);
-//        JsonBinding jsonBinding = JsonBinding.builder()
-//                .writeNulls(true)
-//                .build();
-//        json = jsonBinding.toJson(record);
-
-        System.out.println(json);
+//        SimpleRecord record = new SimpleRecord(null, null, List.of(1, 2), 4321);
+//        String json = JsonBinding.serialize(record);
+////        JsonBinding jsonBinding = JsonBinding.builder()
+////                .writeNulls(true)
+////                .build();
+////        json = jsonBinding.toJson(record);
+//
+//        System.out.println(json);
+        String test = """
+                {
+                    "map" : {
+                        "myKey1" : "myValue1",
+                        "myKey2" : "myValue2"
+                    }
+                }
+                """;
+        ObjectWithMap map = JsonBinding.deserialize(test, ObjectWithMap.class);
+        String serialized = JsonBinding.serialize(map);
+        ObjectWithMap map2 = JsonBinding.deserialize(test, ObjectWithMap.class);
+        System.out.println();
     }
 
 }

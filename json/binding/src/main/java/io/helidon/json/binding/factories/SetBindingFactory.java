@@ -36,8 +36,8 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
     }
 
     @Override
-    public Class<?> type() {
-        return Set.class;
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(Set.class, HashSet.class);
     }
 
     private static final class SetConverter implements BindingFactoryConverter<Set<?>> {

@@ -14,6 +14,7 @@ import io.helidon.common.types.TypeNames;
 import io.helidon.service.registry.Service;
 
 import java.lang.reflect.Type;
+import java.util.Set;
 
 class JsonBindingFactoryGenerator {
 
@@ -76,15 +77,18 @@ class JsonBindingFactoryGenerator {
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
-        method.name("type")
+        method.name("supportedTypes")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
-                                                            .type(Class.class)
-                                                            .addTypeArgument(TypeArgument.create("?"))
+                                                            .type(Set.class)
+                                                            .addTypeArgument(b -> b.type(Class.class)
+                                                                    .addTypeArgument(TypeArgument.create("?")))
                                                             .build()))
                 .addContent("return ")
+                .addContent(Set.class)
+                .addContent(".of(")
                 .addContent(convertedTypeInfo.originalType().genericTypeName())
-                .addContentLine(".class;");
+                .addContentLine(".class);");
     }
 
 }

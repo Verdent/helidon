@@ -27,8 +27,8 @@ import io.helidon.service.registry.Service;
 class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
 
     @Override
-    public Class<?> type() {
-        return Map.class;
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(Map.class, HashMap.class);
     }
 
     @Override
@@ -76,7 +76,11 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
                 }
                 keySerializer.toJson(generator, key, writeNulls);
                 generator.writeColon();
-                valueSerializer.toJson(generator, value, writeNulls);
+                if (value == null) {
+                    valueSerializer.writeNull(generator);
+                } else {
+                    valueSerializer.toJson(generator, value, writeNulls);
+                }
                 if (first) {
                     first = false;
                 }

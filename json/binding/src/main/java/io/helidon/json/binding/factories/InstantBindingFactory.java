@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
@@ -26,8 +27,8 @@ import static java.time.ZoneOffset.UTC;
 class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
 
     @Override
-    public Class<?> type() {
-        return Instant.class;
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(Instant.class);
     }
 
     @Override

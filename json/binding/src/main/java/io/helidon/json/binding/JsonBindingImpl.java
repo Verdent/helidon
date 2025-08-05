@@ -54,7 +54,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         //Fill in binding factories
         for (TypedJsonBindingFactory<?> bindingFactory : config.bindingFactories()) {
-            bindingFactories.putIfAbsent(bindingFactory.type(), bindingFactory);
+            bindingFactory.supportedTypes().forEach(type -> bindingFactories.putIfAbsent(type, bindingFactory));
         }
     }
 

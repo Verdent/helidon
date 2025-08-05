@@ -4,6 +4,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
@@ -36,11 +37,11 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
     }
 
     @Override
-    public Class<?> type() {
-        return List.class;
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(List.class, ArrayList.class);
     }
 
-    private static final class ListConverter implements BindingFactoryConverter<List<?>> {
+    static class ListConverter implements BindingFactoryConverter<List<?>> {
 
         private final Type componentType;
         private JsonDeserializer<Object> deserializer;
@@ -79,7 +80,7 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
         @Override
         public List<?> fromJsonValue(JsonParser parser) {
-            List<Object> list = new ArrayList<>();
+            List<Object> list = createInstance();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
@@ -104,6 +105,10 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
         public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
             deserializer = jsonBindingConfigurer.getDeserializer(componentType);
             serializer = jsonBindingConfigurer.getSerializer(componentType);
+        }
+
+        List<Object> createInstance() {
+            return new ArrayList<>();
         }
     }
 }

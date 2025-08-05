@@ -2,6 +2,7 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
+import java.util.Set;
 
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
@@ -33,8 +34,8 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
     }
 
     @Override
-    public Class<?> type() {
-        return Array.class;
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(Array.class);
     }
 
     private static class ArrayConverter implements BindingFactoryConverter<Object[]> {

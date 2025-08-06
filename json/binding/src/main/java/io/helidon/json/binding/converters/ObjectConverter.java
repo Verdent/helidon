@@ -12,7 +12,7 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-@Service.Singleton
+@Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
 final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
 

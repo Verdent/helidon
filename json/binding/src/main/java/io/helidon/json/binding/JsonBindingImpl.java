@@ -5,7 +5,9 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.common.GenericType;
@@ -16,7 +18,6 @@ import io.helidon.json.processor.ReusableJsonParser;
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
-    private static final ReusableJsonParser JSON_PARSER = (ReusableJsonParser) JsonParser.create("");
     private static final JsonContext EMPTY_CONTEXT = JsonContext.create();
     private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
 
@@ -202,6 +203,12 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             if (factory == null) {
                 if (type.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (List.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
+                } else if (Map.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Map.class);
+                } else if (Set.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Set.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "

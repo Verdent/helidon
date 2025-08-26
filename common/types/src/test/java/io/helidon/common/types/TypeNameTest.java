@@ -599,6 +599,16 @@ class TypeNameTest {
         assertThat(typeName.className(), equalTo("Boolean"));
     }
 
+    @Test
+    void testTypeNameEquals() {
+        TypeName typeName = TypeName.create("java.lang.Boolean[][][]");
+        TypeName typeName2 = TypeName.create("java.lang.Boolean[][][]");
+        TypeName typeName3 = TypeName.create("java.lang.Boolean[][]");
+
+        assertThat(typeName.equals(typeName2), is(true));
+        assertThat(typeName.equals(typeName3), is(false)); //Tohle padne
+    }
+
     private static Stream<EqualsData> equalsAndCompareSource() {
         return Stream.of(
                 new EqualsData(create(TypeNameTest.class), create(TypeNameTest.class), true),

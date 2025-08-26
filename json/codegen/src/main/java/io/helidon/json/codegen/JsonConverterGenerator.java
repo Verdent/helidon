@@ -383,7 +383,7 @@ class JsonConverterGenerator {
         Map<Integer, List<JsonProperty>> hashes = jsonProperties.stream()
                 .collect(Collectors.groupingBy(jsonProperty ->
                                                        calculateNameHash(jsonProperty.deserializationName().orElseThrow())));
-        Set<TypeName> processedTypes = new HashSet<>(); //Used to identify already configured type deserializers
+        Set<String> processedTypes = new HashSet<>(); //Used to identify already configured type deserializers
         for (Map.Entry<Integer, List<JsonProperty>> entry : hashes.entrySet()) {
             if (entry.getValue().size() > 1) {
                 throw new UnsupportedOperationException("Naming collision, not implemented yet");
@@ -481,7 +481,7 @@ class JsonConverterGenerator {
                                         Method.Builder method,
                                         ClassBase.Builder<?, ?> classBuilder,
                                         boolean hasCreator,
-                                        Set<TypeName> processedTypes,
+                                        Set<String> processedTypes,
                                         boolean useConstructorToConfigure,
                                         Map<String, TypeToConfigure> toConfigure) {
         jsonProperty.deserializer()
@@ -508,7 +508,7 @@ class JsonConverterGenerator {
                                                Method.Builder method,
                                                ClassBase.Builder<?, ?> classBuilder,
                                                boolean hasCreator,
-                                               Set<TypeName> processedTypes,
+                                               Set<String> processedTypes,
                                                boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
         TypeName resolvedType = PRIMITIVE_TO_BOXED.getOrDefault(type, type);
@@ -526,9 +526,9 @@ class JsonConverterGenerator {
             valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
         } else {
             String converterFieldName = "deserializer" + ensureUpperStart(type);
-            if (!processedTypes.contains(type)) {
+            if (!processedTypes.contains(converterFieldName)) {
                 //Deserializer for this type has not been created yet.
-                processedTypes.add(type); //To ensure deserializer reusability
+                processedTypes.add(converterFieldName); //To ensure deserializer reusability
                 TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
                 classBuilder.addField(builder -> builder.name(converterFieldName)
                         .type(fieldType));
@@ -577,7 +577,12 @@ class JsonConverterGenerator {
     }
 
     private static String ensureUpperStart(TypeName typeName) {
-        return ensureUpperStart(typeName.className().replaceAll("\\[]", "Array"));
+        String className = typeName.toString();
+        int index = className.lastIndexOf(".");
+        if (index > -1) {
+            className = className.substring(index + 1);
+        }
+        return ensureUpperStart(className.replaceAll("\\[]", "Array"));
     }
 
     private static String ensureUpperStart(String str) {
@@ -588,14 +593,6 @@ class JsonConverterGenerator {
         } else {
             return Character.toUpperCase(str.charAt(0)) + str.substring(1);
         }
-    }
-
-    private static String removeArraySigns(String className) {
-        int index = className.indexOf("[");
-        if (index > -1) {
-            className = className.substring(0, index) + "Array";
-        }
-        return className;
     }
 
     private static int calculateNameHash(String name) {

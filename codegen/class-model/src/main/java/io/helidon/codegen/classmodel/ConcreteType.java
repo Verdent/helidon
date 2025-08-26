@@ -75,8 +75,23 @@ class ConcreteType extends Type {
             writer.write(">");
         }
         if (isArray()) {
-            writer.write("[]");
+            Optional<TypeName> componentType = this.typeName.componentType();
+            while (componentType.isPresent()) {
+                TypeName current = componentType.get();
+                if (current.array()) {
+                    writer.append("[]");
+                    componentType = current.componentType();
+                } else {
+                    break;
+                }
+            }
+            if (this.typeName.array()) {
+                writer.append("[]");
+            }
         }
+//        if (isArray()) {
+//            writer.write("[]");
+//        }
     }
 
     @Override

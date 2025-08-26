@@ -1016,12 +1016,13 @@ public interface TypeName extends TypeNameBlueprint, Prototype.Api, Comparable<T
                         && Objects.equals(className, other.className())
                         && Objects.equals(enclosingNames, other.enclosingNames())
                         && primitive == other.primitive()
-                        && array == other.array();
+                        && array == other.array()
+                        && Objects.equals(componentType, other.componentType());
             }
 
             @Override
             public int hashCode() {
-                return Objects.hash(packageName, className, enclosingNames, primitive, array);
+                return Objects.hash(packageName, className, enclosingNames, primitive, array, componentType);
             }
 
         }

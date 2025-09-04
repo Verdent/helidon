@@ -23,7 +23,7 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
 
     @Option.Singular("property")
     @Option.Access("")
-    Map<String, SchemaItemBlueprint> properties();
+    Map<String, SchemaItem> properties();
 
     @Option.Singular("stringProperty")
     Map<String, SchemaString> stringProperties();
@@ -40,6 +40,9 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
     @Option.Singular("integerProperty")
     Map<String, SchemaInteger> integerProperties();
 
+    @Option.Singular("booleanProperty")
+    Map<String, SchemaBoolean> booleanProperties();
+
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);
@@ -48,11 +51,11 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
         minProperties().ifPresent(minProperties -> builder.add("minProperties", minProperties));
         dependentRequired().ifPresent(dependentRequired -> builder.add("dependentRequired", dependentRequired));
         Set<String> requiredProperties = new HashSet<>();
-        Map<String, SchemaItemBlueprint> properties = properties();
+        Map<String, SchemaItem> properties = properties();
         if (!properties.isEmpty()) {
             JsonObjectBuilder objectBuilder = Json.createObjectBuilder();
-            for (Map.Entry<String, SchemaItemBlueprint> entry : properties.entrySet()) {
-                SchemaItemBlueprint schemaItem = entry.getValue();
+            for (Map.Entry<String, SchemaItem> entry : properties.entrySet()) {
+                SchemaItem schemaItem = entry.getValue();
                 JsonObjectBuilder itemBuilder = Json.createObjectBuilder();
                 schemaItem.generate(itemBuilder);
                 objectBuilder.add(entry.getKey(), itemBuilder);

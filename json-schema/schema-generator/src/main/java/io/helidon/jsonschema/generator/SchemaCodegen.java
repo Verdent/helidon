@@ -1,11 +1,11 @@
 package io.helidon.jsonschema.generator;
 
 import java.util.Collection;
-import java.util.List;
 
 import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.RoundContext;
 import io.helidon.codegen.classmodel.ClassModel;
+import io.helidon.codegen.classmodel.Method;
 import io.helidon.codegen.classmodel.TypeArgument;
 import io.helidon.codegen.spi.CodegenExtension;
 import io.helidon.common.types.AccessModifier;
@@ -28,7 +28,6 @@ class SchemaCodegen implements CodegenExtension {
 
     @Override
     public void process(RoundContext roundContext) {
-
         Collection<TypeInfo> schemas = roundContext.annotatedTypes(Types.JSON_SCHEMA_SCHEMA);
         for (TypeInfo schema : schemas) {
             TypeName annotatedTypeName = schema.typeName();
@@ -51,24 +50,34 @@ class SchemaCodegen implements CodegenExtension {
                                            .typeName(Types.SERVICE_NAMED_BY_TYPE)
                                            .putValue("value", annotatedTypeName)
                                            .build())
+                    .sortStaticFields(false)
+                    .addField(fieldBuilder -> fieldBuilder.isStatic(true)
+                            .isFinal(true)
+                            .accessModifier(AccessModifier.PRIVATE)
+                            .name("STRING_SCHEMA")
+                            .type(String.class)
+                            .defaultValueContent("\"\"\"\n" + schemaJson + "\n\"\"\""))
+                    .addField(fieldBuilder -> fieldBuilder.isStatic(true)
+                            .accessModifier(AccessModifier.PRIVATE)
+                            .isFinal(true)
+                            .type(Types.LAZY_VALUE_SCHEMA)
+                            .name("LAZY_SCHEMA")
+                            .defaultValueContent("@io.helidon.common.LazyValue@.create(() -> "
+                                                         + "@io.helidon.jsonschema.schema.Schema@.parse(STRING_SCHEMA))"))
                     .addMethod(it -> it.name("schemaClass")
                             .returnType(returnType)
                             .addAnnotation(Annotations.OVERRIDE)
                             .addContent("return ")
                             .addContent(annotatedTypeName)
                             .addContentLine(".class;"))
+                    .addMethod(it -> it.name("jsonSchema")
+                            .returnType(TypeNames.STRING)
+                            .addAnnotation(Annotations.OVERRIDE)
+                            .addContentLine("return STRING_SCHEMA;"))
                     .addMethod(it -> it.name("schema")
-                            .returnType(TypeNames.STRING)
+                            .returnType(Types.SCHEMA)
                             .addAnnotation(Annotations.OVERRIDE)
-                            .addContentLine("return \"\"\"")
-                            .addContentLine(schemaJson)
-                            .addContent("\"\"\";"))
-                    .addMethod(it -> it.name("schemaNoKeywords")
-                            .returnType(TypeNames.STRING)
-                            .addAnnotation(Annotations.OVERRIDE)
-                            .addContentLine("return \"\"\"")
-                            .addContentLine(schemaJsonNoKeywords)
-                            .addContent("\"\"\";"));
+                            .addContent("return LAZY_SCHEMA.get();"));
 
             roundContext.addGeneratedType(typeName,
                                           builder,

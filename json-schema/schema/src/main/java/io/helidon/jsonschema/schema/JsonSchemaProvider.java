@@ -4,8 +4,8 @@ public interface JsonSchemaProvider {
 
     Class<?> schemaClass();
 
-    String schema();
+    String jsonSchema();
 
-    String schemaNoKeywords();
+    Schema schema();
 
 }

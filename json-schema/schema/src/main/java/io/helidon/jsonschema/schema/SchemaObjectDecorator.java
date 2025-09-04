@@ -9,6 +9,7 @@ class SchemaObjectDecorator implements Prototype.BuilderDecorator<SchemaObject.B
         target.integerProperties().forEach(target.properties()::putIfAbsent);
         target.numberProperties().forEach(target.properties()::putIfAbsent);
         target.stringProperties().forEach(target.properties()::putIfAbsent);
+        target.booleanProperties().forEach(target.properties()::putIfAbsent);
         target.objectProperties().forEach(target.properties()::putIfAbsent);
         target.arrayProperties().forEach(target.properties()::putIfAbsent);
     }

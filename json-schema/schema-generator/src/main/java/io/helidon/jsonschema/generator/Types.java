@@ -49,8 +49,20 @@ class Types {
     static final TypeName JSON_SCHEMA_NUMBER_EXCLUSIVE_MINIMUM =
             TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.ExclusiveMinimum");
 
+    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
+    static final TypeName SCHEMA_BUILDER = TypeName.create("io.helidon.jsonschema.schema.Schema.Builder");
+    static final TypeName SCHEMA_OBJECT = TypeName.create("io.helidon.jsonschema.schema.SchemaObject");
+    static final TypeName SCHEMA_OBJECT_BUILDER = TypeName.create("io.helidon.jsonschema.schema.SchemaObject.Builder");
+
+    static final TypeName LAZY_VALUE = TypeName.create("io.helidon.common.LazyValue");
+    static final TypeName LAZY_VALUE_SCHEMA = TypeName.builder(Types.LAZY_VALUE)
+            .addTypeArgument(Types.SCHEMA)
+            .build();
+
+
     //Service registry related annotations
     static final TypeName SERVICE_NAMED_BY_TYPE = TypeName.create("io.helidon.service.registry.Service.NamedByType");
     static final TypeName SERVICE_SINGLETON = TypeName.create("io.helidon.service.registry.Service.Singleton");
+
 
 }

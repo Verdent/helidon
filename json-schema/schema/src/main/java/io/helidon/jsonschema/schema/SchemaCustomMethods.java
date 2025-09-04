@@ -3,18 +3,23 @@ package io.helidon.jsonschema.schema;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.Services;
 
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
 import jakarta.json.JsonNumber;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
 import jakarta.json.stream.JsonGenerator;
 import jakarta.json.stream.JsonGeneratorFactory;
@@ -80,10 +85,12 @@ class SchemaCustomMethods {
                     .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the schema root."));
             switch (type) {
             case "string" -> builder.rootString(stringBuilder -> parseString(stringBuilder, jsonObject));
-            case "integer" -> builder.rootInteger(integerRoot -> parseInteger(integerRoot, jsonObject));
-            case "number" -> builder.rootNumber(numberRoot -> parseNumber(numberRoot, jsonObject));
+            case "integer" -> builder.rootInteger(integerBuilder -> parseInteger(integerBuilder, jsonObject));
+            case "number" -> builder.rootNumber(numberBuilder -> parseNumber(numberBuilder, jsonObject));
             case "boolean" -> builder.rootBoolean(booleanBuilder -> parseCommon(booleanBuilder, jsonObject));
             case "object" -> builder.rootObject(objectBuilder -> parseObject(objectBuilder, jsonObject));
+            case "array" -> builder.rootArray(arrayBuilder -> parseArray(arrayBuilder, jsonObject));
+            default -> throw new SchemaException("Unsupported root type: " + type);
             }
         }
         return builder.build();
@@ -119,25 +126,61 @@ class SchemaCustomMethods {
         getDoubleValue(jsonObject, "exclusiveMinimum").ifPresent(numberBuilder::exclusiveMinimum);
     }
 
+    private static void parseArray(SchemaArray.Builder arrayBuilder, JsonObject jsonObject) {
+
+    }
+
     private static void parseObject(SchemaObject.Builder objectBuilder, JsonObject jsonObject) {
         parseCommon(objectBuilder, jsonObject);
         getIntValue(jsonObject, "maxProperties").ifPresent(objectBuilder::maxProperties);
         getIntValue(jsonObject, "minProperties").ifPresent(objectBuilder::minProperties);
         getBooleanValue(jsonObject, "dependentRequired").ifPresent(objectBuilder::dependentRequired);
         JsonObject properties = jsonObject.getJsonObject("properties");
-        properties.forEach((key, value) -> {
-            JsonObject object = (JsonObject) value;
-            String type = getStringValue(object, "type")
-                    .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property."));
-            switch (type) {
-            case "string" -> objectBuilder.putStringProperty(key, stringBuilder -> parseString(stringBuilder, object));
-            case "integer" -> objectBuilder.putIntegerProperty(key, integerBuilder -> parseInteger(integerBuilder, object));
-            case "number" -> objectBuilder.putNumberProperty(key, numberBuilder -> parseNumber(numberBuilder, object));
-            case "boolean" -> objectBuilder.putBooleanProperty(key, booleanBuilder -> parseCommon(booleanBuilder, object));
-            case "object" -> objectBuilder.putObjectProperty(key, objectBuilder2 -> parseObject(objectBuilder2, object));
+        if (properties != null) {
+            JsonArray required = jsonObject.getJsonArray("required");
+            Set<String> requiredProperties;
+            if (required != null) {
+                requiredProperties = required.getValuesAs(JsonString.class)
+                        .stream()
+                        .map(JsonString::getString)
+                        .collect(Collectors.toSet());
+            } else {
+                requiredProperties = Set.of();
             }
-        });
-
+            properties.forEach((key, value) -> {
+                JsonObject object = (JsonObject) value;
+                String type = getStringValue(object, "type")
+                        .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property"
+                                                                       + "."));
+                switch (type) {
+                case "string" -> objectBuilder.putStringProperty(key, stringBuilder -> {
+                    parseString(stringBuilder, object);
+                    stringBuilder.required(requiredProperties.contains(key));
+                });
+                case "integer" -> objectBuilder.putIntegerProperty(key, integerBuilder -> {
+                    parseInteger(integerBuilder, object);
+                    integerBuilder.required(requiredProperties.contains(key));
+                });
+                case "number" -> objectBuilder.putNumberProperty(key, numberBuilder -> {
+                    parseNumber(numberBuilder, object);
+                    numberBuilder.required(requiredProperties.contains(key));
+                });
+                case "boolean" -> objectBuilder.putBooleanProperty(key, booleanBuilder -> {
+                    parseCommon(booleanBuilder, object);
+                    booleanBuilder.required(requiredProperties.contains(key));
+                });
+                case "object" -> objectBuilder.putObjectProperty(key, objectBuilder2 -> {
+                    parseObject(objectBuilder2, object);
+                    objectBuilder2.required(requiredProperties.contains(key));
+                });
+                case "array" -> objectBuilder.putArrayProperty(key, arrayBuilder -> {
+                    parseArray(arrayBuilder, object);
+                    arrayBuilder.required(requiredProperties.contains(key));
+                });
+                default -> throw new SchemaException("Unsupported type: " + type);
+                }
+            });
+        }
     }
 
     private static Optional<String> getStringValue(JsonObject jsonObject, String key) {

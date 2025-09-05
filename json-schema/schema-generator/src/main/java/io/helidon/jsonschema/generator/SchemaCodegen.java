@@ -34,9 +34,7 @@ class SchemaCodegen implements CodegenExtension {
             SchemaInfo schemaInfo = SchemaInfo.create(schema, ctx);
             TypeName typeName = schemaInfo.generatedSchema();
             Schema helidonSchema = schemaInfo.schema();
-            //This includes $ properties
             String schemaJson = helidonSchema.generate();
-            String schemaJsonNoKeywords = helidonSchema.generateNoKeywords();
             TypeName returnType = TypeName.builder()
                     .type(Class.class)
                     .addTypeArgument(TypeArgument.create("?"))

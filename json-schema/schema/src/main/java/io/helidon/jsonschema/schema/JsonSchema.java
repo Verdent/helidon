@@ -166,4 +166,42 @@ public final class JsonSchema {
         }
     }
 
+    public static final class Array {
+
+        @Target({ElementType.METHOD, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface MaxItems {
+            int value();
+        }
+
+        @Target({ElementType.METHOD, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface MinItems {
+            int value();
+        }
+
+        @Target({ElementType.METHOD, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface MaxContains {
+            int value();
+        }
+
+        @Target({ElementType.METHOD, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface MinContains {
+            int value();
+        }
+
+        @Target({ElementType.METHOD, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface UniqueItems {
+            boolean value();
+        }
+    }
+
 }

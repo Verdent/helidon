@@ -1,5 +1,8 @@
 package io.helidon.jsonschema.generator;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
 import io.helidon.common.types.TypeName;
 
 class Types {
@@ -49,16 +52,29 @@ class Types {
     static final TypeName JSON_SCHEMA_NUMBER_EXCLUSIVE_MINIMUM =
             TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.ExclusiveMinimum");
 
-    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
-    static final TypeName SCHEMA_BUILDER = TypeName.create("io.helidon.jsonschema.schema.Schema.Builder");
-    static final TypeName SCHEMA_OBJECT = TypeName.create("io.helidon.jsonschema.schema.SchemaObject");
-    static final TypeName SCHEMA_OBJECT_BUILDER = TypeName.create("io.helidon.jsonschema.schema.SchemaObject.Builder");
+    //Array annotations
+    static final TypeName JSON_SCHEMA_ARRAY_MAX_ITEMS =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MaxItems");
+    static final TypeName JSON_SCHEMA_ARRAY_MIN_ITEMS =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MinItems");
+    static final TypeName JSON_SCHEMA_ARRAY_MAX_CONTAINS =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MaxContains");
+    static final TypeName JSON_SCHEMA_ARRAY_MIN_CONTAINS =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MinContains");
+    static final TypeName JSON_SCHEMA_ARRAY_UNIQUE_ITEMS =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.UniqueItems");
 
+    //Random types
     static final TypeName LAZY_VALUE = TypeName.create("io.helidon.common.LazyValue");
     static final TypeName LAZY_VALUE_SCHEMA = TypeName.builder(Types.LAZY_VALUE)
             .addTypeArgument(Types.SCHEMA)
             .build();
+    static final TypeName BIG_DECIMAL =  TypeName.create(BigDecimal.class);
+    static final TypeName BIG_INTEGER =  TypeName.create(BigInteger.class);
+    static final TypeName NUMBER =  TypeName.create(Number.class);
 
+    //Schema related types
+    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
 
     //Service registry related annotations
     static final TypeName SERVICE_NAMED_BY_TYPE = TypeName.create("io.helidon.service.registry.Service.NamedByType");

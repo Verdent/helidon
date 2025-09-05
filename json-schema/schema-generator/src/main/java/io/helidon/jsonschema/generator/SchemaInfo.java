@@ -2,6 +2,7 @@ package io.helidon.jsonschema.generator;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.ElementInfoPredicates;
@@ -53,6 +54,17 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
             BOXED_VOID, PRIMITIVE_VOID
     );
 
+    private static final Set<TypeName> INTEGERS = Set.of(PRIMITIVE_BYTE,
+                                                         PRIMITIVE_SHORT,
+                                                         PRIMITIVE_INT,
+                                                         PRIMITIVE_LONG,
+                                                         Types.BIG_INTEGER);
+
+    private static final Set<TypeName> NUMBERS = Set.of(PRIMITIVE_FLOAT,
+                                                        PRIMITIVE_DOUBLE,
+                                                        Types.BIG_DECIMAL,
+                                                        Types.NUMBER);
+
     public static SchemaInfo create(TypeInfo annotatedType, CodegenContext ctx) {
         TypeName annotatedTypeName = annotatedType.typeName();
         TypeName generatedTypeName = TypeName.builder()
@@ -61,19 +73,7 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .build();
 
         Schema.Builder builder = Schema.builder();
-
-        if (annotatedTypeName.primitive()) {
-            if (annotatedTypeName.equals(TypeNames.PRIMITIVE_INT) || annotatedTypeName.equals(TypeNames.PRIMITIVE_LONG)) {
-                builder.rootInteger(it -> processIntegerAnnotations(it, annotatedTypeName, annotatedType));
-            } else if (annotatedTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
-                //            builder.root
-            }
-        } else if (annotatedTypeName.equals(TypeNames.STRING)) {
-            builder.rootString(stringBuilder -> processStringAnnotations(stringBuilder, annotatedType));
-        } else {
-            builder.rootObject(objectBuilder -> processObject(objectBuilder, annotatedType, ctx));
-        }
-
+        builder.rootObject(objectBuilder -> processObject(objectBuilder, annotatedType, ctx));
         return new SchemaInfo(generatedTypeName, builder.build());
     }
 
@@ -159,21 +159,18 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                                              TypeName elementTypeName,
                                              String name) {
         TypeName parameterTypeName = BOXED_TO_PRIMITIVE.getOrDefault(elementTypeName, elementTypeName);
-        if (parameterTypeName.primitive()) {
-            if (parameterTypeName.equals(PRIMITIVE_BYTE)
-                    || parameterTypeName.equals(PRIMITIVE_SHORT)
-                    || parameterTypeName.equals(TypeNames.PRIMITIVE_INT)
-                    || parameterTypeName.equals(TypeNames.PRIMITIVE_LONG)) {
-                builder.putIntegerProperty(name,
-                                           integerBuilder -> processIntegerAnnotations(integerBuilder,
-                                                                                       parameterTypeName,
-                                                                                       element));
-            } else if (parameterTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
+        if (INTEGERS.contains(parameterTypeName)) {
+            builder.putIntegerProperty(name,
+                                       integerBuilder -> processIntegerAnnotations(integerBuilder,
+                                                                                   parameterTypeName,
+                                                                                   element));
+        } else if (NUMBERS.contains(parameterTypeName)) {
+            builder.putNumberProperty(name, numberBuilder -> processNumberAnnotations(numberBuilder, element));
+        } else if (parameterTypeName.primitive()) {
+            if (parameterTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
                 builder.putIntegerProperty(name, booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
-            } else if (parameterTypeName.equals(PRIMITIVE_CHAR)) {
-                builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
             } else {
-                builder.putNumberProperty(name, numberBuilder -> processNumberAnnotations(numberBuilder, element));
+                builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
             }
         } else if (parameterTypeName.equals(TypeNames.STRING)) {
             builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
@@ -182,6 +179,14 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 || parameterTypeName.isSet()) {
             builder.putArrayProperty(name, arrayBuilder -> processArrayAnnotations(arrayBuilder, element));
         } else {
+            if (parameterTypeName.packageName().startsWith("java")) {
+                //Do not inspect java and javax package classes
+                builder.putObjectProperty(name, objectBuilder -> {
+                    //Only the annotations on the element should be processed
+                    processObjectAnnotations(objectBuilder, element);
+                });
+                return;
+            }
             TypeInfo typeInfo = ctx.typeInfo(parameterTypeName)
                     .orElseThrow(() -> new IllegalStateException("Could not process required type: " + parameterTypeName));
 
@@ -222,8 +227,23 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .ifPresent(builder::maxProperties);
     }
 
-    private static void processArrayAnnotations(SchemaArray.Builder arrayBuilder, TypedElementInfo method) {
-        processCommonAnnotations(arrayBuilder, method);
+    private static void processArrayAnnotations(SchemaArray.Builder arrayBuilder, Annotated annotated) {
+        processCommonAnnotations(arrayBuilder, annotated);
+        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MIN_ITEMS)
+                .flatMap(it -> it.intValue())
+                .ifPresent(arrayBuilder::minItems);
+        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MAX_ITEMS)
+                .flatMap(it -> it.intValue())
+                .ifPresent(arrayBuilder::maxItems);
+        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MIN_CONTAINS)
+                .flatMap(it -> it.intValue())
+                .ifPresent(arrayBuilder::minContains);
+        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MAX_CONTAINS)
+                .flatMap(it -> it.intValue())
+                .ifPresent(arrayBuilder::maxContains);
+        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_UNIQUE_ITEMS)
+                .flatMap(it -> it.booleanValue())
+                .ifPresent(arrayBuilder::uniqueItems);
     }
 
 }

@@ -13,6 +13,8 @@ class Types {
     static final TypeName JSON_SCHEMA_DESCRIPTION = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Description");
     static final TypeName JSON_SCHEMA_REQUIRED = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Required");
     static final TypeName JSON_SCHEMA_PROVIDER = TypeName.create("io.helidon.jsonschema.schema.JsonSchemaProvider");
+    static final TypeName JSON_SCHEMA_DO_NOT_INSPECT = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.DoNotInspect");
+    static final TypeName JSON_SCHEMA_IGNORE = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Ignore");
 
     //Integer annotations
     static final TypeName JSON_SCHEMA_INTEGER_MULTIPLE_OF =
@@ -72,6 +74,7 @@ class Types {
     static final TypeName BIG_DECIMAL =  TypeName.create(BigDecimal.class);
     static final TypeName BIG_INTEGER =  TypeName.create(BigInteger.class);
     static final TypeName NUMBER =  TypeName.create(Number.class);
+    static final TypeName JSONB_TRANSIENT =  TypeName.create("jakarta.json.bind.annotation.JsonbTransient");
 
     //Schema related types
     static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");

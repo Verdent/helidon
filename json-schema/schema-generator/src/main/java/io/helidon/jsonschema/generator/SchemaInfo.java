@@ -132,6 +132,10 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .toList();
 
         for (TypedElementInfo field : fields) {
+            if (field.hasAnnotation(Types.JSON_SCHEMA_IGNORE)
+                    || field.hasAnnotation(Types.JSONB_TRANSIENT)) {
+                continue;
+            }
             processObjectElement(builder, ctx, field, field.typeName(), field.elementName());
         }
 
@@ -143,6 +147,10 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .toList();
 
         for (TypedElementInfo method : methods) {
+            if (method.hasAnnotation(Types.JSON_SCHEMA_IGNORE)
+                    || method.hasAnnotation(Types.JSONB_TRANSIENT)) {
+                continue;
+            }
             if (method.elementName().startsWith("set")) {
                 String name = Character.toLowerCase(method.elementName().charAt(3))
                         + method.elementName().substring(4);
@@ -179,7 +187,8 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 || parameterTypeName.isSet()) {
             builder.putArrayProperty(name, arrayBuilder -> processArrayAnnotations(arrayBuilder, element));
         } else {
-            if (parameterTypeName.packageName().startsWith("java")) {
+            if (parameterTypeName.packageName().startsWith("java")
+                    || element.hasAnnotation(Types.JSON_SCHEMA_DO_NOT_INSPECT)) {
                 //Do not inspect java and javax package classes
                 builder.putObjectProperty(name, objectBuilder -> {
                     //Only the annotations on the element should be processed

@@ -43,6 +43,9 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
     @Option.Singular("booleanProperty")
     Map<String, SchemaBoolean> booleanProperties();
 
+    @Option.Singular("nullProperty")
+    Map<String, SchemaNull> nullProperties();
+
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);

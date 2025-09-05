@@ -25,4 +25,7 @@ interface SchemaBlueprint {
     Optional<SchemaString> rootString();
 
     Optional<SchemaBoolean> rootBoolean();
+
+    Optional<SchemaNull> rootNull();
+
 }

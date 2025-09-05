@@ -27,6 +27,6 @@ interface SchemaArrayBlueprint extends SchemaItemBlueprint {
         minItems().ifPresent(minItems -> builder.add("minItems", minItems));
         minContains().ifPresent(minContains -> builder.add("minContains", minContains));
         maxContains().ifPresent(maxContains -> builder.add("maxContains", maxContains));
-
+        uniqueItems().ifPresent(uniqueItems -> builder.add("uniqueItems", uniqueItems));
     }
 }

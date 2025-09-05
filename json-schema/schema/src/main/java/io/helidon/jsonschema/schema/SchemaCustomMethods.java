@@ -90,6 +90,7 @@ class SchemaCustomMethods {
             case "boolean" -> builder.rootBoolean(booleanBuilder -> parseCommon(booleanBuilder, jsonObject));
             case "object" -> builder.rootObject(objectBuilder -> parseObject(objectBuilder, jsonObject));
             case "array" -> builder.rootArray(arrayBuilder -> parseArray(arrayBuilder, jsonObject));
+            case "null" -> builder.rootNull(nullBuilder -> parseCommon(nullBuilder, jsonObject));
             default -> throw new SchemaException("Unsupported root type: " + type);
             }
         }
@@ -127,7 +128,11 @@ class SchemaCustomMethods {
     }
 
     private static void parseArray(SchemaArray.Builder arrayBuilder, JsonObject jsonObject) {
-
+        getIntValue(jsonObject, "maxItems").ifPresent(arrayBuilder::maxItems);
+        getIntValue(jsonObject, "minItems").ifPresent(arrayBuilder::minItems);
+        getIntValue(jsonObject, "minContains").ifPresent(arrayBuilder::minContains);
+        getIntValue(jsonObject, "maxContains").ifPresent(arrayBuilder::maxContains);
+        getBooleanValue(jsonObject, "uniqueItems").ifPresent(arrayBuilder::uniqueItems);
     }
 
     private static void parseObject(SchemaObject.Builder objectBuilder, JsonObject jsonObject) {
@@ -176,6 +181,10 @@ class SchemaCustomMethods {
                 case "array" -> objectBuilder.putArrayProperty(key, arrayBuilder -> {
                     parseArray(arrayBuilder, object);
                     arrayBuilder.required(requiredProperties.contains(key));
+                });
+                case "null" -> objectBuilder.putNullProperty(key, nullBuilder -> {
+                    parseCommon(nullBuilder, object);
+                    nullBuilder.required(requiredProperties.contains(key));
                 });
                 default -> throw new SchemaException("Unsupported type: " + type);
                 }

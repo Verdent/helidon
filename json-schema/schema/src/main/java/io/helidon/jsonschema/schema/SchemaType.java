@@ -1,4 +1,4 @@
-package io.helidon.jsonschema.generator;
+package io.helidon.jsonschema.schema;
 
 public enum SchemaType {
 

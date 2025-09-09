@@ -66,6 +66,9 @@ class Types {
     static final TypeName JSON_SCHEMA_ARRAY_UNIQUE_ITEMS =
             TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.UniqueItems");
 
+    //Schema related types
+    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
+
     //Random types
     static final TypeName LAZY_VALUE = TypeName.create("io.helidon.common.LazyValue");
     static final TypeName LAZY_VALUE_SCHEMA = TypeName.builder(Types.LAZY_VALUE)
@@ -75,9 +78,6 @@ class Types {
     static final TypeName BIG_INTEGER =  TypeName.create(BigInteger.class);
     static final TypeName NUMBER =  TypeName.create(Number.class);
     static final TypeName JSONB_TRANSIENT =  TypeName.create("jakarta.json.bind.annotation.JsonbTransient");
-
-    //Schema related types
-    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
 
     //Service registry related annotations
     static final TypeName SERVICE_NAMED_BY_TYPE = TypeName.create("io.helidon.service.registry.Service.NamedByType");

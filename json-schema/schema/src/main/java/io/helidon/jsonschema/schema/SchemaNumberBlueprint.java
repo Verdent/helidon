@@ -7,7 +7,7 @@ import io.helidon.builder.api.Prototype;
 import jakarta.json.Json;
 import jakarta.json.JsonObjectBuilder;
 
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = SchemaNumberDecorator.class)
 interface SchemaNumberBlueprint extends SchemaItemBlueprint {
 
     Optional<Number> multipleOf();

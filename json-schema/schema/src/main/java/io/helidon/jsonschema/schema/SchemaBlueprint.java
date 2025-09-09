@@ -12,7 +12,7 @@ interface SchemaBlueprint {
     Optional<String> id();
 
     @Option.Access("")
-    SchemaItemBlueprint root();
+    SchemaItem root();
 
     Optional<SchemaObject> rootObject();
 

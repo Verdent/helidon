@@ -6,7 +6,7 @@ import io.helidon.builder.api.Prototype;
 
 import jakarta.json.JsonObjectBuilder;
 
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = SchemaIntegerDecorator.class)
 @Prototype.CustomMethods(SchemaIntegerCustomMethods.class)
 interface SchemaIntegerBlueprint extends SchemaItemBlueprint {
 

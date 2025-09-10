@@ -4,7 +4,7 @@ import io.helidon.builder.api.Prototype;
 
 import jakarta.json.JsonObjectBuilder;
 
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = SchemaNullDecorator.class)
 interface SchemaNullBlueprint extends SchemaItemBlueprint {
 
     @Override

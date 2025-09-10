@@ -2,11 +2,14 @@ package io.helidon.jsonschema.schema;
 
 import java.util.Optional;
 
+import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
+import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObjectBuilder;
 
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = SchemaArrayDecorator.class)
 interface SchemaArrayBlueprint extends SchemaItemBlueprint {
 
     Optional<Integer> maxItems();
@@ -19,6 +22,23 @@ interface SchemaArrayBlueprint extends SchemaItemBlueprint {
 
     Optional<Boolean> uniqueItems();
 
+    @Option.Access("")
+    Optional<SchemaItem> items();
+
+    Optional<SchemaObject> itemsObject();
+
+    Optional<SchemaArray> itemsArray();
+
+    Optional<SchemaNumber> itemsNumber();
+
+    Optional<SchemaInteger> itemsInteger();
+
+    Optional<SchemaString> itemsString();
+
+    Optional<SchemaBoolean> itemsBoolean();
+
+    Optional<SchemaNull> itemsNull();
+
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);
@@ -28,5 +48,10 @@ interface SchemaArrayBlueprint extends SchemaItemBlueprint {
         minContains().ifPresent(minContains -> builder.add("minContains", minContains));
         maxContains().ifPresent(maxContains -> builder.add("maxContains", maxContains));
         uniqueItems().ifPresent(uniqueItems -> builder.add("uniqueItems", uniqueItems));
+        items().ifPresent(items -> {
+            JsonObjectBuilder objectBuilder = Json.createObjectBuilder();
+            items.generate(objectBuilder);
+            builder.add("items", objectBuilder);
+        });
     }
 }

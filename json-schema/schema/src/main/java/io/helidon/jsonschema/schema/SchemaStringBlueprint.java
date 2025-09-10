@@ -6,7 +6,7 @@ import io.helidon.builder.api.Prototype;
 
 import jakarta.json.JsonObjectBuilder;
 
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = SchemaStringDecorator.class)
 interface SchemaStringBlueprint extends SchemaItemBlueprint {
 
     Optional<Long> maxLength();

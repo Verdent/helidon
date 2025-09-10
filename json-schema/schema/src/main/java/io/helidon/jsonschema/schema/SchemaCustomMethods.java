@@ -133,6 +133,21 @@ class SchemaCustomMethods {
         getIntValue(jsonObject, "minContains").ifPresent(arrayBuilder::minContains);
         getIntValue(jsonObject, "maxContains").ifPresent(arrayBuilder::maxContains);
         getBooleanValue(jsonObject, "uniqueItems").ifPresent(arrayBuilder::uniqueItems);
+        JsonObject items = jsonObject.getJsonObject("items");
+        if (items != null) {
+            String type = getStringValue(items, "type")
+                    .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property."));
+            switch (type) {
+            case "string" -> arrayBuilder.itemsString(stringBuilder -> parseString(stringBuilder, items));
+            case "integer" -> arrayBuilder.itemsInteger(integerBuilder -> parseInteger(integerBuilder, items));
+            case "number" -> arrayBuilder.itemsNumber(numberBuilder -> parseNumber(numberBuilder, items));
+            case "boolean" -> arrayBuilder.itemsBoolean(booleanBuilder -> parseCommon(booleanBuilder, items));
+            case "object" -> arrayBuilder.itemsObject(objectBuilder -> parseObject(objectBuilder, items));
+            case "array" -> arrayBuilder.itemsArray(arrayBuilder2 -> parseArray(arrayBuilder2, items));
+            case "null" -> arrayBuilder.itemsNull(nullBuilder -> parseCommon(nullBuilder, items));
+            default -> throw new SchemaException("Unsupported type: " + type);
+            }
+        }
     }
 
     private static void parseObject(SchemaObject.Builder objectBuilder, JsonObject jsonObject) {

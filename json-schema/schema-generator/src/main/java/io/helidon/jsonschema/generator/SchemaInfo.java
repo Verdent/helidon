@@ -30,6 +30,7 @@ import static io.helidon.common.types.TypeNames.BOXED_INT;
 import static io.helidon.common.types.TypeNames.BOXED_LONG;
 import static io.helidon.common.types.TypeNames.BOXED_SHORT;
 import static io.helidon.common.types.TypeNames.BOXED_VOID;
+import static io.helidon.common.types.TypeNames.OBJECT;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_BOOLEAN;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_BYTE;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_CHAR;
@@ -176,7 +177,7 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
             builder.putNumberProperty(name, numberBuilder -> processNumberAnnotations(numberBuilder, element));
         } else if (parameterTypeName.primitive()) {
             if (parameterTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
-                builder.putIntegerProperty(name, booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
+                builder.putBooleanProperty(name, booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
             } else {
                 builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
             }
@@ -185,15 +186,13 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
         } else if (parameterTypeName.array()
                 || parameterTypeName.isList()
                 || parameterTypeName.isSet()) {
-            builder.putArrayProperty(name, arrayBuilder -> processArrayAnnotations(arrayBuilder, element));
+            builder.putArrayProperty(name, arrayBuilder -> processArray(arrayBuilder, ctx, element, parameterTypeName));
         } else {
             if (parameterTypeName.packageName().startsWith("java")
                     || element.hasAnnotation(Types.JSON_SCHEMA_DO_NOT_INSPECT)) {
                 //Do not inspect java and javax package classes
-                builder.putObjectProperty(name, objectBuilder -> {
-                    //Only the annotations on the element should be processed
-                    processObjectAnnotations(objectBuilder, element);
-                });
+                //Only the annotations on the element should be processed
+                builder.putObjectProperty(name, objectBuilder -> processObjectAnnotations(objectBuilder, element));
                 return;
             }
             TypeInfo typeInfo = ctx.typeInfo(parameterTypeName)
@@ -236,7 +235,52 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .ifPresent(builder::maxProperties);
     }
 
-    private static void processArrayAnnotations(SchemaArray.Builder arrayBuilder, Annotated annotated) {
+    private static void processArray(SchemaArray.Builder builder,
+                                     CodegenContext ctx,
+                                     TypedElementInfo element,
+                                     TypeName elementTypeName) {
+        processArrayAnnotations(builder, ctx, element);
+        TypeName typeName = elementTypeName;
+        if (typeName.array()) {
+            typeName = typeName.componentType().orElse(OBJECT);
+        } else if (typeName.isList() || typeName.isSet()) {
+            typeName = typeName.typeArguments().getFirst();
+        }
+        TypeName finalTypeName = BOXED_TO_PRIMITIVE.getOrDefault(typeName, typeName);
+        if (INTEGERS.contains(finalTypeName)) {
+            builder.itemsInteger(integerBuilder -> processIntegerAnnotations(integerBuilder, finalTypeName, element));
+        } else if (NUMBERS.contains(finalTypeName)) {
+            builder.itemsNumber(numberBuilder -> processNumberAnnotations(numberBuilder, element));
+        } else if (finalTypeName.primitive()) {
+            if (finalTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
+                builder.itemsBoolean(booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
+            } else {
+                builder.itemsString(stringBuilder -> processStringAnnotations(stringBuilder, element));
+            }
+        } else if (finalTypeName.equals(TypeNames.STRING)) {
+            builder.itemsString(stringBuilder -> processStringAnnotations(stringBuilder, element));
+        } else if (finalTypeName.array()
+                || finalTypeName.isList()
+                || finalTypeName.isSet()) {
+            builder.itemsArray(arrayBuilder -> processArray(arrayBuilder, ctx, element, finalTypeName));
+        } else {
+            if (finalTypeName.packageName().startsWith("java")
+                    || element.hasAnnotation(Types.JSON_SCHEMA_DO_NOT_INSPECT)) {
+                //Do not inspect java and javax package classes
+                //Only the annotations on the element should be processed
+                builder.itemsObject(objectBuilder -> processObjectAnnotations(objectBuilder, element));
+                return;
+            }
+            TypeInfo typeInfo = ctx.typeInfo(finalTypeName)
+                    .orElseThrow(() -> new IllegalStateException("Could not process required type: " + finalTypeName));
+
+            builder.itemsObject(objectBuilder -> processObject(objectBuilder, typeInfo, ctx));
+        }
+    }
+
+    private static void processArrayAnnotations(SchemaArray.Builder arrayBuilder,
+                                                CodegenContext ctx,
+                                                Annotated annotated) {
         processCommonAnnotations(arrayBuilder, annotated);
         annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MIN_ITEMS)
                 .flatMap(it -> it.intValue())

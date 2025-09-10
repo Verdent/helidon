@@ -26,6 +26,12 @@ class SchemaNumberDecorator implements Prototype.BuilderDecorator<SchemaNumber.B
                 throw new SchemaException("Minimum value cannot be greater than the maximum value");
             }
         }
+        if (minimumNumber.isPresent() && minimumNumber.get().doubleValue() < 0) {
+            throw new SchemaException("Minimum value cannot be lower than 0");
+        }
+        if (maximumNumber.isPresent() && maximumNumber.get().doubleValue() < 0) {
+            throw new SchemaException("Maximum value cannot be lower than 0");
+        }
     }
 
 }

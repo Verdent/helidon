@@ -6,7 +6,6 @@ import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 import jakarta.json.Json;
-import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObjectBuilder;
 
 @Prototype.Blueprint(decorator = SchemaArrayDecorator.class)

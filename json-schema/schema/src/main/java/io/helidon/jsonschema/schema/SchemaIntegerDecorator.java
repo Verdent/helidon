@@ -22,9 +22,15 @@ class SchemaIntegerDecorator implements Prototype.BuilderDecorator<SchemaInteger
         Optional<Long> minimumNumber = minimum.or(() -> exclusiveMinimum);
         Optional<Long> maximumNumber = maximum.or(() -> exclusiveMaximum);
         if (minimumNumber.isPresent() && maximumNumber.isPresent()) {
-            if (minimumNumber.get().doubleValue() > maximumNumber.get().doubleValue()) {
+            if (minimumNumber.get() > maximumNumber.get()) {
                 throw new SchemaException("Minimum value cannot be greater than the maximum value");
             }
+        }
+        if (minimumNumber.isPresent() && minimumNumber.get() < 0) {
+            throw new SchemaException("Minimum value cannot be lower than 0");
+        }
+        if (maximumNumber.isPresent() && maximumNumber.get() < 0) {
+            throw new SchemaException("Maximum value cannot be lower than 0");
         }
     }
 

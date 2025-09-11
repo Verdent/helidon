@@ -149,7 +149,7 @@ final class HsonStruct implements Hson.Struct {
             writer.write('\"');
             writer.write(key);
             writer.write('\"');
-            writer.write(":");
+            writer.write(':');
             value.write(writer);
         });
 

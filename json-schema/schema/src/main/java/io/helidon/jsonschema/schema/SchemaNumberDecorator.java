@@ -13,23 +13,23 @@ class SchemaNumberDecorator implements Prototype.BuilderDecorator<SchemaNumber.B
         Optional<Double> maximum = target.maximum();
         Optional<Double> exclusiveMaximum = target.exclusiveMaximum();
         if (minimum.isPresent() && exclusiveMinimum.isPresent()) {
-            throw new SchemaException("Both minimum and exclusive minimum cannot be set at the same time");
+            throw new JsonSchemaException("Both minimum and exclusive minimum cannot be set at the same time");
         }
         if (maximum.isPresent() && exclusiveMaximum.isPresent()) {
-            throw new SchemaException("Both maximum and exclusive maximum cannot be set at the same time");
+            throw new JsonSchemaException("Both maximum and exclusive maximum cannot be set at the same time");
         }
         Optional<Double> minimumNumber = minimum.or(() -> exclusiveMinimum);
         Optional<Double> maximumNumber = maximum.or(() -> exclusiveMaximum);
         if (minimumNumber.isPresent() && maximumNumber.isPresent()) {
             if (minimumNumber.get() > maximumNumber.get()) {
-                throw new SchemaException("Minimum value cannot be greater than the maximum value");
+                throw new JsonSchemaException("Minimum value cannot be greater than the maximum value");
             }
         }
         if (minimumNumber.isPresent() && minimumNumber.get() < 0) {
-            throw new SchemaException("Minimum value cannot be lower than 0");
+            throw new JsonSchemaException("Minimum value cannot be lower than 0");
         }
         if (maximumNumber.isPresent() && maximumNumber.get() < 0) {
-            throw new SchemaException("Maximum value cannot be lower than 0");
+            throw new JsonSchemaException("Maximum value cannot be lower than 0");
         }
     }
 

@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -279,6 +280,13 @@ public final class Hson {
          * @throws HsonException in case the key exists, but is not an array
          */
         Optional<Array> arrayValue(String key);
+
+        /**
+         * Get all keys and registered values of this struct.
+         *
+         * @return keys and values
+         */
+        Map<String, Value<?>> values();
 
         /**
          * Fluent API builder for {@link io.helidon.metadata.hson.Hson.Struct}.

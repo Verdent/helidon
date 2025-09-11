@@ -40,12 +40,12 @@ class SchemaNumberTest {
 
     @Test
     void testBoundariesMixed() {
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .minimum(1)
                 .exclusiveMinimum(1)
                 .build());
 
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .maximum(1)
                 .exclusiveMaximum(1)
                 .build());
@@ -53,22 +53,22 @@ class SchemaNumberTest {
 
     @Test
     void testLowerMaximum() {
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .minimum(2)
                 .maximum(1)
                 .build());
 
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .exclusiveMinimum(2)
                 .exclusiveMaximum(1)
                 .build());
 
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .exclusiveMinimum(2)
                 .maximum(1)
                 .build());
 
-        assertThrows(SchemaException.class, () -> SchemaNumber.builder()
+        assertThrows(JsonSchemaException.class, () -> SchemaNumber.builder()
                 .minimum(2)
                 .exclusiveMaximum(1)
                 .build());

@@ -23,7 +23,7 @@ public class SchemaTest {
 
     @Test
     public void testSchemaMultipleRoots() {
-        assertThrows(SchemaException.class, () -> Schema.builder()
+        assertThrows(JsonSchemaException.class, () -> Schema.builder()
                 .rootInteger(builder -> builder.multipleOf(1))
                 .rootNumber(builder -> builder.multipleOf(1))
                 .build());

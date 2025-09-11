@@ -133,6 +133,11 @@ final class HsonStruct implements Hson.Struct {
     }
 
     @Override
+    public Map<String, Hson.Value<?>> values() {
+        return Map.copyOf(values);
+    }
+
+    @Override
     public void write(PrintWriter writer) {
         Objects.requireNonNull(writer);
 

@@ -22,7 +22,7 @@ class SchemaDecorator implements Prototype.BuilderDecorator<Schema.BuilderBase<?
         if (target.root().isEmpty()) {
             item.ifPresent(target::root);
         } else if (item.isPresent()) {
-            throw new SchemaException("Only one root type is supported");
+            throw new JsonSchemaException("Only one root type is supported");
         }
     }
 

@@ -1,28 +1,16 @@
 package io.helidon.jsonschema.schema;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.StringReader;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import io.helidon.builder.api.Prototype;
+import io.helidon.metadata.hson.Hson;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.Services;
-
-import jakarta.json.Json;
-import jakarta.json.JsonArray;
-import jakarta.json.JsonNumber;
-import jakarta.json.JsonObject;
-import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonReader;
-import jakarta.json.JsonString;
-import jakarta.json.JsonValue;
-import jakarta.json.stream.JsonGenerator;
-import jakarta.json.stream.JsonGeneratorFactory;
 
 class SchemaCustomMethods {
 
@@ -55,17 +43,17 @@ class SchemaCustomMethods {
     }
 
     @Prototype.PrototypeMethod
-    static JsonObject generateObject(Schema schema) {
-        JsonObjectBuilder builder = Json.createObjectBuilder();
-        builder.add("$schema", "https://json-schema.org/draft/2020-12/schema");
-        schema.id().ifPresent(id -> builder.add("$id", id));
+    static Hson.Struct generateObject(Schema schema) {
+        Hson.Struct.Builder builder = Hson.structBuilder();
+        builder.set("$schema", "https://json-schema.org/draft/2020-12/schema");
+        schema.id().ifPresent(id -> builder.set("$id", id));
         schema.root().generate(builder);
         return builder.build();
     }
 
     @Prototype.PrototypeMethod
-    static JsonObject generateObjectNoKeywords(Schema schema) {
-        JsonObjectBuilder builder = Json.createObjectBuilder();
+    static Hson.Struct generateObjectNoKeywords(Schema schema) {
+        Hson.Struct.Builder builder = Hson.structBuilder();
         schema.root().generate(builder);
         return builder.build();
     }
@@ -78,171 +66,131 @@ class SchemaCustomMethods {
     @Prototype.FactoryMethod
     static Schema parse(String jsonSchema) {
         Schema.Builder builder = Schema.builder();
-        try (JsonReader reader = Json.createReader(new StringReader(jsonSchema))) {
-            JsonObject jsonObject = reader.readObject();
-            getStringValue(jsonObject, "$id").ifPresent(builder::id);
-            String type = getStringValue(jsonObject, "type")
-                    .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the schema root."));
+        try (InputStream is = new ByteArrayInputStream(jsonSchema.getBytes())) {
+            Hson.Value<?> parsed = Hson.parse(is);
+            Hson.Struct struct = parsed.asStruct();
+            struct.stringValue("$id").ifPresent(builder::id);
+            String type = struct.stringValue("type")
+                    .orElseThrow(() -> new JsonSchemaException("Missing required property 'type' missing in the schema root."));
             switch (type) {
-            case "string" -> builder.rootString(stringBuilder -> parseString(stringBuilder, jsonObject));
-            case "integer" -> builder.rootInteger(integerBuilder -> parseInteger(integerBuilder, jsonObject));
-            case "number" -> builder.rootNumber(numberBuilder -> parseNumber(numberBuilder, jsonObject));
-            case "boolean" -> builder.rootBoolean(booleanBuilder -> parseCommon(booleanBuilder, jsonObject));
-            case "object" -> builder.rootObject(objectBuilder -> parseObject(objectBuilder, jsonObject));
-            case "array" -> builder.rootArray(arrayBuilder -> parseArray(arrayBuilder, jsonObject));
-            case "null" -> builder.rootNull(nullBuilder -> parseCommon(nullBuilder, jsonObject));
-            default -> throw new SchemaException("Unsupported root type: " + type);
+            case "string" -> builder.rootString(stringBuilder -> parseString(stringBuilder, struct));
+            case "integer" -> builder.rootInteger(integerBuilder -> parseInteger(integerBuilder, struct));
+            case "number" -> builder.rootNumber(numberBuilder -> parseNumber(numberBuilder, struct));
+            case "boolean" -> builder.rootBoolean(booleanBuilder -> parseCommon(booleanBuilder, struct));
+            case "object" -> builder.rootObject(objectBuilder -> parseObject(objectBuilder, struct));
+            case "array" -> builder.rootArray(arrayBuilder -> parseArray(arrayBuilder, struct));
+            case "null" -> builder.rootNull(nullBuilder -> parseCommon(nullBuilder, struct));
+            default -> throw new JsonSchemaException("Unsupported root type: " + type);
             }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
         return builder.build();
     }
 
-    private static void parseCommon(SchemaItem.BuilderBase<?, ?> itemBuilder, JsonObject jsonObject) {
-        getStringValue(jsonObject, "description").ifPresent(itemBuilder::description);
-        getStringValue(jsonObject, "title").ifPresent(itemBuilder::title);
+    private static void parseCommon(SchemaItem.BuilderBase<?, ?> itemBuilder, Hson.Struct jsonObject) {
+        jsonObject.stringValue("description").ifPresent(itemBuilder::description);
+        jsonObject.stringValue("title").ifPresent(itemBuilder::title);
     }
 
-    private static void parseString(SchemaString.Builder stringBuilder, JsonObject jsonObject) {
+    private static void parseString(SchemaString.Builder stringBuilder, Hson.Struct jsonObject) {
         parseCommon(stringBuilder, jsonObject);
-        getLongValue(jsonObject, "maxLength").ifPresent(stringBuilder::maxLength);
-        getLongValue(jsonObject, "minLength").ifPresent(stringBuilder::minLength);
-        getStringValue(jsonObject, "pattern").ifPresent(stringBuilder::pattern);
+        jsonObject.numberValue("maxLength").ifPresent(it -> stringBuilder.maxLength(it.longValue()));
+        jsonObject.numberValue("minLength").ifPresent(it -> stringBuilder.minLength(it.longValue()));
+        jsonObject.stringValue("pattern").ifPresent(stringBuilder::pattern);
     }
 
-    private static void parseInteger(SchemaInteger.Builder integerBuilder, JsonObject jsonObject) {
+    private static void parseInteger(SchemaInteger.Builder integerBuilder, Hson.Struct jsonObject) {
         parseCommon(integerBuilder, jsonObject);
-        getLongValue(jsonObject, "multipleOf").ifPresent(integerBuilder::multipleOf);
-        getLongValue(jsonObject, "minimum").ifPresent(integerBuilder::minimum);
-        getLongValue(jsonObject, "maximum").ifPresent(integerBuilder::maximum);
-        getLongValue(jsonObject, "exclusiveMaximum").ifPresent(integerBuilder::exclusiveMaximum);
-        getLongValue(jsonObject, "exclusiveMinimum").ifPresent(integerBuilder::exclusiveMinimum);
+        jsonObject.numberValue("multipleOf").ifPresent(it -> integerBuilder.multipleOf(it.longValue()));
+        jsonObject.numberValue("minimum").ifPresent(it -> integerBuilder.minimum(it.longValue()));
+        jsonObject.numberValue("maximum").ifPresent(it -> integerBuilder.maximum(it.longValue()));
+        jsonObject.numberValue("exclusiveMaximum").ifPresent(it -> integerBuilder.exclusiveMaximum(it.longValue()));
+        jsonObject.numberValue("exclusiveMinimum").ifPresent(it -> integerBuilder.exclusiveMinimum(it.longValue()));
     }
 
-    private static void parseNumber(SchemaNumber.Builder numberBuilder, JsonObject jsonObject) {
+    private static void parseNumber(SchemaNumber.Builder numberBuilder, Hson.Struct jsonObject) {
         parseCommon(numberBuilder, jsonObject);
-        getDoubleValue(jsonObject, "multipleOf").ifPresent(numberBuilder::multipleOf);
-        getDoubleValue(jsonObject, "minimum").ifPresent(numberBuilder::minimum);
-        getDoubleValue(jsonObject, "maximum").ifPresent(numberBuilder::maximum);
-        getDoubleValue(jsonObject, "exclusiveMaximum").ifPresent(numberBuilder::exclusiveMaximum);
-        getDoubleValue(jsonObject, "exclusiveMinimum").ifPresent(numberBuilder::exclusiveMinimum);
+        jsonObject.doubleValue("multipleOf").ifPresent(numberBuilder::multipleOf);
+        jsonObject.doubleValue("minimum").ifPresent(numberBuilder::minimum);
+        jsonObject.doubleValue("maximum").ifPresent(numberBuilder::maximum);
+        jsonObject.doubleValue("exclusiveMinimum").ifPresent(numberBuilder::exclusiveMinimum);
+        jsonObject.doubleValue("exclusiveMaximum").ifPresent(numberBuilder::exclusiveMaximum);
     }
 
-    private static void parseArray(SchemaArray.Builder arrayBuilder, JsonObject jsonObject) {
-        getIntValue(jsonObject, "maxItems").ifPresent(arrayBuilder::maxItems);
-        getIntValue(jsonObject, "minItems").ifPresent(arrayBuilder::minItems);
-        getIntValue(jsonObject, "minContains").ifPresent(arrayBuilder::minContains);
-        getIntValue(jsonObject, "maxContains").ifPresent(arrayBuilder::maxContains);
-        getBooleanValue(jsonObject, "uniqueItems").ifPresent(arrayBuilder::uniqueItems);
-        JsonObject items = jsonObject.getJsonObject("items");
-        if (items != null) {
-            String type = getStringValue(items, "type")
-                    .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property."));
-            switch (type) {
-            case "string" -> arrayBuilder.itemsString(stringBuilder -> parseString(stringBuilder, items));
-            case "integer" -> arrayBuilder.itemsInteger(integerBuilder -> parseInteger(integerBuilder, items));
-            case "number" -> arrayBuilder.itemsNumber(numberBuilder -> parseNumber(numberBuilder, items));
-            case "boolean" -> arrayBuilder.itemsBoolean(booleanBuilder -> parseCommon(booleanBuilder, items));
-            case "object" -> arrayBuilder.itemsObject(objectBuilder -> parseObject(objectBuilder, items));
-            case "array" -> arrayBuilder.itemsArray(arrayBuilder2 -> parseArray(arrayBuilder2, items));
-            case "null" -> arrayBuilder.itemsNull(nullBuilder -> parseCommon(nullBuilder, items));
-            default -> throw new SchemaException("Unsupported type: " + type);
-            }
-        }
+    private static void parseArray(SchemaArray.Builder arrayBuilder, Hson.Struct jsonObject) {
+        jsonObject.intValue("maxItems").ifPresent(arrayBuilder::maxItems);
+        jsonObject.intValue("minItems").ifPresent(arrayBuilder::minItems);
+        jsonObject.intValue("minContains").ifPresent(arrayBuilder::minContains);
+        jsonObject.intValue("maxContains").ifPresent(arrayBuilder::maxContains);
+        jsonObject.booleanValue("uniqueItems").ifPresent(arrayBuilder::uniqueItems);
+
+        jsonObject.structValue("items")
+                .ifPresent(items -> {
+                    String type = items.stringValue("type")
+                            .orElseThrow(() -> new JsonSchemaException("Missing required property 'type' missing in the object property"
+                                                                               + "."));
+                    switch (type) {
+                    case "string" -> arrayBuilder.itemsString(stringBuilder -> parseString(stringBuilder, items));
+                    case "integer" -> arrayBuilder.itemsInteger(integerBuilder -> parseInteger(integerBuilder, items));
+                    case "number" -> arrayBuilder.itemsNumber(numberBuilder -> parseNumber(numberBuilder, items));
+                    case "boolean" -> arrayBuilder.itemsBoolean(booleanBuilder -> parseCommon(booleanBuilder, items));
+                    case "object" -> arrayBuilder.itemsObject(objectBuilder -> parseObject(objectBuilder, items));
+                    case "array" -> arrayBuilder.itemsArray(arrayBuilder2 -> parseArray(arrayBuilder2, items));
+                    case "null" -> arrayBuilder.itemsNull(nullBuilder -> parseCommon(nullBuilder, items));
+                    default -> throw new JsonSchemaException("Unsupported type: " + type);
+                    }
+                });
     }
 
-    private static void parseObject(SchemaObject.Builder objectBuilder, JsonObject jsonObject) {
+    private static void parseObject(SchemaObject.Builder objectBuilder, Hson.Struct jsonObject) {
         parseCommon(objectBuilder, jsonObject);
-        getIntValue(jsonObject, "maxProperties").ifPresent(objectBuilder::maxProperties);
-        getIntValue(jsonObject, "minProperties").ifPresent(objectBuilder::minProperties);
-        getBooleanValue(jsonObject, "additionalProperties").ifPresent(objectBuilder::additionalProperties);
-        JsonObject properties = jsonObject.getJsonObject("properties");
-        if (properties != null) {
-            JsonArray required = jsonObject.getJsonArray("required");
-            Set<String> requiredProperties;
-            if (required != null) {
-                requiredProperties = required.getValuesAs(JsonString.class)
-                        .stream()
-                        .map(JsonString::getString)
-                        .collect(Collectors.toSet());
-            } else {
-                requiredProperties = Set.of();
-            }
-            properties.forEach((key, value) -> {
-                JsonObject object = (JsonObject) value;
-                String type = getStringValue(object, "type")
-                        .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property"
-                                                                       + "."));
-                switch (type) {
-                case "string" -> objectBuilder.addStringProperty(key, stringBuilder -> {
-                    parseString(stringBuilder, object);
-                    stringBuilder.required(requiredProperties.contains(key));
+        jsonObject.intValue("maxProperties").ifPresent(objectBuilder::maxProperties);
+        jsonObject.intValue("minProperties").ifPresent(objectBuilder::minProperties);
+        jsonObject.booleanValue("additionalProperties").ifPresent(objectBuilder::additionalProperties);
+        jsonObject.structValue("properties")
+                .ifPresent(properties -> {
+                    List<String> requiredProperties = jsonObject.stringArray("required").orElse(List.of());
+                    properties.values()
+                            .forEach((key, value) -> {
+                                Hson.Struct object = value.asStruct();
+                                String type = object.stringValue("type")
+                                        .orElseThrow(() -> new JsonSchemaException(
+                                                "Missing required property 'type' missing in the object property"
+                                                        + "."));
+                                switch (type) {
+                                case "string" -> objectBuilder.addStringProperty(key, stringBuilder -> {
+                                    parseString(stringBuilder, object);
+                                    stringBuilder.required(requiredProperties.contains(key));
+                                });
+                                case "integer" -> objectBuilder.addIntegerProperty(key, integerBuilder -> {
+                                    parseInteger(integerBuilder, object);
+                                    integerBuilder.required(requiredProperties.contains(key));
+                                });
+                                case "number" -> objectBuilder.addNumberProperty(key, numberBuilder -> {
+                                    parseNumber(numberBuilder, object);
+                                    numberBuilder.required(requiredProperties.contains(key));
+                                });
+                                case "boolean" -> objectBuilder.addBooleanProperty(key, booleanBuilder -> {
+                                    parseCommon(booleanBuilder, object);
+                                    booleanBuilder.required(requiredProperties.contains(key));
+                                });
+                                case "object" -> objectBuilder.addObjectProperty(key, objectBuilder2 -> {
+                                    parseObject(objectBuilder2, object);
+                                    objectBuilder2.required(requiredProperties.contains(key));
+                                });
+                                case "array" -> objectBuilder.addArrayProperty(key, arrayBuilder -> {
+                                    parseArray(arrayBuilder, object);
+                                    arrayBuilder.required(requiredProperties.contains(key));
+                                });
+                                case "null" -> objectBuilder.addNullProperty(key, nullBuilder -> {
+                                    parseCommon(nullBuilder, object);
+                                    nullBuilder.required(requiredProperties.contains(key));
+                                });
+                                default -> throw new JsonSchemaException("Unsupported type: " + type);
+                                }
+                            });
                 });
-                case "integer" -> objectBuilder.addIntegerProperty(key, integerBuilder -> {
-                    parseInteger(integerBuilder, object);
-                    integerBuilder.required(requiredProperties.contains(key));
-                });
-                case "number" -> objectBuilder.addNumberProperty(key, numberBuilder -> {
-                    parseNumber(numberBuilder, object);
-                    numberBuilder.required(requiredProperties.contains(key));
-                });
-                case "boolean" -> objectBuilder.addBooleanProperty(key, booleanBuilder -> {
-                    parseCommon(booleanBuilder, object);
-                    booleanBuilder.required(requiredProperties.contains(key));
-                });
-                case "object" -> objectBuilder.addObjectProperty(key, objectBuilder2 -> {
-                    parseObject(objectBuilder2, object);
-                    objectBuilder2.required(requiredProperties.contains(key));
-                });
-                case "array" -> objectBuilder.addArrayProperty(key, arrayBuilder -> {
-                    parseArray(arrayBuilder, object);
-                    arrayBuilder.required(requiredProperties.contains(key));
-                });
-                case "null" -> objectBuilder.addNullProperty(key, nullBuilder -> {
-                    parseCommon(nullBuilder, object);
-                    nullBuilder.required(requiredProperties.contains(key));
-                });
-                default -> throw new SchemaException("Unsupported type: " + type);
-                }
-            });
-        }
-    }
-
-    private static Optional<String> getStringValue(JsonObject jsonObject, String key) {
-        return Optional.ofNullable(jsonObject.getString(key, null));
-    }
-
-    private static Optional<Long> getLongValue(JsonObject jsonObject, String key) {
-        JsonNumber jsonNumber = jsonObject.getJsonNumber(key);
-        if (jsonNumber == null) {
-            return Optional.empty();
-        }
-        return Optional.of(jsonNumber.longValue());
-    }
-
-    private static Optional<Integer> getIntValue(JsonObject jsonObject, String key) {
-        JsonNumber jsonNumber = jsonObject.getJsonNumber(key);
-        if (jsonNumber == null) {
-            return Optional.empty();
-        }
-        return Optional.of(jsonNumber.intValue());
-    }
-
-    private static Optional<Double> getDoubleValue(JsonObject jsonObject, String key) {
-        JsonNumber jsonNumber = jsonObject.getJsonNumber(key);
-        if (jsonNumber == null) {
-            return Optional.empty();
-        }
-        return Optional.of(jsonNumber.doubleValue());
-    }
-
-    private static Optional<Boolean> getBooleanValue(JsonObject jsonObject, String key) {
-        JsonValue jsonValue = jsonObject.get(key);
-        if (jsonValue == null) {
-            return Optional.empty();
-        } else if (jsonValue == JsonValue.TRUE) {
-            return Optional.of(true);
-        }
-        return Optional.of(false);
     }
 
 }

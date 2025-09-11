@@ -41,6 +41,8 @@ class Types {
             TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.MinProperties");
     static final TypeName JSON_SCHEMA_OBJECT_MAX_PROPERTIES =
             TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.MaxProperties");
+    static final TypeName JSON_SCHEMA_OBJECT_ADDITIONAL_PROPERTIES =
+            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.AdditionalProperties");
 
     //Number annotations
     static final TypeName JSON_SCHEMA_NUMBER_MULTIPLE_OF =

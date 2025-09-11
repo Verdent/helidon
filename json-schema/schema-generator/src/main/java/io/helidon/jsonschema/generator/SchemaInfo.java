@@ -169,36 +169,36 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                                              String name) {
         TypeName parameterTypeName = BOXED_TO_PRIMITIVE.getOrDefault(elementTypeName, elementTypeName);
         if (INTEGERS.contains(parameterTypeName)) {
-            builder.putIntegerProperty(name,
+            builder.addIntegerProperty(name,
                                        integerBuilder -> processIntegerAnnotations(integerBuilder,
                                                                                    parameterTypeName,
                                                                                    element));
         } else if (NUMBERS.contains(parameterTypeName)) {
-            builder.putNumberProperty(name, numberBuilder -> processNumberAnnotations(numberBuilder, element));
+            builder.addNumberProperty(name, numberBuilder -> processNumberAnnotations(numberBuilder, element));
         } else if (parameterTypeName.primitive()) {
             if (parameterTypeName.equals(TypeNames.PRIMITIVE_BOOLEAN)) {
-                builder.putBooleanProperty(name, booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
+                builder.addBooleanProperty(name, booleanBuilder -> processCommonAnnotations(booleanBuilder, element));
             } else {
-                builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
+                builder.addStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
             }
         } else if (parameterTypeName.equals(TypeNames.STRING)) {
-            builder.putStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
+            builder.addStringProperty(name, stringBuilder -> processStringAnnotations(stringBuilder, element));
         } else if (parameterTypeName.array()
                 || parameterTypeName.isList()
                 || parameterTypeName.isSet()) {
-            builder.putArrayProperty(name, arrayBuilder -> processArray(arrayBuilder, ctx, element, parameterTypeName));
+            builder.addArrayProperty(name, arrayBuilder -> processArray(arrayBuilder, ctx, element, parameterTypeName));
         } else {
             if (parameterTypeName.packageName().startsWith("java")
                     || element.hasAnnotation(Types.JSON_SCHEMA_DO_NOT_INSPECT)) {
                 //Do not inspect java and javax package classes
                 //Only the annotations on the element should be processed
-                builder.putObjectProperty(name, objectBuilder -> processObjectAnnotations(objectBuilder, element));
+                builder.addObjectProperty(name, objectBuilder -> processObjectAnnotations(objectBuilder, element));
                 return;
             }
             TypeInfo typeInfo = ctx.typeInfo(parameterTypeName)
                     .orElseThrow(() -> new IllegalStateException("Could not process required type: " + parameterTypeName));
 
-            builder.putObjectProperty(name, objectBuilder -> {
+            builder.addObjectProperty(name, objectBuilder -> {
                 processObject(objectBuilder, typeInfo, ctx);
                 //process annotations on the method so they override the defaults from the type
                 processObjectAnnotations(objectBuilder, element);
@@ -233,6 +233,9 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
         annotated.findAnnotation(Types.JSON_SCHEMA_OBJECT_MAX_PROPERTIES)
                 .flatMap(it -> it.intValue())
                 .ifPresent(builder::maxProperties);
+        annotated.findAnnotation(Types.JSON_SCHEMA_OBJECT_ADDITIONAL_PROPERTIES)
+                .flatMap(it -> it.booleanValue())
+                .ifPresent(builder::additionalProperties);
     }
 
     private static void processArray(SchemaArray.Builder builder,

@@ -126,6 +126,13 @@ public final class JsonSchema {
             int value();
         }
 
+        @Target({ElementType.METHOD, ElementType.TYPE, ElementType.FIELD})
+        @Inherited
+        @Retention(RetentionPolicy.CLASS)
+        public @interface AdditionalProperties {
+            boolean value();
+        }
+
     }
 
     public static final class Number {

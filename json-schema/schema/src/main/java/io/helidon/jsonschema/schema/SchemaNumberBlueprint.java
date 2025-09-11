@@ -2,6 +2,7 @@ package io.helidon.jsonschema.schema;
 
 import java.util.Optional;
 
+import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 import jakarta.json.Json;
@@ -20,10 +21,13 @@ interface SchemaNumberBlueprint extends SchemaItemBlueprint {
 
     Optional<Number> exclusiveMinimum();
 
+    @Option.Access("")
+    @Option.Default("NUMBER")
+    SchemaType schemaType();
+
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        builder.add("type", "number");
         multipleOf().ifPresent(multipleOf -> builder.add("multipleOf", Json.createValue(multipleOf)));
         minimum().ifPresent(minimum -> builder.add("minimum", Json.createValue(minimum)));
         maximum().ifPresent(maximum -> builder.add("maximum", Json.createValue(maximum)));

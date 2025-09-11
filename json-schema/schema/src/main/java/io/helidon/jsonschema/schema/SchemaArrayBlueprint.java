@@ -38,6 +38,10 @@ interface SchemaArrayBlueprint extends SchemaItemBlueprint {
 
     Optional<SchemaNull> itemsNull();
 
+    @Option.Access("")
+    @Option.Default("ARRAY")
+    SchemaType schemaType();
+
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);

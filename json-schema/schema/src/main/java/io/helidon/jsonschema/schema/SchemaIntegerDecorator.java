@@ -8,7 +8,6 @@ class SchemaIntegerDecorator implements Prototype.BuilderDecorator<SchemaInteger
 
     @Override
     public void decorate(SchemaInteger.BuilderBase<?, ?> target) {
-        target.schemaType(SchemaType.INTEGER);
         Optional<Long> minimum = target.minimum();
         Optional<Long> exclusiveMinimum = target.exclusiveMinimum();
         Optional<Long> maximum = target.maximum();

@@ -154,7 +154,7 @@ class SchemaCustomMethods {
         parseCommon(objectBuilder, jsonObject);
         getIntValue(jsonObject, "maxProperties").ifPresent(objectBuilder::maxProperties);
         getIntValue(jsonObject, "minProperties").ifPresent(objectBuilder::minProperties);
-        getBooleanValue(jsonObject, "dependentRequired").ifPresent(objectBuilder::dependentRequired);
+        getBooleanValue(jsonObject, "additionalProperties").ifPresent(objectBuilder::additionalProperties);
         JsonObject properties = jsonObject.getJsonObject("properties");
         if (properties != null) {
             JsonArray required = jsonObject.getJsonArray("required");
@@ -173,31 +173,31 @@ class SchemaCustomMethods {
                         .orElseThrow(() -> new SchemaException("Missing required property 'type' missing in the object property"
                                                                        + "."));
                 switch (type) {
-                case "string" -> objectBuilder.putStringProperty(key, stringBuilder -> {
+                case "string" -> objectBuilder.addStringProperty(key, stringBuilder -> {
                     parseString(stringBuilder, object);
                     stringBuilder.required(requiredProperties.contains(key));
                 });
-                case "integer" -> objectBuilder.putIntegerProperty(key, integerBuilder -> {
+                case "integer" -> objectBuilder.addIntegerProperty(key, integerBuilder -> {
                     parseInteger(integerBuilder, object);
                     integerBuilder.required(requiredProperties.contains(key));
                 });
-                case "number" -> objectBuilder.putNumberProperty(key, numberBuilder -> {
+                case "number" -> objectBuilder.addNumberProperty(key, numberBuilder -> {
                     parseNumber(numberBuilder, object);
                     numberBuilder.required(requiredProperties.contains(key));
                 });
-                case "boolean" -> objectBuilder.putBooleanProperty(key, booleanBuilder -> {
+                case "boolean" -> objectBuilder.addBooleanProperty(key, booleanBuilder -> {
                     parseCommon(booleanBuilder, object);
                     booleanBuilder.required(requiredProperties.contains(key));
                 });
-                case "object" -> objectBuilder.putObjectProperty(key, objectBuilder2 -> {
+                case "object" -> objectBuilder.addObjectProperty(key, objectBuilder2 -> {
                     parseObject(objectBuilder2, object);
                     objectBuilder2.required(requiredProperties.contains(key));
                 });
-                case "array" -> objectBuilder.putArrayProperty(key, arrayBuilder -> {
+                case "array" -> objectBuilder.addArrayProperty(key, arrayBuilder -> {
                     parseArray(arrayBuilder, object);
                     arrayBuilder.required(requiredProperties.contains(key));
                 });
-                case "null" -> objectBuilder.putNullProperty(key, nullBuilder -> {
+                case "null" -> objectBuilder.addNullProperty(key, nullBuilder -> {
                     parseCommon(nullBuilder, object);
                     nullBuilder.required(requiredProperties.contains(key));
                 });

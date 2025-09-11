@@ -19,40 +19,44 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
 
     Optional<Integer> minProperties();
 
-    Optional<Boolean> dependentRequired();
+    Optional<Boolean> additionalProperties();
 
     @Option.Singular("property")
     @Option.Access("")
     Map<String, SchemaItem> properties();
 
-    @Option.Singular("stringProperty")
+    @Option.Singular(value = "addStringProperty", withPrefix = false)
     Map<String, SchemaString> stringProperties();
 
-    @Option.Singular("objectProperty")
+    @Option.Singular(value = "addObjectProperty", withPrefix = false)
     Map<String, SchemaObject> objectProperties();
 
-    @Option.Singular("arrayProperty")
+    @Option.Singular(value = "addArrayProperty", withPrefix = false)
     Map<String, SchemaArray> arrayProperties();
 
-    @Option.Singular("numberProperty")
+    @Option.Singular(value = "addNumberProperty", withPrefix = false)
     Map<String, SchemaNumber> numberProperties();
 
-    @Option.Singular("integerProperty")
+    @Option.Singular(value = "addIntegerProperty", withPrefix = false)
     Map<String, SchemaInteger> integerProperties();
 
-    @Option.Singular("booleanProperty")
+    @Option.Singular(value = "addBooleanProperty", withPrefix = false)
     Map<String, SchemaBoolean> booleanProperties();
 
-    @Option.Singular("nullProperty")
+    @Option.Singular(value = "addNullProperty", withPrefix = false)
     Map<String, SchemaNull> nullProperties();
+
+    @Option.Access("")
+    @Option.Default("OBJECT")
+    SchemaType schemaType();
 
     @Override
     default void generate(JsonObjectBuilder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        builder.add("type", "object");
         maxProperties().ifPresent(maxProperties -> builder.add("maxProperties", maxProperties));
         minProperties().ifPresent(minProperties -> builder.add("minProperties", minProperties));
-        dependentRequired().ifPresent(dependentRequired -> builder.add("dependentRequired", dependentRequired));
+        additionalProperties()
+                .ifPresent(additionalProperties -> builder.add("additionalProperties", additionalProperties));
         Set<String> requiredProperties = new HashSet<>();
         Map<String, SchemaItem> properties = properties();
         if (!properties.isEmpty()) {

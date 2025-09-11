@@ -8,7 +8,6 @@ class SchemaNumberDecorator implements Prototype.BuilderDecorator<SchemaNumber.B
 
     @Override
     public void decorate(SchemaNumber.BuilderBase<?, ?> target) {
-        target.schemaType(SchemaType.NUMBER);
         Optional<Number> minimum = target.minimum();
         Optional<Number> exclusiveMinimum = target.exclusiveMinimum();
         Optional<Number> maximum = target.maximum();

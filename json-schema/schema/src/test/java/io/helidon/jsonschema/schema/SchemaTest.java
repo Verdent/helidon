@@ -12,8 +12,8 @@ public class SchemaTest {
     public void testSchema() {
         Schema schema = Schema.builder()
                 .rootObject(builder -> builder
-                                  .putIntegerProperty("number", builder2 -> builder2.description("some number"))
-                                  .putStringProperty("text", builder2 -> builder2.description("some text")))
+                                  .addIntegerProperty("number", builder2 -> builder2.description("some number"))
+                                  .addStringProperty("text", builder2 -> builder2.description("some text")))
                 .build();
         SchemaObject root = schema.rootObject().orElseThrow();
         assertThat(root.properties().size(), is(2));

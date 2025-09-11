@@ -6,8 +6,6 @@ import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 import io.helidon.metadata.hson.Hson;
 
-import jakarta.json.JsonObjectBuilder;
-
 @Prototype.Blueprint(decorator = SchemaStringDecorator.class)
 interface SchemaStringBlueprint extends SchemaItemBlueprint {
 

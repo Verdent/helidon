@@ -1,7 +1,12 @@
 package io.helidon.jsonschema.schema;
 
-public class JsonSchemaException extends RuntimeException {
-    public JsonSchemaException(String s) {
+/**
+ * Json schema related exception.
+ */
+public final class JsonSchemaException extends RuntimeException {
+
+    JsonSchemaException(String s) {
         super(s);
     }
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -465,6 +465,15 @@ public final class Hson {
          * @param writer writer to write to
          */
         void write(PrintWriter writer);
+
+        /**
+         * Writes the Json in a formatted output.
+         *
+         * @param writer writer to write to
+         */
+        default void writeFormatted(PrintWriter writer) {
+            write(new HsonPrettyPrintWriter(writer));
+        }
 
         /**
          * Value.

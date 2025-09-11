@@ -4,8 +4,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.metadata.hson.Hson;
@@ -16,30 +17,20 @@ class SchemaCustomMethods {
 
     @Prototype.PrototypeMethod
     static String generate(Schema schema) {
-        Map<String, Boolean> map = Map.of(JsonGenerator.PRETTY_PRINTING, true);
-        JsonGeneratorFactory generatorFactory = Json.createGeneratorFactory(map);
-        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            try (JsonGenerator generator = generatorFactory.createGenerator(outputStream)) {
-                generator.write(generateObject(schema));
-            }
-            return outputStream.toString();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PrintWriter writer = new PrintWriter(baos, true, StandardCharsets.UTF_8)) {
+            generateObject(schema).writeFormatted(writer);
         }
+        return baos.toString();
     }
 
     @Prototype.PrototypeMethod
     static String generateNoKeywords(Schema schema) {
-        Map<String, Boolean> map = Map.of(JsonGenerator.PRETTY_PRINTING, true);
-        JsonGeneratorFactory generatorFactory = Json.createGeneratorFactory(map);
-        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            try (JsonGenerator generator = generatorFactory.createGenerator(outputStream)) {
-                generator.write(generateObjectNoKeywords(schema));
-            }
-            return outputStream.toString();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PrintWriter writer = new PrintWriter(baos, true, StandardCharsets.UTF_8)) {
+            generateObjectNoKeywords(schema).writeFormatted(writer);
         }
+        return baos.toString();
     }
 
     @Prototype.PrototypeMethod
@@ -128,8 +119,9 @@ class SchemaCustomMethods {
         jsonObject.structValue("items")
                 .ifPresent(items -> {
                     String type = items.stringValue("type")
-                            .orElseThrow(() -> new JsonSchemaException("Missing required property 'type' missing in the object property"
-                                                                               + "."));
+                            .orElseThrow(() -> new JsonSchemaException(
+                                    "Missing required property 'type' missing in the object property"
+                                            + "."));
                     switch (type) {
                     case "string" -> arrayBuilder.itemsString(stringBuilder -> parseString(stringBuilder, items));
                     case "integer" -> arrayBuilder.itemsInteger(integerBuilder -> parseInteger(integerBuilder, items));

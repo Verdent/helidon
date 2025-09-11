@@ -5,10 +5,6 @@ import java.util.Optional;
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 import io.helidon.metadata.hson.Hson;
-import io.helidon.metadata.hson.HsonStruct;
-
-import jakarta.json.Json;
-import jakarta.json.JsonObjectBuilder;
 
 @Prototype.Blueprint(decorator = SchemaArrayDecorator.class)
 interface SchemaArrayBlueprint extends SchemaItemBlueprint {

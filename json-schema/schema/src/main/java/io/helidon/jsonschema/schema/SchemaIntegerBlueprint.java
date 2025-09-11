@@ -4,8 +4,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-
-import jakarta.json.JsonObjectBuilder;
+import io.helidon.metadata.hson.Hson;
 
 @Prototype.Blueprint(decorator = SchemaIntegerDecorator.class)
 @Prototype.CustomMethods(SchemaIntegerCustomMethods.class)
@@ -26,13 +25,13 @@ interface SchemaIntegerBlueprint extends SchemaItemBlueprint {
     SchemaType schemaType();
 
     @Override
-    default void generate(JsonObjectBuilder builder) {
+    default void generate(Hson.Struct.Builder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        multipleOf().ifPresent(multipleOf -> builder.add("multipleOf", multipleOf));
-        minimum().ifPresent(minimum -> builder.add("minimum", minimum));
-        maximum().ifPresent(maximum -> builder.add("maximum", maximum));
-        exclusiveMaximum().ifPresent(exclusiveMaximum -> builder.add("exclusiveMaximum", exclusiveMaximum));
-        exclusiveMinimum().ifPresent(exclusiveMinimum -> builder.add("exclusiveMinimum", exclusiveMinimum));
+        multipleOf().ifPresent(multipleOf -> builder.set("multipleOf", multipleOf));
+        minimum().ifPresent(minimum -> builder.set("minimum", minimum));
+        maximum().ifPresent(maximum -> builder.set("maximum", maximum));
+        exclusiveMaximum().ifPresent(exclusiveMaximum -> builder.set("exclusiveMaximum", exclusiveMaximum));
+        exclusiveMinimum().ifPresent(exclusiveMinimum -> builder.set("exclusiveMinimum", exclusiveMinimum));
     }
 
 }

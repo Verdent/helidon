@@ -1,12 +1,14 @@
 package io.helidon.jsonschema.schema;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.metadata.hson.Hson;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -51,31 +53,29 @@ interface SchemaObjectBlueprint extends SchemaItemBlueprint {
     SchemaType schemaType();
 
     @Override
-    default void generate(JsonObjectBuilder builder) {
+    default void generate(Hson.Struct.Builder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        maxProperties().ifPresent(maxProperties -> builder.add("maxProperties", maxProperties));
-        minProperties().ifPresent(minProperties -> builder.add("minProperties", minProperties));
+        maxProperties().ifPresent(maxProperties -> builder.set("maxProperties", maxProperties));
+        minProperties().ifPresent(minProperties -> builder.set("minProperties", minProperties));
         additionalProperties()
-                .ifPresent(additionalProperties -> builder.add("additionalProperties", additionalProperties));
+                .ifPresent(additionalProperties -> builder.set("additionalProperties", additionalProperties));
         Set<String> requiredProperties = new HashSet<>();
         Map<String, SchemaItem> properties = properties();
         if (!properties.isEmpty()) {
-            JsonObjectBuilder objectBuilder = Json.createObjectBuilder();
+            Hson.Struct.Builder objectBuilder = Hson.structBuilder();
             for (Map.Entry<String, SchemaItem> entry : properties.entrySet()) {
                 SchemaItem schemaItem = entry.getValue();
-                JsonObjectBuilder itemBuilder = Json.createObjectBuilder();
+                Hson.Struct.Builder itemBuilder = Hson.structBuilder();
                 schemaItem.generate(itemBuilder);
-                objectBuilder.add(entry.getKey(), itemBuilder);
+                objectBuilder.set(entry.getKey(), itemBuilder.build());
                 if (schemaItem.required()) {
                     requiredProperties.add(entry.getKey());
                 }
             }
-            builder.add("properties", objectBuilder);
+            builder.set("properties", objectBuilder.build());
         }
         if (!requiredProperties.isEmpty()) {
-            JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-            requiredProperties.forEach(arrayBuilder::add);
-            builder.add("required", arrayBuilder);
+            builder.setStrings("required", List.copyOf(requiredProperties));
         }
     }
 }

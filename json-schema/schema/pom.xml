@@ -17,12 +17,8 @@
             <artifactId>helidon-builder-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>jakarta.json</groupId>
-            <artifactId>jakarta.json-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.eclipse.parsson</groupId>
-            <artifactId>parsson</artifactId>
+            <groupId>io.helidon.metadata</groupId>
+            <artifactId>helidon-metadata-hson</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

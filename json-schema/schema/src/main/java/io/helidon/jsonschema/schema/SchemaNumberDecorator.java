@@ -8,27 +8,27 @@ class SchemaNumberDecorator implements Prototype.BuilderDecorator<SchemaNumber.B
 
     @Override
     public void decorate(SchemaNumber.BuilderBase<?, ?> target) {
-        Optional<Number> minimum = target.minimum();
-        Optional<Number> exclusiveMinimum = target.exclusiveMinimum();
-        Optional<Number> maximum = target.maximum();
-        Optional<Number> exclusiveMaximum = target.exclusiveMaximum();
+        Optional<Double> minimum = target.minimum();
+        Optional<Double> exclusiveMinimum = target.exclusiveMinimum();
+        Optional<Double> maximum = target.maximum();
+        Optional<Double> exclusiveMaximum = target.exclusiveMaximum();
         if (minimum.isPresent() && exclusiveMinimum.isPresent()) {
             throw new SchemaException("Both minimum and exclusive minimum cannot be set at the same time");
         }
         if (maximum.isPresent() && exclusiveMaximum.isPresent()) {
             throw new SchemaException("Both maximum and exclusive maximum cannot be set at the same time");
         }
-        Optional<Number> minimumNumber = minimum.or(() -> exclusiveMinimum);
-        Optional<Number> maximumNumber = maximum.or(() -> exclusiveMaximum);
+        Optional<Double> minimumNumber = minimum.or(() -> exclusiveMinimum);
+        Optional<Double> maximumNumber = maximum.or(() -> exclusiveMaximum);
         if (minimumNumber.isPresent() && maximumNumber.isPresent()) {
-            if (minimumNumber.get().doubleValue() > maximumNumber.get().doubleValue()) {
+            if (minimumNumber.get() > maximumNumber.get()) {
                 throw new SchemaException("Minimum value cannot be greater than the maximum value");
             }
         }
-        if (minimumNumber.isPresent() && minimumNumber.get().doubleValue() < 0) {
+        if (minimumNumber.isPresent() && minimumNumber.get() < 0) {
             throw new SchemaException("Minimum value cannot be lower than 0");
         }
-        if (maximumNumber.isPresent() && maximumNumber.get().doubleValue() < 0) {
+        if (maximumNumber.isPresent() && maximumNumber.get() < 0) {
             throw new SchemaException("Maximum value cannot be lower than 0");
         }
     }

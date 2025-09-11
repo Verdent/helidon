@@ -21,10 +21,10 @@ interface SchemaItemBlueprint {
     SchemaType schemaType();
 
     @Deprecated(forRemoval = true)
-    default void generate(Hson builder) {
-        title().ifPresent(title -> builder.add("title", title));
-        description().ifPresent(description -> builder.add("description", description));
-        builder.add("schemaType", schemaType().name().toLowerCase());
+    default void generate(Hson.Struct.Builder builder) {
+        title().ifPresent(title -> builder.set("title", title));
+        description().ifPresent(description -> builder.set("description", description));
+        builder.set("type", schemaType().name().toLowerCase());
     }
 
 }

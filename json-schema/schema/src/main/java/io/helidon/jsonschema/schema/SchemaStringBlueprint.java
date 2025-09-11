@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.metadata.hson.Hson;
 
 import jakarta.json.JsonObjectBuilder;
 
@@ -21,11 +22,11 @@ interface SchemaStringBlueprint extends SchemaItemBlueprint {
     SchemaType schemaType();
 
     @Override
-    default void generate(JsonObjectBuilder builder) {
+    default void generate(Hson.Struct.Builder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        maxLength().ifPresent(maxLength -> builder.add("maxLength", maxLength));
-        minLength().ifPresent(minLength -> builder.add("minLength", minLength));
-        pattern().ifPresent(pattern -> builder.add("pattern", pattern));
+        maxLength().ifPresent(maxLength -> builder.set("maxLength", maxLength));
+        minLength().ifPresent(minLength -> builder.set("minLength", minLength));
+        pattern().ifPresent(pattern -> builder.set("pattern", pattern));
     }
 
 }

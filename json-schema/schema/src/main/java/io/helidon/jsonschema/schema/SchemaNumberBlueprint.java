@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.metadata.hson.Hson;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObjectBuilder;
@@ -11,28 +12,28 @@ import jakarta.json.JsonObjectBuilder;
 @Prototype.Blueprint(decorator = SchemaNumberDecorator.class)
 interface SchemaNumberBlueprint extends SchemaItemBlueprint {
 
-    Optional<Number> multipleOf();
+    Optional<Double> multipleOf();
 
-    Optional<Number> minimum();
+    Optional<Double> minimum();
 
-    Optional<Number> maximum();
+    Optional<Double> maximum();
 
-    Optional<Number> exclusiveMaximum();
+    Optional<Double> exclusiveMaximum();
 
-    Optional<Number> exclusiveMinimum();
+    Optional<Double> exclusiveMinimum();
 
     @Option.Access("")
     @Option.Default("NUMBER")
     SchemaType schemaType();
 
     @Override
-    default void generate(JsonObjectBuilder builder) {
+    default void generate(Hson.Struct.Builder builder) {
         SchemaItemBlueprint.super.generate(builder);
-        multipleOf().ifPresent(multipleOf -> builder.add("multipleOf", Json.createValue(multipleOf)));
-        minimum().ifPresent(minimum -> builder.add("minimum", Json.createValue(minimum)));
-        maximum().ifPresent(maximum -> builder.add("maximum", Json.createValue(maximum)));
-        exclusiveMaximum().ifPresent(exclusiveMaximum -> builder.add("exclusiveMaximum", Json.createValue(exclusiveMaximum)));
-        exclusiveMinimum().ifPresent(exclusiveMinimum -> builder.add("exclusiveMinimum", Json.createValue(exclusiveMinimum)));
+        multipleOf().ifPresent(multipleOf -> builder.set("multipleOf", multipleOf));
+        minimum().ifPresent(minimum -> builder.set("minimum", minimum));
+        maximum().ifPresent(maximum -> builder.set("maximum", maximum));
+        exclusiveMaximum().ifPresent(exclusiveMaximum -> builder.set("exclusiveMaximum", exclusiveMaximum));
+        exclusiveMinimum().ifPresent(exclusiveMinimum -> builder.set("exclusiveMinimum", exclusiveMinimum));
     }
 
 }

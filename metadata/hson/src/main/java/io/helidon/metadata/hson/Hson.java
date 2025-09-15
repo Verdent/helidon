@@ -467,7 +467,7 @@ public final class Hson {
         void write(PrintWriter writer);
 
         /**
-         * Writes the Json in a formatted output.
+         * Writes the HSON in a formatted output.
          *
          * @param writer writer to write to
          */

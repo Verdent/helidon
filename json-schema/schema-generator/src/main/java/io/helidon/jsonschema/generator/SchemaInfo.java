@@ -1,5 +1,22 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.jsonschema.generator;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,6 +91,10 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
                 .build();
 
         Schema.Builder builder = Schema.builder();
+        annotatedType.findAnnotation(Types.JSON_SCHEMA_ID)
+                .flatMap(it -> it.stringValue())
+                .map(URI::create)
+                .ifPresent(builder::id);
         builder.rootObject(objectBuilder -> processObject(objectBuilder, annotatedType, ctx));
         return new SchemaInfo(generatedTypeName, builder.build());
     }
@@ -291,12 +312,6 @@ record SchemaInfo(TypeName generatedSchema, Schema schema) {
         annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MAX_ITEMS)
                 .flatMap(it -> it.intValue())
                 .ifPresent(arrayBuilder::maxItems);
-        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MIN_CONTAINS)
-                .flatMap(it -> it.intValue())
-                .ifPresent(arrayBuilder::minContains);
-        annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_MAX_CONTAINS)
-                .flatMap(it -> it.intValue())
-                .ifPresent(arrayBuilder::maxContains);
         annotated.findAnnotation(Types.JSON_SCHEMA_ARRAY_UNIQUE_ITEMS)
                 .flatMap(it -> it.booleanValue())
                 .ifPresent(arrayBuilder::uniqueItems);

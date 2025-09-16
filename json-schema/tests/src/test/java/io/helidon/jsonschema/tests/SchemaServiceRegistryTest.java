@@ -5,12 +5,12 @@ import io.helidon.jsonschema.schema.Schema;
 
 import org.junit.jupiter.api.Test;
 
-public class SchemaInjectionTest {
+public class SchemaServiceRegistryTest {
 
     @Test
-    public void testSchemaInjection() {
+    public void testSchemaFromServiceRegistry() {
         Schema schema = Schema.get(Car.class);
-        System.out.println();
+
     }
 
 }

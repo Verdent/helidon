@@ -20,12 +20,14 @@
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>io.helidon.json-schema</groupId>
-        <artifactId>helidon-json-schema-project</artifactId>
+        <groupId>io.helidon.jsonschema</groupId>
+        <artifactId>helidon-jsonschema-project</artifactId>
         <version>4.3.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>schema-generator</artifactId>
+    <artifactId>helidon-jsonschema-codegen</artifactId>
+    <name>Helidon Json Schema Generator</name>
+
     <dependencies>
         <dependency>
             <groupId>io.helidon.codegen</groupId>
@@ -36,9 +38,8 @@
             <artifactId>helidon-service-registry</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.helidon.json-schema</groupId>
-            <artifactId>schema</artifactId>
-            <version>4.3.0-SNAPSHOT</version>
+            <groupId>io.helidon.jsonschema</groupId>
+            <artifactId>helidon-jsonschema-schema</artifactId>
         </dependency>
     </dependencies>
 

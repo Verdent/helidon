@@ -20,21 +20,22 @@
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>io.helidon.json-schema</groupId>
-        <artifactId>helidon-json-schema-project</artifactId>
+        <groupId>io.helidon.jsonschema</groupId>
+        <artifactId>helidon-jsonschema-project</artifactId>
         <version>4.3.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>helidon-json-schema-tests</artifactId>
+    <artifactId>helidon-jsonschema-tests</artifactId>
+    <name>Helidon Json Schema Tests</name>
+
     <dependencies>
         <dependency>
             <groupId>io.helidon.service</groupId>
             <artifactId>helidon-service-registry</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.helidon.json-schema</groupId>
-            <artifactId>schema</artifactId>
-            <version>4.3.0-SNAPSHOT</version>
+            <groupId>io.helidon.jsonschema</groupId>
+            <artifactId>helidon-jsonschema-schema</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -72,7 +73,7 @@
                             <version>${helidon.version}</version>
                         </path>
                         <path>
-                            <groupId>io.helidon.json-schema</groupId>
+                            <groupId>io.helidon.jsonschema</groupId>
                             <artifactId>schema-generator</artifactId>
                             <version>${helidon.version}</version>
                         </path>
@@ -100,8 +101,8 @@
                         <version>${helidon.version}</version>
                     </dependency>
                     <dependency>
-                        <groupId>io.helidon.json-schema</groupId>
-                        <artifactId>schema-generator</artifactId>
+                        <groupId>io.helidon.json</groupId>
+                        <artifactId>helidon-json-codegen</artifactId>
                         <version>${helidon.version}</version>
                     </dependency>
                     <dependency>

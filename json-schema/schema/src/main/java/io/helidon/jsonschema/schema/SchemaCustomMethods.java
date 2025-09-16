@@ -95,7 +95,7 @@ class SchemaCustomMethods {
 
     /**
      * Return a Schema related to the given class.
-     * This schema is obtained from service registry via {@link JsonSchemaProvider} instance.
+     * This schema is obtained from the service registry via {@link JsonSchemaProvider} instance.
      * One has to either put {@link JsonSchema.Schema} annotation on the requested type or
      * implement {@link JsonSchemaProvider} class manually.
      * If no schema was found for the given class, {@link JsonSchemaException} is thrown.

@@ -25,8 +25,9 @@
         <version>4.3.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>io.helidon.json-schema</groupId>
-    <artifactId>helidon-json-schema-project</artifactId>
+    <groupId>io.helidon.jsonschema</groupId>
+    <artifactId>helidon-jsonschema-project</artifactId>
+    <name>Helidon Json Schema Project</name>
 
     <packaging>pom</packaging>
     <modules>

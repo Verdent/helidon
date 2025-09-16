@@ -14,15 +14,46 @@
  * limitations under the License.
  */
 
-module io.helidon.json.schema.codegen {
-    requires io.helidon.codegen;
-    requires io.helidon.common.types;
-    requires io.helidon.builder.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.json.schema;
+package io.helidon.json.schema;
 
-    exports io.helidon.json.schema.codegen;
+/**
+ * Json schema type.
+ */
+public enum SchemaType {
 
-    provides io.helidon.codegen.spi.CodegenExtensionProvider
-            with io.helidon.json.schema.codegen.SchemaCodegenProvider;
+    /**
+     * Json schema object type.
+     */
+    OBJECT,
+
+    /**
+     * Json schema array type.
+     */
+    ARRAY,
+
+    /**
+     * Json schema string type.
+     */
+    STRING,
+
+    /**
+     * Json schema number type.
+     */
+    NUMBER,
+
+    /**
+     * Json schema integer type.
+     */
+    INTEGER,
+
+    /**
+     * Json schema boolean type.
+     */
+    BOOLEAN,
+
+    /**
+     * Json schema null type.
+     */
+    NULL
+
 }

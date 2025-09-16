@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
-module io.helidon.json.schema.codegen {
-    requires io.helidon.codegen;
-    requires io.helidon.common.types;
-    requires io.helidon.builder.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.json.schema;
+package io.helidon.json.schema;
 
-    exports io.helidon.json.schema.codegen;
+import io.helidon.builder.api.Option;
+import io.helidon.builder.api.Prototype;
 
-    provides io.helidon.codegen.spi.CodegenExtensionProvider
-            with io.helidon.json.schema.codegen.SchemaCodegenProvider;
+/**
+ * Json schema related to the null types.
+ */
+@Prototype.Blueprint
+interface SchemaNullBlueprint extends SchemaItemBlueprint {
+
+    @Option.Access("")
+    @Option.Default("NULL")
+    SchemaType schemaType();
+
 }

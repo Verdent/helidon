@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-module io.helidon.json.schema.codegen {
-    requires io.helidon.codegen;
-    requires io.helidon.common.types;
-    requires io.helidon.builder.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.json.schema;
+package io.helidon.json.schema;
 
-    exports io.helidon.json.schema.codegen;
+import io.helidon.builder.api.Prototype;
 
-    provides io.helidon.codegen.spi.CodegenExtensionProvider
-            with io.helidon.json.schema.codegen.SchemaCodegenProvider;
+class SchemaStringDecorator implements Prototype.BuilderDecorator<SchemaString.BuilderBase<?, ?>> {
+
+    @Override
+    public void decorate(SchemaString.BuilderBase<?, ?> target) {
+        target.schemaType(SchemaType.STRING);
+    }
+
 }

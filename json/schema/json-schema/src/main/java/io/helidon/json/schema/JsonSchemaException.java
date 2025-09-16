@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-module io.helidon.json.schema.codegen {
-    requires io.helidon.codegen;
-    requires io.helidon.common.types;
-    requires io.helidon.builder.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.json.schema;
+package io.helidon.json.schema;
 
-    exports io.helidon.json.schema.codegen;
+/**
+ * Json schema related exception.
+ */
+public final class JsonSchemaException extends RuntimeException {
 
-    provides io.helidon.codegen.spi.CodegenExtensionProvider
-            with io.helidon.json.schema.codegen.SchemaCodegenProvider;
+    JsonSchemaException(String s) {
+        super(s);
+    }
+
 }

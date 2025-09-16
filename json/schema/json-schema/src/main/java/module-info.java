@@ -19,5 +19,5 @@ module io.helidon.json.schema {
     requires io.helidon.service.registry;
     requires io.helidon.metadata.hson;
 
-    exports io.helidon.jsonschema.schema;
+    exports io.helidon.json.schema;
 }

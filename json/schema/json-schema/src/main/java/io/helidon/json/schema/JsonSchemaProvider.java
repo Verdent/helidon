@@ -14,15 +14,32 @@
  * limitations under the License.
  */
 
-module io.helidon.json.schema.codegen {
-    requires io.helidon.codegen;
-    requires io.helidon.common.types;
-    requires io.helidon.builder.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.json.schema;
+package io.helidon.json.schema;
 
-    exports io.helidon.json.schema.codegen;
+/**
+ * Json schema provider related to the specific class.
+ */
+public interface JsonSchemaProvider {
 
-    provides io.helidon.codegen.spi.CodegenExtensionProvider
-            with io.helidon.json.schema.codegen.SchemaCodegenProvider;
+    /**
+     * Class this schema is describing.
+     *
+     * @return schema class
+     */
+    Class<?> schemaClass();
+
+    /**
+     * The String format of the schema.
+     *
+     * @return json schema string
+     */
+    String jsonSchema();
+
+    /**
+     * Json schema represented as an object.
+     *
+     * @return json schema object
+     */
+    Schema schema();
+
 }

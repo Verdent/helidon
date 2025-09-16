@@ -16,7 +16,7 @@
 
     <modules>
         <module>json-schema</module>
-        <module>schema-codegen</module>
+        <module>codegen</module>
         <module>tests</module>
     </modules>
 

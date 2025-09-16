@@ -1746,13 +1746,13 @@
 
             <!-- Json schema -->
             <dependency>
-                <groupId>io.helidon.jsonschema</groupId>
-                <artifactId>helidon-jsonschema-schema</artifactId>
+                <groupId>io.helidon.json.schema</groupId>
+                <artifactId>helidon-json-schema</artifactId>
                 <version>${helidon.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.helidon.jsonschema</groupId>
-                <artifactId>helidon-jsonschema-codegen</artifactId>
+                <groupId>io.helidon.jsons.chema</groupId>
+                <artifactId>helidon-jsons-chema-codegen</artifactId>
                 <version>${helidon.version}</version>
             </dependency>
 

@@ -24,65 +24,65 @@ import io.helidon.common.types.TypeName;
 class Types {
 
     //Common annotations
-    static final TypeName JSON_SCHEMA_SCHEMA = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Schema");
-    static final TypeName JSON_SCHEMA_ID = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Id");
-    static final TypeName JSON_SCHEMA_TITLE = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Title");
-    static final TypeName JSON_SCHEMA_DESCRIPTION = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Description");
-    static final TypeName JSON_SCHEMA_REQUIRED = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Required");
-    static final TypeName JSON_SCHEMA_PROVIDER = TypeName.create("io.helidon.jsonschema.schema.JsonSchemaProvider");
-    static final TypeName JSON_SCHEMA_DO_NOT_INSPECT = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.DoNotInspect");
-    static final TypeName JSON_SCHEMA_IGNORE = TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Ignore");
+    static final TypeName JSON_SCHEMA_SCHEMA = TypeName.create("io.helidon.json.schema.JsonSchema.Schema");
+    static final TypeName JSON_SCHEMA_ID = TypeName.create("io.helidon.json.schema.JsonSchema.Id");
+    static final TypeName JSON_SCHEMA_TITLE = TypeName.create("io.helidon.json.schema.JsonSchema.Title");
+    static final TypeName JSON_SCHEMA_DESCRIPTION = TypeName.create("io.helidon.json.schema.JsonSchema.Description");
+    static final TypeName JSON_SCHEMA_REQUIRED = TypeName.create("io.helidon.json.schema.JsonSchema.Required");
+    static final TypeName JSON_SCHEMA_PROVIDER = TypeName.create("io.helidon.json.schema.JsonSchemaProvider");
+    static final TypeName JSON_SCHEMA_DO_NOT_INSPECT = TypeName.create("io.helidon.json.schema.JsonSchema.DoNotInspect");
+    static final TypeName JSON_SCHEMA_IGNORE = TypeName.create("io.helidon.json.schema.JsonSchema.Ignore");
 
     //Integer annotations
     static final TypeName JSON_SCHEMA_INTEGER_MULTIPLE_OF =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Integer.MultipleOf");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Integer.MultipleOf");
     static final TypeName JSON_SCHEMA_INTEGER_MINIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Integer.Minimum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Integer.Minimum");
     static final TypeName JSON_SCHEMA_INTEGER_MAXIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Integer.Maximum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Integer.Maximum");
     static final TypeName JSON_SCHEMA_INTEGER_EXCLUSIVE_MAXIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Integer.ExclusiveMaximum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Integer.ExclusiveMaximum");
     static final TypeName JSON_SCHEMA_INTEGER_EXCLUSIVE_MINIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Integer.ExclusiveMinimum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Integer.ExclusiveMinimum");
 
     //String annotations
     static final TypeName JSON_SCHEMA_STRING_MIN_LENGTH =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.String.MinLength");
+            TypeName.create("io.helidon.json.schema.JsonSchema.String.MinLength");
     static final TypeName JSON_SCHEMA_STRING_MAX_LENGTH =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.String.MaxLength");
+            TypeName.create("io.helidon.json.schema.JsonSchema.String.MaxLength");
     static final TypeName JSON_SCHEMA_STRING_PATTERN =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.String.Pattern");
+            TypeName.create("io.helidon.json.schema.JsonSchema.String.Pattern");
 
     //Object annotations
     static final TypeName JSON_SCHEMA_OBJECT_MIN_PROPERTIES =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.MinProperties");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Object.MinProperties");
     static final TypeName JSON_SCHEMA_OBJECT_MAX_PROPERTIES =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.MaxProperties");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Object.MaxProperties");
     static final TypeName JSON_SCHEMA_OBJECT_ADDITIONAL_PROPERTIES =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Object.AdditionalProperties");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Object.AdditionalProperties");
 
     //Number annotations
     static final TypeName JSON_SCHEMA_NUMBER_MULTIPLE_OF =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.MultipleOf");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Number.MultipleOf");
     static final TypeName JSON_SCHEMA_NUMBER_MINIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.Minimum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Number.Minimum");
     static final TypeName JSON_SCHEMA_NUMBER_MAXIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.Maximum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Number.Maximum");
     static final TypeName JSON_SCHEMA_NUMBER_EXCLUSIVE_MAXIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.ExclusiveMaximum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Number.ExclusiveMaximum");
     static final TypeName JSON_SCHEMA_NUMBER_EXCLUSIVE_MINIMUM =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Number.ExclusiveMinimum");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Number.ExclusiveMinimum");
 
     //Array annotations
     static final TypeName JSON_SCHEMA_ARRAY_MAX_ITEMS =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MaxItems");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Array.MaxItems");
     static final TypeName JSON_SCHEMA_ARRAY_MIN_ITEMS =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.MinItems");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Array.MinItems");
     static final TypeName JSON_SCHEMA_ARRAY_UNIQUE_ITEMS =
-            TypeName.create("io.helidon.jsonschema.schema.JsonSchema.Array.UniqueItems");
+            TypeName.create("io.helidon.json.schema.JsonSchema.Array.UniqueItems");
 
     //Schema related types
-    static final TypeName SCHEMA = TypeName.create("io.helidon.jsonschema.schema.Schema");
+    static final TypeName SCHEMA = TypeName.create("io.helidon.json.schema.Schema");
 
     //Random types
     static final TypeName LAZY_VALUE = TypeName.create("io.helidon.common.LazyValue");

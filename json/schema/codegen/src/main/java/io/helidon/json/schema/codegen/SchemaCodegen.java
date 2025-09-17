@@ -76,7 +76,7 @@ class SchemaCodegen implements CodegenExtension {
                             .type(Types.LAZY_VALUE_SCHEMA)
                             .name("LAZY_SCHEMA")
                             .defaultValueContent("@io.helidon.common.LazyValue@.create(() -> "
-                                                         + "@io.helidon.jsonschema.schema.Schema@.parse(STRING_SCHEMA))"))
+                                                         + "@io.helidon.json.schema.Schema@.parse(STRING_SCHEMA))"))
                     .addMethod(it -> it.name("schemaClass")
                             .returnType(returnType)
                             .addAnnotation(Annotations.OVERRIDE)

@@ -21,10 +21,16 @@
             <artifactId>helidon-json-processor</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.helidon.builder.tests</groupId>
-            <artifactId>helidon-builder-tests-builder</artifactId>
-            <version>4.3.0-SNAPSHOT</version>
-            <scope>compile</scope>
+            <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.service</groupId>
+            <artifactId>helidon-service-registry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common-types</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

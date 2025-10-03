@@ -14,7 +14,7 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
+class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
 
     private JsonBindingConfigurer jsonBindingConfigurer;
 

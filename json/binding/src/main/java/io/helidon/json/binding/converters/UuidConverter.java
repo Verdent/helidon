@@ -12,7 +12,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class UuidConverter implements TypedJsonConverter<UUID> {
+class UuidConverter implements TypedJsonConverter<UUID> {
 
     private static final GenericType<UUID> TYPE = GenericType.create(UUID.class);
 

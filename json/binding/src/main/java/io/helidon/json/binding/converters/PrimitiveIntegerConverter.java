@@ -11,7 +11,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
+class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
 
     private static final GenericType<Integer> TYPE = GenericType.create(int.class);
 

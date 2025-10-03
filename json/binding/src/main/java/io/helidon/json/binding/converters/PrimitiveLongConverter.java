@@ -11,7 +11,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class PrimitiveLongConverter implements TypedJsonConverter<Long> {
+class PrimitiveLongConverter implements TypedJsonConverter<Long> {
 
     private static final GenericType<Long> TYPE = GenericType.create(long.class);
 

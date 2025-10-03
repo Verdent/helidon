@@ -12,7 +12,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class IntegerConverter implements TypedJsonConverter<Integer> {
+class IntegerConverter implements TypedJsonConverter<Integer> {
 
     @Override
     public void toJson(Generator generator, Integer instance, boolean writeNulls) {

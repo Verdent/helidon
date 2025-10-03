@@ -11,7 +11,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-final class StringConverter implements TypedJsonConverter<String> {
+class StringConverter implements TypedJsonConverter<String> {
 
     private static final GenericType<String> TYPE = GenericType.create(String.class);
 

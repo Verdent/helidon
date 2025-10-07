@@ -96,18 +96,16 @@ record ConvertedTypeInfo(TypeName converterType,
                     .directFieldAccess(field.accessModifier() != AccessModifier.PRIVATE)
                     .nullable(nullable);
 
-            obtainStringFromAnnotation(field, Types.JSON_PROPERTY, "value")
+            obtainStringFromAnnotation(field, Types.JSON_PROPERTY)
                     .ifPresent(value -> builder.serializationName(value).deserializationName(value));
-            obtainTypeNameFromAnnotation(field, Types.JSON_CONVERTER, "value")
+            obtainTypeNameFromAnnotation(field, Types.JSON_CONVERTER)
                     .ifPresent(value -> builder.serializer(value).deserializer(value));
-            obtainTypeNameFromAnnotation(field, Types.JSON_SERIALIZER, "value")
-                    .ifPresent(builder::serializer);
-            obtainTypeNameFromAnnotation(field, Types.JSON_DESERIALIZER, "value")
-                    .ifPresent(builder::deserializer);
-            field.findAnnotation(Types.JSON_IGNORE)
-                    .ifPresent(annotation -> builder.propertyIgnored(true));
-            obtainBooleanFromAnnotation(field, Types.JSON_NULLABLE, "value")
-                    .ifPresent(builder::nullable);
+            obtainTypeNameFromAnnotation(field, Types.JSON_SERIALIZER).ifPresent(builder::serializer);
+            obtainTypeNameFromAnnotation(field, Types.JSON_DESERIALIZER).ifPresent(builder::deserializer);
+            field.findAnnotation(Types.JSON_IGNORE).ifPresent(annotation -> builder.propertyIgnored(true));
+            obtainBooleanFromAnnotation(field, Types.JSON_NULLABLE).ifPresent(builder::nullable);
+            processFormat(field, Types.JSON_DATE_FORMAT).ifPresent(builder::dateFormat);
+            processFormat(field, Types.JSON_NUMBER_FORMAT).ifPresent(builder::numberFormat);
             properties.put(fieldName, builder);
         }
     }
@@ -138,12 +136,12 @@ record ConvertedTypeInfo(TypeName converterType,
                         .getterName(methodName)
                         .serializationNameIfNotSet(propertyName)
                         .serializationType(resolveGenerics(method.typeName(), typeInfo))
-                        .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"));
-                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
-                        .ifPresent(property::getterIgnored);
-                obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE, "value")
-                        .ifPresent(property::nullable);
+                        .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
+                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
+                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::getterIgnored);
+                obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE).ifPresent(property::nullable);
+                processFormat(method, Types.JSON_DATE_FORMAT).ifPresent(property::dateFormat);
+                processFormat(method, Types.JSON_NUMBER_FORMAT).ifPresent(property::numberFormat);
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, record)) {
                 String prefix = record ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName, record);
@@ -151,10 +149,11 @@ record ConvertedTypeInfo(TypeName converterType,
                         .setterName(methodName)
                         .deserializationNameIfNotSet(propertyName)
                         .deserializationType(resolveGenerics(method.parameterArguments().getFirst().typeName(), typeInfo))
-                        .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY, "value"))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER, "value"));
-                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE, "value")
-                        .ifPresent(property::setterIgnored);
+                        .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
+                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
+                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::setterIgnored);
+                processFormat(method, Types.JSON_DATE_FORMAT).ifPresent(property::dateFormat);
+                processFormat(method, Types.JSON_NUMBER_FORMAT).ifPresent(property::numberFormat);
             }
             //Not valid getter or setter
         }
@@ -200,9 +199,9 @@ record ConvertedTypeInfo(TypeName converterType,
                     .usedInCreator(true)
                     .deserializationName(parameterName)
                     .deserializationType(resolveGenerics(parameter.typeName(), typeInfo))
-                    .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY, "value"))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER, "value"))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER, "value"));
+                    .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
         }
         return new CreatorInfo(creatorKind, creatorMethod, parameterNames);
     }
@@ -286,25 +285,28 @@ record ConvertedTypeInfo(TypeName converterType,
         return IGNORED_METHODS.contains(MethodSignature.create(elementInfo));
     }
 
-    private static Optional<String> obtainStringFromAnnotation(TypedElementInfo elementInfo,
-                                                               TypeName annotationType,
-                                                               String attributeName) {
+    private static Optional<String> obtainStringFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.stringValue(attributeName));
+                .flatMap(annotation -> annotation.stringValue());
     }
 
-    private static Optional<TypeName> obtainTypeNameFromAnnotation(TypedElementInfo elementInfo,
-                                                                   TypeName annotationType,
-                                                                   String attributeName) {
+    private static Optional<TypeName> obtainTypeNameFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.typeValue(attributeName));
+                .flatMap(annotation -> annotation.typeValue());
     }
 
-    private static Optional<Boolean> obtainBooleanFromAnnotation(TypedElementInfo elementInfo,
-                                                                 TypeName annotationType,
-                                                                 String attributeName) {
+    private static Optional<Boolean> obtainBooleanFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.booleanValue(attributeName));
+                .flatMap(annotation -> annotation.booleanValue());
+    }
+
+    private static Optional<FormatInfo> processFormat(TypedElementInfo elementInfo, TypeName annotationType) {
+        return elementInfo.findAnnotation(annotationType)
+                .map(annotation -> {
+                    Optional<String> format = annotation.stringValue();
+                    Optional<String> locale = annotation.stringValue("locale");
+                    return new FormatInfo(format, locale);
+                });
     }
 
     private static Map<String, JsonProperty> finalizeJsonProperties(Map<String, JsonProperty.Builder> properties) {

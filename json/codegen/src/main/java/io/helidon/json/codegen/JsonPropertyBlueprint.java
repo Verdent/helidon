@@ -27,6 +27,10 @@ interface JsonPropertyBlueprint {
 
     Optional<TypeName> serializer();
 
+    Optional<FormatInfo> dateFormat();
+
+    Optional<FormatInfo> numberFormat();
+
     boolean propertyIgnored();
 
     boolean getterIgnored();

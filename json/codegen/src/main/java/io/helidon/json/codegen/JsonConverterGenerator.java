@@ -373,9 +373,7 @@ class JsonConverterGenerator {
                     .addContent(originalType).addContentLine("();");
         }
         method.addContentLine("if (lastByte != '}') {")
-                .addContentLine("parser.byteRollback();")
-                .addContentLine("do {")
-                .addContentLine("lastByte = parser.nextToken();")
+                .addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContent("(\"Key start expected. Found: \" + ")
@@ -421,7 +419,19 @@ class JsonConverterGenerator {
                 .padContent().addContentLine("parser.skip();");
         method.addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();")
-                .addContent("}").addContentLine(" while(lastByte == ',');");
+                .addContentLine("if (lastByte == ',') {")
+                .addContentLine("lastByte = parser.nextToken();")
+                .addContentLine("continue;")
+                .decreaseContentPadding()
+                .addContentLine("} else if (lastByte == '}') {")
+                .addContentLine("break;")
+                .decreaseContentPadding()
+                .addContentLine("} else {")
+                .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
+                .addContent("(\"Comma or end of object expected. Found: \" + ")
+                .addContent(Character.class).addContentLine(".toString(lastByte));")
+                .addContentLine("}")
+                .addContentLine("}");
         method.addContentLine("}");
         if (hasCreator) {
             TypeName originalType = converterInfo.originalType();

@@ -83,7 +83,9 @@ public final class Json {
     @Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
     public @interface DateFormat {
 
-        String value();
+        String value() default "@default";
+
+        String locale() default "@default";
 
     }
 
@@ -91,7 +93,9 @@ public final class Json {
     @Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
     public @interface NumberFormat {
 
-        String value();
+        String value() default "@default";
+
+        String locale() default "@default";
 
     }
 

@@ -30,14 +30,14 @@ class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
-            int value = parser.readInt();
+            int value = parser.readAsInt();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw new JsonException("Expected end of the integer value was '\"' but got '" + (char) lastByte + "'");
             }
             return value;
         }
-        return parser.readInt();
+        return parser.readAsInt();
     }
 
     @Override

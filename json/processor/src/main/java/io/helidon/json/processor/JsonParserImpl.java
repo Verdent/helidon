@@ -10,6 +10,8 @@ import java.util.Map;
 final class JsonParserImpl implements ReusableJsonParser {
 
     //We need this to check if the next number digit overflows int max capacity
+    private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
+    private static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
     private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
     private static final byte[] EMPTY_BUFFER = new byte[0];
@@ -17,6 +19,28 @@ final class JsonParserImpl implements ReusableJsonParser {
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
     public static final byte[] NULL_BYTES = {'n', 'u', 'l', 'l'};
+
+    private static final double[] POW_CACHE = new double[] {
+            1,
+            10,
+            100,
+            1000,
+            10000,
+            100000,
+            1000000,
+            10000000,
+            100000000,
+            1000000000,
+            10000000000L,
+            100000000000L,
+            1000000000000L,
+            10000000000000L,
+            100000000000000L,
+            1000000000000000L,
+            10000000000000000L,
+            100000000000000000L,
+            1000000000000000000L,
+    };
 
     static {
         Arrays.fill(WHOLE_NUMBER_PARTS, -1);
@@ -69,7 +93,7 @@ final class JsonParserImpl implements ReusableJsonParser {
     }
 
     JsonParserImpl(String json) {
-//        this(json.getBytes(StandardCharsets.UTF_8));
+        //        this(json.getBytes(StandardCharsets.UTF_8));
         this(json.getBytes());
     }
 
@@ -167,7 +191,7 @@ final class JsonParserImpl implements ReusableJsonParser {
             switch (b) {
             case '"':
             case '{':
-//            case '[':
+                //            case '[':
                 properties.put(keyName, readObject());
                 b = nextToken();
                 break;
@@ -242,110 +266,110 @@ final class JsonParserImpl implements ReusableJsonParser {
         }
         //TODO UPRAVIT pridat zpracovani slozitejsich Stringu
         throw new IllegalStateException();
-//        int i = 0;
+        //        int i = 0;
+        //        byte c = readNextByte();
+        //        while (c != '"') {
+        //            if (c == '\\') {
+        //                processEscapedSequence(i++);
+        //                c = readNextByte();
+        //                continue;
+        //            }
+        //            stringBuffer[i++] = (char) c;
+        //            c = readNextByte();
+        //        }
+        //        return new String(Arrays.copyOf(stringBuffer, i));
+    }
+
+    //    @Override
+    //    public byte[] readAsBytes() {
+    //        if (checkNull()) {
+    //            return NULL_BYTES;
+    //        }
+    //        int start = currentIndex;
+    //        int end = -1;
+    //        if (lastByte() == '"') {
+    //            start++;
+    //            byte b;
+    //            for (int i = currentIndex + 1; i < bufferLength; i++) {
+    //                b = buffer[i];
+    //                if (b == '"') {
+    //                    end = i - 1;
+    //                    currentIndex = i;
+    //                    break;
+    //                }
+    //            }
+    //        } else {
+    //            byte b;
+    //            for (int i = currentIndex + 1; i < bufferLength; i++) {
+    //                b = buffer[i];
+    //                switch (b) {
+    //                    case ',':
+    //                    case ':':
+    //                    case '}':
+    //                    case ']':
+    //                    case ' ':
+    //                        end = i - 1;
+    //                        currentIndex = i;
+    //                        break;
+    //                }
+    //            }
+    //        }
+    //        return Arrays.copyOfRange(buffer, start, end);
+    //    }
+
+//    private void processEscapedSequence(int bufferIndex) {
 //        byte c = readNextByte();
-//        while (c != '"') {
-//            if (c == '\\') {
-//                processEscapedSequence(i++);
-//                c = readNextByte();
-//                continue;
-//            }
-//            stringBuffer[i++] = (char) c;
-//            c = readNextByte();
+//        switch (c) {
+//        case '\\':
+//            stringBuffer[bufferIndex] = '\\';
+//            break;
+//        case 'b':
+//            stringBuffer[bufferIndex] = '\b';
+//            break;
+//        case 't':
+//            stringBuffer[bufferIndex] = '\t';
+//            break;
+//        case 'n':
+//            stringBuffer[bufferIndex] = '\n';
+//            break;
+//        case 'f':
+//            stringBuffer[bufferIndex] = '\f';
+//            break;
+//        case 'r':
+//            stringBuffer[bufferIndex] = '\r';
+//            break;
+//        case '"':
+//            stringBuffer[bufferIndex] = '\"';
+//            break;
+//        //        case 'u' -> {
+//        //            boolean isExpectingLowSurrogate = false;
+//        //            char tmp = (char) (
+//        //                    (translateHex(readNextByte()) << 12) +
+//        //                            (translateHex(readNextByte()) << 8) +
+//        //                            (translateHex(readNextByte()) << 4) +
+//        //                            translateHex(readNextByte()));
+//        //            if (Character.isHighSurrogate(tmp)) {
+//        //                if (isExpectingLowSurrogate) {
+//        //                    throw new JsonException("invalid surrogate");
+//        //                } else {
+//        //                    isExpectingLowSurrogate = true;
+//        //                }
+//        //            } else if (Character.isLowSurrogate(tmp)) {
+//        //                if (isExpectingLowSurrogate) {
+//        //                    isExpectingLowSurrogate = false;
+//        //                } else {
+//        //                    throw new JsonException("invalid surrogate");
+//        //                }
+//        //            } else {
+//        //                if (isExpectingLowSurrogate) {
+//        //                    throw new JsonException("invalid surrogate");
+//        //                }
+//        //            }
+//        //        }
+//        default:
+//            throw new JsonException("Invalid escaped character: " + c);
 //        }
-//        return new String(Arrays.copyOf(stringBuffer, i));
-    }
-
-//    @Override
-//    public byte[] readAsBytes() {
-//        if (checkNull()) {
-//            return NULL_BYTES;
-//        }
-//        int start = currentIndex;
-//        int end = -1;
-//        if (lastByte() == '"') {
-//            start++;
-//            byte b;
-//            for (int i = currentIndex + 1; i < bufferLength; i++) {
-//                b = buffer[i];
-//                if (b == '"') {
-//                    end = i - 1;
-//                    currentIndex = i;
-//                    break;
-//                }
-//            }
-//        } else {
-//            byte b;
-//            for (int i = currentIndex + 1; i < bufferLength; i++) {
-//                b = buffer[i];
-//                switch (b) {
-//                    case ',':
-//                    case ':':
-//                    case '}':
-//                    case ']':
-//                    case ' ':
-//                        end = i - 1;
-//                        currentIndex = i;
-//                        break;
-//                }
-//            }
-//        }
-//        return Arrays.copyOfRange(buffer, start, end);
 //    }
-
-    private void processEscapedSequence(int bufferIndex) {
-        byte c = readNextByte();
-        switch (c) {
-        case '\\':
-            stringBuffer[bufferIndex] = '\\';
-            break;
-        case 'b':
-            stringBuffer[bufferIndex] = '\b';
-            break;
-        case 't':
-            stringBuffer[bufferIndex] = '\t';
-            break;
-        case 'n':
-            stringBuffer[bufferIndex] = '\n';
-            break;
-        case 'f':
-            stringBuffer[bufferIndex] = '\f';
-            break;
-        case 'r':
-            stringBuffer[bufferIndex] = '\r';
-            break;
-        case '"':
-            stringBuffer[bufferIndex] = '\"';
-            break;
-//        case 'u' -> {
-//            boolean isExpectingLowSurrogate = false;
-//            char tmp = (char) (
-//                    (translateHex(readNextByte()) << 12) +
-//                            (translateHex(readNextByte()) << 8) +
-//                            (translateHex(readNextByte()) << 4) +
-//                            translateHex(readNextByte()));
-//            if (Character.isHighSurrogate(tmp)) {
-//                if (isExpectingLowSurrogate) {
-//                    throw new JsonException("invalid surrogate");
-//                } else {
-//                    isExpectingLowSurrogate = true;
-//                }
-//            } else if (Character.isLowSurrogate(tmp)) {
-//                if (isExpectingLowSurrogate) {
-//                    isExpectingLowSurrogate = false;
-//                } else {
-//                    throw new JsonException("invalid surrogate");
-//                }
-//            } else {
-//                if (isExpectingLowSurrogate) {
-//                    throw new JsonException("invalid surrogate");
-//                }
-//            }
-//        }
-        default:
-            throw new JsonException("Invalid escaped character: " + c);
-        }
-    }
 
     @Override
     public JsonNumber readJsonNumber() {
@@ -372,37 +396,188 @@ final class JsonParserImpl implements ReusableJsonParser {
     }
 
     @Override
-    public int readInt() {
+    public boolean readAsBoolean() {
+        switch (lastByte()) {
+        case 't':
+            if (buffer[currentIndex + 1] == 'r'
+                    && buffer[currentIndex + 2] == 'u'
+                    && buffer[currentIndex + 3] == 'e') {
+                currentIndex = currentIndex + 3;
+                return true;
+            }
+            throw new JsonException("Expected value true at index: " + realIndex());
+        case 'f':
+            if (buffer[currentIndex + 1] == 'a'
+                    && buffer[currentIndex + 2] == 'l'
+                    && buffer[currentIndex + 3] == 's'
+                    && buffer[currentIndex + 4] == 'e') {
+                currentIndex = currentIndex + 4;
+                return false;
+            }
+            throw new JsonException("Expected value false at index: " + realIndex());
+        default:
+            throw new JsonException("Expected boolean value at index: " + realIndex());
+        }
+    }
+
+    @Override
+    public byte readAsByte() {
+        if (lastByte() == '-') {
+            currentIndex = currentIndex + 1;
+            return (byte) -parseByte(true);
+        } else {
+            return parseByte(false);
+        }
+    }
+
+    private byte parseByte(boolean negative) {
+        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        if (digit1 == -1) {
+            throw new JsonException("Expected number, but was: " + (char) lastByte());
+        }
+        boolean hasNext = hasNext();
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit2 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return (byte) digit1;
+        }
+        hasNext = hasNext();
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int possibleResult = digit1 * 10 + digit2;
+        if (digit3 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return (byte) possibleResult;
+        }
+        hasNext = hasNext();
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit4 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            if (negative) {
+                if (-possibleResult > -BYTE_SIZE_BORDER || (-possibleResult == -BYTE_SIZE_BORDER && digit3 <= 8)) {
+                    return (byte) (possibleResult * 10 + digit3);
+                }
+            } else if (possibleResult < BYTE_SIZE_BORDER || (possibleResult == BYTE_SIZE_BORDER && digit3 <= 7)) {
+                return (byte) (possibleResult * 10 + digit3);
+            }
+        }
+        hasNext = hasNext();
+        //The Number is too big. Lets read it all and report in the exception
+        StringBuilder number = new StringBuilder();
+        if (negative) {
+            number.append("-");
+        }
+        number.append(possibleResult).append(digit3);
+        if (digit4 != -1) {
+            int digit = digit4;
+            while (digit != -1) {
+                number.append(digit);
+                digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+                hasNext = hasNext();
+            }
+        }
+        if (hasNext) {
+            currentIndex--;
+        }
+        throw new JsonException("Number is too big for a byte value: " + number);
+    }
+
+    @Override
+    public short readAsShort() {
+        if (lastByte() == '-') {
+            currentIndex = currentIndex + 1;
+            return (short) -parseShort(true);
+        } else {
+            return parseShort(false);
+        }
+    }
+
+    private short parseShort(boolean negative) {
+        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        if (digit1 == -1) {
+            throw new JsonException("Expected number, but was: " + (char) lastByte());
+        }
+        boolean hasNext = hasNext();
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit2 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return (short) digit1;
+        }
+        hasNext = hasNext();
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit3 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return (short) (digit1 * 10 + digit2);
+        }
+        hasNext = hasNext();
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit4 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return (short) (digit1 * 100 + digit2 * 10 + digit3);
+        }
+        hasNext = hasNext();
+        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        short possibleResult = (short) (digit1 * 1000 + digit2 * 100 + digit3 * 10 + digit4);
+        if (digit5 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            return possibleResult;
+        }
+        hasNext = hasNext();
+        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        if (digit6 == -1) {
+            if (hasNext) {
+                currentIndex--;
+            }
+            if (negative) {
+                if (-possibleResult > -SHORT_SIZE_BORDER || (-possibleResult == -SHORT_SIZE_BORDER && digit5 <= 8)) {
+                    return (short) (possibleResult * 10 + digit5);
+                }
+            } else if (possibleResult < SHORT_SIZE_BORDER || (possibleResult == SHORT_SIZE_BORDER && digit5 <= 7)) {
+                return (short) (possibleResult * 10 + digit5);
+            }
+        }
+        hasNext = hasNext();
+        //The Number is too big. Lets read it all and report in the exception
+        StringBuilder number = new StringBuilder();
+        if (negative) {
+            number.append("-");
+        }
+        number.append(possibleResult).append(digit5);
+        if (digit6 != -1) {
+            int digit = digit6;
+            while (digit != -1) {
+                number.append(digit);
+                digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+                hasNext = hasNext();
+            }
+        }
+        if (hasNext) {
+            currentIndex--;
+        }
+        throw new JsonException("Number is too big for a short value: " + number);
+    }
+
+    @Override
+    public int readAsInt() {
         if (lastByte() == '-') {
             currentIndex = currentIndex + 1;
             return -parseInt(true);
         } else {
             return parseInt(false);
         }
-//        int i = 0;
-//        byte b = lastByte;
-//        boolean negative = false;
-//        if (lastByte == '-') {
-//            negative = true;
-//            i = -1;
-//        } else {
-//            numberBuffer[0] = WHOLE_NUMBER_PARTS[b];
-//        }
-//        int index = currentIndex;
-//        while (true) {
-//            b = buffer[index];
-//            index = index + 1;
-//            int digit = WHOLE_NUMBER_PARTS[b];
-//            if (digit == -1) {
-//                break;
-//            }
-//            numberBuffer[++i] = digit;
-//        }
-//
-//        lastByte = b;
-//        currentIndex = index - 1;
-//        int result = calculateIntNumber(i, negative);
-//        return negative ? -result : result;
     }
 
     private int parseInt(boolean negative) {
@@ -554,7 +729,7 @@ final class JsonParserImpl implements ReusableJsonParser {
     }
 
     @Override
-    public long readLong() {
+    public long readAsLong() {
         if (lastByte() == '-') {
             currentIndex = currentIndex + 1;
             return -parseLong(true);
@@ -850,6 +1025,58 @@ final class JsonParserImpl implements ReusableJsonParser {
     }
 
     @Override
+    public float readAsFloat() {
+        return 0;
+    }
+
+    @Override
+    public double readAsDouble() {
+        boolean rollback = true;
+        double result = readAsLong();
+        byte nextByte = readNextByte();
+        if (nextByte == '.') {
+            int start = currentIndex;
+            readNextByte();
+            long fracPart = parseLong(false);
+            int fracDigits = currentIndex - start;
+            if (fracDigits >= POW_CACHE.length) {
+                //Let Java handle POW, slower
+                result += fracPart / Math.pow(10, fracDigits);
+            } else {
+                result += fracPart / POW_CACHE[fracDigits];
+            }
+            rollback = hasNext();
+            if (rollback) {
+                nextByte = readNextByte();
+            }
+        }
+        // Exponent part
+        if (nextByte == 'e'|| nextByte == 'E') {
+            nextByte = readNextByte();
+            boolean expNeg = false;
+            if (nextByte == '+') {
+                readNextByte();
+            } else if (nextByte == '-') {
+                expNeg = true;
+                readNextByte();
+            }
+            int exp = parseInt(expNeg);
+            if (exp != 0) {
+                exp = expNeg ? -exp : exp;
+                if (exp >= POW_CACHE.length || exp < 0) {
+                    //Let Java handle POW, slower
+                    result *= Math.pow(10, exp);
+                } else {
+                    result *= POW_CACHE[exp];
+                }
+            }
+        } else if (rollback) {
+            byteRollback();
+        }
+        return result;
+    }
+
+    @Override
     public boolean checkNull() {
         if (lastByte() == 'n') {
             if (buffer[currentIndex + 1] == 'u'
@@ -979,11 +1206,13 @@ final class JsonParserImpl implements ReusableJsonParser {
             skipStringValue();
             b = nextToken();
         } else {
-            throw new JsonException("Key name expected after object start, but found: " + Character.toString(lastByte()) + ". "
+            throw new JsonException("Key name expected after object start, but found: " + Character.toString(lastByte()) +
+                                            ". "
                                             + "Error at index " + realIndex());
         }
         if (b != ':') {
-            throw new JsonException("Colon expected after the key, but found: " + Character.toString(lastByte()) + ". Error at "
+            throw new JsonException("Colon expected after the key, but found: " + Character.toString(lastByte()) + ". Error"
+                                            + " at "
                                             + "index " + realIndex());
         }
         b = nextToken();

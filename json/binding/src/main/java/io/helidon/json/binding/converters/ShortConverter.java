@@ -11,37 +11,30 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class PrimitiveLongConverter implements TypedJsonConverter<Long> {
-
-    private static final GenericType<Long> TYPE = GenericType.create(long.class);
+class ShortConverter implements TypedJsonConverter<Short> {
 
     @Override
-    public GenericType<Long> type() {
-        return TYPE;
-    }
-
-    @Override
-    public void toJson(Generator generator, Long instance, boolean writeNulls) {
+    public void toJson(Generator generator, Short instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Long fromJsonValue(JsonParser parser) {
+    public Short fromJsonValue(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
-            long value = parser.readAsLong();
+            short value = parser.readAsShort();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
-                throw new JsonException("Expected end of the long value was '\"' but got '" + (char) lastByte + "'");
+                throw new JsonException("Expected end of the short value was '\"' but got '" + (char) lastByte + "'");
             }
             return value;
         }
-        return parser.readAsLong();
+        return parser.readAsShort();
     }
 
     @Override
-    public Long fromNull() {
-        return 0L;
+    public GenericType<Short> type() {
+        return new GenericType<>() {};
     }
 }

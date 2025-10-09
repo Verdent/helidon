@@ -34,12 +34,8 @@ class PrimitiveBooleanConverter implements TypedJsonConverter<Boolean> {
             boolean toReturn;
             switch (lastByte) {
             case 't':
-                parser.checkTrue();
-                toReturn = true;
-                break;
             case 'f':
-                parser.checkFalse();
-                toReturn = false;
+                toReturn = parser.readAsBoolean();
                 break;
             case 'n':
                 parser.checkNull();

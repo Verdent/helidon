@@ -23,14 +23,14 @@ class LongConverter implements TypedJsonConverter<Long> {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
-            long value = parser.readLong();
+            long value = parser.readAsLong();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw new JsonException("Expected end of the long value was '\"' but got '" + (char) lastByte + "'");
             }
             return value;
         }
-        return parser.readLong();
+        return parser.readAsLong();
     }
 
     @Override

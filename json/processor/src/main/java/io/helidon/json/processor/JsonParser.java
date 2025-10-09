@@ -26,8 +26,13 @@ public interface JsonParser {
 
     JsonNumber readJsonNumber();
     char[] readNumberAsArray();
-    int readInt();
-    long readLong();
+    boolean readAsBoolean();
+    byte readAsByte();
+    short readAsShort();
+    int readAsInt();
+    long readAsLong();
+    float readAsFloat();
+    double readAsDouble();
     boolean checkNull();
     boolean checkTrue();
     boolean checkFalse();

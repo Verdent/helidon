@@ -54,7 +54,7 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
                 String value = parser.readString();
                 return Instant.from(formatter.parse(value));
             } else {
-                long value = parser.readLong();
+                long value = parser.readAsLong();
                 return Instant.ofEpochMilli(value);
             }
         }

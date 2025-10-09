@@ -12,8 +12,8 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-//@Service.Singleton
-//@Weight(Weighted.DEFAULT_WEIGHT - 10)
+@Service.PerRequest
+@Weight(Weighted.DEFAULT_WEIGHT - 10)
 class ByteArrayConverter implements TypedJsonConverter<byte[]>, JsonConfigurable {
 
     private final byte[] emptyArray = new byte[0];

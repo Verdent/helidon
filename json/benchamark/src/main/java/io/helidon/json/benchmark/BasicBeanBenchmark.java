@@ -28,10 +28,10 @@ public class BasicBeanBenchmark {
             + "\"fieldTwo\":2147,"
             + "\"fieldOne\":\"Hello\","
             + "\"fieldThree\":\"World\","
-            + "\"fieldFour\": null,"
+            + "\"fieldFour\":null,"
             + "\"fieldFive\":\"1234\","
             + "\"fieldSix\":4567,"
-            + "\"otherBean\": {"
+            + "\"otherBean\":{"
             + "\"otherString\":\"Hello there!\""
             + "}}";
 

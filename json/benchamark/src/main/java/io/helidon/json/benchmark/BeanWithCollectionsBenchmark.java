@@ -25,9 +25,9 @@ import org.openjdk.jmh.infra.Blackhole;
 public class BeanWithCollectionsBenchmark {
 
     static final String TEMPLATE = "{"
-            + "\"list\":[123, 321],"
+            + "\"list\":[123,321],"
 //            + "\"list2\":[[123456, 654321], [987456321, 123456789,123456789]]"
-            + "\"list2\":[[123456, 654321], [123, 456, 789]]"
+            + "\"list2\":[[123456,654321],[123,456,789]]"
             + "}";
 
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();

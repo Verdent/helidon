@@ -27,12 +27,8 @@ class BooleanConverter implements TypedJsonConverter<Boolean> {
             Boolean toReturn;
             switch (lastByte) {
             case 't':
-                parser.checkTrue();
-                toReturn = true;
-                break;
             case 'f':
-                parser.checkFalse();
-                toReturn = false;
+                toReturn = parser.readAsBoolean();
                 break;
             case 'n':
                 parser.checkNull();

@@ -3,7 +3,6 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
@@ -24,14 +23,14 @@ class IntegerConverter implements TypedJsonConverter<Integer> {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
-            int value = parser.readInt();
+            int value = parser.readAsInt();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw new JsonException("Expected end of the integer value was '\"' but got '" + (char) lastByte + "'");
             }
             return value;
         }
-        return parser.readInt();
+        return parser.readAsInt();
     }
 
     @Override

@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * TODO javadoc
  */
-final class JsonParserImpl implements ReusableJsonParser {
+sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamParser {
 
     //We need this to check if the next number digit overflows int max capacity
     private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
@@ -84,9 +84,9 @@ final class JsonParserImpl implements ReusableJsonParser {
 
     private final char[] stringBuffer = new char[64];
     private final int[] numberBuffer = new int[64];
-    byte[] buffer;
-    int currentIndex = -1;
-    int bufferLength;
+    private byte[] buffer;
+    private int currentIndex = -1;
+    private int bufferLength;
 
     JsonParserImpl() {
         this(EMPTY_BUFFER);

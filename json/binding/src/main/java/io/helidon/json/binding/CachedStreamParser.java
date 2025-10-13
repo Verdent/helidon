@@ -3,13 +3,13 @@ package io.helidon.json.binding;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.json.processor.ReusableJsonParser;
 
-class CachedParser {
+class CachedStreamParser {
 
-    private ReusableJsonParser parser = (ReusableJsonParser) JsonParser.empty();
+    private ReusableJsonParser parser = (ReusableJsonParser) JsonParser.emptyStream();
 
     ReusableJsonParser get() {
         if (parser == null) {
-            return  (ReusableJsonParser) JsonParser.empty();
+            return  (ReusableJsonParser) JsonParser.emptyStream();
         }
         ReusableJsonParser toReturn = parser;
         parser = null;

@@ -16,8 +16,12 @@ public interface JsonParser {
         return new JsonStreamParser(inputStream);
     }
 
-    static JsonParser create() {
+    static JsonParser empty() {
         return new JsonParserImpl();
+    }
+
+    static JsonParser emptyStream() {
+        return new JsonStreamParser();
     }
 
     byte readNextByte();

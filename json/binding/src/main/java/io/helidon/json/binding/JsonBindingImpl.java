@@ -1,8 +1,10 @@
 package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -20,6 +22,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     static final JsonBinding DEFAULT_INSTANCE = JsonBinding.builder().build();
     private static final JsonContext EMPTY_CONTEXT = JsonContext.create();
     private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
+    private final ThreadLocal<CachedStreamParser> parserStreamCache = ThreadLocal.withInitial(CachedStreamParser::new);
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> identitySerializers = new IdentityHashMap<>();
@@ -121,7 +124,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
-        parser.reset(jsonStr.getBytes());
+        parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
         parser.nextToken();
         T deserialized = deserializer.fromJson(parser);
         cachedParser.set(parser);
@@ -131,9 +134,30 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     public <T> T fromJson(String jsonStr, GenericType<T> type) {
         JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
-        JsonParser parser = JsonParser.create(jsonStr);
+        CachedParser cachedParser = parserCache.get();
+        ReusableJsonParser parser = cachedParser.get();
+        parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
         parser.nextToken();
-        return deserializer.fromJson(parser);
+        T deserialized = deserializer.fromJson(parser);
+        cachedParser.set(parser);
+        return deserialized;
+    }
+
+    @Override
+    public <T> T fromJson(InputStream inputStream, Class<T> type) {
+        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        CachedStreamParser cachedParser = parserStreamCache.get();
+        ReusableJsonParser parser = cachedParser.get();
+        parser.reset(inputStream);
+        parser.nextToken();
+        T deserialized = deserializer.fromJson(parser);
+        cachedParser.set(parser);
+        return deserialized;
+    }
+
+    @Override
+    public <T> T fromJson(InputStream inputStream, GenericType<T> type) {
+        return null;
     }
 
     @SuppressWarnings("unchecked")

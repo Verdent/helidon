@@ -47,11 +47,11 @@ public class BasicBeanBenchmark {
     public void helidon(Blackhole bh) {
         bh.consume(JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
     }
-
-    @Benchmark
-    public void jsoniter(Blackhole bh) {
-        bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-    }
+//
+//    @Benchmark
+//    public void jsoniter(Blackhole bh) {
+//        bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+//    }
 
     @Benchmark
     public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {

@@ -1,5 +1,6 @@
 package io.helidon.json.processor;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,7 +15,6 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     private static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
     private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
-    private static final byte[] EMPTY_BUFFER = new byte[0];
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
@@ -84,17 +84,16 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
 
     private final char[] stringBuffer = new char[64];
     private final int[] numberBuffer = new int[64];
-    private byte[] buffer;
-    private int currentIndex = -1;
-    private int bufferLength;
+    byte[] buffer;
+    int currentIndex = -1;
+    int bufferLength;
 
     JsonParserImpl() {
-        this(EMPTY_BUFFER);
+        this(new byte[500]);
     }
 
     JsonParserImpl(String json) {
-        //        this(json.getBytes(StandardCharsets.UTF_8));
-        this(json.getBytes());
+        this(json.getBytes(StandardCharsets.UTF_8));
     }
 
     JsonParserImpl(byte[] buffer) {
@@ -317,59 +316,59 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     //        return Arrays.copyOfRange(buffer, start, end);
     //    }
 
-//    private void processEscapedSequence(int bufferIndex) {
-//        byte c = readNextByte();
-//        switch (c) {
-//        case '\\':
-//            stringBuffer[bufferIndex] = '\\';
-//            break;
-//        case 'b':
-//            stringBuffer[bufferIndex] = '\b';
-//            break;
-//        case 't':
-//            stringBuffer[bufferIndex] = '\t';
-//            break;
-//        case 'n':
-//            stringBuffer[bufferIndex] = '\n';
-//            break;
-//        case 'f':
-//            stringBuffer[bufferIndex] = '\f';
-//            break;
-//        case 'r':
-//            stringBuffer[bufferIndex] = '\r';
-//            break;
-//        case '"':
-//            stringBuffer[bufferIndex] = '\"';
-//            break;
-//        //        case 'u' -> {
-//        //            boolean isExpectingLowSurrogate = false;
-//        //            char tmp = (char) (
-//        //                    (translateHex(readNextByte()) << 12) +
-//        //                            (translateHex(readNextByte()) << 8) +
-//        //                            (translateHex(readNextByte()) << 4) +
-//        //                            translateHex(readNextByte()));
-//        //            if (Character.isHighSurrogate(tmp)) {
-//        //                if (isExpectingLowSurrogate) {
-//        //                    throw new JsonException("invalid surrogate");
-//        //                } else {
-//        //                    isExpectingLowSurrogate = true;
-//        //                }
-//        //            } else if (Character.isLowSurrogate(tmp)) {
-//        //                if (isExpectingLowSurrogate) {
-//        //                    isExpectingLowSurrogate = false;
-//        //                } else {
-//        //                    throw new JsonException("invalid surrogate");
-//        //                }
-//        //            } else {
-//        //                if (isExpectingLowSurrogate) {
-//        //                    throw new JsonException("invalid surrogate");
-//        //                }
-//        //            }
-//        //        }
-//        default:
-//            throw new JsonException("Invalid escaped character: " + c);
-//        }
-//    }
+    //    private void processEscapedSequence(int bufferIndex) {
+    //        byte c = readNextByte();
+    //        switch (c) {
+    //        case '\\':
+    //            stringBuffer[bufferIndex] = '\\';
+    //            break;
+    //        case 'b':
+    //            stringBuffer[bufferIndex] = '\b';
+    //            break;
+    //        case 't':
+    //            stringBuffer[bufferIndex] = '\t';
+    //            break;
+    //        case 'n':
+    //            stringBuffer[bufferIndex] = '\n';
+    //            break;
+    //        case 'f':
+    //            stringBuffer[bufferIndex] = '\f';
+    //            break;
+    //        case 'r':
+    //            stringBuffer[bufferIndex] = '\r';
+    //            break;
+    //        case '"':
+    //            stringBuffer[bufferIndex] = '\"';
+    //            break;
+    //        //        case 'u' -> {
+    //        //            boolean isExpectingLowSurrogate = false;
+    //        //            char tmp = (char) (
+    //        //                    (translateHex(readNextByte()) << 12) +
+    //        //                            (translateHex(readNextByte()) << 8) +
+    //        //                            (translateHex(readNextByte()) << 4) +
+    //        //                            translateHex(readNextByte()));
+    //        //            if (Character.isHighSurrogate(tmp)) {
+    //        //                if (isExpectingLowSurrogate) {
+    //        //                    throw new JsonException("invalid surrogate");
+    //        //                } else {
+    //        //                    isExpectingLowSurrogate = true;
+    //        //                }
+    //        //            } else if (Character.isLowSurrogate(tmp)) {
+    //        //                if (isExpectingLowSurrogate) {
+    //        //                    isExpectingLowSurrogate = false;
+    //        //                } else {
+    //        //                    throw new JsonException("invalid surrogate");
+    //        //                }
+    //        //            } else {
+    //        //                if (isExpectingLowSurrogate) {
+    //        //                    throw new JsonException("invalid surrogate");
+    //        //                }
+    //        //            }
+    //        //        }
+    //        default:
+    //            throw new JsonException("Invalid escaped character: " + c);
+    //        }
+    //    }
 
     @Override
     public JsonNumber readJsonNumber() {
@@ -1051,7 +1050,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
             }
         }
         // Exponent part
-        if (nextByte == 'e'|| nextByte == 'E') {
+        if (nextByte == 'e' || nextByte == 'E') {
             nextByte = readNextByte();
             boolean expNeg = false;
             if (nextByte == '+') {

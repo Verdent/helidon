@@ -1,6 +1,7 @@
 package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.HashMap;
@@ -68,6 +69,14 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
         return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(jsonStr, type);
     }
 
+    static <T> T deserialize(InputStream inputStream, Class<T> type) {
+        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(inputStream, type);
+    }
+
+    static <T> T deserialize(InputStream inputStream, GenericType<T> type) {
+        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(inputStream, type);
+    }
+
     String toJson(Object obj);
 
     <T> String toJson(T obj, Class<T> type);
@@ -77,5 +86,9 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
     <T> T fromJson(String jsonStr, Class<T> type);
 
     <T> T fromJson(String jsonStr, GenericType<T> type);
+
+    <T> T fromJson(InputStream inputStream, Class<T> type);
+
+    <T> T fromJson(InputStream inputStream, GenericType<T> type);
 
 }

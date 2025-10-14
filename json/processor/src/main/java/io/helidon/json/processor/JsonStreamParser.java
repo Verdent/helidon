@@ -43,17 +43,21 @@ final class JsonStreamParser extends JsonParserImpl {
     @Override
     public byte readNextByte() {
         if (!finished && currentIndex + 1 == bufferLength) {
-            try {
-                System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
-                bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
-                finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != bufferSize;
-                currentIndex = DEFAULT_KEEP_AMOUNT - 1;
-                bufferLength += DEFAULT_KEEP_AMOUNT;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            readMoreData();
         }
         return super.readNextByte();
+    }
+
+    private void readMoreData() {
+        try {
+            System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
+            bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
+            finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != bufferSize;
+            currentIndex = DEFAULT_KEEP_AMOUNT - 1;
+            bufferLength += DEFAULT_KEEP_AMOUNT;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -83,14 +87,6 @@ final class JsonStreamParser extends JsonParserImpl {
         if (finished) {
             throw new JsonException("There are no more data to fetch. Incomplete JSON.");
         }
-        try {
-            System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
-            bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
-            finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != DEFAULT_BUFFER_SIZE;
-            currentIndex = DEFAULT_KEEP_AMOUNT - 1;
-            bufferLength += DEFAULT_KEEP_AMOUNT;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        readMoreData();
     }
 }

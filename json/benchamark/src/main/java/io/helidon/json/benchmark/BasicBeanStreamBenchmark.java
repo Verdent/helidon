@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit;
 
 import io.helidon.json.binding.JsonBinding;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
 import com.jsoniter.JsonIterator;
@@ -43,7 +42,7 @@ public class BasicBeanStreamBenchmark {
             + "}}";
 
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
-    private static final ObjectMapper JACKSON_BACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
+    private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
     static {
         //To enable field name processing as hashes
@@ -57,32 +56,25 @@ public class BasicBeanStreamBenchmark {
     public void setup() {
         stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
     }
-//
-//    public static void main(String[] args) {
-//        ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(
-//                StandardCharsets.UTF_8));
-//        MyJavaBean deserialize = JsonBinding.deserialize(stream, MyJavaBean.class);
-//        System.out.println();
-//    }
 
-//    @Benchmark
-//    public void helidon(Blackhole bh) {
-//        bh.consume(JsonBinding.deserialize(stream, MyJavaBean.class));
-//    }
+    @Benchmark
+    public void helidon(Blackhole bh) {
+        bh.consume(JsonBinding.deserialize(stream, MyJavaBean.class));
+    }
 
     @Benchmark
     public void jsoniter(Blackhole bh) throws IOException {
         bh.consume(JsonIterator.parse(stream, 8000).read(MyJavaBean.class));
     }
 
-//    @Benchmark
-//    public void jacksonBlackbird(Blackhole bh) throws IOException {
-//        bh.consume(JACKSON_BACKBIRD.readValue(stream, MyJavaBean.class));
-//    }
+    @Benchmark
+    public void jacksonBlackbird(Blackhole bh) throws IOException {
+        bh.consume(JACKSON_BLACKBIRD.readValue(stream, MyJavaBean.class));
+    }
 
-//    @Benchmark
-//    public void jackson(Blackhole bh) throws IOException {
-//        bh.consume(BASIC_JACKSON.readValue(stream, MyJavaBean.class));
-//    }
+    @Benchmark
+    public void jackson(Blackhole bh) throws IOException {
+        bh.consume(BASIC_JACKSON.readValue(stream, MyJavaBean.class));
+    }
 
 }

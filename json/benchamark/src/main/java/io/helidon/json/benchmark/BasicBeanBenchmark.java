@@ -36,7 +36,7 @@ public class BasicBeanBenchmark {
             + "}}";
 
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
-    private static final ObjectMapper JACKSON_BACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
+    private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
     static {
         //To enable field name processing as hashes
@@ -55,7 +55,7 @@ public class BasicBeanBenchmark {
 
     @Benchmark
     public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {
-        bh.consume(JACKSON_BACKBIRD.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+        bh.consume(JACKSON_BLACKBIRD.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
     }
 
     @Benchmark

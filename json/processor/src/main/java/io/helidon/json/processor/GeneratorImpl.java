@@ -56,6 +56,16 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
+    public void writeValue(float value) {
+        write(Float.toString(value));
+    }
+
+    @Override
+    public void writeValue(double value) {
+        write(Double.toString(value));
+    }
+
+    @Override
     public void writeValue(boolean value) {
         if (value) {
             osBuffer[index++] = 't';

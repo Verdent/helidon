@@ -20,7 +20,28 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
     public static final byte[] NULL_BYTES = {'n', 'u', 'l', 'l'};
 
-    private static final double[] POW_CACHE = new double[] {
+    private static final double[] POW_DOUBLE_CACHE = new double[] {
+            1,
+            10,
+            100,
+            1000,
+            10000,
+            100000,
+            1000000,
+            10000000,
+            100000000,
+            1000000000,
+            10000000000L,
+            100000000000L,
+            1000000000000L,
+            10000000000000L,
+            100000000000000L,
+            1000000000000000L,
+            10000000000000000L,
+            100000000000000000L,
+            1000000000000000000L,
+    };
+    private static final float[] POW_FLOAT_CACHE = new float[] {
             1,
             10,
             100,
@@ -1016,24 +1037,19 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
 
     @Override
     public float readAsFloat() {
-        return 0;
-    }
-
-    @Override
-    public double readAsDouble() {
         boolean rollback = true;
-        double result = readAsLong();
+        float result = readAsLong();
         byte nextByte = readNextByte();
         if (nextByte == '.') {
             int start = currentIndex;
             readNextByte();
             long fracPart = parseLong(false);
             int fracDigits = currentIndex - start;
-            if (fracDigits >= POW_CACHE.length) {
+            if (fracDigits >= POW_FLOAT_CACHE.length) {
                 //Let Java handle POW, slower
-                result += fracPart / Math.pow(10, fracDigits);
+                result += fracPart / (float) Math.pow(10, fracDigits);
             } else {
-                result += fracPart / POW_CACHE[fracDigits];
+                result += fracPart / POW_FLOAT_CACHE[fracDigits];
             }
             rollback = hasNext();
             if (rollback) {
@@ -1053,11 +1069,58 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
             int exp = parseInt(expNeg);
             if (exp != 0) {
                 exp = expNeg ? -exp : exp;
-                if (exp >= POW_CACHE.length || exp < 0) {
+                if (exp >= POW_FLOAT_CACHE.length || exp < 0) {
+                    //Let Java handle POW, slower
+                    result *= (float) Math.pow(10, exp);
+                } else {
+                    result *= POW_FLOAT_CACHE[exp];
+                }
+            }
+        } else if (rollback) {
+            byteRollback();
+        }
+        return result;
+    }
+
+    @Override
+    public double readAsDouble() {
+        boolean rollback = true;
+        double result = readAsLong();
+        byte nextByte = readNextByte();
+        if (nextByte == '.') {
+            int start = currentIndex;
+            readNextByte();
+            long fracPart = parseLong(false);
+            int fracDigits = currentIndex - start;
+            if (fracDigits >= POW_DOUBLE_CACHE.length) {
+                //Let Java handle POW, slower
+                result += fracPart / Math.pow(10, fracDigits);
+            } else {
+                result += fracPart / POW_DOUBLE_CACHE[fracDigits];
+            }
+            rollback = hasNext();
+            if (rollback) {
+                nextByte = readNextByte();
+            }
+        }
+        // Exponent part
+        if (nextByte == 'e' || nextByte == 'E') {
+            nextByte = readNextByte();
+            boolean expNeg = false;
+            if (nextByte == '+') {
+                readNextByte();
+            } else if (nextByte == '-') {
+                expNeg = true;
+                readNextByte();
+            }
+            int exp = parseInt(expNeg);
+            if (exp != 0) {
+                exp = expNeg ? -exp : exp;
+                if (exp >= POW_DOUBLE_CACHE.length || exp < 0) {
                     //Let Java handle POW, slower
                     result *= Math.pow(10, exp);
                 } else {
-                    result *= POW_CACHE[exp];
+                    result *= POW_DOUBLE_CACHE[exp];
                 }
             }
         } else if (rollback) {

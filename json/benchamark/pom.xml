@@ -11,6 +11,10 @@
 
     <artifactId>helidon-json-benchmark</artifactId>
 
+    <properties>
+        <dependency-plugin-check-dependencies.skip>true</dependency-plugin-check-dependencies.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.openjdk.jmh</groupId>

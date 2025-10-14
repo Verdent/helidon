@@ -8,11 +8,14 @@ import io.helidon.json.binding.JsonBinding;
 public class Main4 {
 
     public static void main(String[] args) {
-        ByteArrayInputStream bais = new ByteArrayInputStream("{\"name\":\"value\"}".getBytes(StandardCharsets.UTF_8));
+//        ByteArrayInputStream bais = new ByteArrayInputStream("{\"name\":\"value\"}".getBytes(StandardCharsets.UTF_8));
+//
+//        SimpleClass deserialize = JsonBinding.deserialize(bais, SimpleClass.class);
+//
+//        System.out.println(deserialize);
 
-        SimpleClass deserialize = JsonBinding.deserialize(bais, SimpleClass.class);
-
-        System.out.println(deserialize);
+        float v = Float.parseFloat("123.456e800");
+        System.out.println(v);
 
     }
 

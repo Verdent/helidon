@@ -12,8 +12,8 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-//@Service.Singleton
-//@Weight(Weighted.DEFAULT_WEIGHT - 10)
+@Service.PerLookup
+@Weight(Weighted.DEFAULT_WEIGHT - 10)
 class FloatArrayConverter implements TypedJsonConverter<float[]>, JsonConfigurable {
 
     private final float[] emptyArray = new float[0];

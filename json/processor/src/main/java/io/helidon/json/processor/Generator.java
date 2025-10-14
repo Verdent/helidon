@@ -20,6 +20,10 @@ public interface Generator extends AutoCloseable {
 
     void writeValue(long value);
 
+    void writeValue(float value);
+
+    void writeValue(double value);
+
     void writeValue(boolean value);
 
     void writeComma();

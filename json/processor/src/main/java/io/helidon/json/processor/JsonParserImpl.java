@@ -220,13 +220,8 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
                 b = nextToken();
                 break;
             case 't':
-                checkTrue();
-                properties.put(keyName, true);
-                b = nextToken();
-                break;
             case 'f':
-                checkFalse();
-                properties.put(keyName, false);
+                properties.put(keyName, readAsBoolean());
                 b = nextToken();
                 break;
             default:
@@ -351,7 +346,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
                 stringBuffer[position++] = (char) codePoint;
             }
         } else {
-            throw new IllegalArgumentException("Invalid UTF-8 byte " + c);
+            throw new JsonException("Invalid UTF-8 byte: " + currentByte);
         }
         return position;
     }
@@ -384,6 +379,9 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
                 System.arraycopy(stringBuffer, 0, numberBuffer, 0, i);
                 return numberBuffer;
             }
+            if (i == stringBufferLength) {
+                increaseStringBuffer();
+            }
         }
     }
 
@@ -391,24 +389,24 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     public boolean readAsBoolean() {
         switch (lastByte()) {
         case 't':
-            if (buffer[currentIndex + 1] == 'r'
-                    && buffer[currentIndex + 2] == 'u'
-                    && buffer[currentIndex + 3] == 'e') {
-                currentIndex = currentIndex + 3;
+            ensure(3);
+            if (buffer[++currentIndex] == 'r'
+                    && buffer[++currentIndex] == 'u'
+                    && buffer[++currentIndex] == 'e') {
                 return true;
             }
-            throw new JsonException("Expected value true at index: " + realIndex());
+            throw new JsonException("Expected value true at index: " + (currentIndex - 3));
         case 'f':
-            if (buffer[currentIndex + 1] == 'a'
-                    && buffer[currentIndex + 2] == 'l'
-                    && buffer[currentIndex + 3] == 's'
-                    && buffer[currentIndex + 4] == 'e') {
-                currentIndex = currentIndex + 4;
+            ensure(4);
+            if (buffer[++currentIndex] == 'a'
+                    && buffer[++currentIndex] == 'l'
+                    && buffer[++currentIndex] == 's'
+                    && buffer[++currentIndex] == 'e') {
                 return false;
             }
-            throw new JsonException("Expected value false at index: " + realIndex());
+            throw new JsonException("Expected value false at index: " + (currentIndex - 4));
         default:
-            throw new JsonException("Expected boolean value at index: " + realIndex());
+            throw new JsonException("Expected boolean value at index: " + currentIndex);
         }
     }
 
@@ -1080,42 +1078,12 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     public boolean checkNull() {
         if (lastByte() == 'n') {
             ensure(3);
-            if (buffer[currentIndex + 1] == 'u'
-                    && buffer[currentIndex + 2] == 'l'
-                    && buffer[currentIndex + 3] == 'l') {
-                currentIndex = currentIndex + 3;
+            if (buffer[++currentIndex] == 'u'
+                    && buffer[++currentIndex] == 'l'
+                    && buffer[++currentIndex] == 'l') {
                 return true;
             }
-            throw new JsonException("Expected value null at index: " + realIndex());
-        }
-        return false;
-    }
-
-    @Override
-    public boolean checkTrue() {
-        if (lastByte() == 't') {
-            if (buffer[currentIndex + 1] == 'r'
-                    && buffer[currentIndex + 2] == 'u'
-                    && buffer[currentIndex + 3] == 'e') {
-                currentIndex = currentIndex + 3;
-                return true;
-            }
-            throw new JsonException("Expected value true at index: " + realIndex());
-        }
-        return false;
-    }
-
-    @Override
-    public boolean checkFalse() {
-        if (lastByte() == 'f') {
-            if (buffer[currentIndex + 1] == 'a'
-                    && buffer[currentIndex + 2] == 'l'
-                    && buffer[currentIndex + 3] == 's'
-                    && buffer[currentIndex + 4] == 'e') {
-                currentIndex = currentIndex + 4;
-                return true;
-            }
-            throw new JsonException("Expected value false at index: " + realIndex());
+            throw new JsonException("Expected value null at index: " + (currentIndex - 3));
         }
         return false;
     }

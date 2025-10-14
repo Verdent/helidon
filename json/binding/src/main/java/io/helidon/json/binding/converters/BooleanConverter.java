@@ -42,11 +42,8 @@ class BooleanConverter implements TypedJsonConverter<Boolean> {
             }
             return toReturn;
         case 't':
-            parser.checkTrue();
-            return true;
         case 'f':
-            parser.checkFalse();
-            return false;
+            return parser.readAsBoolean();
         default:
             throw new JsonException("Expected Boolean value but got '" + (char) lastByte + "'");
         }

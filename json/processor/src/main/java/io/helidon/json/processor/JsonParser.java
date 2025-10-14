@@ -44,8 +44,6 @@ public interface JsonParser {
     float readAsFloat();
     double readAsDouble();
     boolean checkNull();
-    boolean checkTrue();
-    boolean checkFalse();
     void skip();
     void byteRollback();
 

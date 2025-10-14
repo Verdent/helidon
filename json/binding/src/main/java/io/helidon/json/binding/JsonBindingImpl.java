@@ -157,7 +157,14 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T fromJson(InputStream inputStream, GenericType<T> type) {
-        return null;
+        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        CachedStreamParser cachedParser = parserStreamCache.get();
+        ReusableJsonParser parser = cachedParser.get();
+        parser.reset(inputStream);
+        parser.nextToken();
+        T deserialized = deserializer.fromJson(parser);
+        cachedParser.set(parser);
+        return deserialized;
     }
 
     @SuppressWarnings("unchecked")

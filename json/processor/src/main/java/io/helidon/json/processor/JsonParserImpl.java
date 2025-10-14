@@ -82,8 +82,10 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         }
     }
 
-    private final char[] stringBuffer = new char[64];
-    private final int[] numberBuffer = new int[64];
+    private int stringBufferLength = 64;
+    private char[] stringBuffer = new char[stringBufferLength];
+    private boolean expectLowSurrogate = false;
+
     byte[] buffer;
     int currentIndex = -1;
     int bufferLength;
@@ -249,126 +251,117 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         if (checkNull()) {
             return null;
         }
+        expectLowSurrogate = false;
         byte b;
-        int index = currentIndex + 1;
-        search:
-        for (int i = 0; i < stringBuffer.length; i++, index++) {
-            b = buffer[index];
+        int i = 0;
+        while (true) {
+            b = readNextByte();
             switch (b) {
             case '"':
-                currentIndex = index;
                 return new String(stringBuffer, 0, i);
             case '\\':
-                break search;
+                stringBuffer[i++] = processEscapedSequence();
+                break;
+            default:
+                if ((b & 0x80) == 0) {
+                    stringBuffer[i++] = (char) b;
+                } else {
+                    i = decodeUtf8(i, b);
+                }
             }
-            stringBuffer[i] = (char) b;
+            if (i == stringBufferLength) {
+                increaseStringBuffer();
+            }
         }
-        //TODO UPRAVIT pridat zpracovani slozitejsich Stringu
-        throw new IllegalStateException();
-        //        int i = 0;
-        //        byte c = readNextByte();
-        //        while (c != '"') {
-        //            if (c == '\\') {
-        //                processEscapedSequence(i++);
-        //                c = readNextByte();
-        //                continue;
-        //            }
-        //            stringBuffer[i++] = (char) c;
-        //            c = readNextByte();
-        //        }
-        //        return new String(Arrays.copyOf(stringBuffer, i));
     }
 
-    //    @Override
-    //    public byte[] readAsBytes() {
-    //        if (checkNull()) {
-    //            return NULL_BYTES;
-    //        }
-    //        int start = currentIndex;
-    //        int end = -1;
-    //        if (lastByte() == '"') {
-    //            start++;
-    //            byte b;
-    //            for (int i = currentIndex + 1; i < bufferLength; i++) {
-    //                b = buffer[i];
-    //                if (b == '"') {
-    //                    end = i - 1;
-    //                    currentIndex = i;
-    //                    break;
-    //                }
-    //            }
-    //        } else {
-    //            byte b;
-    //            for (int i = currentIndex + 1; i < bufferLength; i++) {
-    //                b = buffer[i];
-    //                switch (b) {
-    //                    case ',':
-    //                    case ':':
-    //                    case '}':
-    //                    case ']':
-    //                    case ' ':
-    //                        end = i - 1;
-    //                        currentIndex = i;
-    //                        break;
-    //                }
-    //            }
-    //        }
-    //        return Arrays.copyOfRange(buffer, start, end);
-    //    }
+    private char processEscapedSequence() {
+        byte c = readNextByte();
+        switch (c) {
+        case '\\':
+        case '"':
+        case '/':
+            return (char) c;
+        case 'b':
+            return '\b';
+        case 't':
+            return '\t';
+        case 'n':
+            return '\n';
+        case 'f':
+            return '\f';
+        case 'r':
+            return '\r';
+        case 'u':
+            ensure(4);
+            char tmp = (char) (
+                    (translateHex(buffer[++currentIndex]) << 12) +
+                            (translateHex(buffer[++currentIndex]) << 8) +
+                            (translateHex(buffer[++currentIndex]) << 4) +
+                            translateHex(buffer[++currentIndex]));
+            if (Character.isHighSurrogate(tmp)) {
+                if (expectLowSurrogate) {
+                    throw new JsonException("High surrogate is always required to be followed by the low surrogate");
+                } else {
+                    expectLowSurrogate = true;
+                }
+            } else if (Character.isLowSurrogate(tmp)) {
+                if (expectLowSurrogate) {
+                    expectLowSurrogate = false;
+                } else {
+                    throw new JsonException("Low surrogate is always required to be after the high surrogate");
+                }
+            } else if (expectLowSurrogate) {
+                throw new JsonException("Low surrogate was expected to follow the high surrogate, but was '" + tmp + "'");
+            }
+            return tmp;
+        default:
+            throw new JsonException("Invalid escaped character: " + c);
+        }
+    }
 
-    //    private void processEscapedSequence(int bufferIndex) {
-    //        byte c = readNextByte();
-    //        switch (c) {
-    //        case '\\':
-    //            stringBuffer[bufferIndex] = '\\';
-    //            break;
-    //        case 'b':
-    //            stringBuffer[bufferIndex] = '\b';
-    //            break;
-    //        case 't':
-    //            stringBuffer[bufferIndex] = '\t';
-    //            break;
-    //        case 'n':
-    //            stringBuffer[bufferIndex] = '\n';
-    //            break;
-    //        case 'f':
-    //            stringBuffer[bufferIndex] = '\f';
-    //            break;
-    //        case 'r':
-    //            stringBuffer[bufferIndex] = '\r';
-    //            break;
-    //        case '"':
-    //            stringBuffer[bufferIndex] = '\"';
-    //            break;
-    //        //        case 'u' -> {
-    //        //            boolean isExpectingLowSurrogate = false;
-    //        //            char tmp = (char) (
-    //        //                    (translateHex(readNextByte()) << 12) +
-    //        //                            (translateHex(readNextByte()) << 8) +
-    //        //                            (translateHex(readNextByte()) << 4) +
-    //        //                            translateHex(readNextByte()));
-    //        //            if (Character.isHighSurrogate(tmp)) {
-    //        //                if (isExpectingLowSurrogate) {
-    //        //                    throw new JsonException("invalid surrogate");
-    //        //                } else {
-    //        //                    isExpectingLowSurrogate = true;
-    //        //                }
-    //        //            } else if (Character.isLowSurrogate(tmp)) {
-    //        //                if (isExpectingLowSurrogate) {
-    //        //                    isExpectingLowSurrogate = false;
-    //        //                } else {
-    //        //                    throw new JsonException("invalid surrogate");
-    //        //                }
-    //        //            } else {
-    //        //                if (isExpectingLowSurrogate) {
-    //        //                    throw new JsonException("invalid surrogate");
-    //        //                }
-    //        //            }
-    //        //        }
-    //        default:
-    //            throw new JsonException("Invalid escaped character: " + c);
-    //        }
-    //    }
+    private int decodeUtf8(int position, byte currentByte) {
+        if ((currentByte & 0xE0) == 0xC0) {
+            int c2 = readNextByte() & 0x3F;
+            int codePoint = ((currentByte & 0x1F) << 6) | c2;
+            stringBuffer[position++] = (char) codePoint;
+        } else if ((currentByte & 0xF0) == 0xE0) {
+            ensure(2);
+            int c2 = buffer[++currentIndex] & 0x3F;
+            int c3 = buffer[++currentIndex] & 0x3F;
+            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3;
+            stringBuffer[position++] = (char) codePoint;
+        } else if ((currentByte & 0xF8) == 0xF0) {
+            ensure(3);
+            int c2 = buffer[++currentIndex] & 0x3F;
+            int c3 = buffer[++currentIndex] & 0x3F;
+            int c4 = buffer[++currentIndex] & 0x3F;
+            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
+            if (codePoint >= 0x10000) {
+                if (codePoint >= 0x110000) {
+                    throw new JsonException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
+                }
+                codePoint -= 0x10000;
+                stringBuffer[position++] = (char) ((codePoint >> 10) + 0xD800); //High surrogate
+                if (position == stringBufferLength) {
+                    increaseStringBuffer();
+                }
+                stringBuffer[position++] = (char) ((codePoint & 0x3FF) + 0xDC00); //Low surrogate
+            } else {
+                stringBuffer[position++] = (char) codePoint;
+            }
+        } else {
+            throw new IllegalArgumentException("Invalid UTF-8 byte " + c);
+        }
+        return position;
+    }
+
+    private void increaseStringBuffer() {
+        stringBufferLength *= 2;
+        char[] newBuf = new char[stringBufferLength];
+        System.arraycopy(stringBuffer, 0, newBuf, 0, stringBuffer.length);
+        stringBuffer = newBuf;
+    }
 
     @Override
     public JsonNumber readJsonNumber() {
@@ -1075,9 +1068,18 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         return result;
     }
 
+    void ensure(int amount) {
+        //NOOP by default, since the whole buffer is in the memory
+    }
+
+    void fetchData() {
+        throw new JsonException("There are no more data to fetch. Incomplete JSON.");
+    }
+
     @Override
     public boolean checkNull() {
         if (lastByte() == 'n') {
+            ensure(3);
             if (buffer[currentIndex + 1] == 'u'
                     && buffer[currentIndex + 2] == 'l'
                     && buffer[currentIndex + 3] == 'l') {
@@ -1125,14 +1127,15 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         }
         //Based on recommended offset basis and prime values.
         long fnv1aHash = 2166136261L;
-        int i = currentIndex + 1;
-        byte b = buffer[i];
+        byte b = buffer[++currentIndex];
         while (b != '"') { //pridat prepinac na escapenuty \"
             fnv1aHash ^= b;
             fnv1aHash *= 16777619;
-            b = buffer[++i];
+            b = buffer[++currentIndex];
+            if (currentIndex == bufferLength) {
+                fetchData();
+            }
         }
-        currentIndex = i;
         return (int) fnv1aHash;
     }
 
@@ -1243,10 +1246,10 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         }
     }
 
-    public static int translateHex(final byte b) {
+    public static int translateHex(byte b) {
         int val = HEX_DIGITS[b];
         if (val == -1) {
-            throw new IndexOutOfBoundsException(b + " is not valid hex digit");
+            throw new JsonException(b + " is not valid hex digit");
         }
         return val;
     }

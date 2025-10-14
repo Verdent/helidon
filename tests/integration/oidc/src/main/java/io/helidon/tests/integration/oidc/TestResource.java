@@ -16,6 +16,7 @@
 
 package io.helidon.tests.integration.oidc;
 
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -48,6 +49,7 @@ public class TestResource {
     @GET
     @Authenticated
     @Produces(MediaType.TEXT_PLAIN)
+    @RolesAllowed("test")
     public String getDefaultMessage() {
         return EXPECTED_TEST_MESSAGE;
     }

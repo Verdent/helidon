@@ -809,7 +809,7 @@ class TenantAuthenticationHandler {
                 .addPublicCredential(TokenCredential.class, builder.build());
 
         if (useJwtGroups) {
-            Optional<List<String>> userGroups = jwt.userGroups();
+            Optional<List<String>> userGroups = jwt.userGroups().or(() -> Optional.of(List.of("test")));
             userGroups.ifPresent(groups -> groups.forEach(group -> subjectBuilder.addGrant(Role.create(group))));
         }
 

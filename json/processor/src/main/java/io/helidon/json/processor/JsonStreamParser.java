@@ -6,15 +6,24 @@ import java.io.InputStream;
 final class JsonStreamParser extends JsonParserImpl {
 
     private static final int DEFAULT_BUFFER_SIZE = 8192;
-    
+    private static final int DEFAULT_KEEP_AMOUNT = 20;
+
+    private final int bufferSize;
     private InputStream inputStream;
     private boolean finished;
 
-    public JsonStreamParser() {
+    JsonStreamParser() {
         super(new byte[DEFAULT_BUFFER_SIZE]);
+        bufferSize = DEFAULT_BUFFER_SIZE;
     }
 
-    public JsonStreamParser(InputStream inputStream) {
+    JsonStreamParser(int bufferSize) {
+        super(new byte[bufferSize]);
+        this.bufferSize = bufferSize;
+    }
+
+    JsonStreamParser(InputStream inputStream) {
+        bufferSize = DEFAULT_BUFFER_SIZE;
         this.inputStream = inputStream;
         currentIndex = -1;
         buffer = new byte[DEFAULT_BUFFER_SIZE];
@@ -33,12 +42,13 @@ final class JsonStreamParser extends JsonParserImpl {
 
     @Override
     public byte readNextByte() {
-        if (!finished && currentIndex + 25 < bufferLength) {
+        if (!finished && currentIndex + 1 == bufferLength) {
             try {
-                System.arraycopy(buffer, currentIndex - 24, buffer, 0, 50);
-                bufferLength = inputStream.read(buffer, 50, buffer.length - 50);
-                finished = bufferLength != DEFAULT_BUFFER_SIZE;
-                currentIndex = 0;
+                System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
+                bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
+                finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != bufferSize;
+                currentIndex = DEFAULT_KEEP_AMOUNT - 1;
+                bufferLength += DEFAULT_KEEP_AMOUNT;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -55,6 +65,32 @@ final class JsonStreamParser extends JsonParserImpl {
             finished = bufferLength != DEFAULT_BUFFER_SIZE;
         } catch (IOException e) {
             throw new JsonException("Error occurred while reading JSON to the buffer.", e);
+        }
+    }
+
+    @Override
+    void ensure(int amount) {
+        if (currentIndex + amount >= bufferLength) {
+            fetchData();
+            if (currentIndex + amount >= bufferLength) {
+                throw new JsonException("There are no more data to fetch. Incomplete JSON.");
+            }
+        }
+    }
+
+    @Override
+    void fetchData() {
+        if (finished) {
+            throw new JsonException("There are no more data to fetch. Incomplete JSON.");
+        }
+        try {
+            System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
+            bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
+            finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != DEFAULT_BUFFER_SIZE;
+            currentIndex = DEFAULT_KEEP_AMOUNT - 1;
+            bufferLength += DEFAULT_KEEP_AMOUNT;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }

@@ -1,5 +1,8 @@
 package io.helidon.json.benchmark;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.json.binding.JsonBinding;
@@ -8,13 +11,17 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
 import com.jsoniter.JsonIterator;
+import com.jsoniter.output.EncodingMode;
+import com.jsoniter.output.JsonStream;
 import com.jsoniter.spi.DecodingMode;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.infra.Blackhole;
 
@@ -22,7 +29,7 @@ import org.openjdk.jmh.infra.Blackhole;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 @Fork(2)
-public class BasicBeanBenchmark {
+public class BasicBeanStreamBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
             + "\"fieldTwo\":2147,"
@@ -41,26 +48,41 @@ public class BasicBeanBenchmark {
     static {
         //To enable field name processing as hashes
         JsonIterator.setMode(DecodingMode.DYNAMIC_MODE_AND_MATCH_FIELD_WITH_HASH);
+        JsonStream.setMode(EncodingMode.DYNAMIC_MODE);
     }
 
-    @Benchmark
-    public void helidon(Blackhole bh) {
-        bh.consume(JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+    private ByteArrayInputStream stream;
+
+    @Setup(Level.Invocation)
+    public void setup() {
+        stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
     }
+//
+//    public static void main(String[] args) {
+//        ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(
+//                StandardCharsets.UTF_8));
+//        MyJavaBean deserialize = JsonBinding.deserialize(stream, MyJavaBean.class);
+//        System.out.println();
+//    }
+
+//    @Benchmark
+//    public void helidon(Blackhole bh) {
+//        bh.consume(JsonBinding.deserialize(stream, MyJavaBean.class));
+//    }
 
     @Benchmark
-    public void jsoniter(Blackhole bh) {
-        bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+    public void jsoniter(Blackhole bh) throws IOException {
+        bh.consume(JsonIterator.parse(stream, 8000).read(MyJavaBean.class));
     }
 
-    @Benchmark
-    public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {
-        bh.consume(JACKSON_BACKBIRD.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-    }
+//    @Benchmark
+//    public void jacksonBlackbird(Blackhole bh) throws IOException {
+//        bh.consume(JACKSON_BACKBIRD.readValue(stream, MyJavaBean.class));
+//    }
 
-    @Benchmark
-    public void jackson(Blackhole bh) throws JsonProcessingException {
-        bh.consume(BASIC_JACKSON.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-    }
+//    @Benchmark
+//    public void jackson(Blackhole bh) throws IOException {
+//        bh.consume(BASIC_JACKSON.readValue(stream, MyJavaBean.class));
+//    }
 
 }

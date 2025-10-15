@@ -36,7 +36,7 @@ final class JsonStreamParser extends JsonParserImpl {
     }
 
     @Override
-    boolean hasNext() {
+    public boolean hasNext() {
         return !finished || super.hasNext();
     }
 

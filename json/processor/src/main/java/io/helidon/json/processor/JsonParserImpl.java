@@ -18,7 +18,6 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
-    public static final byte[] NULL_BYTES = {'n', 'u', 'l', 'l'};
 
     private static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
@@ -178,7 +177,8 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         throw new JsonException("Json incomplete!");
     }
 
-    boolean hasNext() {
+    @Override
+    public boolean hasNext() {
         return currentIndex + 1 < bufferLength;
     }
 
@@ -1223,6 +1223,9 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
                     this.currentIndex = index;
                     return;
                 }
+                break;
+            default:
+                isEscaped = false;
             }
         }
         //TODO UPRAVIT log hlaska

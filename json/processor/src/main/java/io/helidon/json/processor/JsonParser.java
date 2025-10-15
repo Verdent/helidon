@@ -23,7 +23,7 @@ public interface JsonParser {
     static JsonParser emptyStream() {
         return new JsonStreamParser();
     }
-
+    boolean hasNext();
     byte readNextByte();
     byte nextToken();
     byte lastByte();

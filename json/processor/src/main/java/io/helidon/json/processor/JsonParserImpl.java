@@ -1,8 +1,10 @@
 package io.helidon.json.processor;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,6 +20,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
+    private static final JsonObject EMPTY_OBJECT = new JsonObject(List.of());
 
     private static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
@@ -104,6 +107,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
 
     private int stringBufferLength = 64;
     private char[] stringBuffer = new char[stringBufferLength];
+    private byte[] byteBuffer = new byte[stringBufferLength];
     private boolean expectLowSurrogate = false;
 
     byte[] buffer;
@@ -123,11 +127,24 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         this.bufferLength = buffer.length;
     }
 
+    JsonParserImpl(byte[] buffer, int start) {
+        this.buffer = buffer;
+        this.bufferLength = buffer.length;
+        this.currentIndex = start;
+    }
+
     @Override
     public void reset(byte[] buffer) {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
         this.currentIndex = -1;
+    }
+
+    @Override
+    public void reset(byte[] buffer, int start) {
+        this.buffer = buffer;
+        this.bufferLength = buffer.length;
+        this.currentIndex = start;
     }
 
     @Override
@@ -188,20 +205,42 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     }
 
     @Override
-    public JsonObject readObject() {
-        Map<String, Object> properties = new HashMap<>();
-        byte b = currentIndex == 0 ? nextToken() : lastByte();
-        if (b != '{') {
-            throw new JsonException("Expected start of the object");
+    public JsonValue readJsonValue() {
+        byte b = currentIndex == -1 ? nextToken() : lastByte();
+        switch(b) {
+        case '{':
+            return readJsonObject();
+        case '"':
+            return readJsonString();
+        case '-':
+        case '.':
+        case '+':
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            return readJsonNumber();
+        default:
+            throw new JsonException("Unsupported yet!");
         }
-        b = nextToken();
+    }
+
+    private JsonObject readJsonObject() {
+        byte b = nextToken();
         if (b == '}') {
-            return new JsonObject(properties);
+            return EMPTY_OBJECT;
         }
+        List<JsonObject.Pair> pairs = new ArrayList<>();
         while (hasNext()) {
-            String keyName;
+            JsonString key;
             if (b == '"') {
-                keyName = readString();
+                key = readJsonString();
             } else {
                 throw new JsonException("Key name expected at index: " + realIndex() + ", but was: " + Character.toString(b));
             }
@@ -212,11 +251,13 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
             b = nextToken();
             switch (b) {
             case '"':
-            case '{':
-                //            case '[':
-                properties.put(keyName, readObject());
-                b = nextToken();
+                pairs.add(new JsonObject.Pair(key, readJsonString()));
                 break;
+            case '{':
+                pairs.add(new JsonObject.Pair(key, readJsonObject()));
+                break;
+            case '[':
+                throw new JsonException("Unsupported yet");
             case '-':
             case '.':
             case '+':
@@ -230,32 +271,40 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
             case '7':
             case '8':
             case '9':
-                properties.put(keyName, readJsonNumber());
-                while (DECIMAL_NUMBER_PARTS[b] != -1) {//For example if the number was in decimal format
-                    b = nextToken();
-                }
+                pairs.add(new JsonObject.Pair(key, readJsonNumber()));
                 break;
             case 'n':
                 checkNull();
-                properties.put(keyName, null);
-                b = nextToken();
+                pairs.add(new JsonObject.Pair(key, JsonNull.instance()));
                 break;
             case 't':
             case 'f':
-                properties.put(keyName, readAsBoolean());
-                b = nextToken();
+                pairs.add(new JsonObject.Pair(key, JsonBoolean.create(readAsBoolean())));
                 break;
             default:
                 throw new JsonException("Unexpected token at index: " + realIndex());
             }
+            b = nextToken();
             if (b == '}') {
-                return new JsonObject(properties);
+                return new JsonObject(pairs);
             } else if (b != ',') {
-                throw new JsonException("Comma or } expected at index: " + realIndex() + ", but was: " + Character.toString(b));
+                throw new JsonException("Comma or } expected at index: " + realIndex() + ", but was: " + (char) b);
             }
             b = nextToken();
         }
-        throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + Character.toString(b));
+        throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
+    }
+
+    private JsonString readJsonString() {
+        int start = currentIndex;
+        skipStringValue();
+        return JsonString.create(buffer, start);
+    }
+
+    private JsonNumber readJsonNumber() {
+        int start =  currentIndex;
+        skipNumber();
+        return JsonNumber.create(buffer, start);
     }
 
     int realIndex() {
@@ -267,6 +316,35 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         if (checkNull()) {
             return null;
         }
+//        boolean isEscaped = false;
+//        int i = 0;
+//        loop:
+//        for (int index = this.currentIndex + 1; index < this.bufferLength; index++, i++) {
+//            byte b = this.buffer[index];
+//            switch (b) {
+//            case '\\':
+//                isEscaped = !isEscaped;
+//                byteBuffer[i] = b;
+//                break;
+//            case '"':
+//                if (!isEscaped) {
+//                    this.currentIndex = index;
+//                    break loop;
+//                }
+//                byteBuffer[i] = b;
+//                break;
+//            default:
+//                isEscaped = false;
+//                byteBuffer[i] = b;
+//            }
+//        }
+//        return new String(byteBuffer, 0, i, StandardCharsets.UTF_8);
+
+//        int start = currentIndex + 1;
+//        skipStringValue();
+//        int end = currentIndex;
+//        return new String(buffer, start, end - start, StandardCharsets.UTF_8);
+
         expectLowSurrogate = false;
         byte b;
         int i = 0;
@@ -377,11 +455,6 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         char[] newBuf = new char[stringBufferLength];
         System.arraycopy(stringBuffer, 0, newBuf, 0, stringBuffer.length);
         stringBuffer = newBuf;
-    }
-
-    @Override
-    public JsonNumber readJsonNumber() {
-        return new JsonNumber(readNumberAsArray());
     }
 
     @Override
@@ -1086,7 +1159,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     public double readAsDouble() {
         boolean rollback = true;
         double result = readAsLong();
-        byte nextByte = readNextByte();
+        byte nextByte = hasNext() ? readNextByte() : -1;
         if (nextByte == '.') {
             int start = currentIndex;
             readNextByte();

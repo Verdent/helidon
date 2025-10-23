@@ -28,13 +28,12 @@ public interface JsonParser {
     byte nextToken();
     byte lastByte();
 
-    JsonObject readObject();
+    JsonValue readJsonValue();
 
     String readString();
 
     int readStringAsHash();
 
-    JsonNumber readJsonNumber();
     char[] readNumberAsArray();
     boolean readAsBoolean();
     byte readAsByte();

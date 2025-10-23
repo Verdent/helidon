@@ -26,7 +26,7 @@ public class BasicBeanBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
             + "\"fieldTwo\":2147,"
-            + "\"fieldOne\":\"Hello\","
+            + "\"fieldOne\":\"Smiley: \uD83D\uDE03 and Rocket: \uD83D\uDE80\","
             + "\"fieldThree\":\"World\","
             + "\"fieldFour\":null,"
             + "\"fieldFive\":\"1234\","
@@ -41,6 +41,11 @@ public class BasicBeanBenchmark {
     static {
         //To enable field name processing as hashes
         JsonIterator.setMode(DecodingMode.DYNAMIC_MODE_AND_MATCH_FIELD_WITH_HASH);
+    }
+
+    public static void main(String[] args) {
+        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
+        System.out.println();
     }
 
     @Benchmark

@@ -1,5 +1,7 @@
 package io.helidon.json.processor;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -7,50 +9,48 @@ import java.util.Map;
  */
 public final class JsonObject implements JsonValue {
 
-    private final Map<String, Object> content;
+    private final List<Pair> pairs;
+    private Map<String, JsonValue> content;
 
-    JsonObject(Map<String, Object> content) {
-        this.content = content;
-    }
-
-    public String getString(String key, String defaultValue) {
-        Object o = content.get(key);
-        return o == null ? defaultValue : ((JsonString) o).resolveString();
-    }
-
-    public Double getDouble(String key, Double defaultValue) {
-        JsonNumber o = (JsonNumber) content.get(key);
-        return o == null ? defaultValue : Double.valueOf(o.asDouble());
-    }
-
-    public Long getLong(String key, Long defaultValue) {
-        JsonNumber o = (JsonNumber) content.get(key);
-        return o == null ? defaultValue : Long.valueOf((long) o.asDouble());
-    }
-
-    public Integer getInt(String key, Integer defaultValue) {
-        JsonNumber o = (JsonNumber) content.get(key);
-        return o == null ? defaultValue : Integer.valueOf((int) o.asDouble());
-    }
-
-    public Float getFloat(String key, Float defaultValue) {
-        JsonNumber o = (JsonNumber) content.get(key);
-        return o == null ? defaultValue : Float.valueOf((float) o.asDouble());
-    }
-
-    public Boolean getBoolean(String key, Boolean defaultValue) {
-        Boolean booleanValue = (Boolean) content.get(key);
-        return booleanValue == null ? defaultValue : booleanValue;
-    }
-
-    public JsonObject getObject(String key, JsonObject defaultValue) {
-        JsonObject object = (JsonObject) content.get(key);
-        return object == null ? defaultValue : object;
+    JsonObject(List<Pair> pairs) {
+        this.pairs = pairs;
     }
 
     public boolean containsKey(String key) {
+        ensureResolvedKeys();
         return content.containsKey(key);
     }
 
+    public void ensureResolvedKeys() {
+        if (content == null) {
+            this.content = new HashMap<>(pairs.size());
+            CachedParser cachedParser = JsonParserCache.getCachedParser();
+            ReusableJsonParser parser = cachedParser.get();
+            for (Pair pair : pairs) {
+                content.put(pair.key.resolveValue(parser), pair.value);
+            }
+            cachedParser.set(parser);
+        }
+    }
 
+    public JsonValue get(String key) {
+        ensureResolvedKeys();
+        return content.get(key);
+    }
+
+    public JsonValue get(int index) {
+        return pairs.get(index).value;
+    }
+
+    public int size() {
+        return pairs.size();
+    }
+
+    @Override
+    public JsonValueType type() {
+        return JsonValueType.OBJECT;
+    }
+
+    public record Pair(JsonString key, JsonValue value) {
+    }
 }

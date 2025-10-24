@@ -2,7 +2,7 @@ package io.helidon.json.processor;
 
 import java.io.InputStream;
 
-public sealed interface ReusableJsonParser extends JsonParser permits JsonParserImpl {
+public interface ReusableJsonParser extends JsonParser {
 
     void reset(byte[] buffer);
 

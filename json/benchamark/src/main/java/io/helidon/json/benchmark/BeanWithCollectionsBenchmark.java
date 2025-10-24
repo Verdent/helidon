@@ -37,6 +37,11 @@ public class BeanWithCollectionsBenchmark {
         //To enable field name processing as hashes
         JsonIterator.setMode(DecodingMode.DYNAMIC_MODE_AND_MATCH_FIELD_WITH_HASH);
     }
+
+    public static void main(String[] args) {
+        ClassWithList deserialize = JsonBinding.deserialize(TEMPLATE, ClassWithList.class);
+        System.out.println();
+    }
     
     @Benchmark
     public void helidon(Blackhole bh) {

@@ -8,7 +8,7 @@ import java.io.InputStream;
 public interface JsonParser {
 
     static JsonParser create(String json) {
-        return new JsonParserImpl(json);
+        return new ArrayJsonParser(json);
 //        return new StreamJsonParser(new ByteArrayInputStream(json.getBytes()));
     }
 
@@ -17,7 +17,7 @@ public interface JsonParser {
     }
 
     static JsonParser empty() {
-        return new JsonParserImpl();
+        return new ArrayJsonParser();
     }
 
     static JsonParser emptyStream() {
@@ -45,5 +45,13 @@ public interface JsonParser {
     boolean checkNull();
     void skip();
     void byteRollback();
+
+    /**
+     * The next byte in the buffer, without changing the current buffer position.
+     * If no byte is available, throws an {@link JsonException}.
+     *
+     * @return next byte
+     */
+//    byte peek();
 
 }

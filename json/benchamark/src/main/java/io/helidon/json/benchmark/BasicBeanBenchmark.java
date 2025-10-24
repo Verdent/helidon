@@ -21,12 +21,12 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Fork(2)
+@Fork(1)
 public class BasicBeanBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
             + "\"fieldTwo\":2147,"
-            + "\"fieldOne\":\"Smiley: \uD83D\uDE03 and Rocket: \uD83D\uDE80\","
+            + "\"fieldOne\":\"Hello\","
             + "\"fieldThree\":\"World\","
             + "\"fieldFour\":null,"
             + "\"fieldFive\":\"1234\","

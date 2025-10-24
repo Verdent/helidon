@@ -3,14 +3,12 @@ package io.helidon.json.processor;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * TODO javadoc
  */
-sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamParser {
+abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     //We need this to check if the next number digit overflows int max capacity
     private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
@@ -113,21 +111,22 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     byte[] buffer;
     int currentIndex = -1;
     int bufferLength;
+    boolean doNotReuseBuffer = false;
 
-    JsonParserImpl() {
+    AbstractJsonParser() {
         this(new byte[500]);
     }
 
-    JsonParserImpl(String json) {
+    AbstractJsonParser(String json) {
         this(json.getBytes(StandardCharsets.UTF_8));
     }
 
-    JsonParserImpl(byte[] buffer) {
+    AbstractJsonParser(byte[] buffer) {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
     }
 
-    JsonParserImpl(byte[] buffer, int start) {
+    AbstractJsonParser(byte[] buffer, int start) {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
         this.currentIndex = start;
@@ -207,7 +206,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     @Override
     public JsonValue readJsonValue() {
         byte b = currentIndex == -1 ? nextToken() : lastByte();
-        switch(b) {
+        switch (b) {
         case '{':
             return readJsonObject();
         case '"':
@@ -302,7 +301,7 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     }
 
     private JsonNumber readJsonNumber() {
-        int start =  currentIndex;
+        int start = currentIndex;
         skipNumber();
         return JsonNumber.create(buffer, start);
     }
@@ -316,29 +315,29 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
         if (checkNull()) {
             return null;
         }
-//        boolean isEscaped = false;
-//        int i = 0;
-//        loop:
-//        for (int index = this.currentIndex + 1; index < this.bufferLength; index++, i++) {
-//            byte b = this.buffer[index];
-//            switch (b) {
-//            case '\\':
-//                isEscaped = !isEscaped;
-//                byteBuffer[i] = b;
-//                break;
-//            case '"':
-//                if (!isEscaped) {
-//                    this.currentIndex = index;
-//                    break loop;
-//                }
-//                byteBuffer[i] = b;
-//                break;
-//            default:
-//                isEscaped = false;
-//                byteBuffer[i] = b;
-//            }
-//        }
-//        return new String(byteBuffer, 0, i, StandardCharsets.UTF_8);
+        //        boolean isEscaped = false;
+        //        int i = 0;
+        //        loop:
+        //        for (int index = this.currentIndex + 1; index < this.bufferLength; index++, i++) {
+        //            byte b = this.buffer[index];
+        //            switch (b) {
+        //            case '\\':
+        //                isEscaped = !isEscaped;
+        //                byteBuffer[i] = b;
+        //                break;
+        //            case '"':
+        //                if (!isEscaped) {
+        //                    this.currentIndex = index;
+        //                    break loop;
+        //                }
+        //                byteBuffer[i] = b;
+        //                break;
+        //            default:
+        //                isEscaped = false;
+        //                byteBuffer[i] = b;
+        //            }
+        //        }
+        //        return new String(byteBuffer, 0, i, StandardCharsets.UTF_8);
 
 //        int start = currentIndex + 1;
 //        skipStringValue();
@@ -1203,7 +1202,6 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
     }
 
     void ensure(int amount) {
-        //NOOP by default, since the whole buffer is in the memory
     }
 
     void fetchData() {
@@ -1272,9 +1270,11 @@ sealed class JsonParserImpl implements ReusableJsonParser permits JsonStreamPars
             break;
         case 't':
         case 'n':
+            ensure(3);
             currentIndex += 3;
             break;
         case 'f':
+            ensure(4);
             currentIndex += 4;
             break;
         default:

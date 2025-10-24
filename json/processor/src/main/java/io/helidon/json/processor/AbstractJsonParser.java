@@ -344,28 +344,74 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 //        int end = currentIndex;
 //        return new String(buffer, start, end - start, StandardCharsets.UTF_8);
 
-        expectLowSurrogate = false;
+//        expectLowSurrogate = false;
+//        byte b;
+//        int i = 0;
+//        while (true) {
+//            b = readNextByte();
+//            switch (b) {
+//            case '"':
+//                return new String(stringBuffer, 0, i);
+//            case '\\':
+//                stringBuffer[i++] = processEscapedSequence();
+//                break;
+//            default:
+//                if ((b & 0x80) == 0) {
+//                    stringBuffer[i++] = (char) b;
+//                } else {
+//                    i = decodeUtf8(i, b);
+//                }
+//            }
+//            if (i == stringBufferLength) {
+//                increaseStringBuffer();
+//            }
+//        }
+
+        if (checkNull()) {
+            return null;
+        }
+        int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
+        int stringBuffIndex = 0;
         byte b;
-        int i = 0;
-        while (true) {
+        for ( ; stringBuffIndex < firstRun; stringBuffIndex++) {
+            b = readNextByte();
+            if (b == '\\') {
+                //Specialized character handling is likely required
+                break;
+            }
+            if (b == '"') {
+                return new String(stringBuffer, 0, stringBuffIndex);
+            }
+            stringBuffer[stringBuffIndex] = (char) b;
+        }
+
+        if (stringBuffIndex == stringBufferLength) {
+            increaseStringBuffer();
+        }
+
+        for ( ; currentIndex < this.bufferLength; stringBuffIndex++) {
             b = readNextByte();
             switch (b) {
             case '"':
-                return new String(stringBuffer, 0, i);
+                return new String(stringBuffer, 0, stringBuffIndex);
             case '\\':
-                stringBuffer[i++] = processEscapedSequence();
+                stringBuffer[stringBuffIndex++] = processEscapedSequence();
                 break;
             default:
                 if ((b & 0x80) == 0) {
-                    stringBuffer[i++] = (char) b;
+                    stringBuffer[stringBuffIndex++] = (char) b;
                 } else {
-                    i = decodeUtf8(i, b);
+                    stringBuffIndex = decodeUtf8(stringBuffIndex, b);
                 }
             }
-            if (i == stringBufferLength) {
+            if (stringBuffIndex == stringBufferLength) {
                 increaseStringBuffer();
             }
         }
+        throw new JsonException("Incomplete JSON");
+
+
+
     }
 
     private char processEscapedSequence() {

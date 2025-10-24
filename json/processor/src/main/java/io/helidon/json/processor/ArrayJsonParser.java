@@ -336,7 +336,7 @@ final class ArrayJsonParser implements ReusableJsonParser {
                 currentIndex = bufferIndex;
                 return new String(stringBuffer, 0, stringBuffIndex);
             }
-            stringBuffer[stringBuffIndex++] = (char) b;
+            stringBuffer[stringBuffIndex] = (char) b;
         }
 
         if (stringBuffIndex == stringBufferLength) {

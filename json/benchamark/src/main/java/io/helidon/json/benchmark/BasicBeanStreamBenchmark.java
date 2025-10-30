@@ -52,11 +52,11 @@ public class BasicBeanStreamBenchmark {
         JsonStream.setMode(EncodingMode.DYNAMIC_MODE);
     }
 
-    private ByteArrayInputStream stream;
+    private ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
 
     @Setup(Level.Invocation)
     public void setup() {
-        stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
+        stream.reset();
     }
 
     @Benchmark

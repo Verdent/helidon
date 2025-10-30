@@ -844,8 +844,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         number.append(possibleResult).append(digit10);
         if (digit11 != -1) {
             int digit = digit11;
+            number.append(digit);
             while (digit != -1) {
-                number.append(digit);
                 digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
                 hasNext = hasNext();
             }
@@ -853,13 +853,13 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         if (hasNext) {
             currentIndex--;
         }
-        throw new JsonException("Number is too big for int value: " + number);
+        throw new JsonException("Number is too big for an int value: " + number);
     }
 
     @Override
     public long readAsLong() {
         if (lastByte() == '-') {
-            currentIndex = currentIndex + 1;
+            currentIndex++;
             return -parseLong(true);
         } else {
             return parseLong(false);

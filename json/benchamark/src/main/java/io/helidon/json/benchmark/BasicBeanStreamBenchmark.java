@@ -27,7 +27,7 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Fork(2)
+@Fork(value = 2, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
 public class BasicBeanStreamBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"

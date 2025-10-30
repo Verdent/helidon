@@ -14,7 +14,7 @@ public final class Json {
     @Target(ElementType.TYPE)
     public @interface Entity {
 
-        boolean recordAccessors() default false;
+        AccessorStyle accessorStyle() default AccessorStyle.AUTO;
 
     }
 

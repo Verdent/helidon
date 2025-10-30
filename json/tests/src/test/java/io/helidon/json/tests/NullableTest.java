@@ -1,5 +1,6 @@
 package io.helidon.json.tests;
 
+import io.helidon.json.binding.AccessorStyle;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 
@@ -63,7 +64,7 @@ public class NullableTest {
         String field2 = null;
     }
 
-    @Json.Entity(accessorStyle = true)
+    @Json.Entity(accessorStyle = AccessorStyle.RECORD)
     @Json.Nullable
     static class NullableOverrideOnMethod {
         String field = null;

@@ -48,11 +48,11 @@ record ConvertedTypeInfo(TypeName converterType,
         String replacedDot = classNameWithEnclosingNames.replace(".", "_");
         String nameBase = typeInfo.typeName().fqName().replace(classNameWithEnclosingNames, replacedDot);
         TypeName converterTypeName = TypeName.create(nameBase + "_GeneratedConverter");
-        boolean recordAccessors = typeInfo.annotation(Types.JSON_ENTITY)
-                .booleanValue("recordAccessors")
-                .orElse(false);
-        if (typeInfo.kind() == ElementKind.RECORD) {
-            recordAccessors = true;
+        String recordAccessors = typeInfo.annotation(Types.JSON_ENTITY)
+                .stringValue("accessorStyle")
+                .orElse("AUTO");
+        if (typeInfo.kind() == ElementKind.RECORD && recordAccessors.equals("AUTO")) {
+            recordAccessors = "RECORD";
         }
         boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_NULLABLE, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
@@ -110,28 +110,35 @@ record ConvertedTypeInfo(TypeName converterType,
         }
     }
 
-    private static void discoverGetAndSetMethods(Map<String, JsonProperty.Builder> properties,
-                                                 TypeInfo typeInfo,
-                                                 boolean record) {
-        typeInfo.superTypeInfo()
-                .ifPresent(superType -> discoverGetAndSetMethods(properties, superType, record));
+    private static String discoverGetAndSetMethods(Map<String, JsonProperty.Builder> properties,
+                                                   TypeInfo typeInfo,
+                                                   String accessorStyle) {
+        String detectedAccessorStyle = typeInfo.superTypeInfo()
+                .map(superType -> discoverGetAndSetMethods(properties, superType, accessorStyle))
+                .orElse(accessorStyle);
 
         for (TypeInfo interf : typeInfo.interfaceTypeInfo()) {
-            discoverGetAndSetMethods(properties, interf, record);
+            discoverGetAndSetMethods(properties, interf, detectedAccessorStyle);
         }
 
-        List<TypedElementInfo> methods = typeInfo.elementInfo()
-                .stream()
-                .filter(ElementInfoPredicates::isMethod)
-                .filter(not(ElementInfoPredicates::isPrivate))
-                .filter(not(ElementInfoPredicates::isStatic))
-                .filter(not(ConvertedTypeInfo::isIgnored))
-                .toList();
+        List<TypedElementInfo> methods = List.of();
+        if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("BEAN")) {
+            methods = obtainAllAccessors(typeInfo, "BEAN");
+        }
+        if (methods.isEmpty()) {
+            if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("RECORD")) {
+                methods = obtainAllAccessors(typeInfo, "RECORD");
+                detectedAccessorStyle = "RECORD";
+            }
+        } else {
+            detectedAccessorStyle = "BEAN";
+        }
+
         for (TypedElementInfo method : methods) {
             String methodName = method.elementName();
-            if (isGetter(method, record)) {
-                String prefix = record ? "" : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
-                String propertyName = methodToFieldName(prefix, methodName, record);
+            if (isGetter(method, detectedAccessorStyle)) {
+                String prefix = detectedAccessorStyle.equals("RECORD") ? "" : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
+                String propertyName = methodToFieldName(prefix, methodName);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .getterName(methodName)
                         .serializationNameIfNotSet(propertyName)
@@ -142,9 +149,9 @@ record ConvertedTypeInfo(TypeName converterType,
                 obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE).ifPresent(property::nullable);
                 processFormat(method, Types.JSON_DATE_FORMAT).ifPresent(property::dateFormat);
                 processFormat(method, Types.JSON_NUMBER_FORMAT).ifPresent(property::numberFormat);
-            } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, record)) {
-                String prefix = record ? "" : "set"; //setter style getters in regular classes
-                String propertyName = methodToFieldName(prefix, methodName, record);
+            } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle)) {
+                String prefix = detectedAccessorStyle.equals("RECORD") ? "" : "set"; //setter style getters in regular classes
+                String propertyName = methodToFieldName(prefix, methodName);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .setterName(methodName)
                         .deserializationNameIfNotSet(propertyName)
@@ -157,7 +164,18 @@ record ConvertedTypeInfo(TypeName converterType,
             }
             //Not valid getter or setter
         }
+        return detectedAccessorStyle;
+    }
 
+    private static List<TypedElementInfo> obtainAllAccessors(TypeInfo typeInfo, String accessorStyle) {
+        return typeInfo.elementInfo()
+                .stream()
+                .filter(ElementInfoPredicates::isMethod)
+                .filter(not(ElementInfoPredicates::isPrivate))
+                .filter(not(ElementInfoPredicates::isStatic))
+                .filter(not(ConvertedTypeInfo::isIgnored))
+                .filter(it -> isGetter(it, accessorStyle) || isSetter(it, accessorStyle))
+                .toList();
     }
 
     private static CreatorInfo discoverCreator(Map<String, JsonProperty.Builder> properties, TypeInfo typeInfo) {
@@ -233,8 +251,8 @@ record ConvertedTypeInfo(TypeName converterType,
         return typeName.generic();
     }
 
-    private static boolean isGetter(TypedElementInfo typedElementInfo, boolean recordStyle) {
-        if (recordStyle) {
+    private static boolean isGetter(TypedElementInfo typedElementInfo, String accessorStyle) {
+        if (accessorStyle.equals("RECORD")) {
             return typedElementInfo.parameterArguments().isEmpty()
                     && !typedElementInfo.typeName().equals(PRIMITIVE_VOID);
         }
@@ -252,8 +270,8 @@ record ConvertedTypeInfo(TypeName converterType,
                 && !typedElementInfo.typeName().equals(PRIMITIVE_VOID);
     }
 
-    private static boolean isSetter(TypedElementInfo typedElementInfo, boolean recordStyle) {
-        if (recordStyle) {
+    private static boolean isSetter(TypedElementInfo typedElementInfo, String accessorStyle) {
+        if (accessorStyle.equals("RECORD")) {
             return typedElementInfo.parameterArguments().size() == 1
                     && typedElementInfo.typeName().equals(PRIMITIVE_VOID);
         }
@@ -265,13 +283,11 @@ record ConvertedTypeInfo(TypeName converterType,
                 && typedElementInfo.typeName().equals(PRIMITIVE_VOID);
     }
 
-    private static String methodToFieldName(String prefix, String methodName, boolean record) {
+    private static String methodToFieldName(String prefix, String methodName) {
         if (methodName.startsWith(prefix)) {
             String str = methodName.substring(prefix.length());
             if (str.isEmpty()) {
                 return methodName;
-            } else if (Character.isLowerCase(str.charAt(0)) && !record) {
-                throw new IllegalStateException(methodName + " is not valid getter or setter method");
             } else if (str.length() == 1) {
                 return str.toLowerCase();
             } else {

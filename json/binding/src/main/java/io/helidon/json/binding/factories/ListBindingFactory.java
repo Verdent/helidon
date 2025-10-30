@@ -45,8 +45,8 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
     static class ListConverter implements BindingFactoryConverter<List<?>> {
 
         private final Type componentType;
-        private JsonDeserializer<Object> deserializer;
-        private JsonSerializer<Object> serializer;
+        private volatile JsonDeserializer<Object> deserializer;
+        private volatile JsonSerializer<Object> serializer;
 
         public ListConverter(Type type) {
             if (type instanceof ParameterizedType parameterizedType) {
@@ -81,23 +81,24 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
         @Override
         public List<?> deserialize(JsonParser parser) {
-            List<Object> list = createInstance();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
             }
             lastByte = parser.nextToken();
-            if (lastByte != ']') {
+            if (lastByte == ']') {
+                return createInstance(0);
+            }
+            List<Object> list = createInstance();
+            list.add(Deserializers.deserialize(parser, deserializer));
+            lastByte = parser.nextToken();
+            while (lastByte == ',') {
+                parser.nextToken();
                 list.add(Deserializers.deserialize(parser, deserializer));
                 lastByte = parser.nextToken();
-                while (lastByte == ',') {
-                    parser.nextToken();
-                    list.add(Deserializers.deserialize(parser, deserializer));
-                    lastByte = parser.nextToken();
-                }
-                if (lastByte != ']') {
-                    throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
-                }
+            }
+            if (lastByte != ']') {
+                throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
             }
             return list;
         }
@@ -110,6 +111,10 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
         List<Object> createInstance() {
             return new ArrayList<>();
+        }
+
+        List<Object> createInstance(int capacity) {
+            return new ArrayList<>(capacity);
         }
     }
 }

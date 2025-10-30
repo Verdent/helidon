@@ -28,4 +28,10 @@ public interface JsonValue {
         throw new JsonException("Json value is not an object, but rather " + type());
     }
 
+    default JsonBoolean asBoolean() {
+        if (type() == JsonValueType.BOOLEAN) {
+            return (JsonBoolean) this;
+        }
+        throw new JsonException("Json value is not a boolean, but rather " + type());
+    }
 }

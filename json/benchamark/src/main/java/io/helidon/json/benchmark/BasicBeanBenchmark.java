@@ -21,7 +21,7 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Fork(1)
+@Fork(value = 1, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
 public class BasicBeanBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
@@ -35,6 +35,7 @@ public class BasicBeanBenchmark {
             + "\"otherString\":\"Hello there!\""
             + "}}";
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -44,13 +45,13 @@ public class BasicBeanBenchmark {
     }
 
     public static void main(String[] args) {
-        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
-        System.out.println();
+//        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
+//        System.out.println();
     }
 
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+        bh.consume(HELIDON.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
     }
 
     @Benchmark

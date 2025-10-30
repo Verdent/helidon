@@ -21,12 +21,12 @@ class PrimitiveShortConverter implements TypedJsonConverter<Short> {
     }
 
     @Override
-    public void toJson(Generator generator, Short instance, boolean writeNulls) {
+    public void serialize(Generator generator, Short instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Short fromJsonValue(JsonParser parser) {
+    public Short deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
@@ -41,7 +41,7 @@ class PrimitiveShortConverter implements TypedJsonConverter<Short> {
     }
 
     @Override
-    public Short fromNull() {
+    public Short deserializeNull() {
         return 0;
     }
 }

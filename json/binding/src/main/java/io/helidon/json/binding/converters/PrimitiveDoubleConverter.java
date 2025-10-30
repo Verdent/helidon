@@ -21,12 +21,12 @@ class PrimitiveDoubleConverter implements TypedJsonConverter<Double> {
     }
 
     @Override
-    public void toJson(Generator generator, Double instance, boolean writeNulls) {
+    public void serialize(Generator generator, Double instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Double fromJsonValue(JsonParser parser) {
+    public Double deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
@@ -41,7 +41,7 @@ class PrimitiveDoubleConverter implements TypedJsonConverter<Double> {
     }
 
     @Override
-    public Double fromNull() {
+    public Double deserializeNull() {
         return 0.0;
     }
 }

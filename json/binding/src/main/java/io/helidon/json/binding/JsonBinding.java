@@ -1,19 +1,12 @@
 package io.helidon.json.binding;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
 import io.helidon.builder.api.RuntimeType;
 import io.helidon.common.GenericType;
-import io.helidon.json.processor.Generator;
-import io.helidon.json.processor.JsonParser;
 
 @RuntimeType.PrototypedBy(JsonBindingConfig.class)
 public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
@@ -49,46 +42,18 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
         return create(builder.buildPrototype());
     }
 
-    static String serialize(Object obj) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj);
-    }
+    String serialize(Object obj);
 
-    static <T> String serialize(T obj, Class<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj, type);
-    }
+    <T> String serialize(T obj, Class<T> type);
 
-    static <T> String serialize(T obj, GenericType<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.toJson(obj, type);
-    }
+    <T> String serialize(T obj, GenericType<T> type);
 
-    static <T> T deserialize(String jsonStr, Class<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(jsonStr, type);
-    }
+    <T> T deserialize(String jsonStr, Class<T> type);
 
-    static <T> T deserialize(String jsonStr, GenericType<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(jsonStr, type);
-    }
+    <T> T deserialize(String jsonStr, GenericType<T> type);
 
-    static <T> T deserialize(InputStream inputStream, Class<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(inputStream, type);
-    }
+    <T> T deserialize(InputStream inputStream, Class<T> type);
 
-    static <T> T deserialize(InputStream inputStream, GenericType<T> type) {
-        return JsonBindingImpl.DEFAULT_INSTANCE.fromJson(inputStream, type);
-    }
-
-    String toJson(Object obj);
-
-    <T> String toJson(T obj, Class<T> type);
-
-    <T> String toJson(T obj, GenericType<T> type);
-
-    <T> T fromJson(String jsonStr, Class<T> type);
-
-    <T> T fromJson(String jsonStr, GenericType<T> type);
-
-    <T> T fromJson(InputStream inputStream, Class<T> type);
-
-    <T> T fromJson(InputStream inputStream, GenericType<T> type);
+    <T> T deserialize(InputStream inputStream, GenericType<T> type);
 
 }

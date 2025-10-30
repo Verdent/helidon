@@ -14,12 +14,12 @@ import io.helidon.service.registry.Service;
 class ByteConverter implements TypedJsonConverter<Byte> {
 
     @Override
-    public void toJson(Generator generator, Byte instance, boolean writeNulls) {
+    public void serialize(Generator generator, Byte instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Byte fromJsonValue(JsonParser parser) {
+    public Byte deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();

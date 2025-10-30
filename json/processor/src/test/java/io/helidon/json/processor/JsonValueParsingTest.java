@@ -24,14 +24,14 @@ public class JsonValueParsingTest {
         JsonValue jsonValue = parser.readJsonValue();
 
         assertThat(jsonValue.type(), is(JsonValueType.NUMBER));
-        assertThat(jsonValue.asNumber().value(), is(123.0));
+        assertThat(jsonValue.asNumber().doubleValue(), is(123.0));
 
         json = "123.456";
         parser = JsonParser.create(json);
         jsonValue = parser.readJsonValue();
 
         assertThat(jsonValue.type(), is(JsonValueType.NUMBER));
-        assertThat(jsonValue.asNumber().value(), is(123.456));
+        assertThat(jsonValue.asNumber().doubleValue(), is(123.456));
     }
 
     @Test

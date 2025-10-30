@@ -37,6 +37,7 @@ public class PrettyPrintBeanBenchmark {
                 }
             }""";
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -46,13 +47,13 @@ public class PrettyPrintBeanBenchmark {
     }
 
     public static void main(String[] args) {
-        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
-        System.out.println();
+//        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
+//        System.out.println();
     }
 
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+        bh.consume(HELIDON.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
     }
 
     @Benchmark

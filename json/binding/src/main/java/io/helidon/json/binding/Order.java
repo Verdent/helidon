@@ -4,6 +4,6 @@ public enum Order {
 
     ALPHABETICAL,
     REVERSE_ALPHABETICAL,
-    ANY
+    UNDEFINED
 
 }

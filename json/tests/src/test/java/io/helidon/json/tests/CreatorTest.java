@@ -12,10 +12,12 @@ import static org.hamcrest.Matchers.is;
 
 public class CreatorTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testRootConstructor() {
         String json = "{\"str1\":\"abc\",\"str2\":\"def\",\"bigDec\":25}";
-        CreatorConstructorPojo pojo = JsonBinding.deserialize(json, CreatorConstructorPojo.class);
+        CreatorConstructorPojo pojo = HELIDON.deserialize(json, CreatorConstructorPojo.class);
         assertThat(pojo.str1, is("abc"));
         assertThat(pojo.str2, is("def"));
         assertThat(pojo.bigDec, is(new BigDecimal("25")));
@@ -24,7 +26,7 @@ public class CreatorTest {
     @Test
     public void testRootFactoryMethod() {
         String json = "{\"str1\":\"abc\",\"str2\":\"def\",\"bigDec\":25}";
-        CreatorFactoryMethodPojo pojo = JsonBinding.deserialize(json, CreatorFactoryMethodPojo.class);
+        CreatorFactoryMethodPojo pojo = HELIDON.deserialize(json, CreatorFactoryMethodPojo.class);
         assertThat(pojo.str1, is("abc"));
         assertThat(pojo.str2, is("def"));
         assertThat(pojo.bigDec, is(new BigDecimal("25")));

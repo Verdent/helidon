@@ -12,18 +12,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class BasicTest {
 
     private static final String EXPECTED_VALUE = "{\"value\":\"abc\"}";
+    private static final JsonBinding HELIDON = JsonBinding.create();
 
     @Test
     public void testSimpleSerialize() {
         StringWrapper wrapper = new StringWrapper();
         wrapper.setValue("abc");
-        String val = JsonBinding.serialize(wrapper);
+        String val = HELIDON.serialize(wrapper);
         assertThat(val, is(EXPECTED_VALUE));
     }
 
     @Test
     public void testSimpleDeserializer() {
-        StringWrapper stringWrapper = JsonBinding.deserialize(EXPECTED_VALUE, StringWrapper.class);
+        StringWrapper stringWrapper = HELIDON.deserialize(EXPECTED_VALUE, StringWrapper.class);
         assertEquals("abc", stringWrapper.value);
     }
 

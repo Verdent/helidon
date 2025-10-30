@@ -12,6 +12,7 @@ import io.helidon.common.Weighted;
 import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
+import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
@@ -61,7 +62,7 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         }
 
         @Override
-        public void toJson(Generator generator, Map<?, ?> instance, boolean writeNulls) {
+        public void serialize(Generator generator, Map<?, ?> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -74,12 +75,12 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
                 if (!first) {
                     generator.writeComma();
                 }
-                keySerializer.toJson(generator, key, writeNulls);
+                keySerializer.serialize(generator, key, writeNulls);
                 generator.writeColon();
                 if (value == null) {
-                    valueSerializer.writeNull(generator);
+                    valueSerializer.serializeNull(generator);
                 } else {
-                    valueSerializer.toJson(generator, value, writeNulls);
+                    valueSerializer.serialize(generator, value, writeNulls);
                 }
                 if (first) {
                     first = false;
@@ -89,7 +90,7 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         }
 
         @Override
-        public Map<?, ?> fromJsonValue(JsonParser parser) {
+        public Map<?, ?> deserialize(JsonParser parser) {
             Map<Object, Object> map = new HashMap<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '{') {
@@ -100,24 +101,24 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
                 if (lastByte != '"') {
                     throw new JsonException("Map key expected. Found: " + Character.toString(lastByte));
                 }
-                Object key = keyDeserializer.fromJson(parser);
+                Object key = Deserializers.deserialize(parser, keyDeserializer);
                 lastByte = parser.nextToken();
                 if (lastByte != ':') {
                     throw new JsonException("Key value separator ':' expected. Found: " + Character.toString(lastByte));
                 }
                 parser.nextToken();
-                Object value = valueDeserializer.fromJson(parser);
+                Object value = Deserializers.deserialize(parser, valueDeserializer);
                 map.put(key, value);
                 lastByte = parser.nextToken();
                 while (lastByte == ',') {
                     parser.nextToken();
-                    key = keyDeserializer.fromJson(parser);
+                    key = Deserializers.deserialize(parser, keyDeserializer);
                     lastByte = parser.nextToken();
                     if (lastByte != ':') {
                         throw new JsonException("Key value separator ':' expected. Found: " + Character.toString(lastByte));
                     }
                     parser.nextToken();
-                    value = valueDeserializer.fromJson(parser);
+                    value = Deserializers.deserialize(parser, valueDeserializer);
                     map.put(key, value);
                     lastByte = parser.nextToken();
                 }

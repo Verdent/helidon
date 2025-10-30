@@ -21,12 +21,12 @@ class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
     }
 
     @Override
-    public void toJson(Generator generator, Integer instance, boolean writeNulls) {
+    public void serialize(Generator generator, Integer instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Integer fromJsonValue(JsonParser parser) {
+    public Integer deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
@@ -41,7 +41,7 @@ class PrimitiveIntegerConverter implements TypedJsonConverter<Integer> {
     }
 
     @Override
-    public Integer fromNull() {
+    public Integer deserializeNull() {
         return 0;
     }
 }

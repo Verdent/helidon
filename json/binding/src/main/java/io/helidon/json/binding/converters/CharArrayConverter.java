@@ -1,5 +1,6 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
@@ -18,7 +19,7 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
     private JsonSerializer<Character> serializer;
 
     @Override
-    public void toJson(Generator generator, char[] instance, boolean writeNulls) {
+    public void serialize(Generator generator, char[] instance, boolean writeNulls) {
         generator.writeArrayStart();
         boolean first = true;
         for (char value : instance) {
@@ -27,13 +28,13 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
             } else {
                 first = false;
             }
-            serializer.toJson(generator, value, writeNulls);
+            serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();
     }
 
     @Override
-    public char[] fromJsonValue(JsonParser parser) {
+    public char[] deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
@@ -42,7 +43,7 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
         lastByte = parser.nextToken();
         int index = 0;
         if (lastByte != ']') {
-            array[index++] = deserializer.fromJson(parser);
+            array[index++] = Deserializers.deserialize(parser, deserializer);
             lastByte = parser.nextToken();
             while (lastByte == ',') {
                 if (index == array.length) {
@@ -51,7 +52,7 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
                     array = tmp;
                 }
                 parser.nextToken();
-                array[index++] = deserializer.fromJson(parser);
+                array[index++] = Deserializers.deserialize(parser, deserializer);
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {

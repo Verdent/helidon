@@ -11,16 +11,16 @@ import java.util.List;
 abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     //We need this to check if the next number digit overflows int max capacity
-    private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
-    private static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
-    private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
-    private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
+    static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
+    static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
+    static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
+    static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
-    private static final JsonObject EMPTY_OBJECT = new JsonObject(List.of());
+    static final JsonObject EMPTY_OBJECT = new JsonObject(List.of());
 
-    private static final double[] POW_DOUBLE_CACHE = new double[] {
+    static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
             10,
             100,
@@ -41,7 +41,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             100000000000000000L,
             1000000000000000000L,
     };
-    private static final float[] POW_FLOAT_CACHE = new float[] {
+    static final float[] POW_FLOAT_CACHE = new float[] {
             1,
             10,
             100,
@@ -103,10 +103,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         }
     }
 
-    private int stringBufferLength = 64;
-    private char[] stringBuffer = new char[stringBufferLength];
-    private byte[] byteBuffer = new byte[stringBufferLength];
-    private boolean expectLowSurrogate = false;
+    int stringBufferLength = 64;
+    char[] stringBuffer = new char[stringBufferLength];
+    boolean expectLowSurrogate = false;
 
     byte[] buffer;
     int currentIndex = -1;

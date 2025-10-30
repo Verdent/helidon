@@ -49,7 +49,7 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
         private boolean useFormatter;
 
         @Override
-        public Instant fromJsonValue(JsonParser parser) {
+        public Instant deserialize(JsonParser parser) {
             if (parser.lastByte() == '"') {
                 String value = parser.readString();
                 return Instant.from(formatter.parse(value));
@@ -60,7 +60,7 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
         }
 
         @Override
-        public void toJson(Generator generator, Instant instance, boolean writeNulls) {
+        public void serialize(Generator generator, Instant instance, boolean writeNulls) {
             if (useFormatter) {
                 generator.writeQuoted(formatter.format(instance));
             } else {

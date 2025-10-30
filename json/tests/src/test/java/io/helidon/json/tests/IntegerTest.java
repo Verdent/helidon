@@ -11,46 +11,48 @@ import static org.hamcrest.Matchers.nullValue;
 
 public class IntegerTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testIntegerSerialization() {
         IntegerModel model = new IntegerModel(123, 456);
 
         String expected = "{\"object\":123,\"primitive\":456}";
-        assertThat(JsonBinding.serialize(model), is(expected));
+        assertThat(HELIDON.serialize(model), is(expected));
     }
 
     @Test
     public void testIntegerDeserializationFromIntegerAsStringValue() {
-        IntegerModel integerModel = JsonBinding.deserialize("{\"object\":\"123\",\"primitive\":\"456\"}", IntegerModel.class);
+        IntegerModel integerModel = HELIDON.deserialize("{\"object\":\"123\",\"primitive\":\"456\"}", IntegerModel.class);
         assertThat(integerModel.object, is(123));
         assertThat(integerModel.primitive, is(456));
     }
 
     @Test
     public void testIntegerDeserializationFromIntegerRawValue() {
-        IntegerModel integerModel = JsonBinding.deserialize("{\"object\":123,\"primitive\":456}", IntegerModel.class);
+        IntegerModel integerModel = HELIDON.deserialize("{\"object\":123,\"primitive\":456}", IntegerModel.class);
         assertThat(integerModel.object, is(123));
         assertThat(integerModel.primitive, is(456));
     }
 
     @Test
     public void testRawIntegers() {
-        Integer value = JsonBinding.deserialize("123", Integer.class);
+        Integer value = HELIDON.deserialize("123", Integer.class);
         assertThat(value, is(123));
-        value = JsonBinding.deserialize("123", int.class);
+        value = HELIDON.deserialize("123", int.class);
         assertThat(value, is(123));
-        value = JsonBinding.deserialize("\"123\"", Integer.class);
+        value = HELIDON.deserialize("\"123\"", Integer.class);
         assertThat(value, is(123));
-        value = JsonBinding.deserialize("\"123\"", int.class);
+        value = HELIDON.deserialize("\"123\"", int.class);
         assertThat(value, is(123));
-        value = JsonBinding.deserialize("null", Integer.class);
+        value = HELIDON.deserialize("null", Integer.class);
         assertThat(value, is(nullValue()));
-        value = JsonBinding.deserialize("null", int.class);
+        value = HELIDON.deserialize("null", int.class);
         assertThat(value, is(0));
 
-        String serialized = JsonBinding.serialize(123);
+        String serialized = HELIDON.serialize(123);
         assertThat(serialized, is("123"));
-        serialized = JsonBinding.serialize(Integer.valueOf(123));
+        serialized = HELIDON.serialize(Integer.valueOf(123));
         assertThat(serialized, is("123"));
     }
 

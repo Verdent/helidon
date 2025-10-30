@@ -11,46 +11,48 @@ import static org.hamcrest.Matchers.nullValue;
 
 public class LongTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testLongSerialization() {
         LongModel model = new LongModel(123L, 456);
 
         String expected = "{\"object\":123,\"primitive\":456}";
-        assertThat(JsonBinding.serialize(model), is(expected));
+        assertThat(HELIDON.serialize(model), is(expected));
     }
 
     @Test
     public void testLongDeserializationFromLongAsStringValue() {
-        LongModel longModel = JsonBinding.deserialize("{\"object\":\"123\",\"primitive\":\"456\"}", LongModel.class);
+        LongModel longModel = HELIDON.deserialize("{\"object\":\"123\",\"primitive\":\"456\"}", LongModel.class);
         assertThat(longModel.object, is(123L));
         assertThat(longModel.primitive, is(456L));
     }
 
     @Test
     public void testLongDeserializationFromLongRawValue() {
-        LongModel longModel = JsonBinding.deserialize("{\"object\":123,\"primitive\":456}", LongModel.class);
+        LongModel longModel = HELIDON.deserialize("{\"object\":123,\"primitive\":456}", LongModel.class);
         assertThat(longModel.object, is(123L));
         assertThat(longModel.primitive, is(456L));
     }
 
     @Test
     public void testRawLongs() {
-        Long value = JsonBinding.deserialize("123", Long.class);
+        Long value = HELIDON.deserialize("123", Long.class);
         assertThat(value, is(123L));
-        value = JsonBinding.deserialize("123", long.class);
+        value = HELIDON.deserialize("123", long.class);
         assertThat(value, is(123L));
-        value = JsonBinding.deserialize("\"123\"", Long.class);
+        value = HELIDON.deserialize("\"123\"", Long.class);
         assertThat(value, is(123L));
-        value = JsonBinding.deserialize("\"123\"", long.class);
+        value = HELIDON.deserialize("\"123\"", long.class);
         assertThat(value, is(123L));
-        value = JsonBinding.deserialize("null", Long.class);
+        value = HELIDON.deserialize("null", Long.class);
         assertThat(value, is(nullValue()));
-        value = JsonBinding.deserialize("null", long.class);
+        value = HELIDON.deserialize("null", long.class);
         assertThat(value, is(0L));
 
-        String serialized = JsonBinding.serialize(123L);
+        String serialized = HELIDON.serialize(123L);
         assertThat(serialized, is("123"));
-        serialized = JsonBinding.serialize(Long.valueOf(123L));
+        serialized = HELIDON.serialize(Long.valueOf(123L));
         assertThat(serialized, is("123"));
     }
 

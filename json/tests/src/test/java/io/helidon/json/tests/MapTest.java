@@ -16,6 +16,8 @@ import static org.hamcrest.Matchers.notNullValue;
 
 public class MapTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testMapSerialization() {
         Map<String, String> map = new HashMap<>();
@@ -24,7 +26,7 @@ public class MapTest {
         map.put("key3", "value3");
 
         String expected = "{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}";
-        assertThat(JsonBinding.serialize(map), is(expected));
+        assertThat(HELIDON.serialize(map), is(expected));
     }
 
     @Test
@@ -32,7 +34,7 @@ public class MapTest {
         String json = "{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}";
 
         GenericType<Map<String, String>> type = new GenericType<>() { };
-        Map<String, String> map = JsonBinding.deserialize(json, type);
+        Map<String, String> map = HELIDON.deserialize(json, type);
 
         assertThat(map, notNullValue());
         assertThat(map, instanceOf(HashMap.class));
@@ -50,7 +52,7 @@ public class MapTest {
         map.put("key3", null);
 
         String expected = "{\"key1\":null,\"key2\":null,\"key3\":null}";
-        assertThat(JsonBinding.serialize(map), is(expected));
+        assertThat(HELIDON.serialize(map), is(expected));
     }
 
     @Test
@@ -58,7 +60,7 @@ public class MapTest {
         String json = "{\"key1\":null,\"key2\":null,\"key3\":null}";
 
         GenericType<Map<String, String>> type = new GenericType<>() { };
-        Map<String, String> map = JsonBinding.deserialize(json, type);
+        Map<String, String> map = HELIDON.deserialize(json, type);
 
         assertThat(map, notNullValue());
         assertThat(map, instanceOf(HashMap.class));

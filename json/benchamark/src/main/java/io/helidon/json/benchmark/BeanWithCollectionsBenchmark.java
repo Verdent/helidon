@@ -30,6 +30,7 @@ public class BeanWithCollectionsBenchmark {
             + "\"list2\":[[123456,654321],[123,456,789]]"
             + "}";
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -39,13 +40,13 @@ public class BeanWithCollectionsBenchmark {
     }
 
     public static void main(String[] args) {
-        ClassWithList deserialize = JsonBinding.deserialize(TEMPLATE, ClassWithList.class);
-        System.out.println();
+//        ClassWithList deserialize = JsonBinding.deserialize(TEMPLATE, ClassWithList.class);
+//        System.out.println();
     }
     
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(JsonBinding.deserialize(TEMPLATE, ClassWithList.class));
+        bh.consume(HELIDON.deserialize(TEMPLATE, ClassWithList.class));
     }
 
     @Benchmark

@@ -21,12 +21,12 @@ class PrimitiveFloatConverter implements TypedJsonConverter<Float> {
     }
 
     @Override
-    public void toJson(Generator generator, Float instance, boolean writeNulls) {
+    public void serialize(Generator generator, Float instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Float fromJsonValue(JsonParser parser) {
+    public Float deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();
@@ -41,7 +41,7 @@ class PrimitiveFloatConverter implements TypedJsonConverter<Float> {
     }
 
     @Override
-    public Float fromNull() {
+    public Float deserializeNull() {
         return 0.0F;
     }
 }

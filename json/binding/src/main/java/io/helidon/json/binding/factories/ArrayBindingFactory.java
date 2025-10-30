@@ -9,6 +9,7 @@ import io.helidon.common.Weighted;
 import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
+import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
@@ -52,7 +53,7 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
         }
 
         @Override
-        public void toJson(Generator generator, Object[] instance, boolean writeNulls) {
+        public void serialize(Generator generator, Object[] instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -68,13 +69,13 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
                 } else {
                     first = false;
                 }
-                serializer.toJson(generator, value, writeNulls);
+                serializer.serialize(generator, value, writeNulls);
             }
             generator.writeArrayEnd();
         }
 
         @Override
-        public Object[] fromJsonValue(JsonParser parser) {
+        public Object[] deserialize(JsonParser parser) {
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
@@ -83,7 +84,7 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
             lastByte = parser.nextToken();
             int index = 0;
             if (lastByte != ']') {
-                array[index++] = deserializer.fromJson(parser);
+                array[index++] = Deserializers.deserialize(parser, deserializer);
                 lastByte = parser.nextToken();
                 while (lastByte == ',') {
                     if (index == array.length) {
@@ -92,7 +93,7 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
                         array = tmp;
                     }
                     parser.nextToken();
-                    array[index++] = deserializer.fromJson(parser);
+                    array[index++] = Deserializers.deserialize(parser, deserializer);
                     lastByte = parser.nextToken();
                 }
                 if (lastByte != ']') {

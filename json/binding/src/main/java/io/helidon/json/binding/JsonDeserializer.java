@@ -4,16 +4,9 @@ import io.helidon.json.processor.JsonParser;
 
 public interface JsonDeserializer<T> {
 
-    default T fromJson(JsonParser parser) {
-        if (parser.checkNull()) {
-            return fromNull();
-        }
-        return fromJsonValue(parser);
-    }
+    T deserialize(JsonParser parser);
 
-    T fromJsonValue(JsonParser parser);
-
-    default T fromNull() {
+    default T deserializeNull() {
         return null;
     }
 

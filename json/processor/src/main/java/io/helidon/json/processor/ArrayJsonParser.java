@@ -8,108 +8,7 @@ import java.util.List;
 /**
  * TODO javadoc
  */
-final class ArrayJsonParser implements ReusableJsonParser {
-
-    //We need this to check if the next number digit overflows int max capacity
-    private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
-    private static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
-    private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
-    private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
-
-    static final int[] WHOLE_NUMBER_PARTS = new int[127];
-    static final float[] DECIMAL_NUMBER_PARTS = new float[127];
-    private static final JsonObject EMPTY_OBJECT = new JsonObject(List.of());
-
-    private static final double[] POW_DOUBLE_CACHE = new double[] {
-            1,
-            10,
-            100,
-            1000,
-            10000,
-            100000,
-            1000000,
-            10000000,
-            100000000,
-            1000000000,
-            10000000000L,
-            100000000000L,
-            1000000000000L,
-            10000000000000L,
-            100000000000000L,
-            1000000000000000L,
-            10000000000000000L,
-            100000000000000000L,
-            1000000000000000000L,
-    };
-    private static final float[] POW_FLOAT_CACHE = new float[] {
-            1,
-            10,
-            100,
-            1000,
-            10000,
-            100000,
-            1000000,
-            10000000,
-            100000000,
-            1000000000,
-            10000000000L,
-            100000000000L,
-            1000000000000L,
-            10000000000000L,
-            100000000000000L,
-            1000000000000000L,
-            10000000000000000L,
-            100000000000000000L,
-            1000000000000000000L,
-    };
-
-    static {
-        Arrays.fill(WHOLE_NUMBER_PARTS, -1);
-        Arrays.fill(DECIMAL_NUMBER_PARTS, -1);
-
-        for (int i = '0'; i <= '9'; ++i) {
-            WHOLE_NUMBER_PARTS[i] = (i - '0');
-            DECIMAL_NUMBER_PARTS[i] = (i - '0');
-        }
-    }
-
-    static final boolean[] WHITESPACE_CHARS = new boolean[256];
-
-    static {
-        WHITESPACE_CHARS[9 + 128] = true;
-        WHITESPACE_CHARS[10 + 128] = true;
-        WHITESPACE_CHARS[11 + 128] = true;
-        WHITESPACE_CHARS[12 + 128] = true;
-        WHITESPACE_CHARS[13 + 128] = true;
-        WHITESPACE_CHARS[32 + 128] = true;
-        WHITESPACE_CHARS[-96 + 128] = true;
-        WHITESPACE_CHARS[-31 + 128] = true;
-        WHITESPACE_CHARS[-30 + 128] = true;
-        WHITESPACE_CHARS[-29 + 128] = true;
-    }
-
-    final static int[] HEX_DIGITS = new int['f' + 1];
-
-    static {
-        Arrays.fill(HEX_DIGITS, -1);
-        for (int i = '0'; i <= '9'; ++i) {
-            HEX_DIGITS[i] = (i - '0');
-        }
-        for (int i = 'a'; i <= 'f'; ++i) {
-            HEX_DIGITS[i] = ((i - 'a') + 10);
-        }
-        for (int i = 'A'; i <= 'F'; ++i) {
-            HEX_DIGITS[i] = ((i - 'A') + 10);
-        }
-    }
-
-    private int stringBufferLength = 64;
-    private char[] stringBuffer = new char[stringBufferLength];
-    private boolean expectLowSurrogate = false;
-
-    byte[] buffer;
-    int currentIndex = -1;
-    int bufferLength;
+final class ArrayJsonParser extends AbstractJsonParser {
 
     ArrayJsonParser() {
         this(new byte[500]);
@@ -128,25 +27,6 @@ final class ArrayJsonParser implements ReusableJsonParser {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
         this.currentIndex = start;
-    }
-
-    @Override
-    public void reset(byte[] buffer) {
-        this.buffer = buffer;
-        this.bufferLength = buffer.length;
-        this.currentIndex = -1;
-    }
-
-    @Override
-    public void reset(byte[] buffer, int start) {
-        this.buffer = buffer;
-        this.bufferLength = buffer.length;
-        this.currentIndex = start;
-    }
-
-    @Override
-    public byte lastByte() {
-        return buffer[currentIndex];
     }
 
     @Override
@@ -198,16 +78,6 @@ final class ArrayJsonParser implements ReusableJsonParser {
             }
         }
         throw new JsonException("Json incomplete!");
-    }
-
-    @Override
-    public boolean hasNext() {
-        return currentIndex + 1 < bufferLength;
-    }
-
-    @Override
-    public byte readNextByte() {
-        return buffer[++currentIndex];
     }
 
     @Override

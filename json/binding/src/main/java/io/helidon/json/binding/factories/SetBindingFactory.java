@@ -11,6 +11,7 @@ import io.helidon.common.Weighted;
 import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
+import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurer;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
@@ -55,7 +56,7 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
         }
 
         @Override
-        public void toJson(Generator generator, Set<?> instance, boolean writeNulls) {
+        public void serialize(Generator generator, Set<?> instance, boolean writeNulls) {
             if (instance == null) {
                 generator.writeNull();
                 return;
@@ -69,7 +70,7 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
                 if (!first) {
                     generator.writeComma();
                 }
-                serializer.toJson(generator, value, writeNulls);
+                serializer.serialize(generator, value, writeNulls);
                 if (first) {
                     first = false;
                 }
@@ -78,7 +79,7 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
         }
 
         @Override
-        public Set<?> fromJsonValue(JsonParser parser) {
+        public Set<?> deserialize(JsonParser parser) {
             Set<Object> set = new HashSet<>();
             byte lastByte = parser.lastByte();
             if (lastByte != '[') {
@@ -86,11 +87,11 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
             }
             lastByte = parser.nextToken();
             if (lastByte != ']') {
-                set.add(deserializer.fromJson(parser));
+                set.add(Deserializers.deserialize(parser, deserializer));
                 lastByte = parser.nextToken();
                 while (lastByte == ',') {
                     parser.nextToken();
-                    set.add(deserializer.fromJson(parser));
+                    set.add(Deserializers.deserialize(parser, deserializer));
                     lastByte = parser.nextToken();
                 }
                 if (lastByte != ']') {

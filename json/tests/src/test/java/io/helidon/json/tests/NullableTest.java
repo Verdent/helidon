@@ -8,40 +8,42 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NullableTest {
+    
+    private static final JsonBinding HELIDON = JsonBinding.create();
 
     @Test
     public void testJsonNullableOnRecord() {
         JsonNullableOnRecord instance = new JsonNullableOnRecord(null, null);
-        assertEquals("{\"someField\":null,\"someField2\":null}", JsonBinding.serialize(instance));
+        assertEquals("{\"someField\":null,\"someField2\":null}", HELIDON.serialize(instance));
     }
 
     @Test
     public void testJsonNullableOnRecordComponent() {
         JsonNullableOnRecordComponent instance = new JsonNullableOnRecordComponent(null, null);
-        assertEquals("{\"someField\":null}", JsonBinding.serialize(instance));
+        assertEquals("{\"someField\":null}", HELIDON.serialize(instance));
     }
 
     @Test
     public void testJsonNullableOverrideOnField() {
         NullableOverrideOnField instance = new NullableOverrideOnField();
-        assertEquals("{\"field2\":null}", JsonBinding.serialize(instance));
+        assertEquals("{\"field2\":null}", HELIDON.serialize(instance));
     }
 
     @Test
     public void testJsonNullableOverrideOnMethod() {
         NullableOverrideOnMethod instance = new NullableOverrideOnMethod();
-        assertEquals("{\"field2\":null}", JsonBinding.serialize(instance));
+        assertEquals("{\"field2\":null}", HELIDON.serialize(instance));
     }
 
     @Test
     public void testJsonNullableFromParent() {
         NullableChild instance = new NullableChild();
-        assertEquals("{\"field\":null}", JsonBinding.serialize(instance));
+        assertEquals("{\"field\":null}", HELIDON.serialize(instance));
     }
     @Test
     public void testJsonNullableFromParentOverride() {
         NonNullableChild instance = new NonNullableChild();
-        assertEquals("{}", JsonBinding.serialize(instance));
+        assertEquals("{}", HELIDON.serialize(instance));
     }
 
     @Json.Entity
@@ -61,7 +63,7 @@ public class NullableTest {
         String field2 = null;
     }
 
-    @Json.Entity(recordAccessors = true)
+    @Json.Entity(accessorStyle = true)
     @Json.Nullable
     static class NullableOverrideOnMethod {
         String field = null;

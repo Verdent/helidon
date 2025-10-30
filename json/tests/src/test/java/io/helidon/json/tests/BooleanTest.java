@@ -14,46 +14,48 @@ import static org.hamcrest.MatcherAssert.assertThat;
  */
 public class BooleanTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testBooleanSerialization() throws Exception {
         BooleanModel booleanModel = new BooleanModel(true, false);
 
         String expected = "{\"field1\":true,\"field2\":false}";
-        assertThat(JsonBinding.serialize(booleanModel), is(expected));
+        assertThat(HELIDON.serialize(booleanModel), is(expected));
     }
 
     @Test
     public void testBooleanDeserializationFromBooleanAsStringValue() throws Exception {
-        BooleanModel booleanModel = JsonBinding.deserialize("{\"field1\":\"true\",\"field2\":\"true\"}", BooleanModel.class);
+        BooleanModel booleanModel = HELIDON.deserialize("{\"field1\":\"true\",\"field2\":\"true\"}", BooleanModel.class);
         assertThat(booleanModel.field1, is(true));
         assertThat(booleanModel.field2, is(true));
     }
 
     @Test
     public void testBooleanDeserializationFromBooleanRawValue() throws Exception {
-        BooleanModel booleanModel = JsonBinding.deserialize("{\"field1\":false,\"field2\":false}", BooleanModel.class);
+        BooleanModel booleanModel = HELIDON.deserialize("{\"field1\":false,\"field2\":false}", BooleanModel.class);
         assertThat(booleanModel.field1, is(false));
         assertThat(booleanModel.field2, is(false));
     }
 
     @Test
     public void testRawBooleans() {
-        Boolean bool = JsonBinding.deserialize("true", Boolean.class);
+        Boolean bool = HELIDON.deserialize("true", Boolean.class);
         assertThat(bool, is(true));
-        bool = JsonBinding.deserialize("true", boolean.class);
+        bool = HELIDON.deserialize("true", boolean.class);
         assertThat(bool, is(true));
-        bool = JsonBinding.deserialize("false", Boolean.class);
+        bool = HELIDON.deserialize("false", Boolean.class);
         assertThat(bool, is(false));
-        bool = JsonBinding.deserialize("false", boolean.class);
+        bool = HELIDON.deserialize("false", boolean.class);
         assertThat(bool, is(false));
-        bool = JsonBinding.deserialize("null", Boolean.class);
+        bool = HELIDON.deserialize("null", Boolean.class);
         assertThat(bool, nullValue());
-        bool = JsonBinding.deserialize("null", boolean.class);
+        bool = HELIDON.deserialize("null", boolean.class);
         assertThat(bool, is(false));
 
-        String result = JsonBinding.serialize(true);
+        String result = HELIDON.serialize(true);
         assertThat(result, is("true"));
-        result = JsonBinding.serialize(false);
+        result = HELIDON.serialize(false);
         assertThat(result, is("false"));
     }
 
@@ -63,11 +65,11 @@ public class BooleanTest {
         Boolean[] referenceTypes = {true, false};
         String arrayJson = "[true,false]";
 
-        assertThat(JsonBinding.create().toJson(primitives), is(arrayJson));
-        assertThat(JsonBinding.create().toJson(referenceTypes), is(arrayJson));
+        assertThat(JsonBinding.create().serialize(primitives), is(arrayJson));
+        assertThat(JsonBinding.create().serialize(referenceTypes), is(arrayJson));
 
-        assertThat(JsonBinding.deserialize(arrayJson, boolean[].class), is(primitives));
-        assertThat(JsonBinding.deserialize(arrayJson, Boolean[].class), is(referenceTypes));
+        assertThat(HELIDON.deserialize(arrayJson, boolean[].class), is(primitives));
+        assertThat(HELIDON.deserialize(arrayJson, Boolean[].class), is(referenceTypes));
     }
 
     @Json.Entity

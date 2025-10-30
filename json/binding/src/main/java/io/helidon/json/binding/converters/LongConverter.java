@@ -14,12 +14,12 @@ import io.helidon.service.registry.Service;
 class LongConverter implements TypedJsonConverter<Long> {
 
     @Override
-    public void toJson(Generator generator, Long instance, boolean writeNulls) {
+    public void serialize(Generator generator, Long instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Long fromJsonValue(JsonParser parser) {
+    public Long deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
             parser.readNextByte();

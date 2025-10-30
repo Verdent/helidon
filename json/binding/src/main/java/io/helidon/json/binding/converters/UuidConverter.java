@@ -22,12 +22,12 @@ class UuidConverter implements TypedJsonConverter<UUID> {
     }
 
     @Override
-    public void toJson(Generator generator, UUID instance, boolean writeNulls) {
+    public void serialize(Generator generator, UUID instance, boolean writeNulls) {
         generator.writeQuoted(instance.toString());
     }
 
     @Override
-    public UUID fromJsonValue(JsonParser parser) {
+    public UUID deserialize(JsonParser parser) {
         return UUID.fromString(parser.readString());
     }
 

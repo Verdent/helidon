@@ -247,7 +247,7 @@ class JsonConverterGenerator {
                                              ConvertedTypeInfo converterInfo,
                                              boolean useConstructorToConfigure,
                                              Map<String, TypeToConfigure> toConfigure) {
-        method.name("toJson")
+        method.name("serialize")
                 .addParameter(param -> param.name("generator").type(Types.JSON_GENERATOR))
                 .addParameter(param -> param.name("instance").type(converterInfo.originalType()))
                 .addParameter(param -> param.name(WRITE_NULLS).type(boolean.class))
@@ -298,6 +298,7 @@ class JsonConverterGenerator {
                                     .addTypeArgument(resolved)
                                     .build();
                             classBuilder.addField(fieldBuilder -> fieldBuilder.name(fn)
+                                    .isVolatile(true)
                                     .type(converterType));
                             toConfigure.putIfAbsent(fn,
                                                     new TypeToConfigure(TypeConfigMode.SERIALIZATION,
@@ -316,8 +317,8 @@ class JsonConverterGenerator {
                     .orElseThrow();
 
             String key = jsonProperty.serializationName().orElseThrow();
-            method.addContent(Types.JSON_SERIALIZER_TYPE)
-                    .addContentLine(".writeToJson(generator, " + fieldName + ", "
+            method.addContent(Types.JSON_SERIALIZERS)
+                    .addContentLine(".serialize(generator, " + fieldName + ", "
                                             + "instance." + accessor + ", "
                                             + "\"" + key + "\", "
                                             + "isFirst, "
@@ -341,7 +342,7 @@ class JsonConverterGenerator {
                 .filter(it -> !it.setterIgnored() || it.directFieldAccess())
                 .toList();
 
-        method.name("fromJsonValue")
+        method.name("deserialize")
                 .returnType(converterInfo.originalType())
                 .addParameter(param -> param.name("parser").type(Types.JSON_PARSER))
                 .addAnnotation(Annotation.create(Override.class))
@@ -537,6 +538,7 @@ class JsonConverterGenerator {
             String fieldName = "deserializer" + ensureUpperStart(jsonProperty.deserializationName().orElseThrow());
             TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
             classBuilder.addField(builder -> builder.name(fieldName)
+                    .isVolatile(true)
                     .type(fieldType));
             toConfigure.putIfAbsent(fieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
                                                                    fieldName,
@@ -551,6 +553,7 @@ class JsonConverterGenerator {
                 processedTypes.add(converterFieldName); //To ensure deserializer reusability
                 TypeName fieldType = TypeName.builder(Types.JSON_DESERIALIZER_TYPE).addTypeArgument(resolvedType).build();
                 classBuilder.addField(builder -> builder.name(converterFieldName)
+                        .isVolatile(true)
                         .type(fieldType));
                 toConfigure.putIfAbsent(converterFieldName, new TypeToConfigure(TypeConfigMode.DESERIALIZATION,
                                                                                 converterFieldName,
@@ -582,14 +585,17 @@ class JsonConverterGenerator {
                                            boolean hasCreator,
                                            String reference) {
         if (hasCreator) {
-            method.addContentLine(property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = "
-                                          + reference + ".fromJson(parser);");
+            method.addContent(property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
+                    .addContent(Types.JSON_DESERIALIZERS)
+                    .addContentLine(".deserialize(parser, " + reference + ");");
         } else {
             String writingMethod = property.setterName()
-                    .map(methodName -> "generatedInstance." + methodName + "(" + reference + ".fromJson(parser));")
+                    .map(methodName -> "generatedInstance." + methodName
+                            + "(@" + Types.JSON_DESERIALIZERS.fqName() + "@.deserialize(parser, " + reference + "));")
                     .orElseGet(() -> property.fieldName()
                             .filter(it -> property.directFieldAccess())
-                            .map(fieldName -> "generatedInstance." + fieldName + " = " + reference + ".fromJson(parser);")
+                            .map(fieldName -> "generatedInstance." + fieldName
+                                    + " = @" + Types.JSON_DESERIALIZERS.fqName() + "@.deserialize(parser, " + reference + ");")
                             .orElseThrow());
             method.addContentLine(writingMethod);
         }

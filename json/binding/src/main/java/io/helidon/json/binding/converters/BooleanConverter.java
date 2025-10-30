@@ -14,12 +14,12 @@ import io.helidon.service.registry.Service;
 class BooleanConverter implements TypedJsonConverter<Boolean> {
 
     @Override
-    public void toJson(Generator generator, Boolean instance, boolean writeNulls) {
+    public void serialize(Generator generator, Boolean instance, boolean writeNulls) {
         generator.writeValue(instance);
     }
 
     @Override
-    public Boolean fromJsonValue(JsonParser parser) {
+    public Boolean deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         switch (lastByte) {
         case '\"':

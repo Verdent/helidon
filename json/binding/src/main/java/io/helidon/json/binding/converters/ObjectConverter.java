@@ -29,15 +29,15 @@ class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
     }
 
     @Override
-    public Object fromJsonValue(JsonParser parser) {
+    public Object deserialize(JsonParser parser) {
         throw new JsonException("Deserialization into the Object is not supported.");
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public void toJson(Generator generator, Object instance, boolean writeNulls) {
+    public void serialize(Generator generator, Object instance, boolean writeNulls) {
         JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(instance.getClass());
-        serializer.toJson(generator, instance, writeNulls);
+        serializer.serialize(generator, instance, writeNulls);
     }
 
 }

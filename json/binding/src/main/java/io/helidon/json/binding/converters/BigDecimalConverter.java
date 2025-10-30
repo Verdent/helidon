@@ -16,7 +16,7 @@ import io.helidon.service.registry.Service;
 class BigDecimalConverter implements TypedJsonConverter<BigDecimal> {
 
     @Override
-    public BigDecimal fromJsonValue(JsonParser parser) {
+    public BigDecimal deserialize(JsonParser parser) {
         if (parser.lastByte() == '\"') {
             return new BigDecimal(parser.readString());
         } else {
@@ -25,7 +25,7 @@ class BigDecimalConverter implements TypedJsonConverter<BigDecimal> {
     }
 
     @Override
-    public void toJson(Generator generator, BigDecimal instance, boolean writeNulls) {
+    public void serialize(Generator generator, BigDecimal instance, boolean writeNulls) {
         generator.writeValue(instance.toString());
     }
 

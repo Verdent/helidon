@@ -15,13 +15,15 @@ import static org.hamcrest.Matchers.is;
 
 public class ListTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testListSerialization() {
         List<String> list = List.of("a", "b", "c");
 
         String expected = "[\"a\",\"b\",\"c\"]";
 
-        String json = JsonBinding.serialize(list);
+        String json = HELIDON.serialize(list);
         assertThat(json, is(expected));
     }
 
@@ -32,7 +34,7 @@ public class ListTest {
         String json = "[\"a\",\"b\",\"c\"]";
 
         GenericType<List<String>> type = new GenericType<>() { };
-        List<String> deserialized = JsonBinding.deserialize(json, type);
+        List<String> deserialized = HELIDON.deserialize(json, type);
         assertThat(deserialized, is(list));
     }
 
@@ -43,17 +45,17 @@ public class ListTest {
         String json = "[\"a\",\"b\",\"c\"]";
 
         GenericType<List<String>> listType = new GenericType<>() { };
-        List<String> deserialized = JsonBinding.deserialize(json, listType);
+        List<String> deserialized = HELIDON.deserialize(json, listType);
         assertThat(deserialized, is(list));
         assertThat(deserialized, instanceOf(ArrayList.class));
 
         GenericType<ArrayList<String>> arrayListType = new GenericType<>() { };
-        deserialized = JsonBinding.deserialize(json, arrayListType);
+        deserialized = HELIDON.deserialize(json, arrayListType);
         assertThat(deserialized, is(list));
         assertThat(deserialized, instanceOf(ArrayList.class));
 
         GenericType<LinkedList<String>> linkedListType = new GenericType<>() { };
-        deserialized = JsonBinding.deserialize(json, linkedListType);
+        deserialized = HELIDON.deserialize(json, linkedListType);
         assertThat(deserialized, is(list));
         assertThat(deserialized, instanceOf(LinkedList.class));
     }

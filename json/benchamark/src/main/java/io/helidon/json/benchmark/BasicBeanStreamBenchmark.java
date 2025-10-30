@@ -41,6 +41,7 @@ public class BasicBeanStreamBenchmark {
             + "\"otherString\":\"Hello there!\""
             + "}}";
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -59,7 +60,7 @@ public class BasicBeanStreamBenchmark {
 
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(JsonBinding.deserialize(stream, MyJavaBean.class));
+        bh.consume(HELIDON.deserialize(stream, MyJavaBean.class));
     }
 
     @Benchmark

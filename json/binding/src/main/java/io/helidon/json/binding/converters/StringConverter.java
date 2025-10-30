@@ -21,12 +21,12 @@ class StringConverter implements TypedJsonConverter<String> {
     }
 
     @Override
-    public void toJson(Generator generator, String instance, boolean writeNulls) {
+    public void serialize(Generator generator, String instance, boolean writeNulls) {
         generator.writeQuoted(instance);
     }
 
     @Override
-    public String fromJsonValue(JsonParser parser) {
+    public String deserialize(JsonParser parser) {
         return parser.readString();
     }
 

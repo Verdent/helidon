@@ -12,19 +12,21 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class AnnotationsTest {
+    
+    private static final JsonBinding HELIDON = JsonBinding.create();
 
     @Test
     public void testWithoutEntity() {
-        assertThrows(IllegalStateException.class, () -> JsonBinding.serialize(new WithoutEntity()));
-        assertThrows(IllegalStateException.class, () -> JsonBinding.deserialize("{}", WithoutEntity.class));
+        assertThrows(IllegalStateException.class, () -> HELIDON.serialize(new WithoutEntity()));
+        assertThrows(IllegalStateException.class, () -> HELIDON.deserialize("{}", WithoutEntity.class));
     }
 
     @Test
     public void testWithEntity() {
-        String json = JsonBinding.serialize(new WithEntity());
+        String json = HELIDON.serialize(new WithEntity());
         assertThat(json, is("{}"));
 
-        WithEntity deserialize = JsonBinding.deserialize(json, WithEntity.class);
+        WithEntity deserialize = HELIDON.deserialize(json, WithEntity.class);
         assertThat(deserialize, notNullValue());
     }
 
@@ -34,10 +36,10 @@ public class AnnotationsTest {
         entity.property1 = "property1";
         entity.property2 = "property2";
 
-        String json = JsonBinding.serialize(entity);
+        String json = HELIDON.serialize(entity);
         assertThat(json, is("{\"property1\":\"property1\",\"prop2\":\"property2\"}"));
 
-        PropertyNameChangeField deserialize = JsonBinding.deserialize(json, PropertyNameChangeField.class);
+        PropertyNameChangeField deserialize = HELIDON.deserialize(json, PropertyNameChangeField.class);
         assertThat(deserialize, notNullValue());
         assertThat(deserialize.property1, is("property1"));
         assertThat(deserialize.property2, is("property2"));
@@ -49,16 +51,16 @@ public class AnnotationsTest {
         entity.property1 = "property1";
         entity.property2 = "property2";
 
-        String json = JsonBinding.serialize(entity);
+        String json = HELIDON.serialize(entity);
         assertThat(json, is("{\"property1\":\"property1\",\"prop2\":\"property2\"}"));
 
-        PropertyNameChangeAccessor deserialize = JsonBinding.deserialize(json, PropertyNameChangeAccessor.class);
+        PropertyNameChangeAccessor deserialize = HELIDON.deserialize(json, PropertyNameChangeAccessor.class);
         assertThat(deserialize, notNullValue());
         assertThat(deserialize.property1, nullValue());
         assertThat(deserialize.property2, nullValue());
 
         String toDeserialize = "{\"prop1\":\"property1\",\"property2\":\"property2\"}";
-        deserialize = JsonBinding.deserialize(toDeserialize, PropertyNameChangeAccessor.class);
+        deserialize = HELIDON.deserialize(toDeserialize, PropertyNameChangeAccessor.class);
         assertThat(deserialize.property1, is("property1"));
         assertThat(deserialize.property2, is("property2"));
     }
@@ -69,16 +71,16 @@ public class AnnotationsTest {
         entity.property1 = "property1";
         entity.property2 = "property2";
 
-        String json = JsonBinding.serialize(entity);
+        String json = HELIDON.serialize(entity);
         assertThat(json, is("{\"myProperty1\":\"property1\",\"prop2\":\"property2\"}"));
 
-        PropertyNameOverride deserialize = JsonBinding.deserialize(json, PropertyNameOverride.class);
+        PropertyNameOverride deserialize = HELIDON.deserialize(json, PropertyNameOverride.class);
         assertThat(deserialize, notNullValue());
         assertThat(deserialize.property1, nullValue());
         assertThat(deserialize.property2, nullValue());
 
         String toDeserialize = "{\"prop1\":\"property1\",\"myProperty2\":\"property2\"}";
-        deserialize = JsonBinding.deserialize(toDeserialize, PropertyNameOverride.class);
+        deserialize = HELIDON.deserialize(toDeserialize, PropertyNameOverride.class);
         assertThat(deserialize.property1, is("property1"));
         assertThat(deserialize.property2, is("property2"));
     }

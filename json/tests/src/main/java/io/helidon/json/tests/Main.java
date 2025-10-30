@@ -38,6 +38,8 @@ public class Main {
 ////        json = jsonBinding.toJson(record);
 //
 //        System.out.println(json);
+
+        JsonBinding binding = JsonBinding.create();
         String test = """
                 {
                     "map" : {
@@ -46,9 +48,9 @@ public class Main {
                     }
                 }
                 """;
-        ObjectWithMap map = JsonBinding.deserialize(test, ObjectWithMap.class);
-        String serialized = JsonBinding.serialize(map);
-        ObjectWithMap map2 = JsonBinding.deserialize(test, ObjectWithMap.class);
+        ObjectWithMap map = binding.deserialize(test, ObjectWithMap.class);
+        String serialized = binding.serialize(map);
+        ObjectWithMap map2 = binding.deserialize(test, ObjectWithMap.class);
         System.out.println();
     }
 

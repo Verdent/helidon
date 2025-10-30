@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class InterfaceAnnotationsTest {
 
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
     @Test
     public void testJsonbPropertyIfcInheritance() {
         InterfacedPojoB pojo = new InterfacedPojoImpl();
@@ -16,7 +18,7 @@ public class InterfaceAnnotationsTest {
         pojo.setPropertyB("BB");
 
         String json = "{\"propA\":\"AA\",\"propB\":\"BB\"}";
-        assertEquals(json, JsonBinding.serialize(pojo));
+        assertEquals(json, HELIDON.serialize(pojo));
     }
 
     interface InterfacedPojoA {

@@ -67,7 +67,7 @@ public final class Json {
     }
 
     @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.CONSTRUCTOR, ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+    @Target({ElementType.CONSTRUCTOR, ElementType.METHOD})
     public @interface Creator {
     }
 
@@ -75,7 +75,7 @@ public final class Json {
     @Target(ElementType.TYPE)
     public @interface PropertyOrder {
 
-        Order value() default Order.ALPHABETICAL;
+        Order value();
 
     }
 

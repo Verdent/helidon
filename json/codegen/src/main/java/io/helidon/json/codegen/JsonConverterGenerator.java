@@ -586,16 +586,18 @@ class JsonConverterGenerator {
                                            String reference) {
         if (hasCreator) {
             method.addContent(property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
-                    .addContent(Types.JSON_DESERIALIZERS)
-                    .addContentLine(".deserialize(parser, " + reference + ");");
+                    .addContentLine("parser.checkNull() ? " + reference + ".deserializeNull() : "
+                                            + reference + ".deserialize(parser);");
         } else {
             String writingMethod = property.setterName()
                     .map(methodName -> "generatedInstance." + methodName
-                            + "(@" + Types.JSON_DESERIALIZERS.fqName() + "@.deserialize(parser, " + reference + "));")
+                            + "(parser.checkNull() ? " + reference + ".deserializeNull() : "
+                            + reference + ".deserialize(parser));")
                     .orElseGet(() -> property.fieldName()
                             .filter(it -> property.directFieldAccess())
                             .map(fieldName -> "generatedInstance." + fieldName
-                                    + " = @" + Types.JSON_DESERIALIZERS.fqName() + "@.deserialize(parser, " + reference + ");")
+                                    + " = parser.checkNull() ? " + reference + ".deserializeNull() : "
+                                    + reference + ".deserialize(parser);")
                             .orElseThrow());
             method.addContentLine(writingMethod);
         }

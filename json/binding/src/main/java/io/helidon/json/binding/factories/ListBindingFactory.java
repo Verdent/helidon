@@ -90,11 +90,11 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
                 return createInstance(0);
             }
             List<Object> list = createInstance();
-            list.add(Deserializers.deserialize(parser, deserializer));
+            list.add(parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser));
             lastByte = parser.nextToken();
             while (lastByte == ',') {
                 parser.nextToken();
-                list.add(Deserializers.deserialize(parser, deserializer));
+                list.add(parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser));
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {

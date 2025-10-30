@@ -42,6 +42,7 @@ public class BasicBeanStreamBenchmark {
             + "}}";
 
     private static final JsonBinding HELIDON = JsonBinding.create();
+    private static final JsonIterator JSON_ITERATOR = JsonIterator.parse(new ByteArrayInputStream(new byte[0]), 8000);
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -65,7 +66,8 @@ public class BasicBeanStreamBenchmark {
 
     @Benchmark
     public void jsoniter(Blackhole bh) throws IOException {
-        bh.consume(JsonIterator.parse(stream, 8000).read(MyJavaBean.class));
+        JSON_ITERATOR.reset(stream);
+        bh.consume(JSON_ITERATOR.read(MyJavaBean.class));
     }
 
     @Benchmark

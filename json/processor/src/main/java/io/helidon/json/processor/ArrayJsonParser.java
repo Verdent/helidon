@@ -133,7 +133,8 @@ final class ArrayJsonParser extends AbstractJsonParser {
                 pairs.add(new JsonObject.Pair(key, readJsonObject()));
                 break;
             case '[':
-                throw new JsonException("Unsupported yet");
+                pairs.add(new JsonObject.Pair(key, readJsonArray()));
+                break;
             case '-':
             case '.':
             case '+':
@@ -169,6 +170,12 @@ final class ArrayJsonParser extends AbstractJsonParser {
             b = nextToken();
         }
         throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
+    }
+
+    private JsonArray readJsonArray() {
+        int start = currentIndex;
+        skipArray();
+        return JsonArray.create(buffer, start);
     }
 
     private JsonString readJsonString() {
@@ -1438,6 +1445,9 @@ final class ArrayJsonParser extends AbstractJsonParser {
         case '{':
             skipObject();
             break;
+        case '[':
+            skipArray();
+            break;
         case '-':
         case '0':
         case '1':
@@ -1488,33 +1498,47 @@ final class ArrayJsonParser extends AbstractJsonParser {
         throw new JsonException("Incomplete JSON or incorrect usage of skip method");
     }
 
-    //TODO UPRAVIT PRIO
     private void skipObject() {
         byte b = nextToken();
         if (b == '}') {
             return;
         }
-        if (b == '"') {
-            skipStringValue();
+        do {
+            if (b == '"') {
+                skipStringValue();
+                b = nextToken();
+            } else {
+                throw new JsonException("Key name expected, but found: " + (char) b + ". Error at index " + realIndex());
+            }
+            if (b != ':') {
+                throw new JsonException("Colon expected after the key, but found: "
+                                                + (char) b + ". Error at index " + realIndex());
+            }
+            nextToken();
+            skip();
             b = nextToken();
-        } else {
-            throw new JsonException("Key name expected after object start, but found: " + Character.toString(lastByte()) +
-                                            ". "
-                                            + "Error at index " + realIndex());
-        }
-        if (b != ':') {
-            throw new JsonException("Colon expected after the key, but found: " + Character.toString(lastByte()) + ". Error"
-                                            + " at "
-                                            + "index " + realIndex());
-        }
-        b = nextToken();
-        skip();
-        b = nextToken();
+        } while (b == ',');
+
         if (b == '}') {
             return;
         }
-        //TODO UPRAVIT
-        throw new IllegalStateException();
+        throw new JsonException("Comma or the end of the object expected, but received " + (char) b);
+    }
+
+    private void skipArray() {
+        byte b = nextToken();
+        if (b == ']') {
+            return;
+        }
+        do {
+            skip();
+            b = nextToken();
+        } while (b == ',');
+
+        if (b == ']') {
+            return;
+        }
+        throw new JsonException("Comma or the end of the array expected, but received " + (char) b);
     }
 
     private void skipNumber() {

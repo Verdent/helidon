@@ -154,26 +154,35 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public byte nextToken() {
         //Optimization for faster reading data without a space
         //No loop is used.
-        byte b = readNextByte();
-        switch (b) {
-        case '\r':
-        case '\t':
-        case '\n':
-        case ' ':
-            break;
-        default:
-            return b;
+        byte b;
+        if (++currentIndex == bufferLength) {
+            throw new JsonException("Incomplete JSON.");
+        } else {
+            b = buffer[currentIndex];
+            switch (b) {
+            case '\r':
+            case '\t':
+            case '\n':
+            case ' ':
+                break;
+            default:
+                return b;
+            }
         }
         //If since space or why character was used between tokens, we should still try to optimize
-        b = readNextByte();
-        switch (b) {
-        case '\r':
-        case '\t':
-        case '\n':
-        case ' ':
-            break;
-        default:
-            return b;
+        if (++currentIndex == bufferLength) {
+            throw new JsonException("Incomplete JSON.");
+        } else {
+            b = buffer[currentIndex];
+            switch (b) {
+            case '\r':
+            case '\t':
+            case '\n':
+            case ' ':
+                break;
+            default:
+                return b;
+            }
         }
         //We dont know how many spaces, new lines etc is there present, lets start looping
         for (int i = currentIndex + 1; i < bufferLength; i++) {
@@ -255,7 +264,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                 pairs.add(new JsonObject.Pair(key, readJsonObject()));
                 break;
             case '[':
-                throw new JsonException("Unsupported yet");
+                pairs.add(new JsonObject.Pair(key, readJsonArray()));
+                break;
             case '-':
             case '.':
             case '+':
@@ -293,6 +303,12 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
     }
 
+    private JsonArray readJsonArray() {
+        int start = currentIndex;
+        skipArray();
+        return JsonArray.create(buffer, start);
+    }
+
     private JsonString readJsonString() {
         int start = currentIndex;
         skipStringValue();
@@ -314,71 +330,18 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         if (checkNull()) {
             return null;
         }
-        //        boolean isEscaped = false;
-        //        int i = 0;
-        //        loop:
-        //        for (int index = this.currentIndex + 1; index < this.bufferLength; index++, i++) {
-        //            byte b = this.buffer[index];
-        //            switch (b) {
-        //            case '\\':
-        //                isEscaped = !isEscaped;
-        //                byteBuffer[i] = b;
-        //                break;
-        //            case '"':
-        //                if (!isEscaped) {
-        //                    this.currentIndex = index;
-        //                    break loop;
-        //                }
-        //                byteBuffer[i] = b;
-        //                break;
-        //            default:
-        //                isEscaped = false;
-        //                byteBuffer[i] = b;
-        //            }
-        //        }
-        //        return new String(byteBuffer, 0, i, StandardCharsets.UTF_8);
-
-//        int start = currentIndex + 1;
-//        skipStringValue();
-//        int end = currentIndex;
-//        return new String(buffer, start, end - start, StandardCharsets.UTF_8);
-
-//        expectLowSurrogate = false;
-//        byte b;
-//        int i = 0;
-//        while (true) {
-//            b = readNextByte();
-//            switch (b) {
-//            case '"':
-//                return new String(stringBuffer, 0, i);
-//            case '\\':
-//                stringBuffer[i++] = processEscapedSequence();
-//                break;
-//            default:
-//                if ((b & 0x80) == 0) {
-//                    stringBuffer[i++] = (char) b;
-//                } else {
-//                    i = decodeUtf8(i, b);
-//                }
-//            }
-//            if (i == stringBufferLength) {
-//                increaseStringBuffer();
-//            }
-//        }
-
-        if (checkNull()) {
-            return null;
-        }
         int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
         int stringBuffIndex = 0;
+        int bufferIndex = currentIndex;
         byte b;
         for ( ; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = readNextByte();
+            b = this.buffer[++bufferIndex];
             if (b == '\\') {
                 //Specialized character handling is likely required
                 break;
             }
             if (b == '"') {
+                currentIndex = bufferIndex;
                 return new String(stringBuffer, 0, stringBuffIndex);
             }
             stringBuffer[stringBuffIndex] = (char) b;
@@ -408,13 +371,13 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             }
         }
         throw new JsonException("Incomplete JSON");
-
-
-
     }
 
     private char processEscapedSequence() {
-        byte c = readNextByte();
+        if (hasNext()) {
+            throw new JsonException("Incomplete JSON.");
+        }
+        byte c = buffer[++currentIndex];
         switch (c) {
         case '\\':
         case '"':
@@ -564,7 +527,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             throw new JsonException("Expected number, but was: " + (char) lastByte());
         }
         boolean hasNext = hasNext();
-        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit2 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -572,7 +535,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return (byte) digit1;
         }
         hasNext = hasNext();
-        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         int possibleResult = digit1 * 10 + digit2;
         if (digit3 == -1) {
             if (hasNext) {
@@ -581,7 +544,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return (byte) possibleResult;
         }
         hasNext = hasNext();
-        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit4 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -605,7 +568,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             int digit = digit4;
             while (digit != -1) {
                 number.append(digit);
-                digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+                digit = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
                 hasNext = hasNext();
             }
         }
@@ -631,7 +594,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             throw new JsonException("Expected number, but was: " + (char) lastByte());
         }
         boolean hasNext = hasNext();
-        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit2 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -639,7 +602,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return (short) digit1;
         }
         hasNext = hasNext();
-        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit3 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -647,7 +610,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return (short) (digit1 * 10 + digit2);
         }
         hasNext = hasNext();
-        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit4 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -655,7 +618,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return (short) (digit1 * 100 + digit2 * 10 + digit3);
         }
         hasNext = hasNext();
-        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         short possibleResult = (short) (digit1 * 1000 + digit2 * 100 + digit3 * 10 + digit4);
         if (digit5 == -1) {
             if (hasNext) {
@@ -664,7 +627,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return possibleResult;
         }
         hasNext = hasNext();
-        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit6 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -701,7 +664,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     @Override
     public int readAsInt() {
         if (lastByte() == '-') {
-            currentIndex = currentIndex + 1;
+            currentIndex++;
             return -parseInt(true);
         } else {
             return parseInt(false);
@@ -709,12 +672,111 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private int parseInt(boolean negative) {
+        if (currentIndex + 11 < bufferLength) {
+            int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+            if (digit1 == -1) {
+                throw new JsonException("Expected number, but was: " + (char) lastByte());
+            }
+            int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit2 == -1) {
+                currentIndex--;
+                return digit1;
+            }
+            int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit3 == -1) {
+                currentIndex--;
+                return digit1 * 10 + digit2;
+            }
+            int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit4 == -1) {
+                currentIndex--;
+                return digit1 * 100
+                        + digit2 * 10
+                        + digit3;
+            }
+            int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit5 == -1) {
+                currentIndex--;
+                return digit1 * 1000
+                        + digit2 * 100
+                        + digit3 * 10
+                        + digit4;
+            }
+            int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit6 == -1) {
+                currentIndex--;
+                return digit1 * 10000
+                        + digit2 * 1000
+                        + digit3 * 100
+                        + digit4 * 10
+                        + digit5;
+            }
+            int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit7 == -1) {
+                currentIndex--;
+                return digit1 * 100000
+                        + digit2 * 10000
+                        + digit3 * 1000
+                        + digit4 * 100
+                        + digit5 * 10
+                        + digit6;
+            }
+            int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit8 == -1) {
+                currentIndex--;
+                return digit1 * 1000000
+                        + digit2 * 100000
+                        + digit3 * 10000
+                        + digit4 * 1000
+                        + digit5 * 100
+                        + digit6 * 10
+                        + digit7;
+            }
+            int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit9 == -1) {
+                currentIndex--;
+                return digit1 * 10000000
+                        + digit2 * 1000000
+                        + digit3 * 100000
+                        + digit4 * 10000
+                        + digit5 * 1000
+                        + digit6 * 100
+                        + digit7 * 10
+                        + digit8;
+            }
+            int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            int possibleResult = digit1 * 100000000
+                    + digit2 * 10000000
+                    + digit3 * 1000000
+                    + digit4 * 100000
+                    + digit5 * 10000
+                    + digit6 * 1000
+                    + digit7 * 100
+                    + digit8 * 10
+                    + digit9;
+            if (digit10 == -1) {
+                currentIndex--;
+                return possibleResult;
+            }
+            int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit11 == -1) {
+                currentIndex--;
+                if (negative) {
+                    if (-possibleResult > -INT_SIZE_BORDER || (-possibleResult == -INT_SIZE_BORDER && digit10 <= 8)) {
+                        return possibleResult * 10 + digit10;
+                    }
+                } else if (possibleResult < INT_SIZE_BORDER || (possibleResult == INT_SIZE_BORDER && digit10 <= 7)) {
+                    return possibleResult * 10 + digit10;
+                }
+            }
+            //TODO upravit na handling prilis dlouhych cisel
+        }
         int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
         if (digit1 == -1) {
             throw new JsonException("Expected number, but was: " + (char) lastByte());
         }
         boolean hasNext = hasNext();
-        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit2 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -722,7 +784,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return digit1;
         }
         hasNext = hasNext();
-        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit3 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -730,7 +792,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return digit1 * 10 + digit2;
         }
         hasNext = hasNext();
-        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit4 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -740,7 +802,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit3;
         }
         hasNext = hasNext();
-        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit5 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -751,7 +813,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit4;
         }
         hasNext = hasNext();
-        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit6 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -763,7 +825,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit5;
         }
         hasNext = hasNext();
-        int digit7 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit7 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit7 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -776,7 +838,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit6;
         }
         hasNext = hasNext();
-        int digit8 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit8 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit8 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -790,7 +852,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit7;
         }
         hasNext = hasNext();
-        int digit9 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit9 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit9 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -805,7 +867,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                     + digit8;
         }
         hasNext = hasNext();
-        int digit10 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit10 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         int possibleResult = digit1 * 100000000
                 + digit2 * 10000000
                 + digit3 * 1000000
@@ -822,7 +884,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             return possibleResult;
         }
         hasNext = hasNext();
-        int digit11 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
+        int digit11 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
         if (digit11 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -867,6 +929,219 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private long parseLong(boolean negative) {
+        if (currentIndex + 19 < bufferLength) {
+            int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+            if (digit1 == -1) {
+                throw new IllegalStateException("Expected number, but was: " + (char) lastByte());
+            }
+            int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit2 == -1) {
+                currentIndex--;
+                return digit1;
+            }
+            int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit3 == -1) {
+                currentIndex--;
+                return digit1 * 10L + digit2;
+            }
+            int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit4 == -1) {
+                currentIndex--;
+                return digit1 * 100L + digit2 * 10L + digit3;
+            }
+            int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit5 == -1) {
+                currentIndex--;
+                return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
+            }
+            int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit6 == -1) {
+                currentIndex--;
+                return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
+            }
+            int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit7 == -1) {
+                currentIndex--;
+                return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
+            }
+            int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit8 == -1) {
+                currentIndex--;
+                return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
+            }
+            int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit9 == -1) {
+                currentIndex--;
+                return digit1 * 10000000L + digit2 * 1000000L + digit3 * 100000L + digit4 * 10000L + digit5 * 1000L + digit6 * 100L
+                        + digit7 * 10L + digit8;
+            }
+            int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit10 == -1) {
+                currentIndex--;
+                return digit1 * 100000000L
+                        + digit2 * 10000000L
+                        + digit3 * 1000000L
+                        + digit4 * 100000L
+                        + digit5 * 10000L
+                        + digit6 * 1000L
+                        + digit7 * 100L
+                        + digit8 * 10L
+                        + digit9;
+            }
+            int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit11 == -1) {
+                currentIndex--;
+                return digit1 * 1000000000L
+                        + digit2 * 100000000L
+                        + digit3 * 10000000L
+                        + digit4 * 1000000L
+                        + digit5 * 100000L
+                        + digit6 * 10000L
+                        + digit7 * 1000L
+                        + digit8 * 100L
+                        + digit9 * 10L
+                        + digit10;
+            }
+            int digit12 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit12 == -1) {
+                currentIndex--;
+                return digit1 * 10000000000L
+                        + digit2 * 1000000000L
+                        + digit3 * 100000000L
+                        + digit4 * 10000000L
+                        + digit5 * 1000000L
+                        + digit6 * 100000L
+                        + digit7 * 10000L
+                        + digit8 * 1000L
+                        + digit9 * 100L
+                        + digit10 * 10L
+                        + digit11;
+            }
+            int digit13 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit13 == -1) {
+                currentIndex--;
+                return digit1 * 100000000000L
+                        + digit2 * 10000000000L
+                        + digit3 * 1000000000L
+                        + digit4 * 100000000L
+                        + digit5 * 10000000L
+                        + digit6 * 1000000L
+                        + digit7 * 100000L
+                        + digit8 * 10000L
+                        + digit9 * 1000L
+                        + digit10 * 100L
+                        + digit11 * 10L
+                        + digit12;
+            }
+            int digit14 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit14 == -1) {
+                currentIndex--;
+                return digit1 * 1000000000000L
+                        + digit2 * 100000000000L
+                        + digit3 * 10000000000L
+                        + digit4 * 1000000000L
+                        + digit5 * 100000000L
+                        + digit6 * 10000000L
+                        + digit7 * 1000000L
+                        + digit8 * 100000L
+                        + digit9 * 10000L
+                        + digit10 * 1000L
+                        + digit11 * 100L
+                        + digit12 * 10L
+                        + digit13;
+            }
+            int digit15 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit15 == -1) {
+                currentIndex--;
+                return digit1 * 10000000000000L
+                        + digit2 * 1000000000000L
+                        + digit3 * 100000000000L
+                        + digit4 * 10000000000L
+                        + digit5 * 1000000000L
+                        + digit6 * 100000000L
+                        + digit7 * 10000000L
+                        + digit8 * 1000000L
+                        + digit9 * 100000L
+                        + digit10 * 10000L
+                        + digit11 * 1000L
+                        + digit12 * 100L
+                        + digit13 * 10L
+                        + digit14;
+            }
+            int digit16 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit16 == -1) {
+                currentIndex--;
+                return digit1 * 100000000000000L
+                        + digit2 * 10000000000000L
+                        + digit3 * 1000000000000L
+                        + digit4 * 100000000000L
+                        + digit5 * 10000000000L
+                        + digit6 * 1000000000L
+                        + digit7 * 100000000L
+                        + digit8 * 10000000L
+                        + digit9 * 1000000L
+                        + digit10 * 100000L
+                        + digit11 * 10000L
+                        + digit12 * 1000L
+                        + digit13 * 100L
+                        + digit14 * 10L
+                        + digit15;
+            }
+            int digit17 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit17 == -1) {
+                currentIndex--;
+                return digit1 * 1000000000000000L
+                        + digit2 * 100000000000000L
+                        + digit3 * 10000000000000L
+                        + digit4 * 1000000000000L
+                        + digit5 * 100000000000L
+                        + digit6 * 10000000000L
+                        + digit7 * 1000000000L
+                        + digit8 * 100000000L
+                        + digit9 * 10000000L
+                        + digit10 * 1000000L
+                        + digit11 * 100000L
+                        + digit12 * 10000L
+                        + digit13 * 1000L
+                        + digit14 * 100L
+                        + digit15 * 10L
+                        + digit16;
+            }
+            int digit18 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            long possibleResult = digit1 * 10000000000000000L
+                    + digit2 * 1000000000000000L
+                    + digit3 * 100000000000000L
+                    + digit4 * 10000000000000L
+                    + digit5 * 1000000000000L
+                    + digit6 * 100000000000L
+                    + digit7 * 10000000000L
+                    + digit8 * 1000000000L
+                    + digit9 * 100000000L
+                    + digit10 * 10000000L
+                    + digit11 * 1000000L
+                    + digit12 * 100000L
+                    + digit13 * 10000L
+                    + digit14 * 1000L
+                    + digit15 * 100L
+                    + digit16 * 10L
+                    + digit17;
+            if (digit18 == -1) {
+                currentIndex--;
+                return possibleResult;
+            }
+            int digit19 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
+            if (digit19 == -1) {
+                currentIndex--;
+                if (negative) {
+                    if (-possibleResult > -LONG_SIZE_BORDER || (-possibleResult == -LONG_SIZE_BORDER && digit18 <= 8)) {
+                        return possibleResult * 10 + digit18;
+                    }
+                } else if (possibleResult < LONG_SIZE_BORDER || (possibleResult == LONG_SIZE_BORDER && digit18 <= 7)) {
+                    return possibleResult * 10 + digit18;
+                }
+            }
+            //TODO upravit na handling prilis dlouhych cisel
+        }
         boolean hasNext = hasNext();
         int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
         if (digit1 == -1) {
@@ -1203,10 +1478,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public double readAsDouble() {
         boolean rollback = true;
         double result = readAsLong();
-        byte nextByte = hasNext() ? readNextByte() : -1;
+        byte nextByte = hasNext() ? buffer[++currentIndex] : -1;
         if (nextByte == '.') {
-            int start = currentIndex;
-            readNextByte();
+            int start = currentIndex++;
             long fracPart = parseLong(false);
             int fracDigits = currentIndex - start;
             if (fracDigits >= POW_DOUBLE_CACHE.length) {
@@ -1217,7 +1491,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             }
             rollback = hasNext();
             if (rollback) {
-                nextByte = readNextByte();
+                nextByte = buffer[++currentIndex];
             }
         }
         // Exponent part
@@ -1247,6 +1521,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     void ensure(int amount) {
+        if (currentIndex + amount >= bufferLength) {
+            throw new JsonException("Incomplete JSON.");
+        }
     }
 
     void fetchData() {
@@ -1271,19 +1548,22 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public int readStringAsHash() {
         if (lastByte() != '"') {
             throw new JsonException("This is supported only for Strings.");
+        } else if (!hasNext()) {
+            throw new JsonException("Incomplete JSON.");
         }
         //Based on recommended offset basis and prime values.
         long fnv1aHash = 2166136261L;
-        byte b = buffer[++currentIndex];
-        while (b != '"') { //pridat prepinac na escapenuty \"
+        byte b;
+        currentIndex++;
+        for ( ; currentIndex < bufferLength; currentIndex++) {
+            b = buffer[currentIndex];
+            if (b == '"') {
+                return (int) fnv1aHash;
+            }
             fnv1aHash ^= b;
             fnv1aHash *= 16777619;
-            b = buffer[++currentIndex];
-            if (currentIndex == bufferLength) {
-                fetchData();
-            }
         }
-        return (int) fnv1aHash;
+        throw new JsonException("Incomplete JSON.");
     }
 
     @Override
@@ -1299,6 +1579,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             break;
         case '{':
             skipObject();
+            break;
+        case '[':
+            skipArray();
             break;
         case '-':
         case '0':
@@ -1350,33 +1633,47 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         throw new JsonException("Incomplete JSON or incorrect usage of skip method");
     }
 
-    //TODO UPRAVIT PRIO
     private void skipObject() {
         byte b = nextToken();
         if (b == '}') {
             return;
         }
-        if (b == '"') {
-            skipStringValue();
+        do {
+            if (b == '"') {
+                skipStringValue();
+                b = nextToken();
+            } else {
+                throw new JsonException("Key name expected, but found: " + (char) b + ". Error at index " + realIndex());
+            }
+            if (b != ':') {
+                throw new JsonException("Colon expected after the key, but found: "
+                                                + (char) b + ". Error at index " + realIndex());
+            }
+            nextToken();
+            skip();
             b = nextToken();
-        } else {
-            throw new JsonException("Key name expected after object start, but found: " + Character.toString(lastByte()) +
-                                            ". "
-                                            + "Error at index " + realIndex());
-        }
-        if (b != ':') {
-            throw new JsonException("Colon expected after the key, but found: " + Character.toString(lastByte()) + ". Error"
-                                            + " at "
-                                            + "index " + realIndex());
-        }
-        b = nextToken();
-        skip();
-        b = nextToken();
+        } while (b == ',');
+
         if (b == '}') {
             return;
         }
-        //TODO UPRAVIT
-        throw new IllegalStateException();
+        throw new JsonException("Comma or the end of the object expected, but received " + (char) b);
+    }
+
+    private void skipArray() {
+        byte b = nextToken();
+        if (b == ']') {
+            return;
+        }
+        do {
+            skip();
+            b = nextToken();
+        } while (b == ',');
+
+        if (b == ']') {
+            return;
+        }
+        throw new JsonException("Comma or the end of the array expected, but received " + (char) b);
     }
 
     private void skipNumber() {

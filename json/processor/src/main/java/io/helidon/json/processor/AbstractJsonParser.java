@@ -332,16 +332,15 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         }
         int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
         int stringBuffIndex = 0;
-        int bufferIndex = currentIndex;
         byte b;
         for ( ; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = this.buffer[++bufferIndex];
+            b = this.buffer[++currentIndex];
             if (b == '\\') {
                 //Specialized character handling is likely required
+                currentIndex--;
                 break;
             }
             if (b == '"') {
-                currentIndex = bufferIndex;
                 return new String(stringBuffer, 0, stringBuffIndex);
             }
             stringBuffer[stringBuffIndex] = (char) b;
@@ -351,7 +350,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             increaseStringBuffer();
         }
 
-        for ( ; currentIndex < this.bufferLength; stringBuffIndex++) {
+        for ( ; currentIndex < this.bufferLength; ) {
             b = readNextByte();
             switch (b) {
             case '"':
@@ -374,7 +373,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private char processEscapedSequence() {
-        if (hasNext()) {
+        if (!hasNext()) {
             throw new JsonException("Incomplete JSON.");
         }
         byte c = buffer[++currentIndex];

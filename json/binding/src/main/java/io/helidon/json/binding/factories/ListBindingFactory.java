@@ -89,9 +89,42 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
             if (lastByte == ']') {
                 return createInstance(0);
             }
-            List<Object> list = createInstance();
-            list.add(parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser));
+            Object v1 = parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);
             lastByte = parser.nextToken();
+            if (lastByte == ']') {
+                List<Object> list = createInstance(1);
+                list.add(v1);
+                return list;
+            } else if (lastByte != ',') {
+                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+            }
+            parser.nextToken();
+            Object v2 = parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);
+            lastByte = parser.nextToken();
+            if (lastByte == ']') {
+                List<Object> list = createInstance(2);
+                list.add(v1);
+                list.add(v2);
+                return list;
+            } else if (lastByte != ',') {
+                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+            }
+            parser.nextToken();
+            Object v3 = parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);
+            lastByte = parser.nextToken();
+            if (lastByte == ']') {
+                List<Object> list = createInstance(3);
+                list.add(v1);
+                list.add(v2);
+                list.add(v3);
+                return list;
+            } else if (lastByte != ',') {
+                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+            }
+            List<Object> list = createInstance(10);
+            list.add(v1);
+            list.add(v2);
+            list.add(v3);
             while (lastByte == ',') {
                 parser.nextToken();
                 list.add(parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser));
@@ -107,10 +140,6 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
         public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
             deserializer = jsonBindingConfigurer.getDeserializer(componentType);
             serializer = jsonBindingConfigurer.getSerializer(componentType);
-        }
-
-        List<Object> createInstance() {
-            return new ArrayList<>();
         }
 
         List<Object> createInstance(int capacity) {

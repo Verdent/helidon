@@ -37,11 +37,6 @@ class LinkedListBindingFactory extends ListBindingFactory {
         }
 
         @Override
-        List<Object> createInstance() {
-            return new LinkedList<>();
-        }
-
-        @Override
         List<Object> createInstance(int size) {
             return new LinkedList<>();
         }

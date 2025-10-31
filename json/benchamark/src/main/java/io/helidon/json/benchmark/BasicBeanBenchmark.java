@@ -45,8 +45,8 @@ public class BasicBeanBenchmark {
     }
 
     public static void main(String[] args) {
-//        MyJavaBean deserialize = JsonBinding.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
-//        System.out.println();
+        MyJavaBean deserialize = HELIDON.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
+        System.out.println();
     }
 
     @Benchmark

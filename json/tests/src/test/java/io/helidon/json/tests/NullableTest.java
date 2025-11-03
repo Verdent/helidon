@@ -63,6 +63,7 @@ public class NullableTest {
         String field2 = null;
     }
 
+    @Json.Entity
     @Json.Nullable
     static class NullableOverrideOnMethod {
         String field = null;

@@ -7,7 +7,9 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import io.helidon.common.GenericType;
@@ -76,7 +78,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) getFinishedSerializer(obj.getClass(), EMPTY_CONTEXT);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -274,6 +276,12 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
             if (factory == null) {
                 if (type.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (List.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
+                } else if (Map.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Map.class);
+                } else if (Set.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Set.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "

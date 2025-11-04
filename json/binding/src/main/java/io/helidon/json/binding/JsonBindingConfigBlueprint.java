@@ -38,6 +38,4 @@ interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
     @Option.RegistryService
     List<TypedJsonBindingFactory<?>> bindingFactories();
 
-    boolean cacheParsers();
-
 }

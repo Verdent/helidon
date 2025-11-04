@@ -3,7 +3,7 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -73,8 +73,8 @@ class LongArrayConverter implements TypedJsonConverter<long[]>, JsonConfigurable
     }
 
     @Override
-    public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        deserializer = jsonBindingConfigurer.getDeserializer(long.class);
-        serializer = jsonBindingConfigurer.getSerializer(long.class);
+    public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+        deserializer = jsonBindingConfigurator.getDeserializer(long.class);
+        serializer = jsonBindingConfigurator.getSerializer(long.class);
     }
 }

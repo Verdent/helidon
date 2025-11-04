@@ -1,6 +1,7 @@
 package io.helidon.json.binding;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -47,6 +48,12 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
     <T> String serialize(T obj, Class<T> type);
 
     <T> String serialize(T obj, GenericType<T> type);
+
+    <T> void serialize(OutputStream outputStream, T obj);
+
+    <T> void serialize(OutputStream outputStream, T obj, Class<T> type);
+
+    <T> void serialize(OutputStream outputStream, T obj, GenericType<T> type);
 
     <T> T deserialize(String jsonStr, Class<T> type);
 

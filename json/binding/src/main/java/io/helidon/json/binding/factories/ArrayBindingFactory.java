@@ -10,7 +10,7 @@ import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -116,9 +116,9 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
 
         @Override
         @SuppressWarnings("unchecked")
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
-            deserializer = (JsonDeserializer<Object>) jsonBindingConfigurer.getDeserializer(componentType);
-            serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(componentType);
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
+            deserializer = (JsonDeserializer<Object>) jsonBindingConfigurator.getDeserializer(componentType);
+            serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(componentType);
         }
     }
 }

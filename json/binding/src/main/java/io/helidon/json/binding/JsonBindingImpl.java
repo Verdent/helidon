@@ -1,7 +1,9 @@
 package io.helidon.json.binding;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
@@ -16,9 +18,10 @@ import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.ReusableJsonParser;
 
-final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
+final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     private static final JsonContext EMPTY_CONTEXT = JsonContext.create();
+    public static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
     private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
     private final ThreadLocal<CachedStreamParser> parserStreamCache = ThreadLocal.withInitial(CachedStreamParser::new);
 
@@ -34,10 +37,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     private final Map<Type, JsonSerializer<?>> runtimeSerializers = new HashMap<>();
     private final Map<Type, JsonDeserializer<?>> runtimeDeserializers = new HashMap<>();
 
-    private final Map<Type, JsonSerializer<?>> serializersNotConfigured = new HashMap<>();
-    private final Map<Type, JsonDeserializer<?>> deserializersNotConfigured = new HashMap<>();
-    private final ReentrantReadWriteLock serNotConfiguredLock = new ReentrantReadWriteLock();
-    private final ReentrantReadWriteLock desNotConfiguredLock = new ReentrantReadWriteLock();
+    private final ReentrantReadWriteLock serializerLock = new ReentrantReadWriteLock();
+    private final ReentrantReadWriteLock deserializerLock = new ReentrantReadWriteLock();
 
     JsonBindingImpl(JsonBindingConfig config) {
         this.config = config;
@@ -78,7 +79,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) getFinishedSerializer(obj.getClass(), EMPTY_CONTEXT);
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass(), EMPTY_CONTEXT);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -95,7 +96,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getFinishedSerializer(type, EMPTY_CONTEXT);
+            JsonSerializer<T> converter = getSerializer(type, EMPTY_CONTEXT);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -112,7 +113,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getFinishedSerializer(type, EMPTY_CONTEXT);
+            JsonSerializer<T> converter = getSerializer(type, EMPTY_CONTEXT);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -123,8 +124,69 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public <T> void serialize(OutputStream outputStream, T obj) {
+        if (obj == null) {
+            try {
+                outputStream.write(NULL_BYTES);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(outputStream)) {
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass(), EMPTY_CONTEXT);
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public <T> void serialize(OutputStream outputStream, T obj, Class<T> type) {
+        if (obj == null) {
+            try {
+                outputStream.write(NULL_BYTES);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(outputStream)) {
+            JsonSerializer<T> converter = getSerializer(type, EMPTY_CONTEXT);
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public <T> void serialize(OutputStream outputStream, T obj, GenericType<T> type) {
+        if (obj == null) {
+            try {
+                outputStream.write(NULL_BYTES);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(outputStream)) {
+            JsonSerializer<T> converter = getSerializer(type, EMPTY_CONTEXT);
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
     public <T> T deserialize(String jsonStr, Class<T> type) {
-        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        JsonDeserializer<T> deserializer = getDeserializer(type, EMPTY_CONTEXT);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
@@ -136,7 +198,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T deserialize(String jsonStr, GenericType<T> type) {
-        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        JsonDeserializer<T> deserializer = getDeserializer(type, EMPTY_CONTEXT);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
@@ -148,7 +210,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T deserialize(InputStream inputStream, Class<T> type) {
-        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        JsonDeserializer<T> deserializer = getDeserializer(type, EMPTY_CONTEXT);
         CachedStreamParser cachedParser = parserStreamCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(inputStream);
@@ -160,7 +222,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
 
     @Override
     public <T> T deserialize(InputStream inputStream, GenericType<T> type) {
-        JsonDeserializer<T> deserializer = getFinishedDeserializer(type, EMPTY_CONTEXT);
+        JsonDeserializer<T> deserializer = getDeserializer(type, EMPTY_CONTEXT);
         CachedStreamParser cachedParser = parserStreamCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(inputStream);
@@ -168,181 +230,6 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
         T deserialized = Deserializers.deserialize(parser, deserializer);
         cachedParser.set(parser);
         return deserialized;
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> JsonDeserializer<T> getFinishedDeserializer(Class<T> type, JsonContext jsonContext) {
-        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialIdentityDeserializers.get(type);
-        if (deserializer != null) {
-            return deserializer;
-        }
-        try {
-            desNotConfiguredLock.readLock().lock();
-            deserializer = (JsonDeserializer<T>) runtimeIdentityDeserializers.get(type);
-            if (deserializer != null) {
-                return deserializer;
-            }
-        } finally {
-            desNotConfiguredLock.readLock().unlock();
-        }
-        try {
-            desNotConfiguredLock.writeLock().lock();
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
-            if (factory == null) {
-                if (type.isArray()) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
-                }
-                if (factory == null) {
-                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
-                }
-            }
-            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
-            deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
-            factoryDeserializer.configure(this, jsonContext);
-            deserializersNotConfigured.remove(type);
-
-            runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
-            runtimeIdentityDeserializers.putIfAbsent(type, factoryDeserializer);
-            return factoryDeserializer;
-        } finally {
-            desNotConfiguredLock.writeLock().unlock();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> JsonDeserializer<T> getFinishedDeserializer(GenericType<?> type, JsonContext jsonContext) {
-        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialDeserializers.get(type);
-        if (deserializer != null) {
-            return deserializer;
-        }
-        try {
-            desNotConfiguredLock.readLock().lock();
-            deserializer = (JsonDeserializer<T>) runtimeDeserializers.get(type);
-            if (deserializer != null) {
-                return deserializer;
-            }
-        } finally {
-            desNotConfiguredLock.readLock().unlock();
-        }
-        try {
-            desNotConfiguredLock.writeLock().lock();
-            Class<?> rawType = type.rawType();
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
-            if (factory == null) {
-                if (rawType.isArray()) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
-                }
-                if (factory == null) {
-                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
-                }
-            }
-            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
-
-            deserializersNotConfigured.putIfAbsent(type, factoryDeserializer);
-            factoryDeserializer.configure(this, jsonContext);
-            deserializersNotConfigured.remove(type);
-
-            runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
-            runtimeDeserializers.putIfAbsent(type.type(), factoryDeserializer);
-            if (type.isClass()) {
-                runtimeIdentityDeserializers.putIfAbsent(rawType, factoryDeserializer);
-            }
-            return factoryDeserializer;
-        } finally {
-            desNotConfiguredLock.writeLock().unlock();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> JsonSerializer<T> getFinishedSerializer(Class<T> type, JsonContext jsonContext) {
-        JsonSerializer<T> serializer = (JsonSerializer<T>) initialIdentitySerializers.get(type);
-        if (serializer != null) {
-            return serializer;
-        }
-        try {
-            serNotConfiguredLock.readLock().lock();
-            serializer = (JsonSerializer<T>) runtimeIdentitySerializers.get(type);
-            if (serializer != null) {
-                return serializer;
-            }
-        } finally {
-            serNotConfiguredLock.readLock().unlock();
-        }
-        try {
-            serNotConfiguredLock.writeLock().lock();
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
-            if (factory == null) {
-                if (type.isArray()) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
-                } else if (List.class.isAssignableFrom(type)) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
-                } else if (Map.class.isAssignableFrom(type)) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Map.class);
-                } else if (Set.class.isAssignableFrom(type)) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Set.class);
-                }
-                if (factory == null) {
-                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
-                }
-            }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type);
-            serializersNotConfigured.putIfAbsent(type, factorySerializer);
-            factorySerializer.configure(this, jsonContext);
-            serializersNotConfigured.remove(type);
-
-            runtimeSerializers.putIfAbsent(type, factorySerializer);
-            runtimeIdentitySerializers.putIfAbsent(type, factorySerializer);
-            return factorySerializer;
-        } finally {
-            serNotConfiguredLock.writeLock().unlock();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> JsonSerializer<T> getFinishedSerializer(GenericType<?> type, JsonContext jsonContext) {
-        JsonSerializer<T> serializer = (JsonSerializer<T>) initialSerializers.get(type);
-        if (serializer != null) {
-            return serializer;
-        }
-        try {
-            serNotConfiguredLock.readLock().lock();
-            serializer = (JsonSerializer<T>) runtimeSerializers.get(type);
-            if (serializer != null) {
-                return serializer;
-            }
-        } finally {
-            serNotConfiguredLock.readLock().unlock();
-        }
-        try {
-            serNotConfiguredLock.writeLock().lock();
-            Class<?> rawType = type.rawType();
-            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
-            if (factory == null) {
-                if (rawType.isArray()) {
-                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
-                }
-                if (factory == null) {
-                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
-                }
-            }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type.type());
-            serializersNotConfigured.putIfAbsent(type.type(), factorySerializer);
-            factorySerializer.configure(this, jsonContext);
-            serializersNotConfigured.remove(type.type());
-
-            runtimeSerializers.putIfAbsent(type, factorySerializer);
-            runtimeSerializers.putIfAbsent(type.type(), factorySerializer);
-            if (type.isClass()) {
-                runtimeIdentitySerializers.putIfAbsent(rawType, factorySerializer);
-            }
-            return factorySerializer;
-        } finally {
-            serNotConfiguredLock.writeLock().unlock();
-        }
     }
 
     @Override
@@ -368,16 +255,39 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     @SuppressWarnings("unchecked")
     public <T> JsonDeserializer<T> getDeserializer(Class<T> type, JsonContext jsonContext) {
-        try {
-            desNotConfiguredLock.readLock().lock();
-        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializersNotConfigured.get(type);
+        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialIdentityDeserializers.get(type);
         if (deserializer != null) {
             return deserializer;
         }
+        try {
+            deserializerLock.readLock().lock();
+            deserializer = (JsonDeserializer<T>) runtimeIdentityDeserializers.get(type);
+            if (deserializer != null) {
+                return deserializer;
+            }
         } finally {
-            desNotConfiguredLock.readLock().unlock();
+            deserializerLock.readLock().unlock();
         }
-        return getFinishedDeserializer(type, jsonContext);
+        try {
+            deserializerLock.writeLock().lock();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
+            if (factory == null) {
+                if (type.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
+            }
+            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
+            runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
+            runtimeIdentityDeserializers.putIfAbsent(type, factoryDeserializer);
+            factoryDeserializer.configure(this, jsonContext);
+            return factoryDeserializer;
+        } finally {
+            deserializerLock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -388,16 +298,43 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     @SuppressWarnings("unchecked")
     public <T> JsonDeserializer<T> getDeserializer(GenericType<?> type, JsonContext jsonContext) {
+        JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialDeserializers.get(type);
+        if (deserializer != null) {
+            return deserializer;
+        }
         try {
-            desNotConfiguredLock.readLock().lock();
-            JsonDeserializer<T> deserializer = (JsonDeserializer<T>) deserializersNotConfigured.get(type);
+            deserializerLock.readLock().lock();
+            deserializer = (JsonDeserializer<T>) runtimeDeserializers.get(type);
             if (deserializer != null) {
                 return deserializer;
             }
         } finally {
-            desNotConfiguredLock.readLock().unlock();
+            deserializerLock.readLock().unlock();
         }
-        return getFinishedDeserializer(type, jsonContext);
+        try {
+            deserializerLock.writeLock().lock();
+            Class<?> rawType = type.rawType();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
+            if (factory == null) {
+                if (rawType.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
+            }
+            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
+            runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
+            runtimeDeserializers.putIfAbsent(type.type(), factoryDeserializer);
+            factoryDeserializer.configure(this, jsonContext);
+            if (type.isClass()) {
+                runtimeIdentityDeserializers.putIfAbsent(rawType, factoryDeserializer);
+            }
+            return factoryDeserializer;
+        } finally {
+            deserializerLock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -423,16 +360,45 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     @SuppressWarnings("unchecked")
     public <T> JsonSerializer<T> getSerializer(Class<T> type, JsonContext jsonContext) {
+        JsonSerializer<T> serializer = (JsonSerializer<T>) initialIdentitySerializers.get(type);
+        if (serializer != null) {
+            return serializer;
+        }
         try {
-            serNotConfiguredLock.readLock().lock();
-            JsonSerializer<T> serializer = (JsonSerializer<T>) serializersNotConfigured.get(type);
+            serializerLock.readLock().lock();
+            serializer = (JsonSerializer<T>) runtimeIdentitySerializers.get(type);
             if (serializer != null) {
                 return serializer;
             }
         } finally {
-            serNotConfiguredLock.readLock().unlock();
+            serializerLock.readLock().unlock();
         }
-        return getFinishedSerializer(type, jsonContext);
+        try {
+            serializerLock.writeLock().lock();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(type);
+            if (factory == null) {
+                if (type.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (List.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
+                } else if (Map.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Map.class);
+                } else if (Set.class.isAssignableFrom(type)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Set.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
+            }
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type);
+            runtimeSerializers.putIfAbsent(type, factorySerializer);
+            runtimeIdentitySerializers.putIfAbsent(type, factorySerializer);
+            factorySerializer.configure(this, jsonContext);
+            return factorySerializer;
+        } finally {
+            serializerLock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -443,15 +409,42 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurer {
     @Override
     @SuppressWarnings("unchecked")
     public <T> JsonSerializer<T> getSerializer(GenericType<?> type, JsonContext jsonContext) {
+        JsonSerializer<T> serializer = (JsonSerializer<T>) initialSerializers.get(type);
+        if (serializer != null) {
+            return serializer;
+        }
         try {
-            serNotConfiguredLock.readLock().lock();
-            JsonSerializer<T> serializer = (JsonSerializer<T>) serializersNotConfigured.get(type.type());
+            serializerLock.readLock().lock();
+            serializer = (JsonSerializer<T>) runtimeSerializers.get(type);
             if (serializer != null) {
                 return serializer;
             }
         } finally {
-            serNotConfiguredLock.readLock().unlock();
+            serializerLock.readLock().unlock();
         }
-        return getFinishedSerializer(type, jsonContext);
+        try {
+            serializerLock.writeLock().lock();
+            Class<?> rawType = type.rawType();
+            JsonBindingFactory<T> factory = (JsonBindingFactory<T>) bindingFactories.get(rawType);
+            if (factory == null) {
+                if (rawType.isArray()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                }
+                if (factory == null) {
+                    throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
+                                                            + type + " is not registered.");
+                }
+            }
+            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type.type());
+            runtimeSerializers.putIfAbsent(type, factorySerializer);
+            runtimeSerializers.putIfAbsent(type.type(), factorySerializer);
+            factorySerializer.configure(this, jsonContext);
+            if (type.isClass()) {
+                runtimeIdentitySerializers.putIfAbsent(rawType, factorySerializer);
+            }
+            return factorySerializer;
+        } finally {
+            serializerLock.writeLock().unlock();
+        }
     }
 }

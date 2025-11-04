@@ -350,20 +350,16 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             increaseStringBuffer();
         }
 
-        for ( ; currentIndex < this.bufferLength; ) {
+        while (currentIndex < this.bufferLength) {
             b = readNextByte();
-            switch (b) {
-            case '"':
-                return new String(stringBuffer, 0, stringBuffIndex);
-            case '\\':
+            if (b == '\\') {
                 stringBuffer[stringBuffIndex++] = processEscapedSequence();
-                break;
-            default:
-                if ((b & 0x80) == 0) {
-                    stringBuffer[stringBuffIndex++] = (char) b;
-                } else {
-                    stringBuffIndex = decodeUtf8(stringBuffIndex, b);
-                }
+            } else if (b == '"') {
+                return new String(stringBuffer, 0, stringBuffIndex);
+            } else if ((b & 0x80) == 0) {
+                stringBuffer[stringBuffIndex++] = (char) b;
+            } else {
+                stringBuffIndex = decodeUtf8(stringBuffIndex, b);
             }
             if (stringBuffIndex == stringBufferLength) {
                 increaseStringBuffer();

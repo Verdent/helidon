@@ -1,7 +1,6 @@
 package io.helidon.json.codegen;
 
 import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,7 +28,7 @@ import static io.helidon.json.codegen.Types.PRIMITIVE_TO_BOXED;
 
 class JsonConverterGenerator {
 
-    static final String CONFIGURE_PARAM = "jsonBindingConfigurer";
+    static final String CONFIGURE_PARAM = "jsonBindingConfigurator";
     private static final String PROPERTY_NAME_SUFFIX = "_";
     private static final Supplier<?> DEFAULT_TYPE_VALUE = () -> null;
     private static final Map<TypeName, Supplier<?>> DEFAULT_TYPE_VALUES = Map.of(
@@ -84,7 +83,7 @@ class JsonConverterGenerator {
     private static void addConfigurationMethod(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
-                .addParameter(param -> param.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM));
+                .addParameter(param -> param.type(Types.JSON_BINDING_CONFIGURATOR).name(CONFIGURE_PARAM));
 
         initializeNoRuntimeResolving(method, toConfigure);
     }
@@ -92,7 +91,7 @@ class JsonConverterGenerator {
     private static void addConfigurationFactory(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURER).name(CONFIGURE_PARAM))
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURATOR).name(CONFIGURE_PARAM))
                 .addParameter(builder -> builder.type(Types.JSON_CONTEXT).name("jsonContext"));
 
         initializeNoRuntimeResolving(method, toConfigure);

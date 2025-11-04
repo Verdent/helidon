@@ -13,7 +13,7 @@ import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.Formatter;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.TypedJsonBindingFactory;
 import io.helidon.json.processor.Generator;
@@ -69,7 +69,7 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
             Optional<Formatter> dateFormatter = jsonContext.dateFormat();
             this.useFormatter = dateFormatter.isPresent();
             this.formatter = dateFormatter.map(this::createFormatter).orElse(DEFAULT_FORMATTER);

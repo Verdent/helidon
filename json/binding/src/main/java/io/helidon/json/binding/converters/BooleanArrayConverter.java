@@ -3,7 +3,7 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -73,8 +73,8 @@ class BooleanArrayConverter implements TypedJsonConverter<boolean[]>, JsonConfig
     }
 
     @Override
-    public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        deserializer = jsonBindingConfigurer.getDeserializer(boolean.class);
-        serializer = jsonBindingConfigurer.getSerializer(boolean.class);
+    public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+        deserializer = jsonBindingConfigurator.getDeserializer(boolean.class);
+        serializer = jsonBindingConfigurator.getSerializer(boolean.class);
     }
 }

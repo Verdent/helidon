@@ -4,7 +4,7 @@ import java.lang.reflect.Type;
 
 import io.helidon.common.GenericType;
 
-public interface JsonBindingConfigurer {
+public interface JsonBindingConfigurator {
 
     <T> JsonDeserializer<T> getDeserializer(Type type);
 

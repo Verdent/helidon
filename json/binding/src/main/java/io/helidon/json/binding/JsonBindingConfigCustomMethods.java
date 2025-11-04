@@ -1,7 +1,5 @@
 package io.helidon.json.binding;
 
-import java.lang.reflect.Type;
-
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.GenericType;
 
@@ -24,8 +22,9 @@ class JsonBindingConfigCustomMethods {
     }
 
     @Prototype.BuilderMethod
-    static <T> void addConverter(JsonBindingConfig.BuilderBase<?, ?> builder, Type type, JsonConverter<T> converter) {
-        GenericType<T> genericType = GenericType.create(type);
+    static <T> void addConverter(JsonBindingConfig.BuilderBase<?, ?> builder,
+                                 GenericType<T> genericType,
+                                 JsonConverter<T> converter) {
         builder.addSerializer(new DefaultTypedJsonSerializer<>(genericType, converter))
                 .addDeserializer(new DefaultTypedJsonDeserializer<>(genericType, converter));
     }
@@ -37,8 +36,9 @@ class JsonBindingConfigCustomMethods {
     }
 
     @Prototype.BuilderMethod
-    static <T> void addSerializer(JsonBindingConfig.BuilderBase<?, ?> builder, Type type, JsonSerializer<T> serializer) {
-        GenericType<T> genericType = GenericType.create(type);
+    static <T> void addSerializer(JsonBindingConfig.BuilderBase<?, ?> builder,
+                                  GenericType<T> genericType,
+                                  JsonSerializer<T> serializer) {
         builder.addSerializer(new DefaultTypedJsonSerializer<>(genericType, serializer));
     }
 
@@ -49,8 +49,9 @@ class JsonBindingConfigCustomMethods {
     }
 
     @Prototype.BuilderMethod
-    static <T> void addDeserializer(JsonBindingConfig.BuilderBase<?, ?> builder, Type type, JsonDeserializer<T> deserializer) {
-        GenericType<T> genericType = GenericType.create(type);
+    static <T> void addDeserializer(JsonBindingConfig.BuilderBase<?, ?> builder,
+                                    GenericType<T> genericType,
+                                    JsonDeserializer<T> deserializer) {
         builder.addDeserializer(new DefaultTypedJsonDeserializer<>(genericType, deserializer));
     }
 

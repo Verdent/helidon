@@ -9,20 +9,16 @@ public interface JsonParser {
 
     static JsonParser create(String json) {
         return new ArrayJsonParser(json);
-//        return new StreamJsonParser(new ByteArrayInputStream(json.getBytes()));
     }
 
     static JsonParser create(InputStream inputStream) {
         return new JsonStreamParser(inputStream);
     }
 
-    static JsonParser empty() {
-        return new ArrayJsonParser();
+    static JsonParser create(InputStream inputStream, int bufferSize) {
+        return new JsonStreamParser(inputStream, bufferSize);
     }
 
-    static JsonParser emptyStream() {
-        return new JsonStreamParser();
-    }
     boolean hasNext();
     byte readNextByte();
     byte nextToken();

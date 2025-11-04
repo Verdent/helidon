@@ -3,7 +3,7 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -16,11 +16,11 @@ import io.helidon.service.registry.Service;
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
 class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
 
-    private JsonBindingConfigurer jsonBindingConfigurer;
+    private JsonBindingConfigurator jsonBindingConfigurator;
 
     @Override
-    public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        this.jsonBindingConfigurer = jsonBindingConfigurer;
+    public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+        this.jsonBindingConfigurator = jsonBindingConfigurator;
     }
 
     @Override
@@ -36,7 +36,7 @@ class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
     @Override
     @SuppressWarnings("unchecked")
     public void serialize(Generator generator, Object instance, boolean writeNulls) {
-        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurer.getSerializer(instance.getClass());
+        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(instance.getClass());
         serializer.serialize(generator, instance, writeNulls);
     }
 

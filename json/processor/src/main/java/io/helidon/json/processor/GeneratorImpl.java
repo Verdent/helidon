@@ -41,6 +41,34 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
+    public void write(String key, long value) {
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
+    }
+
+    @Override
+    public void write(String key, float value) {
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
+    }
+
+    @Override
+    public void write(String key, double value) {
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
+    }
+
+    @Override
+    public void write(String key, boolean value) {
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
+    }
+
+    @Override
     public void writeValue(String value) {
         write(value);
     }

@@ -12,27 +12,21 @@ final class JsonStreamParser extends AbstractJsonParser {
     private InputStream inputStream;
     private boolean finished;
 
-    JsonStreamParser() {
-        super(new byte[DEFAULT_BUFFER_SIZE]);
-        bufferSize = DEFAULT_BUFFER_SIZE;
-    }
-
-    JsonStreamParser(int bufferSize) {
-        super(new byte[bufferSize]);
+    JsonStreamParser(InputStream inputStream, int bufferSize) {
         this.bufferSize = bufferSize;
-    }
-
-    JsonStreamParser(InputStream inputStream) {
-        bufferSize = DEFAULT_BUFFER_SIZE;
         this.inputStream = inputStream;
         currentIndex = -1;
-        buffer = new byte[DEFAULT_BUFFER_SIZE];
+        buffer = new byte[bufferSize];
         try {
             bufferLength = inputStream.read(buffer);
             finished = bufferLength != DEFAULT_BUFFER_SIZE;
         } catch (IOException e) {
             throw new JsonException("Error occurred while reading JSON to the buffer.", e);
         }
+    }
+
+    JsonStreamParser(InputStream inputStream) {
+        this(inputStream, DEFAULT_BUFFER_SIZE);
     }
 
     @Override

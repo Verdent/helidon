@@ -1,7 +1,7 @@
 package io.helidon.json.binding.converters;
 
 import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -70,8 +70,8 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
     }
 
     @Override
-    public void configure(JsonBindingConfigurer jsonBindingConfigurer) {
-        deserializer = jsonBindingConfigurer.getDeserializer(char.class);
-        serializer = jsonBindingConfigurer.getSerializer(char.class);
+    public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+        deserializer = jsonBindingConfigurator.getDeserializer(char.class);
+        serializer = jsonBindingConfigurator.getSerializer(char.class);
     }
 }

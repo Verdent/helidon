@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * TODO javadoc
@@ -23,7 +25,7 @@ public final class JsonObject implements JsonValue {
         return content.containsKey(key);
     }
 
-    public void ensureResolvedKeys() {
+    private void ensureResolvedKeys() {
         if (content == null) {
             this.content = new HashMap<>(pairs.size());
             CachedParser cachedParser = JsonParserCache.getCachedParser();
@@ -156,7 +158,7 @@ public final class JsonObject implements JsonValue {
         return jsonValue.asNumber().doubleValue();
     }
 
-    Optional<BigDecimal> numberValue(String key) {
+    public Optional<BigDecimal> numberValue(String key) {
         ensureResolvedKeys();
         JsonValue jsonValue = content.get(key);
         if (jsonValue == null) {
@@ -165,13 +167,17 @@ public final class JsonObject implements JsonValue {
         return Optional.of(jsonValue.asNumber().bigDecimalValue());
     }
 
-    BigDecimal numberValue(String key, BigDecimal defaultValue) {
+    public BigDecimal numberValue(String key, BigDecimal defaultValue) {
         ensureResolvedKeys();
         JsonValue jsonValue = content.get(key);
         if (jsonValue == null) {
             return defaultValue;
         }
         return jsonValue.asNumber().bigDecimalValue();
+    }
+
+    public Set<JsonString> keys() {
+        return pairs.stream().map(Pair::key).collect(Collectors.toSet());
     }
 
     public int size() {

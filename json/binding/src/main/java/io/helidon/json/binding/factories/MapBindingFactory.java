@@ -13,7 +13,7 @@ import io.helidon.json.binding.BindingFactoryConverter;
 import io.helidon.json.binding.BindingFactoryDeserializer;
 import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurer;
+import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonContext;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
@@ -130,11 +130,11 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurer jsonBindingConfigurer, JsonContext jsonContext) {
-            keyDeserializer = jsonBindingConfigurer.getDeserializer(keyType);
-            valueDeserializer = jsonBindingConfigurer.getDeserializer(valueType);
-            keySerializer = jsonBindingConfigurer.getSerializer(keyType);
-            valueSerializer = jsonBindingConfigurer.getSerializer(valueType);
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
+            keyDeserializer = jsonBindingConfigurator.getDeserializer(keyType);
+            valueDeserializer = jsonBindingConfigurator.getDeserializer(valueType);
+            keySerializer = jsonBindingConfigurator.getSerializer(keyType);
+            valueSerializer = jsonBindingConfigurator.getSerializer(valueType);
         }
     }
 

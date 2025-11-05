@@ -9,11 +9,8 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.BindingFactoryConverter;
-import io.helidon.json.binding.BindingFactoryDeserializer;
-import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonContext;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
@@ -27,12 +24,12 @@ import io.helidon.service.registry.Service;
 class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
     @Override
-    public BindingFactoryDeserializer<List<?>> createDeserializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(Type type) {
         return new ListConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<List<?>> createSerializer(Type type) {
+    public JsonSerializer<List<?>> createSerializer(Type type) {
         return new ListConverter(type);
     }
 
@@ -41,7 +38,7 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
         return Set.of(List.class, ArrayList.class);
     }
 
-    static class ListConverter implements BindingFactoryConverter<List<?>> {
+    static class ListConverter implements JsonConverter<List<?>> {
 
         private final Type componentType;
         private volatile JsonDeserializer<Object> deserializer;
@@ -136,7 +133,7 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
             deserializer = jsonBindingConfigurator.getDeserializer(componentType);
             serializer = jsonBindingConfigurator.getSerializer(componentType);
         }

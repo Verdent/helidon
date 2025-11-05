@@ -3,18 +3,14 @@ package io.helidon.json.binding.factories;
 import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.BindingFactoryConverter;
-import io.helidon.json.binding.BindingFactoryDeserializer;
-import io.helidon.json.binding.BindingFactorySerializer;
-import io.helidon.json.binding.Formatter;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonContext;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.JsonDeserializer;
+import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
@@ -32,16 +28,16 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
     }
 
     @Override
-    public BindingFactoryDeserializer<Instant> createDeserializer(Type type) {
+    public JsonDeserializer<Instant> createDeserializer(Type type) {
         return new InstantConverter();
     }
 
     @Override
-    public BindingFactorySerializer<Instant> createSerializer(Type type) {
+    public JsonSerializer<Instant> createSerializer(Type type) {
         return new InstantConverter();
     }
 
-    private static final class InstantConverter implements BindingFactoryConverter<Instant> {
+    private static final class InstantConverter implements JsonConverter<Instant> {
 
         private static final DateTimeFormatter DEFAULT_FORMATTER = DateTimeFormatter.ISO_INSTANT.withZone(UTC);
 
@@ -69,18 +65,20 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
-            Optional<Formatter> dateFormatter = jsonContext.dateFormat();
-            this.useFormatter = dateFormatter.isPresent();
-            this.formatter = dateFormatter.map(this::createFormatter).orElse(DEFAULT_FORMATTER);
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+//            Optional<Formatter> dateFormatter = jsonContext.dateFormat();
+//            this.useFormatter = dateFormatter.isPresent();
+//            this.formatter = dateFormatter.map(this::createFormatter).orElse(DEFAULT_FORMATTER);
+            this.useFormatter = false;
+            this.formatter = DEFAULT_FORMATTER;
         }
 
-        private DateTimeFormatter createFormatter(Formatter format) {
-            DateTimeFormatter toReturn = format.format()
-                    .map(DateTimeFormatter::ofPattern)
-                    .orElse(DEFAULT_FORMATTER);
-            format.locale().ifPresent(locale -> toReturn.withLocale(Locale.of(locale)));
-            return toReturn;
-        }
+//        private DateTimeFormatter createFormatter(Formatter format) {
+//            DateTimeFormatter toReturn = format.format()
+//                    .map(DateTimeFormatter::ofPattern)
+//                    .orElse(DEFAULT_FORMATTER);
+//            format.locale().ifPresent(locale -> toReturn.withLocale(Locale.of(locale)));
+//            return toReturn;
+//        }
     }
 }

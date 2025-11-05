@@ -7,8 +7,8 @@ import java.util.Set;
 
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.BindingFactoryDeserializer;
-import io.helidon.json.binding.BindingFactorySerializer;
+import io.helidon.json.binding.JsonDeserializer;
+import io.helidon.json.binding.JsonSerializer;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -16,12 +16,12 @@ import io.helidon.service.registry.Service;
 class LinkedListBindingFactory extends ListBindingFactory {
 
     @Override
-    public BindingFactoryDeserializer<List<?>> createDeserializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(Type type) {
         return new LinkedListConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<List<?>> createSerializer(Type type) {
+    public JsonSerializer<List<?>> createSerializer(Type type) {
         return new LinkedListConverter(type);
     }
 

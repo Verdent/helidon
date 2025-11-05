@@ -9,12 +9,9 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.BindingFactoryConverter;
-import io.helidon.json.binding.BindingFactoryDeserializer;
-import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonContext;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
@@ -33,16 +30,16 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
     }
 
     @Override
-    public BindingFactoryDeserializer<Map<?, ?>> createDeserializer(Type type) {
+    public JsonDeserializer<Map<?, ?>> createDeserializer(Type type) {
         return new MapConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<Map<?, ?>> createSerializer(Type type) {
+    public JsonSerializer<Map<?, ?>> createSerializer(Type type) {
         return new MapConverter(type);
     }
 
-    private static final class MapConverter implements BindingFactoryConverter<Map<?, ?>> {
+    private static final class MapConverter implements JsonConverter<Map<?, ?>> {
 
         private final Type keyType;
         private final Type valueType;
@@ -130,7 +127,7 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
             keyDeserializer = jsonBindingConfigurator.getDeserializer(keyType);
             valueDeserializer = jsonBindingConfigurator.getDeserializer(valueType);
             keySerializer = jsonBindingConfigurator.getSerializer(keyType);

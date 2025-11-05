@@ -51,7 +51,7 @@ class JsonConverterGenerator {
                                   boolean factoryConfiguration,
                                   boolean typedConverter) {
         TypeName converterInterfaceType = TypeName.builder()
-                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_FACTORY_CONVERTER_TYPE)
+                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_CONVERTER_TYPE)
                 .addTypeArgument(annotatedType.typeName())
                 .build();
 
@@ -90,8 +90,7 @@ class JsonConverterGenerator {
     private static void addConfigurationFactory(Method.Builder method, Map<String, TypeToConfigure> toConfigure) {
         method.name("configure")
                 .addAnnotation(Annotation.create(Override.class))
-                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURATOR).name(CONFIGURE_PARAM))
-                .addParameter(builder -> builder.type(Types.JSON_CONTEXT).name("jsonContext"));
+                .addParameter(builder -> builder.type(Types.JSON_BINDING_CONFIGURATOR).name(CONFIGURE_PARAM));
 
         initializeNoRuntimeResolving(method, toConfigure);
 

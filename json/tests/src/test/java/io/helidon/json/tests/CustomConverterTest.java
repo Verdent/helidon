@@ -2,7 +2,7 @@ package io.helidon.json.tests;
 
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
-import io.helidon.json.binding.TypedJsonConverter;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
 
@@ -18,7 +18,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomConverterOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addConverter(new StringConverter())
+                .addConverter(String.class, new StringConverter())
                 .build();
 
         String original = "string value";
@@ -31,7 +31,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomDeserializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addDeserializer(new StringConverter())
+                .addDeserializer(String.class, new StringConverter())
                 .build();
 
         String original = "string value";
@@ -44,7 +44,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomSerializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addSerializer(new StringConverter())
+                .addSerializer(String.class, new StringConverter())
                 .build();
 
         String original = "string value";
@@ -76,7 +76,7 @@ public class CustomConverterTest {
         assertThat(HELIDON.deserialize(expected, CustomFieldDeserializer.class), is(expectedDeserialized));
     }
 
-    static class StringConverter implements TypedJsonConverter<String> {
+    static class StringConverter implements JsonConverter<String> {
         @Override
         public String deserialize(JsonParser parser) {
             String string = parser.readString();

@@ -8,12 +8,9 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.BindingFactoryConverter;
-import io.helidon.json.binding.BindingFactoryDeserializer;
-import io.helidon.json.binding.BindingFactorySerializer;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonContext;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonBindingFactory;
@@ -27,12 +24,12 @@ import io.helidon.service.registry.Service;
 class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
 
     @Override
-    public BindingFactoryDeserializer<Set<?>> createDeserializer(Type type) {
+    public JsonDeserializer<Set<?>> createDeserializer(Type type) {
         return new SetConverter(type);
     }
 
     @Override
-    public BindingFactorySerializer<Set<?>> createSerializer(Type type) {
+    public JsonSerializer<Set<?>> createSerializer(Type type) {
         return new SetConverter(type);
     }
 
@@ -41,7 +38,7 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
         return Set.of(Set.class, HashSet.class);
     }
 
-    private static final class SetConverter implements BindingFactoryConverter<Set<?>> {
+    private static final class SetConverter implements JsonConverter<Set<?>> {
 
         private final Type componentType;
         private JsonDeserializer<Object> deserializer;
@@ -102,7 +99,7 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
         }
 
         @Override
-        public void configure(JsonBindingConfigurator jsonBindingConfigurator, JsonContext jsonContext) {
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
             deserializer = jsonBindingConfigurator.getDeserializer(componentType);
             serializer = jsonBindingConfigurator.getSerializer(componentType);
         }

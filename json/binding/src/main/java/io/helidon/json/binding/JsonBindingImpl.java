@@ -280,10 +280,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
+            JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
             runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
             runtimeIdentityDeserializers.putIfAbsent(type, factoryDeserializer);
-            factoryDeserializer.configure(this, jsonContext);
+            factoryDeserializer.configure(this);
             return factoryDeserializer;
         } finally {
             deserializerLock.writeLock().unlock();
@@ -324,10 +324,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactoryDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
+            JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
             runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
             runtimeDeserializers.putIfAbsent(type.type(), factoryDeserializer);
-            factoryDeserializer.configure(this, jsonContext);
+            factoryDeserializer.configure(this);
             if (type.isClass()) {
                 runtimeIdentityDeserializers.putIfAbsent(rawType, factoryDeserializer);
             }
@@ -391,10 +391,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type);
+            JsonSerializer<T> factorySerializer = factory.createSerializer(type);
             runtimeSerializers.putIfAbsent(type, factorySerializer);
             runtimeIdentitySerializers.putIfAbsent(type, factorySerializer);
-            factorySerializer.configure(this, jsonContext);
+            factorySerializer.configure(this);
             return factorySerializer;
         } finally {
             serializerLock.writeLock().unlock();
@@ -435,10 +435,10 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            BindingFactorySerializer<T> factorySerializer = factory.createSerializer(type.type());
+            JsonSerializer<T> factorySerializer = factory.createSerializer(type.type());
             runtimeSerializers.putIfAbsent(type, factorySerializer);
             runtimeSerializers.putIfAbsent(type.type(), factorySerializer);
-            factorySerializer.configure(this, jsonContext);
+            factorySerializer.configure(this);
             if (type.isClass()) {
                 runtimeIdentitySerializers.putIfAbsent(rawType, factorySerializer);
             }

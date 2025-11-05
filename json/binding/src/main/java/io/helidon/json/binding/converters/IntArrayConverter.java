@@ -1,10 +1,10 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -15,7 +15,9 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
+class IntArrayConverter implements TypedJsonConverter<int[]> {
+
+    private static final GenericType<int[]> TYPE = GenericType.create(int[].class);
 
     private final int[] emptyArray = new int[0];
     private JsonDeserializer<Integer> deserializer;
@@ -76,5 +78,10 @@ class IntArrayConverter implements TypedJsonConverter<int[]>, JsonConfigurable {
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
         deserializer = jsonBindingConfigurator.getDeserializer(int.class);
         serializer = jsonBindingConfigurator.getSerializer(int.class);
+    }
+
+    @Override
+    public GenericType<int[]> type() {
+        return TYPE;
     }
 }

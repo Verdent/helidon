@@ -22,18 +22,14 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
     static JsonBinding create(JsonBindingConfig config) {
         JsonBindingImpl jsonBinding = new JsonBindingImpl(config);
-        Set<JsonConfigurable> processed = new HashSet<>();
         for (TypedJsonSerializer<?> serializer : config.serializers()) {
-            if (serializer instanceof JsonConfigurable configurable) {
-                configurable.configure(jsonBinding);
-                processed.add(configurable);
-            }
+            serializer.configure(jsonBinding);
         }
         for (TypedJsonDeserializer<?> deserializer : config.deserializers()) {
-            if (deserializer instanceof JsonConfigurable configurable
-                    && !processed.contains(deserializer)) {
-                configurable.configure(jsonBinding);
+            if (config.serializers().contains(deserializer)) {
+                continue;
             }
+            deserializer.configure(jsonBinding);
         }
         return jsonBinding;
     }

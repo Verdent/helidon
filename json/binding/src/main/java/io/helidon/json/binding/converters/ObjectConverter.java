@@ -4,7 +4,6 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
@@ -14,7 +13,7 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class ObjectConverter implements TypedJsonConverter<Object>, JsonConfigurable {
+class ObjectConverter implements TypedJsonConverter<Object> {
 
     private JsonBindingConfigurator jsonBindingConfigurator;
 

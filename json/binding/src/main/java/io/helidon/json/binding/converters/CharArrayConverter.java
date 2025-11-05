@@ -1,8 +1,8 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.GenericType;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -12,7 +12,9 @@ import io.helidon.json.processor.JsonParser;
 
 //@Service.Singleton
 //@Weight(Weighted.DEFAULT_WEIGHT - 10)
-class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable {
+class CharArrayConverter implements TypedJsonConverter<char[]> {
+
+    private static final GenericType<char[]> TYPE = GenericType.create(char[].class);
 
     private final char[] emptyArray = new char[0];
     private JsonDeserializer<Character> deserializer;
@@ -73,5 +75,10 @@ class CharArrayConverter implements TypedJsonConverter<char[]>, JsonConfigurable
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
         deserializer = jsonBindingConfigurator.getDeserializer(char.class);
         serializer = jsonBindingConfigurator.getSerializer(char.class);
+    }
+
+    @Override
+    public GenericType<char[]> type() {
+        return TYPE;
     }
 }

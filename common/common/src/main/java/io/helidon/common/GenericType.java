@@ -222,8 +222,8 @@ public class GenericType<T> implements Type {
 
     public static final class Builder<T> implements io.helidon.common.Builder<Builder<T>, GenericType<T>> {
 
-        private Class<? extends T> baseType;
-        private List<Type> genericParameters = new ArrayList<>();
+        private Class<?> baseType;
+        private final List<Type> genericParameters = new ArrayList<>();
 
         public GenericType<T> build() {
             if (baseType == null) {
@@ -237,7 +237,7 @@ public class GenericType<T> implements Type {
             return new GenericType<>(parameterizedType, baseType);
         }
 
-        public Builder<T> baseType(Class<? extends T> baseType) {
+        public Builder<T> baseType(Class<?> baseType) {
             this.baseType = baseType;
             return this;
         }

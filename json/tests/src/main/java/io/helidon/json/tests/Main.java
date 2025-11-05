@@ -39,19 +39,26 @@ public class Main {
 //
 //        System.out.println(json);
 
+//        JsonBinding binding = JsonBinding.create();
+//        String test = """
+//                {
+//                    "map" : {
+//                        "myKey1" : "192￡",
+//                        "myKey2" : "myValue2"
+//                    }
+//                }
+//                """;
+//        ObjectWithMap map = binding.deserialize(test, ObjectWithMap.class);
+//        String serialized = binding.serialize(map);
+//        ObjectWithMap map2 = binding.deserialize(test, ObjectWithMap.class);
+//        System.out.println();
+
         JsonBinding binding = JsonBinding.create();
-        String test = """
-                {
-                    "map" : {
-                        "myKey1" : "myValue1",
-                        "myKey2" : "myValue2"
-                    }
-                }
-                """;
-        ObjectWithMap map = binding.deserialize(test, ObjectWithMap.class);
-        String serialized = binding.serialize(map);
-        ObjectWithMap map2 = binding.deserialize(test, ObjectWithMap.class);
-        System.out.println();
+
+        binding.deserialize("192￡", int.class);
+
+
+
     }
 
 }

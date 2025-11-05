@@ -4,7 +4,7 @@ import java.lang.reflect.Type;
 
 public interface JsonBindingFactory<T> {
 
-    BindingFactoryDeserializer<T>  createDeserializer(Type type);
-    BindingFactorySerializer<T>  createSerializer(Type type);
+    BindingFactoryDeserializer<T> createDeserializer(Type type);
+    BindingFactorySerializer<T> createSerializer(Type type);
 
 }

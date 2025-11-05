@@ -1,5 +1,6 @@
 package io.helidon.json.processor;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -27,6 +28,10 @@ final class JsonStreamParser extends AbstractJsonParser {
 
     JsonStreamParser(InputStream inputStream) {
         this(inputStream, DEFAULT_BUFFER_SIZE);
+    }
+
+    JsonStreamParser() {
+        this(new ByteArrayInputStream(new byte[0]), DEFAULT_BUFFER_SIZE);
     }
 
     @Override

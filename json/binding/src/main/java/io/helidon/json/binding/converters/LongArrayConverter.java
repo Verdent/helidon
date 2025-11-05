@@ -1,10 +1,10 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -15,7 +15,9 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class LongArrayConverter implements TypedJsonConverter<long[]>, JsonConfigurable {
+class LongArrayConverter implements TypedJsonConverter<long[]> {
+
+    private static final GenericType<long[]> TYPE = GenericType.create(long[].class);
 
     private final long[] emptyArray = new long[0];
     private JsonDeserializer<Long> deserializer;
@@ -76,5 +78,10 @@ class LongArrayConverter implements TypedJsonConverter<long[]>, JsonConfigurable
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
         deserializer = jsonBindingConfigurator.getDeserializer(long.class);
         serializer = jsonBindingConfigurator.getSerializer(long.class);
+    }
+
+    @Override
+    public GenericType<long[]> type() {
+        return TYPE;
     }
 }

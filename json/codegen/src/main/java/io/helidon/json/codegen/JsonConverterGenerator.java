@@ -72,8 +72,7 @@ class JsonConverterGenerator {
         if (factoryConfiguration) {
             classBuilder.addMethod(method -> addConfigurationFactory(method, toConfigure));
         } else {
-            classBuilder.addInterface(Types.JSON_CONFIGURABLE)
-                    .addMethod(method -> addConfigurationMethod(method, toConfigure));
+            classBuilder.addMethod(method -> addConfigurationMethod(method, toConfigure));
         }
         if (typedConverter) {
             classBuilder.addMethod(method -> addTypeMethod(method, converterInfo));

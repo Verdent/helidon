@@ -10,4 +10,7 @@ public interface JsonSerializer<T> {
         generator.writeNull();
     }
 
+    default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+    }
+
 }

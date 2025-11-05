@@ -4,6 +4,7 @@ module helidon.json.binding {
     requires transitive io.helidon.service.registry;
 
     requires io.helidon.config;
+    requires io.helidon.common;
 
     exports io.helidon.json.binding;
     exports io.helidon.json.binding.converters;

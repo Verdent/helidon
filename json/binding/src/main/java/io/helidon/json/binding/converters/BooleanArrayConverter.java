@@ -1,10 +1,10 @@
 package io.helidon.json.binding.converters;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonConfigurable;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.TypedJsonConverter;
@@ -15,7 +15,9 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class BooleanArrayConverter implements TypedJsonConverter<boolean[]>, JsonConfigurable {
+class BooleanArrayConverter implements TypedJsonConverter<boolean[]> {
+
+    private static final GenericType<boolean[]> TYPE = GenericType.create(boolean[].class);
 
     private final boolean[] emptyArray = new boolean[0];
     private JsonDeserializer<Boolean> deserializer;
@@ -76,5 +78,10 @@ class BooleanArrayConverter implements TypedJsonConverter<boolean[]>, JsonConfig
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
         deserializer = jsonBindingConfigurator.getDeserializer(boolean.class);
         serializer = jsonBindingConfigurator.getSerializer(boolean.class);
+    }
+
+    @Override
+    public GenericType<boolean[]> type() {
+        return TYPE;
     }
 }

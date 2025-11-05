@@ -1,6 +1,7 @@
 package io.helidon.json.processor;
 
 import java.io.InputStream;
+import java.io.Reader;
 
 /**
  * TODO javadoc
@@ -17,6 +18,14 @@ public interface JsonParser {
 
     static JsonParser create(InputStream inputStream, int bufferSize) {
         return new JsonStreamParser(inputStream, bufferSize);
+    }
+
+    static JsonParser empty() {
+        return new ArrayJsonParser();
+    }
+
+    static JsonParser emptyStream() {
+        return new JsonStreamParser();
     }
 
     boolean hasNext();

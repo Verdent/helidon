@@ -10,4 +10,7 @@ public interface JsonDeserializer<T> {
         return null;
     }
 
+    default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+    }
+
 }

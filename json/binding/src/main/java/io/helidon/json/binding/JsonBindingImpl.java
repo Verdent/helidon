@@ -242,7 +242,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> JsonDeserializer<T> getDeserializer(Type type, JsonContext jsonContext) {
         return switch (type) {
             case Class<?> clazz -> (JsonDeserializer<T>) getDeserializer(clazz, jsonContext);
-            case GenericType<?> genericType -> getDeserializer(genericType, jsonContext);
+            case GenericType<?> genericType -> (JsonDeserializer<T>) getDeserializer(genericType, jsonContext);
             case null, default -> getDeserializer(GenericType.create(type), jsonContext);
         };
     }
@@ -347,7 +347,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> JsonSerializer<T> getSerializer(Type type, JsonContext jsonContext) {
         return switch (type) {
             case Class<?> clazz -> (JsonSerializer<T>) getSerializer(clazz);
-            case GenericType<?> genericType -> getSerializer(genericType);
+            case GenericType<?> genericType -> (JsonSerializer<T>) getSerializer(genericType);
             case null, default -> getSerializer(GenericType.create(type));
         };
     }

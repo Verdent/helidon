@@ -8,6 +8,8 @@ import java.util.function.Consumer;
 
 import io.helidon.builder.api.RuntimeType;
 import io.helidon.common.GenericType;
+import io.helidon.json.processor.JsonObject;
+import io.helidon.json.processor.JsonValue;
 
 @RuntimeType.PrototypedBy(JsonBindingConfig.class)
 public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
@@ -41,15 +43,15 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
     String serialize(Object obj);
 
-    <T> String serialize(T obj, Class<T> type);
+    <T> String serialize(T obj, Class<? super T> type);
 
-    <T> String serialize(T obj, GenericType<T> type);
+    <T> String serialize(T obj, GenericType<? super T> type);
 
-    <T> void serialize(OutputStream outputStream, T obj);
+    void serialize(OutputStream outputStream, Object obj);
 
-    <T> void serialize(OutputStream outputStream, T obj, Class<T> type);
+    <T> void serialize(OutputStream outputStream, T obj, Class<? super T> type);
 
-    <T> void serialize(OutputStream outputStream, T obj, GenericType<T> type);
+    <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type);
 
     <T> T deserialize(String jsonStr, Class<T> type);
 
@@ -58,5 +60,9 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
     <T> T deserialize(InputStream inputStream, Class<T> type);
 
     <T> T deserialize(InputStream inputStream, GenericType<T> type);
+
+    <T> T deserialize(JsonValue jsonValue, Class<T> type);
+
+    <T> T deserialize(JsonValue jsonValue, GenericType<T> type);
 
 }

@@ -16,6 +16,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
+import io.helidon.json.processor.JsonValue;
 import io.helidon.json.processor.ReusableJsonParser;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
@@ -89,13 +90,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> String serialize(T obj, Class<T> type) {
+    public <T> String serialize(T obj, Class<? super T> type) {
         if (obj == null) {
             return "null";
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = getSerializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -106,13 +107,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> String serialize(T obj, GenericType<T> type) {
+    public <T> String serialize(T obj, GenericType<? super T> type) {
         if (obj == null) {
             return "null";
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = getSerializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -124,7 +125,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> void serialize(OutputStream outputStream, T obj) {
+    public void serialize(OutputStream outputStream, Object obj) {
         if (obj == null) {
             try {
                 outputStream.write(NULL_BYTES);
@@ -144,7 +145,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> void serialize(OutputStream outputStream, T obj, Class<T> type) {
+    public <T> void serialize(OutputStream outputStream, T obj, Class<? super T> type) {
         if (obj == null) {
             try {
                 outputStream.write(NULL_BYTES);
@@ -154,7 +155,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = getSerializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -164,7 +165,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> void serialize(OutputStream outputStream, T obj, GenericType<T> type) {
+    public <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type) {
         if (obj == null) {
             try {
                 outputStream.write(NULL_BYTES);
@@ -174,7 +175,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = getSerializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -229,6 +230,16 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
         T deserialized = Deserializers.deserialize(parser, deserializer);
         cachedParser.set(parser);
         return deserialized;
+    }
+
+    @Override
+    public <T> T deserialize(JsonValue jsonValue, Class<T> type) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public <T> T deserialize(JsonValue jsonValue, GenericType<T> type) {
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override

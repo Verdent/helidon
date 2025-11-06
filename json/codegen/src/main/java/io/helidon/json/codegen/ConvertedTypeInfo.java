@@ -104,8 +104,6 @@ record ConvertedTypeInfo(TypeName converterType,
             obtainTypeNameFromAnnotation(field, Types.JSON_DESERIALIZER).ifPresent(builder::deserializer);
             field.findAnnotation(Types.JSON_IGNORE).ifPresent(annotation -> builder.propertyIgnored(true));
             obtainBooleanFromAnnotation(field, Types.JSON_NULLABLE).ifPresent(builder::nullable);
-            processFormat(field, Types.JSON_DATE_FORMAT).ifPresent(builder::dateFormat);
-            processFormat(field, Types.JSON_NUMBER_FORMAT).ifPresent(builder::numberFormat);
             properties.put(fieldName, builder);
         }
     }
@@ -147,8 +145,6 @@ record ConvertedTypeInfo(TypeName converterType,
                         .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::getterIgnored);
                 obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE).ifPresent(property::nullable);
-                processFormat(method, Types.JSON_DATE_FORMAT).ifPresent(property::dateFormat);
-                processFormat(method, Types.JSON_NUMBER_FORMAT).ifPresent(property::numberFormat);
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle)) {
                 String prefix = detectedAccessorStyle.equals("RECORD") ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName);
@@ -159,8 +155,6 @@ record ConvertedTypeInfo(TypeName converterType,
                         .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
                         .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::setterIgnored);
-                processFormat(method, Types.JSON_DATE_FORMAT).ifPresent(property::dateFormat);
-                processFormat(method, Types.JSON_NUMBER_FORMAT).ifPresent(property::numberFormat);
             }
             //Not valid getter or setter
         }

@@ -79,24 +79,4 @@ public final class Json {
 
     }
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
-    public @interface DateFormat {
-
-        String value() default "@default";
-
-        String locale() default "@default";
-
-    }
-
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
-    public @interface NumberFormat {
-
-        String value() default "@default";
-
-        String locale() default "@default";
-
-    }
-
 }

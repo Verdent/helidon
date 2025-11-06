@@ -8,26 +8,14 @@ public interface JsonBindingConfigurator {
 
     <T> JsonDeserializer<T> getDeserializer(Type type);
 
-    <T> JsonDeserializer<T> getDeserializer(Type type, JsonContext jsonContext);
-
     <T> JsonDeserializer<T> getDeserializer(Class<T> type);
-
-    <T> JsonDeserializer<T> getDeserializer(Class<T> type, JsonContext jsonContext);
 
     <T> JsonDeserializer<T> getDeserializer(GenericType<T> type);
 
-    <T> JsonDeserializer<T> getDeserializer(GenericType<T> type, JsonContext jsonContext);
-
     <T> JsonSerializer<T> getSerializer(Type type);
-
-    <T> JsonSerializer<T> getSerializer(Type type, JsonContext jsonContext);
 
     <T> JsonSerializer<T> getSerializer(Class<T> type);
 
-    <T> JsonSerializer<T> getSerializer(Class<T> type, JsonContext jsonContext);
-
     <T> JsonSerializer<T> getSerializer(GenericType<T> type);
-
-    <T> JsonSerializer<T> getSerializer(GenericType<T> type, JsonContext jsonContext);
 
 }

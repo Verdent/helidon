@@ -35,8 +35,6 @@ final class Types {
     static final TypeName JSON_CREATOR = TypeName.create("io.helidon.json.binding.Json.Creator");
     static final TypeName JSON_NULLABLE = TypeName.create("io.helidon.json.binding.Json.Nullable");
     static final TypeName JSON_PROPERTY_ORDER = TypeName.create("io.helidon.json.binding.Json.PropertyOrder");
-    static final TypeName JSON_DATE_FORMAT = TypeName.create("io.helidon.json.binding.Json.DateFormat");
-    static final TypeName JSON_NUMBER_FORMAT = TypeName.create("io.helidon.json.binding.Json.NumberFormat");
 
     //Types
     static final TypeName JSON_DESERIALIZER_TYPE = TypeName.create("io.helidon.json.binding.JsonDeserializer");

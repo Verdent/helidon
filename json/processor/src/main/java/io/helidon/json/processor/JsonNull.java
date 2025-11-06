@@ -1,6 +1,6 @@
 package io.helidon.json.processor;
 
-public class JsonNull implements JsonValue {
+public final class JsonNull implements JsonValue {
 
     private static final JsonNull INSTANCE = new JsonNull();
 

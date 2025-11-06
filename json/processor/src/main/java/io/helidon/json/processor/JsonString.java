@@ -10,8 +10,17 @@ public final class JsonString implements JsonValue {
         this.buffer = buffer;
         this.start = start;
     }
+    private JsonString(String value) {
+        this.buffer = JsonValues.EMPTY_BYTES;
+        this.start = -1;
+        this.resolvedValue = value;
+    }
 
-    public static JsonString create(byte[] buffer, int start) {
+    public static JsonString create(String value) {
+        return new JsonString(value);
+    }
+
+    static JsonString create(byte[] buffer, int start) {
         return new JsonString(buffer, start);
     }
 

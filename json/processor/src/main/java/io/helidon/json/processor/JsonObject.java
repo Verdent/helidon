@@ -2,8 +2,10 @@ package io.helidon.json.processor;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -13,11 +15,30 @@ import java.util.stream.Collectors;
  */
 public final class JsonObject implements JsonValue {
 
-    private final List<Pair> pairs;
-    private Map<String, JsonValue> content;
+    static final JsonObject EMPTY_OBJECT = JsonObject.create(List.of());
 
-    JsonObject(List<Pair> pairs) {
+    private final List<Pair> pairs;
+    private LinkedHashMap<String, JsonValue> content;
+
+    private JsonObject(List<Pair> pairs) {
         this.pairs = pairs;
+    }
+
+    private JsonObject(LinkedHashMap<String, JsonValue> content) {
+        this.content = content;
+        this.pairs = List.of();
+    }
+
+    public static JsonObject.Builder builder() {
+        return new Builder();
+    }
+
+    public static JsonObject create(Map<String, JsonValue> content) {
+        return new JsonObject(new LinkedHashMap<>(content));
+    }
+
+    static JsonObject create(List<Pair> pairs) {
+        return new JsonObject(pairs);
     }
 
     public boolean containsKey(String key) {
@@ -27,7 +48,7 @@ public final class JsonObject implements JsonValue {
 
     private void ensureResolvedKeys() {
         if (content == null) {
-            this.content = new HashMap<>(pairs.size());
+            this.content = new LinkedHashMap<>(pairs.size());
             CachedParser cachedParser = JsonParserCache.getCachedParser();
             ReusableJsonParser parser = cachedParser.get();
             for (Pair pair : pairs) {
@@ -44,28 +65,6 @@ public final class JsonObject implements JsonValue {
             return defaultValue;
         }
         return jsonValue;
-    }
-
-    public JsonValue value(int index, JsonValue defaultValue) {
-        if (index < 0 || index >= pairs.size()) {
-            return defaultValue;
-        }
-        Pair pair = pairs.get(index);
-        if (pair == null) {
-            return defaultValue;
-        }
-        return pair.value;
-    }
-
-    public Optional<JsonValue> value(int index) {
-        if (index < 0 || index >= pairs.size()) {
-            return Optional.empty();
-        }
-        Pair pair = pairs.get(index);
-        if (pair == null) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(pair.value);
     }
 
     public Optional<Boolean> booleanValue(String key) {
@@ -189,6 +188,134 @@ public final class JsonObject implements JsonValue {
         return JsonValueType.OBJECT;
     }
 
-    public record Pair(JsonString key, JsonValue value) {
+    record Pair(JsonString key, JsonValue value) {
+    }
+
+    public static final class Builder implements io.helidon.common.Builder<Builder, JsonObject> {
+        private final Map<String, JsonValue> values = new LinkedHashMap<>();
+
+        private Builder() {
+        }
+
+        @Override
+        public JsonObject build() {
+            return new JsonObject(new LinkedHashMap<>(values));
+        }
+        
+        public Builder unset(String key) {
+            Objects.requireNonNull(key, "key cannot be null");
+            values.remove(key);
+            return this;
+        }
+        
+        public Builder setNull(String key) {
+            values.put(key, JsonNull.instance());
+            return this;
+        }
+
+        public Builder set(String key, JsonValue value) {
+            values.put(key, value);
+            return this;
+        }
+        
+        public Builder set(String key, String value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonString.create(value));
+            return this;
+        }
+        
+        public Builder set(String key, boolean value) {
+            Objects.requireNonNull(key, "key cannot be null");
+
+            values.put(key, JsonBoolean.create(value));
+            return this;
+        }
+
+        public Builder set(String key, float value) {
+            Objects.requireNonNull(key, "key cannot be null");
+
+            return set(key, new BigDecimal(String.valueOf(value)));
+        }
+
+        public Builder set(String key, double value) {
+            Objects.requireNonNull(key, "key cannot be null");
+
+            return set(key, new BigDecimal(String.valueOf(value)));
+        }
+        
+        public Builder set(String key, int value) {
+            Objects.requireNonNull(key, "key cannot be null");
+
+            values.put(key, JsonNumber.create(new BigDecimal(value)));
+            return this;
+        }
+
+        public Builder set(String key, long value) {
+            Objects.requireNonNull(key, "key cannot be null");
+
+            values.put(key, JsonNumber.create(new BigDecimal(value)));
+            return this;
+        }
+
+        public Builder set(String key, BigDecimal value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonNumber.create(value));
+            return this;
+        }
+
+        public Builder setValues(String key, List<JsonValue> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonArray.create(value));
+            return this;
+        }
+
+        public Builder setStrings(String key, List<String> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonArray.createStrings(value));
+            return this;
+        }
+
+        public Builder setLongs(String key, List<Long> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonArray.createNumbers(value.stream()
+                                                             .map(BigDecimal::new)
+                                                             .toList()));
+            return this;
+        }
+
+        public Builder setDoubles(String key, List<Double> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+            values.put(key, JsonArray.createNumbers(value.stream()
+                                                             .map(BigDecimal::new)
+                                                             .toList()));
+            return this;
+        }
+
+        public Builder setNumbers(String key, List<BigDecimal> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonArray.createNumbers(value));
+            return this;
+        }
+
+        public Builder setBooleans(String key, List<Boolean> value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
+            values.put(key, JsonArray.createBooleans(value));
+            return this;
+        }
     }
 }

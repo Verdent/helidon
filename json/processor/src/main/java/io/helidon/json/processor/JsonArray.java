@@ -1,17 +1,45 @@
 package io.helidon.json.processor;
 
-public class JsonArray implements JsonValue {
+import java.math.BigDecimal;
+import java.util.List;
 
-    private final byte[] buffer;
-    private final int start;
+public final class JsonArray implements JsonValue {
 
-    public JsonArray(byte[] buffer, int start) {
-        this.buffer = buffer;
-        this.start = start;
+    static final JsonArray EMPTY_ARRAY = JsonArray.create(List.of());
+
+    private final List<? extends JsonValue> jsonValues;
+
+    private JsonArray(List<? extends JsonValue> jsonValues) {
+        this.jsonValues = jsonValues;
     }
 
-    public static JsonArray create(byte[] buffer, int start) {
-        return new JsonArray(buffer, start);
+    public static JsonArray create(List<JsonValue> jsonValues) {
+        return new JsonArray(jsonValues);
+    }
+
+    public static JsonValue createStrings(List<String> values) {
+        List<JsonString> jsonValues = values.stream()
+                .map(JsonString::create)
+                .toList();
+        return new JsonArray(jsonValues);
+    }
+
+    public static JsonValue createNumbers(List<BigDecimal> values) {
+        List<JsonNumber> jsonValues = values.stream()
+                .map(JsonNumber::create)
+                .toList();
+        return new JsonArray(jsonValues);
+    }
+
+    public static JsonValue createBooleans(List<Boolean> values) {
+        List<JsonBoolean> jsonValues = values.stream()
+                .map(JsonBoolean::create)
+                .toList();
+        return new JsonArray(jsonValues);
+    }
+
+    public List<JsonValue> values() {
+        return List.copyOf(jsonValues);
     }
 
     @Override

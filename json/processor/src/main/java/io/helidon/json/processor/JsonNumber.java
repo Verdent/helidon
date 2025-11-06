@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 /**
  * TODO javadoc
  */
-public class JsonNumber implements JsonValue {
+public final class JsonNumber implements JsonValue {
 
     private final byte[] buffer;
     private final int start;
@@ -18,7 +18,19 @@ public class JsonNumber implements JsonValue {
         this.start = start;
     }
 
-    public static JsonNumber create(byte[] buffer, int start) {
+    private JsonNumber(BigDecimal bigDecimalValue) {
+        this.buffer = JsonValues.EMPTY_BYTES;
+        this.start = -1;
+        this.bigDecimalValue = bigDecimalValue;
+        this.intValue = bigDecimalValue.intValue();
+        this.doubleValue = bigDecimalValue.doubleValue();
+    }
+
+    public static JsonNumber create(BigDecimal bigDecimalValue) {
+        return new JsonNumber(bigDecimalValue);
+    }
+
+    static JsonNumber create(byte[] buffer, int start) {
         return new JsonNumber(buffer, start);
     }
 

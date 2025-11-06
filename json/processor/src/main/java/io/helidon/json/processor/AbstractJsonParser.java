@@ -18,7 +18,6 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     static final int[] WHOLE_NUMBER_PARTS = new int[127];
     static final float[] DECIMAL_NUMBER_PARTS = new float[127];
-    static final JsonObject EMPTY_OBJECT = new JsonObject(List.of());
 
     static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
@@ -241,7 +240,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     private JsonObject readJsonObject() {
         byte b = nextToken();
         if (b == '}') {
-            return EMPTY_OBJECT;
+            return JsonObject.EMPTY_OBJECT;
         }
         List<JsonObject.Pair> pairs = new ArrayList<>();
         while (hasNext()) {
@@ -294,7 +293,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             }
             b = nextToken();
             if (b == '}') {
-                return new JsonObject(pairs);
+                return JsonObject.create(pairs);
             } else if (b != ',') {
                 throw new JsonException("Comma or } expected at index: " + realIndex() + ", but was: " + (char) b);
             }
@@ -304,9 +303,57 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private JsonArray readJsonArray() {
-        int start = currentIndex;
-        skipArray();
-        return JsonArray.create(buffer, start);
+        byte b = nextToken();
+        if (b == ']') {
+            return JsonArray.EMPTY_ARRAY;
+        }
+        List<JsonValue> values = new ArrayList<>();
+        while (hasNext()) {
+            switch (b) {
+            case '"':
+                values.add(readJsonString());
+                break;
+            case '{':
+                values.add(readJsonObject());
+                break;
+            case '[':
+                values.add(readJsonArray());
+                break;
+            case '-':
+            case '.':
+            case '+':
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                values.add(readJsonNumber());
+                break;
+            case 'n':
+                checkNull();
+                values.add(JsonNull.instance());
+                break;
+            case 't':
+            case 'f':
+                values.add(JsonBoolean.create(readAsBoolean()));
+                break;
+            default:
+                throw new JsonException("Invalid array value token at index: " + realIndex());
+            }
+            b = nextToken();
+            if (b == ']') {
+                return JsonArray.create(values);
+            } else if (b != ',') {
+                throw new JsonException("Comma or ] expected at index: " + realIndex() + ", but was: " + (char) b);
+            }
+            b = nextToken();
+        }
+        throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
     }
 
     private JsonString readJsonString() {

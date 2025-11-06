@@ -58,4 +58,9 @@ public final class JsonString implements JsonValue {
     public JsonValueType type() {
         return JsonValueType.STRING;
     }
+
+    @Override
+    public void toJson(Generator generator) {
+        generator.writeQuoted(value());
+    }
 }

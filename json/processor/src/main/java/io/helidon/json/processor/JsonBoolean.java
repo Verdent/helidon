@@ -1,6 +1,6 @@
 package io.helidon.json.processor;
 
-public class JsonBoolean implements JsonValue {
+public final class JsonBoolean implements JsonValue {
 
     private final boolean value;
 
@@ -19,6 +19,11 @@ public class JsonBoolean implements JsonValue {
     @Override
     public JsonValueType type() {
         return JsonValueType.BOOLEAN;
+    }
+
+    @Override
+    public void toJson(Generator generator) {
+        generator.writeValue(value);
     }
 
 }

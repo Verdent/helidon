@@ -237,7 +237,11 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         }
     }
 
-    private JsonObject readJsonObject() {
+    @Override
+    public JsonObject readJsonObject() {
+        if (lastByte() != '{') {
+            throw new JsonException("Object start expected at index: " + realIndex() + ", but was: " + (char) lastByte());
+        }
         byte b = nextToken();
         if (b == '}') {
             return JsonObject.EMPTY_OBJECT;
@@ -302,7 +306,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
     }
 
-    private JsonArray readJsonArray() {
+    @Override
+    public JsonArray readJsonArray() {
         byte b = nextToken();
         if (b == ']') {
             return JsonArray.EMPTY_ARRAY;
@@ -356,13 +361,15 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
     }
 
-    private JsonString readJsonString() {
+    @Override
+    public JsonString readJsonString() {
         int start = currentIndex;
         skipStringValue();
         return JsonString.create(buffer, start);
     }
 
-    private JsonNumber readJsonNumber() {
+    @Override
+    public JsonNumber readJsonNumber() {
         int start = currentIndex;
         skipNumber();
         return JsonNumber.create(buffer, start);

@@ -3,9 +3,11 @@ package io.helidon.json.processor;
 /**
  * TODO javadoc
  */
-public interface JsonValue {
+public sealed interface JsonValue permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString {
 
     JsonValueType type();
+
+    void toJson(Generator generator);
 
     default JsonString asString() {
         if (type() == JsonValueType.STRING) {

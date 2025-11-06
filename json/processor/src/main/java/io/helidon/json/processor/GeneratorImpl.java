@@ -69,6 +69,13 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
+    public void write(String key, JsonObject value) {
+        writeQuoted(key);
+        writeColon();
+        writeValue(value);
+    }
+
+    @Override
     public void writeValue(String value) {
         write(value);
     }
@@ -107,6 +114,11 @@ class GeneratorImpl implements Generator {
             osBuffer[index++] = 's';
             osBuffer[index++] = 'e';
         }
+    }
+
+    @Override
+    public void writeValue(JsonValue value) {
+        value.toJson(this);
     }
 
     @Override

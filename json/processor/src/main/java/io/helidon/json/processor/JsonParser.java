@@ -1,7 +1,6 @@
 package io.helidon.json.processor;
 
 import java.io.InputStream;
-import java.io.Reader;
 
 /**
  * TODO javadoc
@@ -29,26 +28,47 @@ public interface JsonParser {
     }
 
     boolean hasNext();
+
     byte readNextByte();
+
     byte nextToken();
+
     byte lastByte();
 
     JsonValue readJsonValue();
+
+    JsonObject readJsonObject();
+
+    JsonArray readJsonArray();
+
+    JsonString readJsonString();
+
+    JsonNumber readJsonNumber();
 
     String readString();
 
     int readStringAsHash();
 
     char[] readNumberAsArray();
+
     boolean readAsBoolean();
+
     byte readAsByte();
+
     short readAsShort();
+
     int readAsInt();
+
     long readAsLong();
+
     float readAsFloat();
+
     double readAsDouble();
+
     boolean checkNull();
+
     void skip();
+
     void byteRollback();
 
     /**
@@ -57,6 +77,6 @@ public interface JsonParser {
      *
      * @return next byte
      */
-//    byte peek();
+    //    byte peek();
 
 }

@@ -71,4 +71,14 @@ public final class JsonNumber implements JsonValue {
     public JsonValueType type() {
         return JsonValueType.NUMBER;
     }
+
+    @Override
+    public void toJson(Generator generator) {
+        BigDecimal bigDecimal = bigDecimalValue();
+        if (bigDecimal.stripTrailingZeros().scale() <= 0) {
+            generator.writeValue(bigDecimal.longValue());
+        } else {
+            generator.writeValue(bigDecimal.doubleValue());
+        }
+    }
 }

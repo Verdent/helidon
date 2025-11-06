@@ -188,6 +188,23 @@ public final class JsonObject implements JsonValue {
         return JsonValueType.OBJECT;
     }
 
+    @Override
+    public void toJson(Generator generator) {
+        ensureResolvedKeys();
+        generator.writeObjectStart();
+        boolean first = true;
+        for (Map.Entry<String, JsonValue> entry : content.entrySet()) {
+            if (first) {
+                first = false;
+            } else {
+                generator.writeComma();
+            }
+            generator.writeKey(entry.getKey());
+            entry.getValue().toJson(generator);
+        }
+        generator.writeObjectEnd();
+    }
+
     record Pair(JsonString key, JsonValue value) {
     }
 

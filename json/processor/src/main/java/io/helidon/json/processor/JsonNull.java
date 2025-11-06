@@ -16,4 +16,9 @@ public final class JsonNull implements JsonValue {
         return JsonValueType.NULL;
     }
 
+    @Override
+    public void toJson(Generator generator) {
+        generator.writeNull();
+    }
+
 }

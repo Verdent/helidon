@@ -46,4 +46,19 @@ public final class JsonArray implements JsonValue {
     public JsonValueType type() {
         return JsonValueType.ARRAY;
     }
+
+    @Override
+    public void toJson(Generator generator) {
+        generator.writeArrayStart();
+        boolean first = true;
+        for (JsonValue jsonValue : jsonValues) {
+            if (first) {
+                first = false;
+            }  else {
+                generator.writeComma();
+            }
+            jsonValue.toJson(generator);
+        }
+        generator.writeArrayEnd();
+    }
 }

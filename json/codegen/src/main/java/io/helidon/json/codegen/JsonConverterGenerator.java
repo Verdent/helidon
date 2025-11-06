@@ -149,11 +149,7 @@ class JsonConverterGenerator {
     private static void buildSimpleGenericTypeWithObject(Method.Builder method, TypeName typeName) {
         if (typeName.typeArguments().isEmpty()) {
             //We have no more generics available
-            if (needsResolving(typeName)) {
-                method.addContent(Object.class);
-            } else {
-                method.addContent(typeName);
-            }
+            method.addContent(typeName);
         } else {
             boolean first = true;
             method.addContent(typeName.genericTypeName()).addContent("<");
@@ -198,7 +194,7 @@ class JsonConverterGenerator {
             String variableName = "genericType" + counter.count++;
             method.addContent("var " + variableName + " = ")
                     .addContent(TypeNames.GENERIC_TYPE)
-                    .addContent(".<").addContent(TypeNames.OBJECT).addContentLine(">builder()")
+                    .addContent(".<").addContent(typeName).addContentLine(">builder()")
                     .increaseContentPadding()
                     .increaseContentPadding()
                     .addContent(".baseType(").addContent(typeName.genericTypeName()).addContentLine(".class)");

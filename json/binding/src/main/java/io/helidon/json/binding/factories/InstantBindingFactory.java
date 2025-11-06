@@ -1,10 +1,10 @@
 package io.helidon.json.binding.factories;
 
-import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurator;
@@ -28,12 +28,22 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
     }
 
     @Override
-    public JsonDeserializer<Instant> createDeserializer(Type type) {
+    public JsonDeserializer<Instant> createDeserializer(Class<? extends Instant> type) {
         return new InstantConverter();
     }
 
     @Override
-    public JsonSerializer<Instant> createSerializer(Type type) {
+    public JsonDeserializer<Instant> createDeserializer(GenericType<? extends Instant> type) {
+        return new InstantConverter();
+    }
+
+    @Override
+    public JsonSerializer<Instant> createSerializer(Class<? extends Instant> type) {
+        return new InstantConverter();
+    }
+
+    @Override
+    public JsonSerializer<Instant> createSerializer(GenericType<? extends Instant> type) {
         return new InstantConverter();
     }
 
@@ -66,19 +76,19 @@ class InstantBindingFactory implements TypedJsonBindingFactory<Instant> {
 
         @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-//            Optional<Formatter> dateFormatter = jsonContext.dateFormat();
-//            this.useFormatter = dateFormatter.isPresent();
-//            this.formatter = dateFormatter.map(this::createFormatter).orElse(DEFAULT_FORMATTER);
+            //            Optional<Formatter> dateFormatter = jsonContext.dateFormat();
+            //            this.useFormatter = dateFormatter.isPresent();
+            //            this.formatter = dateFormatter.map(this::createFormatter).orElse(DEFAULT_FORMATTER);
             this.useFormatter = false;
             this.formatter = DEFAULT_FORMATTER;
         }
 
-//        private DateTimeFormatter createFormatter(Formatter format) {
-//            DateTimeFormatter toReturn = format.format()
-//                    .map(DateTimeFormatter::ofPattern)
-//                    .orElse(DEFAULT_FORMATTER);
-//            format.locale().ifPresent(locale -> toReturn.withLocale(Locale.of(locale)));
-//            return toReturn;
-//        }
+        //        private DateTimeFormatter createFormatter(Formatter format) {
+        //            DateTimeFormatter toReturn = format.format()
+        //                    .map(DateTimeFormatter::ofPattern)
+        //                    .orElse(DEFAULT_FORMATTER);
+        //            format.locale().ifPresent(locale -> toReturn.withLocale(Locale.of(locale)));
+        //            return toReturn;
+        //        }
     }
 }

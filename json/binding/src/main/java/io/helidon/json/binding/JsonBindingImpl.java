@@ -291,13 +291,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> JsonDeserializer<T> getDeserializer(GenericType<?> type) {
+    public <T> JsonDeserializer<T> getDeserializer(GenericType<T> type) {
         return getDeserializer(type, EMPTY_CONTEXT);
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(GenericType<?> type, JsonContext jsonContext) {
+    public <T> JsonDeserializer<T> getDeserializer(GenericType<T> type, JsonContext jsonContext) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialDeserializers.get(type);
         if (deserializer != null) {
             return deserializer;
@@ -324,7 +324,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type.type());
+            JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
             runtimeDeserializers.putIfAbsent(type, factoryDeserializer);
             runtimeDeserializers.putIfAbsent(type.type(), factoryDeserializer);
             factoryDeserializer.configure(this);
@@ -402,13 +402,13 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> JsonSerializer<T> getSerializer(GenericType<?> type) {
+    public <T> JsonSerializer<T> getSerializer(GenericType<T> type) {
         return getSerializer(type, EMPTY_CONTEXT);
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(GenericType<?> type, JsonContext jsonContext) {
+    public <T> JsonSerializer<T> getSerializer(GenericType<T> type, JsonContext jsonContext) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) initialSerializers.get(type);
         if (serializer != null) {
             return serializer;
@@ -435,7 +435,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                                                             + type + " is not registered.");
                 }
             }
-            JsonSerializer<T> factorySerializer = factory.createSerializer(type.type());
+            JsonSerializer<T> factorySerializer = factory.createSerializer(type);
             runtimeSerializers.putIfAbsent(type, factorySerializer);
             runtimeSerializers.putIfAbsent(type.type(), factorySerializer);
             factorySerializer.configure(this);

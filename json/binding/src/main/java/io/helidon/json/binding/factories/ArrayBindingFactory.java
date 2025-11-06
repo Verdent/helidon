@@ -4,6 +4,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.util.Set;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
@@ -22,13 +23,23 @@ import io.helidon.service.registry.Service;
 class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
 
     @Override
-    public JsonDeserializer<Object[]> createDeserializer(Type type) {
+    public JsonDeserializer<Object[]> createDeserializer(Class<? extends Object[]> type) {
         return new ArrayConverter(type);
     }
 
     @Override
-    public JsonSerializer<Object[]> createSerializer(Type type) {
+    public JsonDeserializer<Object[]> createDeserializer(GenericType<? extends Object[]> type) {
+        return new ArrayConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<Object[]> createSerializer(Class<? extends Object[]> type) {
         return new ArrayConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<Object[]> createSerializer(GenericType<? extends Object[]> type) {
+        return new ArrayConverter(type.type());
     }
 
     @Override

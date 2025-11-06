@@ -24,13 +24,23 @@ import io.helidon.service.registry.Service;
 class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
 
     @Override
-    public JsonDeserializer<Set<?>> createDeserializer(Type type) {
+    public JsonDeserializer<Set<?>> createDeserializer(Class<? extends Set<?>> type) {
         return new SetConverter(type);
     }
 
     @Override
-    public JsonSerializer<Set<?>> createSerializer(Type type) {
+    public JsonDeserializer<Set<?>> createDeserializer(GenericType<? extends Set<?>> type) {
+        return new SetConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<Set<?>> createSerializer(Class<? extends Set<?>> type) {
         return new SetConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<Set<?>> createSerializer(GenericType<? extends Set<?>> type) {
+        return new SetConverter(type.type());
     }
 
     @Override

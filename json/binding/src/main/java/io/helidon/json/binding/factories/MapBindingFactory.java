@@ -30,12 +30,22 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
     }
 
     @Override
-    public JsonDeserializer<Map<?, ?>> createDeserializer(Type type) {
+    public JsonDeserializer<Map<?, ?>> createDeserializer(Class<? extends Map<?, ?>> type) {
         return new MapConverter(type);
     }
 
     @Override
-    public JsonSerializer<Map<?, ?>> createSerializer(Type type) {
+    public JsonDeserializer<Map<?, ?>> createDeserializer(GenericType<? extends Map<?, ?>> type) {
+        return new MapConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<Map<?, ?>> createSerializer(GenericType<? extends Map<?, ?>> type) {
+        return new MapConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<Map<?, ?>> createSerializer(Class<? extends Map<?, ?>> type) {
         return new MapConverter(type);
     }
 
@@ -134,6 +144,5 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
             valueSerializer = jsonBindingConfigurator.getSerializer(valueType);
         }
     }
-
 
 }

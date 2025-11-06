@@ -5,6 +5,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonDeserializer;
@@ -16,13 +17,23 @@ import io.helidon.service.registry.Service;
 class LinkedListBindingFactory extends ListBindingFactory {
 
     @Override
-    public JsonDeserializer<List<?>> createDeserializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(Class<? extends List<?>> type) {
         return new LinkedListConverter(type);
     }
 
     @Override
-    public JsonSerializer<List<?>> createSerializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(GenericType<? extends List<?>> type) {
+        return new LinkedListConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<List<?>> createSerializer(Class<? extends List<?>> type) {
         return new LinkedListConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<List<?>> createSerializer(GenericType<? extends List<?>> type) {
+        return new LinkedListConverter(type.type());
     }
 
     @Override

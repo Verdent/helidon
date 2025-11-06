@@ -24,13 +24,23 @@ import io.helidon.service.registry.Service;
 class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
     @Override
-    public JsonDeserializer<List<?>> createDeserializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(Class<? extends List<?>> type) {
         return new ListConverter(type);
     }
 
     @Override
-    public JsonSerializer<List<?>> createSerializer(Type type) {
+    public JsonDeserializer<List<?>> createDeserializer(GenericType<? extends List<?>> type) {
+        return new ListConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<List<?>> createSerializer(Class<? extends List<?>> type) {
         return new ListConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<List<?>> createSerializer(GenericType<? extends List<?>> type) {
+        return new ListConverter(type.type());
     }
 
     @Override

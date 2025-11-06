@@ -1,10 +1,12 @@
 package io.helidon.json.binding;
 
-import java.lang.reflect.Type;
+import io.helidon.common.GenericType;
 
 public interface JsonBindingFactory<T> {
 
-    JsonDeserializer<T> createDeserializer(Type type);
-    JsonSerializer<T> createSerializer(Type type);
+    JsonDeserializer<T> createDeserializer(Class<? extends T> type);
+    JsonDeserializer<T> createDeserializer(GenericType<? extends T> type);
+    JsonSerializer<T> createSerializer(Class<? extends T> type);
+    JsonSerializer<T> createSerializer(GenericType<? extends T> type);
 
 }

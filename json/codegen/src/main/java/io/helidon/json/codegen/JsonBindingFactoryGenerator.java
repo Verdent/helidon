@@ -6,6 +6,7 @@ import io.helidon.codegen.classmodel.ClassBase;
 import io.helidon.codegen.classmodel.InnerClass;
 import io.helidon.codegen.classmodel.Method;
 import io.helidon.codegen.classmodel.TypeArgument;
+import io.helidon.common.GenericType;
 import io.helidon.common.Weighted;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.TypeInfo;
@@ -45,35 +46,75 @@ class JsonBindingFactoryGenerator {
                         .addContent("this.type = type;"));
         JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true, false);
         classBuilder.addInnerClass(converterClassBuilder)
-                .addMethod(method -> addCreateDeserializerMethod(method, convertedTypeInfo))
-                .addMethod(method -> addCreateSerializerMethod(method, convertedTypeInfo))
+                .addMethod(method -> addCreateDeserializerMethodClass(method, convertedTypeInfo))
+                .addMethod(method -> addCreateDeserializerMethodGenerics(method, convertedTypeInfo))
+                .addMethod(method -> addCreateSerializerMethodClass(method, convertedTypeInfo))
+                .addMethod(method -> addCreateSerializerMethodGenerics(method, convertedTypeInfo))
                 .addMethod(method -> addTypeMethod(method, convertedTypeInfo));
     }
 
-    private static void addCreateDeserializerMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+    private static void addCreateDeserializerMethodClass(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+        TypeName classType = TypeName.builder()
+                .type(Class.class)
+                .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.originalType()))
+                .build();
+        addCreateDeserializerMethod(method, convertedTypeInfo, classType, false);
+    }
+
+    private static void addCreateDeserializerMethodGenerics(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+        TypeName classType = TypeName.builder()
+                .from(Types.GENERIC_TYPE)
+                .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.originalType()))
+                .build();
+        addCreateDeserializerMethod(method, convertedTypeInfo, classType, true);
+    }
+
+    private static void addCreateDeserializerMethod(Method.Builder method,
+                                                    ConvertedTypeInfo convertedTypeInfo,
+                                                    TypeName parameter,
+                                                    boolean genericType) {
         method.name("createDeserializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
                                                             .from(Types.JSON_DESERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Type.class).name("type"))
+                .addParameter(builder -> builder.type(parameter).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("<>(type);");
+                .addContentLine(genericType ? "<>(type.type());" : "<>(type);");
     }
 
-    private static void addCreateSerializerMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+    private static void addCreateSerializerMethodClass(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+        TypeName classType = TypeName.builder()
+                .type(Class.class)
+                .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.originalType()))
+                .build();
+        addCreateSerializerMethod(method, convertedTypeInfo, classType, false);
+    }
+
+    private static void addCreateSerializerMethodGenerics(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
+        TypeName classType = TypeName.builder()
+                .from(Types.GENERIC_TYPE)
+                .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.originalType()))
+                .build();
+        addCreateSerializerMethod(method, convertedTypeInfo, classType, true);
+    }
+
+    private static void addCreateSerializerMethod(Method.Builder method,
+                                                  ConvertedTypeInfo convertedTypeInfo,
+                                                  TypeName parameter,
+                                                  boolean genericType) {
         method.name("createSerializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
                                                             .from(Types.JSON_SERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.originalType())
                                                             .build()))
-                .addParameter(builder -> builder.type(Type.class).name("type"))
+                .addParameter(builder -> builder.type(parameter).name("type"))
                 .addContent("return new ")
                 .addContent(convertedTypeInfo.converterType())
-                .addContentLine("<>(type);");
+                .addContentLine(genericType ? "<>(type.type());" : "<>(type);");
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {

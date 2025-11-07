@@ -4,6 +4,9 @@ import io.helidon.json.processor.Generator;
 
 public final class Serializers {
 
+    private Serializers() {
+    }
+
     public static <T> boolean serialize(Generator generator,
                                         JsonSerializer<T> serializer,
                                         T instance,

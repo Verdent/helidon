@@ -4,6 +4,9 @@ import io.helidon.json.processor.JsonParser;
 
 public final class Deserializers {
 
+    private Deserializers() {
+    }
+
     public static <T> T deserialize(JsonParser parser, JsonDeserializer<T> deserializer) {
         if (parser.checkNull()) {
             return deserializer.deserializeNull();

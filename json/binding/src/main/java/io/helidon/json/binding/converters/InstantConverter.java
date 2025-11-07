@@ -33,7 +33,7 @@ class InstantConverter implements JsonConverter<Instant> {
 
     @Override
     public void serialize(Generator generator, Instant instance, boolean writeNulls) {
-        generator.writeValue(instance.toEpochMilli());
+        generator.write(instance.toEpochMilli());
     }
 
 }

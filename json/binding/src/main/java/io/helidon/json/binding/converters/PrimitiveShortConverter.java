@@ -22,7 +22,7 @@ class PrimitiveShortConverter implements TypedJsonConverter<Short> {
 
     @Override
     public void serialize(Generator generator, Short instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

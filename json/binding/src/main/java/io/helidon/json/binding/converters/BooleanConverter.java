@@ -15,7 +15,7 @@ class BooleanConverter implements TypedJsonConverter<Boolean> {
 
     @Override
     public void serialize(Generator generator, Boolean instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

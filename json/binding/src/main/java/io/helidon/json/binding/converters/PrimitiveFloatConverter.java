@@ -22,7 +22,7 @@ class PrimitiveFloatConverter implements TypedJsonConverter<Float> {
 
     @Override
     public void serialize(Generator generator, Float instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

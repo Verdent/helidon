@@ -7,7 +7,6 @@ import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonBoolean;
 import io.helidon.json.processor.JsonParser;
-import io.helidon.json.processor.JsonBoolean;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -23,7 +22,7 @@ class JsonBooleanConverter implements TypedJsonConverter<JsonBoolean> {
 
     @Override
     public void serialize(Generator generator, JsonBoolean instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

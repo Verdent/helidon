@@ -37,71 +37,71 @@ class GeneratorImpl implements Generator {
     public void write(String key, int value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
+        write(value);
     }
 
     @Override
     public void write(String key, long value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
+        write(value);
     }
 
     @Override
     public void write(String key, float value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
+        write(value);
     }
 
     @Override
     public void write(String key, double value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
+        write(value);
     }
 
     @Override
     public void write(String key, boolean value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
+        write(value);
     }
 
     @Override
     public void write(String key, JsonObject value) {
         writeQuoted(key);
         writeColon();
-        writeValue(value);
-    }
-
-    @Override
-    public void writeValue(String value) {
         write(value);
     }
 
     @Override
-    public void writeValue(int value) {
+    public void write(String value) {
+        writeValue(value);
+    }
+
+    @Override
+    public void write(int value) {
         write(Integer.toString(value));
     }
 
     @Override
-    public void writeValue(long value) {
+    public void write(long value) {
         write(Long.toString(value));
     }
 
     @Override
-    public void writeValue(float value) {
+    public void write(float value) {
         write(Float.toString(value));
     }
 
     @Override
-    public void writeValue(double value) {
+    public void write(double value) {
         write(Double.toString(value));
     }
 
     @Override
-    public void writeValue(boolean value) {
+    public void write(boolean value) {
         if (value) {
             osBuffer[index++] = 't';
             osBuffer[index++] = 'r';
@@ -117,7 +117,7 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
-    public void writeValue(JsonValue value) {
+    public void write(JsonValue value) {
         value.toJson(this);
     }
 
@@ -162,11 +162,11 @@ class GeneratorImpl implements Generator {
     @Override
     public void writeQuoted(String value) {
         osBuffer[index++] = QUOTES;
-        write(value);
+        writeValue(value);
         osBuffer[index++] = QUOTES;
     }
 
-    private void write(String value) {
+    private void writeValue(String value) {
         byte[] bytes = value.getBytes();
         System.arraycopy(bytes, 0, osBuffer, index, bytes.length);
         index += bytes.length;

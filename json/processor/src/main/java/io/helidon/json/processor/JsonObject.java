@@ -193,7 +193,7 @@ public final class JsonObject implements JsonValue {
         ensureResolvedKeys();
         generator.writeObjectStart();
         boolean first = true;
-        for (Map.Entry<String, JsonValue> entry : content.entrySet()) {
+        for (var entry : content.entrySet()) {
             if (first) {
                 first = false;
             } else {

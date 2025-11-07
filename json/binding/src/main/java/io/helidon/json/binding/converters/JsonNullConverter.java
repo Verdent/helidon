@@ -8,7 +8,6 @@ import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonNull;
 import io.helidon.json.processor.JsonParser;
-import io.helidon.json.processor.JsonNull;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -27,7 +26,7 @@ class JsonNullConverter implements TypedJsonConverter<JsonNull> {
 
     @Override
     public void serialize(Generator generator, JsonNull instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

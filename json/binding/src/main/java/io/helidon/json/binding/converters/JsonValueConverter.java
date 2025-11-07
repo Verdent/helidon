@@ -7,7 +7,6 @@ import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.json.processor.JsonValue;
-import io.helidon.json.processor.JsonValue;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -23,7 +22,7 @@ class JsonValueConverter implements TypedJsonConverter<JsonValue> {
 
     @Override
     public void serialize(Generator generator, JsonValue instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

@@ -22,7 +22,7 @@ class JsonObjectConverter implements TypedJsonConverter<JsonObject> {
 
     @Override
     public void serialize(Generator generator, JsonObject instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

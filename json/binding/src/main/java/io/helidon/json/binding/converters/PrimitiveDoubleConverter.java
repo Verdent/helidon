@@ -22,7 +22,7 @@ class PrimitiveDoubleConverter implements TypedJsonConverter<Double> {
 
     @Override
     public void serialize(Generator generator, Double instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

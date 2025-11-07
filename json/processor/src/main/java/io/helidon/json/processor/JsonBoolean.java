@@ -23,7 +23,7 @@ public final class JsonBoolean implements JsonValue {
 
     @Override
     public void toJson(Generator generator) {
-        generator.writeValue(value);
+        generator.write(value);
     }
 
 }

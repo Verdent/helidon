@@ -36,19 +36,19 @@ public interface Generator extends AutoCloseable {
 
     void write(String key, JsonObject value);
 
-    void writeValue(String value);
+    void write(String value);
 
-    void writeValue(int value);
+    void write(int value);
 
-    void writeValue(long value);
+    void write(long value);
 
-    void writeValue(float value);
+    void write(float value);
 
-    void writeValue(double value);
+    void write(double value);
 
-    void writeValue(boolean value);
+    void write(boolean value);
 
-    void writeValue(JsonValue value);
+    void write(JsonValue value);
 
     void writeComma();
 

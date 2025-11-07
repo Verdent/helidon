@@ -76,9 +76,9 @@ public final class JsonNumber implements JsonValue {
     public void toJson(Generator generator) {
         BigDecimal bigDecimal = bigDecimalValue();
         if (bigDecimal.stripTrailingZeros().scale() <= 0) {
-            generator.writeValue(bigDecimal.longValue());
+            generator.write(bigDecimal.longValue());
         } else {
-            generator.writeValue(bigDecimal.doubleValue());
+            generator.write(bigDecimal.doubleValue());
         }
     }
 }

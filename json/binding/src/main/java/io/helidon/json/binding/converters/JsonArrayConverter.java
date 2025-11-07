@@ -22,7 +22,7 @@ class JsonArrayConverter implements TypedJsonConverter<JsonArray> {
 
     @Override
     public void serialize(Generator generator, JsonArray instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

@@ -22,7 +22,7 @@ class PrimitiveLongConverter implements TypedJsonConverter<Long> {
 
     @Override
     public void serialize(Generator generator, Long instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

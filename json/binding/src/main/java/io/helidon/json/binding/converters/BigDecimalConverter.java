@@ -7,7 +7,6 @@ import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.TypedJsonConverter;
 import io.helidon.json.processor.Generator;
-import io.helidon.json.processor.JsonNumber;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
@@ -26,7 +25,7 @@ class BigDecimalConverter implements TypedJsonConverter<BigDecimal> {
 
     @Override
     public void serialize(Generator generator, BigDecimal instance, boolean writeNulls) {
-        generator.writeValue(instance.toString());
+        generator.write(instance.toString());
     }
 
     @Override

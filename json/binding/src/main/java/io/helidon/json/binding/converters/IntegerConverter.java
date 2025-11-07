@@ -15,7 +15,7 @@ class IntegerConverter implements TypedJsonConverter<Integer> {
 
     @Override
     public void serialize(Generator generator, Integer instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

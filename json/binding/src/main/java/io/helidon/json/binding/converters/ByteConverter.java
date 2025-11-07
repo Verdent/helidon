@@ -15,7 +15,7 @@ class ByteConverter implements TypedJsonConverter<Byte> {
 
     @Override
     public void serialize(Generator generator, Byte instance, boolean writeNulls) {
-        generator.writeValue(instance);
+        generator.write(instance);
     }
 
     @Override

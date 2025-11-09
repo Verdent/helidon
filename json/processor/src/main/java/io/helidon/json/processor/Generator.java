@@ -38,6 +38,10 @@ public interface Generator extends AutoCloseable {
 
     void write(String value);
 
+    void write(byte value);
+
+    void write(short value);
+
     void write(int value);
 
     void write(long value);

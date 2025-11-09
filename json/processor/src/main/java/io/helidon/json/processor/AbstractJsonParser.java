@@ -383,19 +383,22 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public String readString() {
         if (checkNull()) {
             return null;
+        } else if (lastByte() != '\"') {
+            throw new JsonException("Start of a string expected, but found: " + (char) lastByte());
         }
         int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
         int stringBuffIndex = 0;
         byte b;
         for ( ; stringBuffIndex < firstRun; stringBuffIndex++) {
             b = this.buffer[++currentIndex];
-            if (b == '\\') {
-                //Specialized character handling is likely required
-                currentIndex--;
-                break;
-            }
             if (b == '"') {
                 return new String(stringBuffer, 0, stringBuffIndex);
+            }
+            if (b == '\\' || b < 0) {
+                //Specialized character handling is likely required
+                //Either escaped sequence or multibyte detected
+                currentIndex--;
+                break;
             }
             stringBuffer[stringBuffIndex] = (char) b;
         }
@@ -404,7 +407,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             increaseStringBuffer();
         }
 
-        while (currentIndex < this.bufferLength) {
+        while (currentIndex + 1 < this.bufferLength) {
             b = readNextByte();
             if (b == '\\') {
                 stringBuffer[stringBuffIndex++] = processEscapedSequence();

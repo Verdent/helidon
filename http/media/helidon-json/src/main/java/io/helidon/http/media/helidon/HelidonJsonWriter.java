@@ -1,18 +1,12 @@
-package io.helidon.http.media.helison;
+package io.helidon.http.media.helidon;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
-import java.io.Writer;
-import java.nio.charset.Charset;
-import java.util.Optional;
 
 import io.helidon.common.GenericType;
-import io.helidon.common.media.type.MediaTypes;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Headers;
-import io.helidon.http.HttpMediaType;
 import io.helidon.http.WritableHeaders;
 import io.helidon.http.media.EntityWriter;
 import io.helidon.json.binding.JsonBinding;

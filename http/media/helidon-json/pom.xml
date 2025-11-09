@@ -10,7 +10,7 @@
     </parent>
 
     <artifactId>helidon-http-media-helison</artifactId>
-    <name>Helidon HTTP Media Helison</name>
+    <name>Helidon HTTP Media Helidon JSON</name>
 
     <dependencies>
         <dependency>
@@ -36,6 +36,19 @@
         <dependency>
             <groupId>io.helidon.common</groupId>
             <artifactId>helidon-common-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.http</groupId>
+            <artifactId>helidon-http</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common-media-type</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.common.features</groupId>
+            <artifactId>helidon-common-features-api</artifactId>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 

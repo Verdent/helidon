@@ -1,4 +1,4 @@
-package io.helidon.http.media.helison;
+package io.helidon.http.media.helidon;
 
 import io.helidon.common.Weighted;
 import io.helidon.common.config.Config;

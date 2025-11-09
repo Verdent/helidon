@@ -1,4 +1,4 @@
-module helidon.json.binding {
+module io.helidon.json.binding {
 
     requires transitive helidon.json.parser;
     requires transitive io.helidon.service.registry;

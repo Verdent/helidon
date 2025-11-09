@@ -1,4 +1,4 @@
-package io.helidon.http.media.helison;
+package io.helidon.http.media.helidon;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;

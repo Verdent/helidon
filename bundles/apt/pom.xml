@@ -36,6 +36,7 @@
         - Helidon @Generated extension
         - Helidon Declarative
         - Helidon Data
+        - Helidon JSON
         Does not contain:
         - Helidon Copyright extension
     </description>
@@ -66,6 +67,10 @@
         <dependency>
             <groupId>io.helidon.data.codegen</groupId>
             <artifactId>helidon-data-codegen</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.json</groupId>
+            <artifactId>helidon-json-codegen</artifactId>
         </dependency>
     </dependencies>
 

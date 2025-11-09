@@ -1,4 +1,4 @@
-package io.helidon.http.media.helison;
+package io.helidon.http.media.helidon;
 
 import java.io.IOException;
 import java.io.InputStream;

@@ -5,15 +5,15 @@ import io.helidon.common.config.Config;
 import io.helidon.http.media.MediaSupport;
 import io.helidon.http.media.spi.MediaSupportProvider;
 
-public class HelisonMediaSupportProvider implements MediaSupportProvider, Weighted {
+public class HelidonJsonMediaSupportProvider implements MediaSupportProvider, Weighted {
     @Override
     public String configKey() {
-        return "helison";
+        return "helidon-json";
     }
 
     @Override
     public MediaSupport create(Config config, String name) {
-        return HelisonSupport.create(config, name);
+        return HelidonJsonSupport.create(config, name);
     }
 
     @Override

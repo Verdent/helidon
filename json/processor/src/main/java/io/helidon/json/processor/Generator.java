@@ -34,7 +34,7 @@ public interface Generator extends AutoCloseable {
 
     Generator write(String key, boolean value);
 
-    Generator write(String key, JsonObject value);
+    Generator write(String key, JsonValue value);
 
     Generator write(String value);
 
@@ -67,6 +67,4 @@ public interface Generator extends AutoCloseable {
     Generator writeObjectStart();
 
     Generator writeObjectEnd();
-
-    void writeQuoted(String value);
 }

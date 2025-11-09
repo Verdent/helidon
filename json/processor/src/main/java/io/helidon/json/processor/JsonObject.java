@@ -192,15 +192,8 @@ public final class JsonObject implements JsonValue {
     public void toJson(Generator generator) {
         ensureResolvedKeys();
         generator.writeObjectStart();
-        boolean first = true;
         for (var entry : content.entrySet()) {
-            if (first) {
-                first = false;
-            } else {
-                generator.writeComma();
-            }
-            generator.writeKey(entry.getKey());
-            entry.getValue().toJson(generator);
+            generator.write(entry.getKey(), entry.getValue());
         }
         generator.writeObjectEnd();
     }

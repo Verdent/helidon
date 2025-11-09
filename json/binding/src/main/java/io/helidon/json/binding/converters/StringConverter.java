@@ -22,7 +22,7 @@ class StringConverter implements TypedJsonConverter<String> {
 
     @Override
     public void serialize(Generator generator, String instance, boolean writeNulls) {
-        generator.writeQuoted(instance);
+        generator.write(instance);
     }
 
     @Override

@@ -61,6 +61,6 @@ public final class JsonString implements JsonValue {
 
     @Override
     public void toJson(Generator generator) {
-        generator.writeQuoted(value());
+        generator.write(value());
     }
 }

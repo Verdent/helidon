@@ -23,7 +23,7 @@ class UuidConverter implements TypedJsonConverter<UUID> {
 
     @Override
     public void serialize(Generator generator, UUID instance, boolean writeNulls) {
-        generator.writeQuoted(instance.toString());
+        generator.write(instance.toString());
     }
 
     @Override

@@ -3,7 +3,6 @@ package io.helidon.json.processor;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 class GeneratorImpl implements Generator {
 
@@ -24,10 +23,11 @@ class GeneratorImpl implements Generator {
 
     private final OutputStream outputStream;
     private final byte[] buffer = new byte[5120];
+    private final byte[] digits = new byte[20];
     // stack structure tracking: true = object, false = array
-    private boolean[] stackType = new boolean[STACK_SIZE];
-    private boolean[] stackFirst = new boolean[STACK_SIZE];
-    private byte[] digits = new byte[20];
+    private boolean[] structureType = new boolean[STACK_SIZE];
+    private boolean first = true;
+    private boolean keyWritten = false;
     private int depth = 0;
     private int index = 0;
     private boolean failed = false;
@@ -56,79 +56,124 @@ class GeneratorImpl implements Generator {
     }
 
     private void beforeValue() {
-        //        if (depth > 0) {
-        //            if (!stackFirst[depth - 1]) {
-        //                writeByte(',');
-        //            }
-        //            if (depth > 0) stackFirst[depth - 1] = false;
-        //        }
+        if (depth > 0) {
+            if (first) {
+                first = false;
+            } else {
+                ensureCapacity(1);
+                buffer[index++] = COMMA;
+            }
+        } else if (first) {
+            first = false;
+        } else {
+            throw new JsonException("Multiple values not supported as a root value.");
+        }
     }
 
     @Override
     public Generator writeKey(String key) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
+        keyWritten = true;
         return this;
     }
 
     @Override
     public Generator write(String key, String value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        writeQuoted(value);
+        writeString(value);
         return this;
     }
 
     @Override
     public Generator write(String key, int value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
-        return this;
+        return writeLong(value);
     }
 
     @Override
     public Generator write(String key, long value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
-        return this;
+        return writeLong(value);
     }
 
     @Override
     public Generator write(String key, float value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
+        writeDouble(value);
         return this;
     }
 
     @Override
     public Generator write(String key, double value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
+        writeDouble(value);
         return this;
     }
 
     @Override
     public Generator write(String key, boolean value) {
-        writeQuoted(key);
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
+        writeBoolean(value);
         return this;
     }
 
     @Override
-    public Generator write(String key, JsonObject value) {
-        writeQuoted(key);
+    public Generator write(String key, JsonValue value) {
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object.");
+        }
+        beforeValue();
+        writeString(key);
         writeColon();
-        write(value);
+        writeJsonValue(value);
         return this;
     }
 
     @Override
     public Generator write(String value) {
+        beforeValue();
+        writeString(value);
+        return this;
+    }
+
+    private void writeString(String value) {
+        ensureCapacity(1);
+        buffer[index++] = QUOTES;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c < 0x20) {
@@ -152,7 +197,8 @@ class GeneratorImpl implements Generator {
                 buffer[index++] = (byte) c;
             } else if (c < 0x80) {
                 //Character is an ASCII char. No multibyte handling required.
-                write((byte) c);
+                ensureCapacity(1);
+                buffer[index++] = (byte) c;
             } else if (c < 0x800) {
                 ensureCapacity(2);
                 buffer[index++] = (byte) (0b11000000 | (c >> 6));
@@ -172,11 +218,16 @@ class GeneratorImpl implements Generator {
                 buffer[index++] = (byte) (0b10000000 | (c & 0b00111111));
             }
         }
-        return this;
+        ensureCapacity(1);
+        buffer[index++] = QUOTES;
     }
 
     @Override
     public Generator write(byte value) {
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
         ensureCapacity(1);
         buffer[index++] = value;
         return this;
@@ -184,35 +235,32 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(short value) {
-        write((int) value);
-        return this;
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        return writeLong(value);
     }
 
     @Override
     public Generator write(int value) {
-        if (value == 0) {
-            return write(ZERO);
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        int toProcess = value;
-        int digits = 0;
-        boolean negative = value < 0;
-        if (negative) {
-            write(MINUS);
-            toProcess = -toProcess;
-        }
-        while (toProcess > 0) {
-            this.digits[digits++] = (byte) ('0' + toProcess % 10);
-            toProcess /= 10;
-        }
-        ensureCapacity(digits);
-        for (int i = --digits; i >= 0; i--) {
-            buffer[index++] = this.digits[i];
-        }
-        return this;
+        beforeValue();
+        return writeLong(value);
     }
 
     @Override
     public Generator write(long value) {
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        return writeLong(value);
+    }
+
+    private Generator writeLong(long value) {
         if (value == 0) {
             return write(ZERO);
         }
@@ -220,7 +268,8 @@ class GeneratorImpl implements Generator {
         int digits = 0;
         boolean negative = value < 0;
         if (negative) {
-            write(MINUS);
+            ensureCapacity(1);
+            buffer[index++] = MINUS;
             toProcess = -toProcess;
         }
         while (toProcess > 0) {
@@ -236,16 +285,39 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(float value) {
-        return write(Float.toString(value));
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        writeDouble(value);
+        return this;
     }
 
     @Override
     public Generator write(double value) {
-        return write(Double.toString(value));
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        writeDouble(value);
+        return this;
+    }
+
+    private void writeDouble(double value) {
+        throw new JsonException("Not implemented yet");
     }
 
     @Override
     public Generator write(boolean value) {
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        writeBoolean(value);
+        return this;
+    }
+
+    private void writeBoolean(boolean value) {
         if (value) {
             ensureCapacity(4);
             buffer[index++] = 't';
@@ -260,13 +332,20 @@ class GeneratorImpl implements Generator {
             buffer[index++] = 's';
             buffer[index++] = 'e';
         }
-        return this;
     }
 
     @Override
     public Generator write(JsonValue value) {
-        value.toJson(this);
+        if (depth > 0 && structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeValue();
+        writeJsonValue(value);
         return this;
+    }
+
+    private void writeJsonValue(JsonValue value) {
+        value.toJson(this);
     }
 
     @Override
@@ -283,6 +362,7 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator writeNull() {
+        beforeValue();
         ensureCapacity(4);
         buffer[index++] = 'n';
         buffer[index++] = 'u';
@@ -293,6 +373,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator writeArrayStart() {
+        if (!keyWritten) {
+            beforeValue();
+        }
+        pushStructureType(false);
         ensureCapacity(1);
         buffer[index++] = ARRAY_START;
         return this;
@@ -300,43 +384,53 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator writeArrayEnd() {
+        popStackType();
+        ensureCapacity(1);
         buffer[index++] = ARRAY_END;
+        first = false;
         return this;
     }
 
     @Override
     public Generator writeObjectStart() {
+        if (!keyWritten) {
+            beforeValue();
+        }
         ensureCapacity(1);
         buffer[index++] = OBJECT_START;
+        pushStructureType(true);
         return this;
     }
 
     @Override
     public Generator writeObjectEnd() {
+        popStackType();
         ensureCapacity(1);
         buffer[index++] = OBJECT_END;
+        first = false;
         return this;
-    }
-
-    @Override
-    public void writeQuoted(String value) {
-        ensureCapacity(1);
-        buffer[index++] = QUOTES;
-        write(value);
-        ensureCapacity(1);
-        buffer[index++] = QUOTES;
-    }
-
-    private void writeValue(String value) {
-        byte[] bytes = value.getBytes();
-        System.arraycopy(bytes, 0, buffer, index, bytes.length);
-        index += bytes.length;
     }
 
     @Override
     public void close() throws Exception {
         outputStream.write(buffer, 0, index);
         outputStream.flush();
+    }
+
+    private void pushStructureType(boolean isObject) {
+        if (depth >= STACK_SIZE) {
+            throw new IllegalStateException("Nesting too deep");
+        }
+        structureType[depth] = isObject;
+        first = true;
+        depth++;
+    }
+
+    private void popStackType() {
+        depth--;
+        if (depth < 0) {
+            throw new IllegalStateException("Invalid JSON structure");
+        }
     }
 
 }

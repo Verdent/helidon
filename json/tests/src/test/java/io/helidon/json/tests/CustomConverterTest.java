@@ -89,7 +89,7 @@ public class CustomConverterTest {
 
         @Override
         public void serialize(Generator generator, String instance, boolean writeNulls) {
-            generator.writeQuoted(instance + "_custom_converter");
+            generator.write(instance + "_custom_converter");
         }
     }
 

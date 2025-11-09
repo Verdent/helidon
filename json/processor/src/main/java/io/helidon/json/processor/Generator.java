@@ -20,53 +20,53 @@ public interface Generator extends AutoCloseable {
      *
      * @param key key value to write
      */
-    void writeKey(String key);
+    Generator writeKey(String key);
 
-    void write(String key, String value);
+    Generator write(String key, String value);
 
-    void write(String key, int value);
+    Generator write(String key, int value);
 
-    void write(String key, long value);
+    Generator write(String key, long value);
 
-    void write(String key, float value);
+    Generator write(String key, float value);
 
-    void write(String key, double value);
+    Generator write(String key, double value);
 
-    void write(String key, boolean value);
+    Generator write(String key, boolean value);
 
-    void write(String key, JsonObject value);
+    Generator write(String key, JsonObject value);
 
-    void write(String value);
+    Generator write(String value);
 
-    void write(byte value);
+    Generator write(byte value);
 
-    void write(short value);
+    Generator write(short value);
 
-    void write(int value);
+    Generator write(int value);
 
-    void write(long value);
+    Generator write(long value);
 
-    void write(float value);
+    Generator write(float value);
 
-    void write(double value);
+    Generator write(double value);
 
-    void write(boolean value);
+    Generator write(boolean value);
 
-    void write(JsonValue value);
+    Generator write(JsonValue value);
 
     void writeComma();
 
     void writeColon();
 
-    void writeNull();
+    Generator writeNull();
 
-    void writeArrayStart();
+    Generator writeArrayStart();
 
-    void writeArrayEnd();
+    Generator writeArrayEnd();
 
-    void writeObjectStart();
+    Generator writeObjectStart();
 
-    void writeObjectEnd();
+    Generator writeObjectEnd();
 
     void writeQuoted(String value);
 }

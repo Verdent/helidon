@@ -65,62 +65,70 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
-    public void writeKey(String key) {
+    public Generator writeKey(String key) {
         writeQuoted(key);
         writeColon();
+        return this;
     }
 
     @Override
-    public void write(String key, String value) {
+    public Generator write(String key, String value) {
         writeQuoted(key);
         writeColon();
         writeQuoted(value);
+        return this;
     }
 
     @Override
-    public void write(String key, int value) {
+    public Generator write(String key, int value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String key, long value) {
+    public Generator write(String key, long value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String key, float value) {
+    public Generator write(String key, float value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String key, double value) {
+    public Generator write(String key, double value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String key, boolean value) {
+    public Generator write(String key, boolean value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String key, JsonObject value) {
+    public Generator write(String key, JsonObject value) {
         writeQuoted(key);
         writeColon();
         write(value);
+        return this;
     }
 
     @Override
-    public void write(String value) {
+    public Generator write(String value) {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c < 0x20) {
@@ -164,24 +172,26 @@ class GeneratorImpl implements Generator {
                 buffer[index++] = (byte) (0b10000000 | (c & 0b00111111));
             }
         }
+        return this;
     }
 
     @Override
-    public void write(byte value) {
+    public Generator write(byte value) {
         ensureCapacity(1);
         buffer[index++] = value;
+        return this;
     }
 
     @Override
-    public void write(short value) {
+    public Generator write(short value) {
         write((int) value);
+        return this;
     }
 
     @Override
-    public void write(int value) {
+    public Generator write(int value) {
         if (value == 0) {
-            write(ZERO);
-            return;
+            return write(ZERO);
         }
         int toProcess = value;
         int digits = 0;
@@ -198,13 +208,13 @@ class GeneratorImpl implements Generator {
         for (int i = --digits; i >= 0; i--) {
             buffer[index++] = this.digits[i];
         }
+        return this;
     }
 
     @Override
-    public void write(long value) {
+    public Generator write(long value) {
         if (value == 0) {
-            write(ZERO);
-            return;
+            return write(ZERO);
         }
         long toProcess = value;
         int digits = 0;
@@ -221,37 +231,42 @@ class GeneratorImpl implements Generator {
         for (int i = --digits; i >= 0; i--) {
             buffer[index++] = this.digits[i];
         }
+        return this;
     }
 
     @Override
-    public void write(float value) {
-        write(Float.toString(value));
+    public Generator write(float value) {
+        return write(Float.toString(value));
     }
 
     @Override
-    public void write(double value) {
-        write(Double.toString(value));
+    public Generator write(double value) {
+        return write(Double.toString(value));
     }
 
     @Override
-    public void write(boolean value) {
+    public Generator write(boolean value) {
         if (value) {
+            ensureCapacity(4);
             buffer[index++] = 't';
             buffer[index++] = 'r';
             buffer[index++] = 'u';
             buffer[index++] = 'e';
         } else {
+            ensureCapacity(5);
             buffer[index++] = 'f';
             buffer[index++] = 'a';
             buffer[index++] = 'l';
             buffer[index++] = 's';
             buffer[index++] = 'e';
         }
+        return this;
     }
 
     @Override
-    public void write(JsonValue value) {
+    public Generator write(JsonValue value) {
         value.toJson(this);
+        return this;
     }
 
     @Override
@@ -267,35 +282,40 @@ class GeneratorImpl implements Generator {
     }
 
     @Override
-    public void writeNull() {
+    public Generator writeNull() {
         ensureCapacity(4);
         buffer[index++] = 'n';
         buffer[index++] = 'u';
         buffer[index++] = 'l';
         buffer[index++] = 'l';
+        return this;
     }
 
     @Override
-    public void writeArrayStart() {
+    public Generator writeArrayStart() {
         ensureCapacity(1);
         buffer[index++] = ARRAY_START;
+        return this;
     }
 
     @Override
-    public void writeArrayEnd() {
+    public Generator writeArrayEnd() {
         buffer[index++] = ARRAY_END;
+        return this;
     }
 
     @Override
-    public void writeObjectStart() {
+    public Generator writeObjectStart() {
         ensureCapacity(1);
         buffer[index++] = OBJECT_START;
+        return this;
     }
 
     @Override
-    public void writeObjectEnd() {
+    public Generator writeObjectEnd() {
         ensureCapacity(1);
         buffer[index++] = OBJECT_END;
+        return this;
     }
 
     @Override

@@ -26,13 +26,7 @@ class DoubleArrayConverter implements TypedJsonConverter<double[]> {
     @Override
     public void serialize(Generator generator, double[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (double value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

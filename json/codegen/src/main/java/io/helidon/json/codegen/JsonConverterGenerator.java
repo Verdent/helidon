@@ -257,14 +257,7 @@ class JsonConverterGenerator {
                 .toList();
 
         Set<String> createdSerializers = new HashSet<>();
-        boolean first = true;
         for (JsonProperty jsonProperty : jsonProperties) {
-            if (first) {
-                method.addContentLine("boolean isFirst = true;");
-                first = false;
-            }
-            method.addContent("isFirst = ");
-
             String fieldName = jsonProperty.serializer()
                     .map(serializer -> {
                         String constantName = constantName(jsonProperty.serializationName().orElseThrow()) + "_SERIALIZER";
@@ -314,7 +307,6 @@ class JsonConverterGenerator {
                     .addContentLine(".serialize(generator, " + fieldName + ", "
                                             + "instance." + accessor + ", "
                                             + "\"" + key + "\", "
-                                            + "isFirst, "
                                             + jsonProperty.nullable() + ");");
         }
         method.addContentLine("generator.writeObjectEnd();");

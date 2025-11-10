@@ -26,13 +26,7 @@ class LongArrayConverter implements TypedJsonConverter<long[]> {
     @Override
     public void serialize(Generator generator, long[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (long value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

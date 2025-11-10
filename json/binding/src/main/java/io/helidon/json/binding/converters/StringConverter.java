@@ -30,4 +30,13 @@ class StringConverter implements TypedJsonConverter<String> {
         return parser.readString();
     }
 
+    @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(String instance) {
+        return instance;
+    }
 }

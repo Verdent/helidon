@@ -67,15 +67,9 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
                 return;
             }
             generator.writeArrayStart();
-            boolean first = true;
             for (Object value : instance) {
                 if (value == null && !writeNulls) {
                     continue;
-                }
-                if (!first) {
-                    generator.writeComma();
-                } else {
-                    first = false;
                 }
                 serializer.serialize(generator, value, writeNulls);
             }

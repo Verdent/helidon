@@ -26,13 +26,7 @@ class FloatArrayConverter implements TypedJsonConverter<float[]> {
     @Override
     public void serialize(Generator generator, float[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (float value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

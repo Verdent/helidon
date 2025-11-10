@@ -23,13 +23,7 @@ class CharArrayConverter implements TypedJsonConverter<char[]> {
     @Override
     public void serialize(Generator generator, char[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (char value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

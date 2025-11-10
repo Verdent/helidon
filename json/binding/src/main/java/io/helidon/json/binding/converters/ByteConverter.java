@@ -19,6 +19,16 @@ class ByteConverter implements TypedJsonConverter<Byte> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Byte instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Byte deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {

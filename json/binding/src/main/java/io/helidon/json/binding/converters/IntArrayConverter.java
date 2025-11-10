@@ -26,13 +26,7 @@ class IntArrayConverter implements TypedJsonConverter<int[]> {
     @Override
     public void serialize(Generator generator, int[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (int value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

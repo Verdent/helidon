@@ -19,6 +19,16 @@ class LongConverter implements TypedJsonConverter<Long> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Long instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Long deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {
@@ -37,4 +47,5 @@ class LongConverter implements TypedJsonConverter<Long> {
     public GenericType<Long> type() {
         return new GenericType<>() {};
     }
+
 }

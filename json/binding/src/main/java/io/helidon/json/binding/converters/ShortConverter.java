@@ -19,6 +19,16 @@ class ShortConverter implements TypedJsonConverter<Short> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Short instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Short deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {

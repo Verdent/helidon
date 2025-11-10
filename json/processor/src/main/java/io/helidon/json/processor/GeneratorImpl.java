@@ -55,10 +55,12 @@ class GeneratorImpl implements Generator {
         }
     }
 
-    private void beforeValue() {
+    private void beforeWrite() {
         if (depth > 0) {
             if (first) {
                 first = false;
+            } else if (keyWritten) {
+                keyWritten = false;
             } else {
                 ensureCapacity(1);
                 buffer[index++] = COMMA;
@@ -74,8 +76,10 @@ class GeneratorImpl implements Generator {
     public Generator writeKey(String key) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         keyWritten = true;
@@ -86,8 +90,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, String value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         writeString(value);
@@ -98,8 +104,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, int value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         return writeLong(value);
@@ -109,8 +117,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, long value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         return writeLong(value);
@@ -120,8 +130,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, float value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         writeDouble(value);
@@ -132,8 +144,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, double value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         writeDouble(value);
@@ -144,8 +158,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, boolean value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         writeBoolean(value);
@@ -156,8 +172,10 @@ class GeneratorImpl implements Generator {
     public Generator write(String key, JsonValue value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
         }
-        beforeValue();
+        beforeWrite();
         writeString(key);
         writeColon();
         writeJsonValue(value);
@@ -166,7 +184,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(String value) {
-        beforeValue();
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeWrite();
         writeString(value);
         return this;
     }
@@ -224,10 +245,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(byte value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         ensureCapacity(1);
         buffer[index++] = value;
         return this;
@@ -235,28 +256,28 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(short value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         return writeLong(value);
     }
 
     @Override
     public Generator write(int value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         return writeLong(value);
     }
 
     @Override
     public Generator write(long value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         return writeLong(value);
     }
 
@@ -285,20 +306,20 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(float value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         writeDouble(value);
         return this;
     }
 
     @Override
     public Generator write(double value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         writeDouble(value);
         return this;
     }
@@ -309,10 +330,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(boolean value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         writeBoolean(value);
         return this;
     }
@@ -336,10 +357,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator write(JsonValue value) {
-        if (depth > 0 && structureType[depth - 1]) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
-        beforeValue();
+        beforeWrite();
         writeJsonValue(value);
         return this;
     }
@@ -362,7 +383,10 @@ class GeneratorImpl implements Generator {
 
     @Override
     public Generator writeNull() {
-        beforeValue();
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeWrite();
         ensureCapacity(4);
         buffer[index++] = 'n';
         buffer[index++] = 'u';
@@ -374,7 +398,9 @@ class GeneratorImpl implements Generator {
     @Override
     public Generator writeArrayStart() {
         if (!keyWritten) {
-            beforeValue();
+            beforeWrite();
+        } else {
+            keyWritten = false;
         }
         pushStructureType(false);
         ensureCapacity(1);
@@ -394,7 +420,9 @@ class GeneratorImpl implements Generator {
     @Override
     public Generator writeObjectStart() {
         if (!keyWritten) {
-            beforeValue();
+            beforeWrite();
+        } else {
+            keyWritten = false;
         }
         ensureCapacity(1);
         buffer[index++] = OBJECT_START;

@@ -26,6 +26,16 @@ class DoubleConverter implements TypedJsonConverter<Double> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Double instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Double deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {

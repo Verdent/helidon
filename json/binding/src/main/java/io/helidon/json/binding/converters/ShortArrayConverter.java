@@ -26,13 +26,7 @@ class ShortArrayConverter implements TypedJsonConverter<short[]> {
     @Override
     public void serialize(Generator generator, short[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (short value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

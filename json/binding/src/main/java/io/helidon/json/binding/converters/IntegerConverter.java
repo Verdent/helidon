@@ -19,6 +19,16 @@ class IntegerConverter implements TypedJsonConverter<Integer> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Integer instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Integer deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {

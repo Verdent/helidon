@@ -39,4 +39,15 @@ class ObjectConverter implements TypedJsonConverter<Object> {
         serializer.serialize(generator, instance, writeNulls);
     }
 
+    @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public String serializeAsMapKey(Object instance) {
+        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(instance.getClass());
+        return serializer.serializeAsMapKey(instance);
+    }
 }

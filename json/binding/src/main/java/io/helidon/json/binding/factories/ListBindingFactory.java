@@ -69,18 +69,11 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
                 return;
             }
             generator.writeArrayStart();
-            boolean first = true;
             for (Object value : instance) {
                 if (value == null && !writeNulls) {
                     continue;
                 }
-                if (!first) {
-                    generator.writeComma();
-                }
                 serializer.serialize(generator, value, writeNulls);
-                if (first) {
-                    first = false;
-                }
             }
             generator.writeArrayEnd();
         }

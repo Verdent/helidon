@@ -27,6 +27,16 @@ class UuidConverter implements TypedJsonConverter<UUID> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(UUID instance) {
+        return instance.toString();
+    }
+
+    @Override
     public UUID deserialize(JsonParser parser) {
         return UUID.fromString(parser.readString());
     }

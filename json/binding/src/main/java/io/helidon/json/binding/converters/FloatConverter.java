@@ -26,6 +26,16 @@ class FloatConverter implements TypedJsonConverter<Float> {
     }
 
     @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Float instance) {
+        return instance.toString();
+    }
+
+    @Override
     public Float deserialize(JsonParser parser) {
         byte lastByte = parser.lastByte();
         if (lastByte == '\"') {

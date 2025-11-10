@@ -75,22 +75,14 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
                 return;
             }
             generator.writeObjectStart();
-            boolean first = true;
             for (var entry : instance.entrySet()) {
                 Object key = entry.getKey();
                 Object value = entry.getValue();
-                if (!first) {
-                    generator.writeComma();
-                }
-                keySerializer.serialize(generator, key, writeNulls);
-                generator.writeColon();
+                generator.writeKey(keySerializer.serializeAsMapKey(key));
                 if (value == null) {
                     valueSerializer.serializeNull(generator);
                 } else {
                     valueSerializer.serialize(generator, value, writeNulls);
-                }
-                if (first) {
-                    first = false;
                 }
             }
             generator.writeObjectEnd();
@@ -141,6 +133,9 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
             keyDeserializer = jsonBindingConfigurator.getDeserializer(keyType);
             valueDeserializer = jsonBindingConfigurator.getDeserializer(valueType);
             keySerializer = jsonBindingConfigurator.getSerializer(keyType);
+            if (!keySerializer.isMapKeySerializer()) {
+                throw new JsonException("Unsupported key serializer: " + keySerializer.getClass().getName());
+            }
             valueSerializer = jsonBindingConfigurator.getSerializer(valueType);
         }
     }

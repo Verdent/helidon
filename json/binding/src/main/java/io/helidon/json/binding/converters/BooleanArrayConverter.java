@@ -26,13 +26,7 @@ class BooleanArrayConverter implements TypedJsonConverter<boolean[]> {
     @Override
     public void serialize(Generator generator, boolean[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (boolean value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

@@ -14,6 +14,22 @@ import io.helidon.service.registry.Service;
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
 class InstantConverter implements JsonConverter<Instant> {
 
+
+    @Override
+    public void serialize(Generator generator, Instant instance, boolean writeNulls) {
+        generator.write(instance.toEpochMilli());
+    }
+
+    @Override
+    public boolean isMapKeySerializer() {
+        return true;
+    }
+
+    @Override
+    public String serializeAsMapKey(Instant instance) {
+        return instance.toString();
+    }
+
     @Override
     public Instant deserialize(JsonParser parser) {
         boolean isString = parser.lastByte() == '"';
@@ -29,11 +45,6 @@ class InstantConverter implements JsonConverter<Instant> {
             }
         }
         return instant;
-    }
-
-    @Override
-    public void serialize(Generator generator, Instant instance, boolean writeNulls) {
-        generator.write(instance.toEpochMilli());
     }
 
 }

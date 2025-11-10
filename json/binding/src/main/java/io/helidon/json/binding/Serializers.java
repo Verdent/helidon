@@ -7,29 +7,20 @@ public final class Serializers {
     private Serializers() {
     }
 
-    public static <T> boolean serialize(Generator generator,
-                                        JsonSerializer<T> serializer,
-                                        T instance,
-                                        String key,
-                                        boolean isFirst,
-                                        boolean writeNulls) {
+    public static <T> void serialize(Generator generator,
+                                     JsonSerializer<T> serializer,
+                                     T instance,
+                                     String key,
+                                     boolean writeNulls) {
         if (instance == null) {
             if (writeNulls) {
-                if (!isFirst) {
-                    generator.writeComma();
-                }
                 generator.writeKey(key);
                 serializer.serializeNull(generator);
-                return false;
             }
-            return isFirst;
+        } else {
+            generator.writeKey(key);
+            serializer.serialize(generator, instance, writeNulls);
         }
-        if (!isFirst) {
-            generator.writeComma();
-        }
-        generator.writeKey(key);
-        serializer.serialize(generator, instance, writeNulls);
-        return false;
     }
 
 }

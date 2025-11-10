@@ -26,13 +26,7 @@ class ByteArrayConverter implements TypedJsonConverter<byte[]> {
     @Override
     public void serialize(Generator generator, byte[] instance, boolean writeNulls) {
         generator.writeArrayStart();
-        boolean first = true;
         for (byte value : instance) {
-            if (!first) {
-                generator.writeComma();
-            } else {
-                first = false;
-            }
             serializer.serialize(generator, value, writeNulls);
         }
         generator.writeArrayEnd();

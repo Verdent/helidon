@@ -75,7 +75,7 @@ class SchemaDirective implements ElementGenerator {
 
         if (listSchemaArguments.size() > 0) {
             sb.append("(");
-            final AtomicBoolean new AtomicBoolean(true);
+            final AtomicBoolean isFirst = new AtomicBoolean(true);
             listSchemaArguments.forEach(a -> {
                 String delim = isFirst.getAndSet(false) ? "" : ", ";
 

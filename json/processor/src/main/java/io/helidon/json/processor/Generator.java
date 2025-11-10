@@ -54,10 +54,6 @@ public interface Generator extends AutoCloseable {
 
     Generator write(JsonValue value);
 
-    void writeComma();
-
-    void writeColon();
-
     Generator writeNull();
 
     Generator writeArrayStart();

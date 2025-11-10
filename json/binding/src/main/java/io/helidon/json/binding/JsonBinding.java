@@ -54,6 +54,10 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
     <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type);
 
+    <T> T deserialize(byte[] bytes, Class<T> type);
+
+    <T> T deserialize(byte[] bytes, GenericType<T> type);
+
     <T> T deserialize(String jsonStr, Class<T> type);
 
     <T> T deserialize(String jsonStr, GenericType<T> type);

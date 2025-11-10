@@ -369,14 +369,7 @@ class GeneratorImpl implements Generator {
         value.toJson(this);
     }
 
-    @Override
-    public void writeComma() {
-        ensureCapacity(1);
-        buffer[index++] = COMMA;
-    }
-
-    @Override
-    public void writeColon() {
+    private void writeColon() {
         ensureCapacity(1);
         buffer[index++] = COLON;
     }

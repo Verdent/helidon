@@ -185,11 +185,11 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> T deserialize(String jsonStr, Class<T> type) {
+    public <T> T deserialize(byte[] bytes, Class<T> type) {
         JsonDeserializer<T> deserializer = getDeserializer(type);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
-        parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
+        parser.reset(bytes);
         parser.nextToken();
         T deserialized = Deserializers.deserialize(parser, deserializer);
         cachedParser.set(parser);
@@ -197,15 +197,25 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    public <T> T deserialize(String jsonStr, GenericType<T> type) {
+    public <T> T deserialize(byte[] bytes, GenericType<T> type) {
         JsonDeserializer<T> deserializer = getDeserializer(type);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
-        parser.reset(jsonStr.getBytes(StandardCharsets.UTF_8));
+        parser.reset(bytes);
         parser.nextToken();
         T deserialized = Deserializers.deserialize(parser, deserializer);
         cachedParser.set(parser);
         return deserialized;
+    }
+
+    @Override
+    public <T> T deserialize(String jsonStr, Class<T> type) {
+        return deserialize(jsonStr.getBytes(StandardCharsets.UTF_8), type);
+    }
+
+    @Override
+    public <T> T deserialize(String jsonStr, GenericType<T> type) {
+        return deserialize(jsonStr.getBytes(StandardCharsets.UTF_8), type);
     }
 
     @Override

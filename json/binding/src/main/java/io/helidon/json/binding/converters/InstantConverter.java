@@ -2,6 +2,7 @@ package io.helidon.json.binding.converters;
 
 import java.time.Instant;
 
+import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonConverter;
@@ -45,6 +46,11 @@ class InstantConverter implements JsonConverter<Instant> {
             }
         }
         return instant;
+    }
+
+    @Override
+    public GenericType<Instant> type() {
+        return new GenericType<>() {};
     }
 
 }

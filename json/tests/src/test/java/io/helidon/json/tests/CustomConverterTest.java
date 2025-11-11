@@ -1,5 +1,6 @@
 package io.helidon.json.tests;
 
+import io.helidon.common.GenericType;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.json.binding.JsonConverter;
@@ -18,7 +19,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomConverterOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addConverter(String.class, new StringConverter())
+                .addConverter(new StringConverter())
                 .build();
 
         String original = "string value";
@@ -31,7 +32,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomDeserializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addDeserializer(String.class, new StringConverter())
+                .addDeserializer(new StringConverter())
                 .build();
 
         String original = "string value";
@@ -44,7 +45,7 @@ public class CustomConverterTest {
     @Test
     public void testCustomSerializerOverTheBuilder() {
         JsonBinding jsonBinding = JsonBinding.builder()
-                .addSerializer(String.class, new StringConverter())
+                .addSerializer(new StringConverter())
                 .build();
 
         String original = "string value";
@@ -85,6 +86,11 @@ public class CustomConverterTest {
                 index = string.length();
             }
             return string.substring(0, index) + "_deserialized";
+        }
+
+        @Override
+        public GenericType<String> type() {
+            return GenericType.create(String.class);
         }
 
         @Override

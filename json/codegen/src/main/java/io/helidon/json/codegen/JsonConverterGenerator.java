@@ -48,10 +48,9 @@ class JsonConverterGenerator {
     static void generateConverter(ClassBase.Builder<?, ?> classBuilder,
                                   ConvertedTypeInfo converterInfo,
                                   TypeInfo annotatedType,
-                                  boolean factoryConfiguration,
-                                  boolean typedConverter) {
+                                  boolean factory) {
         TypeName converterInterfaceType = TypeName.builder()
-                .from(typedConverter ? Types.TYPED_JSON_CONVERTER_TYPE : Types.JSON_CONVERTER_TYPE)
+                .from(Types.JSON_CONVERTER_TYPE)
                 .addTypeArgument(annotatedType.typeName())
                 .build();
 
@@ -61,20 +60,19 @@ class JsonConverterGenerator {
                 .addMethod(method -> generateToJsonMethod(classBuilder,
                                                           method,
                                                           converterInfo,
-                                                          factoryConfiguration,
+                                                          factory,
                                                           toConfigure))
                 .addMethod(method -> generateFromJsonMethod(classBuilder,
                                                             method,
                                                             converterInfo,
-                                                            factoryConfiguration,
+                                                            factory,
                                                             toConfigure));
 
-        if (factoryConfiguration) {
+        if (factory) {
             classBuilder.addMethod(method -> addConfigurationFactory(method, toConfigure));
+            classBuilder.addMethod(method -> addTypeMethodFactory(method, converterInfo));
         } else {
             classBuilder.addMethod(method -> addConfigurationMethod(method, toConfigure));
-        }
-        if (typedConverter) {
             classBuilder.addMethod(method -> addTypeMethod(method, converterInfo));
         }
     }
@@ -467,6 +465,18 @@ class JsonConverterGenerator {
             result.append(Character.toUpperCase(c));
         }
         return result.toString();
+    }
+
+    private static void addTypeMethodFactory(Method.Builder method, ConvertedTypeInfo converterInfo) {
+        method.name("type")
+                .returnType(builder -> builder.type(TypeName.builder()
+                                                            .from(TypeNames.GENERIC_TYPE)
+                                                            .addTypeArgument(converterInfo.originalType())
+                                                            .build()))
+                .addAnnotation(Annotation.create(Override.class))
+                .addContent("return ")
+                .addContent(TypeNames.GENERIC_TYPE)
+                .addContent(".create(type);");
     }
 
     private static void addTypeMethod(Method.Builder method, ConvertedTypeInfo converterInfo) {

@@ -18,7 +18,7 @@ interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
      */
     @Option.Singular
     @Option.RegistryService
-    List<TypedJsonSerializer<?>> serializers();
+    List<JsonSerializer<?>> serializers();
 
     /**
      * Registered type deserializers.
@@ -27,7 +27,7 @@ interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
      */
     @Option.Singular
     @Option.RegistryService
-    List<TypedJsonDeserializer<?>> deserializers();
+    List<JsonDeserializer<?>> deserializers();
 
     /**
      * Registered generic type binding factories.
@@ -36,6 +36,6 @@ interface JsonBindingConfigBlueprint extends Prototype.Factory<JsonBinding> {
      */
     @Option.Singular
     @Option.RegistryService
-    List<TypedJsonBindingFactory<?>> bindingFactories();
+    List<JsonBindingFactory<?>> bindingFactories();
 
 }

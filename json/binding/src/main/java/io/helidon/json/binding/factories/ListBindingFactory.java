@@ -10,10 +10,10 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonBindingFactory;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -21,7 +21,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
+class ListBindingFactory implements JsonBindingFactory<List<?>> {
 
     @Override
     public JsonDeserializer<List<?>> createDeserializer(Class<? extends List<?>> type) {
@@ -50,11 +50,13 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
 
     static class ListConverter implements JsonConverter<List<?>> {
 
+        private final GenericType<List<?>> type;
         private final Type componentType;
         private volatile JsonDeserializer<Object> deserializer;
         private volatile JsonSerializer<Object> serializer;
 
         public ListConverter(Type type) {
+            this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 componentType = parameterizedType.getActualTypeArguments()[0];
             } else {
@@ -133,6 +135,11 @@ class ListBindingFactory implements TypedJsonBindingFactory<List<?>> {
                 throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
             }
             return list;
+        }
+
+        @Override
+        public GenericType<List<?>> type() {
+            return type;
         }
 
         @Override

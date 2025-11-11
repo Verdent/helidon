@@ -6,7 +6,6 @@ import io.helidon.codegen.classmodel.ClassBase;
 import io.helidon.codegen.classmodel.InnerClass;
 import io.helidon.codegen.classmodel.Method;
 import io.helidon.codegen.classmodel.TypeArgument;
-import io.helidon.common.GenericType;
 import io.helidon.common.Weighted;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.TypeInfo;
@@ -45,7 +44,7 @@ class JsonBindingFactoryGenerator {
                 .addConstructor(builder -> builder.accessModifier(AccessModifier.PACKAGE_PRIVATE)
                         .addParameter(param -> param.type(Type.class).name("type"))
                         .addContent("this.type = type;"));
-        JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true, false);
+        JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true);
         classBuilder.addInnerClass(converterClassBuilder)
                 .addMethod(method -> addCreateDeserializerMethodClass(method, convertedTypeInfo))
                 .addMethod(method -> addCreateDeserializerMethodGenerics(method, convertedTypeInfo))

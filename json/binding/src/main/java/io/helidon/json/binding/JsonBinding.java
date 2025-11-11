@@ -25,10 +25,10 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
     @SuppressWarnings("SuspiciousMethodCalls")
     static JsonBinding create(JsonBindingConfig config) {
         JsonBindingImpl jsonBinding = new JsonBindingImpl(config);
-        for (TypedJsonSerializer<?> serializer : config.serializers()) {
+        for (JsonSerializer<?> serializer : config.serializers()) {
             serializer.configure(jsonBinding);
         }
-        for (TypedJsonDeserializer<?> deserializer : config.deserializers()) {
+        for (JsonDeserializer<?> deserializer : config.deserializers()) {
             if (config.serializers().contains(deserializer)) {
                 continue;
             }

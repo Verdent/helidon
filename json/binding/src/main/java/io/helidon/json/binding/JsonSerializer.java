@@ -1,5 +1,8 @@
 package io.helidon.json.binding;
 
+import java.math.BigDecimal;
+
+import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 
@@ -10,6 +13,8 @@ public interface JsonSerializer<T> {
     default void serializeNull(Generator generator) {
         generator.writeNull();
     }
+
+    GenericType<T> type();
 
     default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
     }

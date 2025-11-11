@@ -7,7 +7,7 @@ import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonConverter;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -15,7 +15,7 @@ import io.helidon.service.registry.Service;
 
 @Service.PerLookup
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class DoubleArrayConverter implements TypedJsonConverter<double[]> {
+class DoubleArrayConverter implements JsonConverter<double[]> {
 
     private static final GenericType<double[]> TYPE = GenericType.create(double[].class);
 

@@ -2,6 +2,7 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -11,10 +12,10 @@ import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonBindingFactory;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -22,7 +23,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
+class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
 
     @Override
     public Set<Class<?>> supportedTypes() {
@@ -51,6 +52,7 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
 
     private static final class MapConverter implements JsonConverter<Map<?, ?>> {
 
+        private final GenericType<Map<?, ?>> type;
         private final Type keyType;
         private final Type valueType;
         private JsonDeserializer<Object> keyDeserializer;
@@ -59,6 +61,7 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         private JsonSerializer<Object> valueSerializer;
 
         public MapConverter(Type type) {
+            this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 keyType = parameterizedType.getActualTypeArguments()[0];
                 valueType = parameterizedType.getActualTypeArguments()[1];
@@ -129,12 +132,17 @@ class MapBindingFactory implements TypedJsonBindingFactory<Map<?, ?>> {
         }
 
         @Override
+        public GenericType<Map<?, ?>> type() {
+            return type;
+        }
+
+        @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
             keyDeserializer = jsonBindingConfigurator.getDeserializer(keyType);
             valueDeserializer = jsonBindingConfigurator.getDeserializer(valueType);
             keySerializer = jsonBindingConfigurator.getSerializer(keyType);
             if (!keySerializer.isMapKeySerializer()) {
-                throw new JsonException("Unsupported key serializer: " + keySerializer.getClass().getName());
+                throw new JsonException("Unsupported key serializer: " + keySerializer.type());
             }
             valueSerializer = jsonBindingConfigurator.getSerializer(valueType);
         }

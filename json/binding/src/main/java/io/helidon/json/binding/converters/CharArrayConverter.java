@@ -5,14 +5,14 @@ import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonConverter;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 
 //@Service.Singleton
 //@Weight(Weighted.DEFAULT_WEIGHT - 10)
-class CharArrayConverter implements TypedJsonConverter<char[]> {
+class CharArrayConverter implements JsonConverter<char[]> {
 
     private static final GenericType<char[]> TYPE = GenericType.create(char[].class);
 

@@ -43,7 +43,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     JsonBindingImpl(JsonBindingConfig config) {
         this.config = config;
         //Fill in serializers
-        for (TypedJsonSerializer<?> serializer : config.serializers()) {
+        for (JsonSerializer<?> serializer : config.serializers()) {
             GenericType<?> type = serializer.type();
             initialSerializers.putIfAbsent(type, serializer);
             initialSerializers.putIfAbsent(type.type(), serializer);
@@ -52,7 +52,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         //Fill in deserializers
-        for (TypedJsonDeserializer<?> deserializer : config.deserializers()) {
+        for (JsonDeserializer<?> deserializer : config.deserializers()) {
             GenericType<?> type = deserializer.type();
             initialDeserializers.putIfAbsent(type, deserializer);
             initialDeserializers.putIfAbsent(type.type(), deserializer);
@@ -61,7 +61,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         //Fill in binding factories
-        for (TypedJsonBindingFactory<?> bindingFactory : config.bindingFactories()) {
+        for (JsonBindingFactory<?> bindingFactory : config.bindingFactories()) {
             bindingFactory.supportedTypes().forEach(type -> bindingFactories.putIfAbsent(type, bindingFactory));
         }
     }

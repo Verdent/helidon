@@ -9,10 +9,10 @@ import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonBindingFactory;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -20,7 +20,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
+class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
 
     @Override
     public JsonDeserializer<Object[]> createDeserializer(Class<? extends Object[]> type) {
@@ -49,12 +49,14 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
 
     private static class ArrayConverter implements JsonConverter<Object[]> {
 
+        private final GenericType<Object[]> type;
         private final Class<?> componentType;
         private final Object[] emptyArray;
         private JsonDeserializer<Object> deserializer;
         private JsonSerializer<Object> serializer;
 
         private ArrayConverter(Type type) {
+            this.type = GenericType.create(type);
             Class<?> classType = (Class<?>) type;
             this.componentType = classType.componentType();
             emptyArray = createArrayInstance(0);
@@ -110,6 +112,11 @@ class ArrayBindingFactory implements TypedJsonBindingFactory<Object[]> {
                 return array;
             }
             return emptyArray;
+        }
+
+        @Override
+        public GenericType<Object[]> type() {
+            return type;
         }
 
         private Object[] createArrayInstance(int size) {

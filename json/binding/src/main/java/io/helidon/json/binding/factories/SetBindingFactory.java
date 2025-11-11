@@ -2,6 +2,7 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -13,7 +14,7 @@ import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.TypedJsonBindingFactory;
+import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -21,7 +22,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
+class SetBindingFactory implements JsonBindingFactory<Set<?>> {
 
     @Override
     public JsonDeserializer<Set<?>> createDeserializer(Class<? extends Set<?>> type) {
@@ -50,11 +51,13 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
 
     private static final class SetConverter implements JsonConverter<Set<?>> {
 
+        private final GenericType<Set<?>> type;
         private final Type componentType;
         private JsonDeserializer<Object> deserializer;
         private JsonSerializer<Object> serializer;
 
         public SetConverter(Type type) {
+            this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 componentType = parameterizedType.getActualTypeArguments()[0];
             } else {
@@ -99,6 +102,11 @@ class SetBindingFactory implements TypedJsonBindingFactory<Set<?>> {
                 }
             }
             return set;
+        }
+
+        @Override
+        public GenericType<Set<?>> type() {
+            return type;
         }
 
         @Override

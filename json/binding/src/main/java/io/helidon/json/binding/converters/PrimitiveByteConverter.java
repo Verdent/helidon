@@ -3,7 +3,7 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.TypedJsonConverter;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
@@ -11,7 +11,7 @@ import io.helidon.service.registry.Service;
 
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class PrimitiveByteConverter implements TypedJsonConverter<Byte> {
+class PrimitiveByteConverter implements JsonConverter<Byte> {
 
     private static final GenericType<Byte> TYPE = GenericType.create(byte.class);
 

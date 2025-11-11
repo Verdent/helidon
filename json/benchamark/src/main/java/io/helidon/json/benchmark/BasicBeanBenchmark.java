@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
 import com.jsoniter.JsonIterator;
+import com.jsoniter.output.JsonStreamPool;
 import com.jsoniter.spi.DecodingMode;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -21,12 +22,12 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Fork(value = 1, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
+@Fork(value = 2, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
 public class BasicBeanBenchmark {
 
     static final String MY_JAVA_BEAN_WITH_OTHER_BEAN = "{"
             + "\"fieldTwo\":2147,"
-            + "\"fieldOne\":\"Řepa ty čůráku\","
+            + "\"fieldOne\":\"Hello\","
             + "\"fieldThree\":\"World\","
             + "\"fieldFour\":null,"
             + "\"fieldFive\":\"1234\","
@@ -56,9 +57,8 @@ public class BasicBeanBenchmark {
 
     @Benchmark
     public void jsoniter(Blackhole bh) {
-        MyJavaBean deserialize = JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
-        System.out.println(deserialize.getFieldOne());
         bh.consume(JsonIterator.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+
     }
 
     @Benchmark

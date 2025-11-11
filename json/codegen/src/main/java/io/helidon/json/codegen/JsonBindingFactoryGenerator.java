@@ -42,7 +42,8 @@ class JsonBindingFactoryGenerator {
                 .isFinal(true)
                 .isStatic(true)
                 .addField(builder -> builder.isFinal(true).type(Type.class).name("type"))
-                .addConstructor(builder -> builder.addParameter(param -> param.type(Type.class).name("type"))
+                .addConstructor(builder -> builder.accessModifier(AccessModifier.PACKAGE_PRIVATE)
+                        .addParameter(param -> param.type(Type.class).name("type"))
                         .addContent("this.type = type;"));
         JsonConverterGenerator.generateConverter(converterClassBuilder, convertedTypeInfo, annotatedType, true, false);
         classBuilder.addInnerClass(converterClassBuilder)

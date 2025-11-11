@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class NullableTest {
+public class SerializeNullsTest {
     
     private static final JsonBinding HELIDON = JsonBinding.create();
 
@@ -47,35 +47,35 @@ public class NullableTest {
     }
 
     @Json.Entity
-    @Json.Nullable
+    @Json.SerializeNulls
     record JsonNullableOnRecord(String someField, String someField2) {
     }
 
     @Json.Entity
-    record JsonNullableOnRecordComponent(@Json.Nullable String someField, String someField2) {
+    record JsonNullableOnRecordComponent(@Json.SerializeNulls String someField, String someField2) {
     }
 
     @Json.Entity
-    @Json.Nullable
+    @Json.SerializeNulls
     static class NullableOverrideOnField {
-        @Json.Nullable(false)
+        @Json.SerializeNulls(false)
         String field = null;
         String field2 = null;
     }
 
     @Json.Entity
-    @Json.Nullable
+    @Json.SerializeNulls
     static class NullableOverrideOnMethod {
         String field = null;
         String field2 = null;
 
-        @Json.Nullable(false)
+        @Json.SerializeNulls(false)
         public String field() {
             return field;
         }
     }
 
-    @Json.Nullable
+    @Json.SerializeNulls
     static class NullableParent {
     }
 
@@ -85,7 +85,7 @@ public class NullableTest {
     }
 
     @Json.Entity
-    @Json.Nullable(false)
+    @Json.SerializeNulls(false)
     static class NonNullableChild extends NullableParent {
         String field = null;
     }

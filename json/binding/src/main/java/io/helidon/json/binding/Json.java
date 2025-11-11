@@ -65,7 +65,7 @@ public final class Json {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD})
-    public @interface Nullable {
+    public @interface SerializeNulls {
 
         boolean value() default true;
 

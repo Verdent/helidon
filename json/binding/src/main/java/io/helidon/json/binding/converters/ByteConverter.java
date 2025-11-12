@@ -45,6 +45,6 @@ class ByteConverter implements JsonConverter<Byte> {
 
     @Override
     public GenericType<Byte> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Byte.class);
     }
 }

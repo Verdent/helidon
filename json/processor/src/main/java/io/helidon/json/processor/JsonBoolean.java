@@ -1,6 +1,6 @@
 package io.helidon.json.processor;
 
-public final class JsonBoolean implements JsonValue {
+public final class JsonBoolean extends JsonValue {
 
     private final boolean value;
 

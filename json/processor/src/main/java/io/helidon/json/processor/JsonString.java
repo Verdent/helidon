@@ -1,6 +1,6 @@
 package io.helidon.json.processor;
 
-public final class JsonString implements JsonValue {
+public final class JsonString extends JsonValue {
 
     private final byte[] buffer;
     private final int start;

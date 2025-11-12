@@ -51,6 +51,6 @@ class BooleanConverter implements JsonConverter<Boolean> {
 
     @Override
     public GenericType<Boolean> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Boolean.class);
     }
 }

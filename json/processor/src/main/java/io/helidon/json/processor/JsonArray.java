@@ -3,7 +3,7 @@ package io.helidon.json.processor;
 import java.math.BigDecimal;
 import java.util.List;
 
-public final class JsonArray implements JsonValue {
+public final class JsonArray extends JsonValue {
 
     static final JsonArray EMPTY_ARRAY = JsonArray.create(List.of());
 

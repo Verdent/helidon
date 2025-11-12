@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 /**
  * TODO javadoc
  */
-public final class JsonObject implements JsonValue {
+public final class JsonObject extends JsonValue {
 
     static final JsonObject EMPTY_OBJECT = JsonObject.create(List.of());
 
@@ -40,6 +40,8 @@ public final class JsonObject implements JsonValue {
     static JsonObject create(List<Pair> pairs) {
         return new JsonObject(pairs);
     }
+
+
 
     public boolean containsKey(String key) {
         ensureResolvedKeys();

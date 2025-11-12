@@ -50,7 +50,7 @@ class InstantConverter implements JsonConverter<Instant> {
 
     @Override
     public GenericType<Instant> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Instant.class);
     }
 
 }

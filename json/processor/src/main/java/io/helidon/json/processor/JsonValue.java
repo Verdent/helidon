@@ -3,34 +3,41 @@ package io.helidon.json.processor;
 /**
  * TODO javadoc
  */
-public sealed interface JsonValue permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString {
+public sealed abstract class JsonValue permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString, JsonComma, JsonColon {
 
-    JsonValueType type();
+    public abstract JsonValueType type();
 
-    void toJson(Generator generator);
+    public abstract void toJson(Generator generator);
 
-    default JsonString asString() {
+    public JsonString asString() {
         if (type() == JsonValueType.STRING) {
             return (JsonString) this;
         }
         throw new JsonException("Json value is not a string, but rather " + type());
     }
 
-    default JsonNumber asNumber() {
+    public JsonNumber asNumber() {
         if (type() == JsonValueType.NUMBER) {
             return (JsonNumber) this;
         }
         throw new JsonException("Json value is not a number, but rather " + type());
     }
 
-    default JsonObject asObject() {
+    public JsonObject asObject() {
         if (type() == JsonValueType.OBJECT) {
             return (JsonObject) this;
         }
         throw new JsonException("Json value is not an object, but rather " + type());
     }
 
-    default JsonBoolean asBoolean() {
+    public JsonArray asArray() {
+        if (type() == JsonValueType.ARRAY) {
+            return (JsonArray) this;
+        }
+        throw new JsonException("Json value is not an array, but rather " + type());
+    }
+
+    public JsonBoolean asBoolean() {
         if (type() == JsonValueType.BOOLEAN) {
             return (JsonBoolean) this;
         }

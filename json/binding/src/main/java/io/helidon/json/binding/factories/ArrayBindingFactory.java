@@ -101,7 +101,7 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
                     lastByte = parser.nextToken();
                 }
                 if (lastByte != ']') {
-                    throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
+                    throw new JsonException("Array end or comma expected, received: " + Character.toString(lastByte));
                 }
             }
             if (index > 0) {

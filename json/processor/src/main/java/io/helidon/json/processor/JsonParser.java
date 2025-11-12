@@ -19,6 +19,10 @@ public interface JsonParser {
         return new JsonStreamParser(inputStream, bufferSize);
     }
 
+    static JsonParser create(JsonValue value) {
+        return new JsonValueParser(value);
+    }
+
     static JsonParser empty() {
         return new ArrayJsonParser();
     }

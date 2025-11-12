@@ -45,6 +45,6 @@ class IntegerConverter implements JsonConverter<Integer> {
 
     @Override
     public GenericType<Integer> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Integer.class);
     }
 }

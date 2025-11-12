@@ -45,6 +45,6 @@ class ShortConverter implements JsonConverter<Short> {
 
     @Override
     public GenericType<Short> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Short.class);
     }
 }

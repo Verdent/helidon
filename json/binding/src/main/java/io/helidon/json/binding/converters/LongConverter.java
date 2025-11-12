@@ -45,7 +45,7 @@ class LongConverter implements JsonConverter<Long> {
 
     @Override
     public GenericType<Long> type() {
-        return new GenericType<>() {};
+        return GenericType.create(Long.class);
     }
 
 }

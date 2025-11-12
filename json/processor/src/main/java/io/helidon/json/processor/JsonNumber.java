@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 /**
  * TODO javadoc
  */
-public final class JsonNumber implements JsonValue {
+public final class JsonNumber extends JsonValue {
 
     private final byte[] buffer;
     private final int start;

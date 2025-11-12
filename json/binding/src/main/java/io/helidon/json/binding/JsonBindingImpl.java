@@ -16,6 +16,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.processor.Generator;
+import io.helidon.json.processor.JsonParser;
 import io.helidon.json.processor.JsonValue;
 import io.helidon.json.processor.ReusableJsonParser;
 
@@ -244,7 +245,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(JsonValue jsonValue, Class<T> type) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonParser parser = JsonParser.create(jsonValue);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override

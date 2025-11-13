@@ -216,6 +216,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         switch (b) {
         case '{':
             return readJsonObject();
+        case '[':
+            return readJsonArray();
         case '"':
             return readJsonString();
         case '-':
@@ -232,6 +234,12 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         case '8':
         case '9':
             return readJsonNumber();
+        case 't':
+        case 'f':
+            return JsonBoolean.create(readAsBoolean());
+        case 'n':
+            checkNull();
+            return JsonNull.instance();
         default:
             throw new JsonException("Unsupported yet!");
         }

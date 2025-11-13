@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -244,6 +245,16 @@ public final class JsonObject extends JsonValue {
             Objects.requireNonNull(value, "value cannot be null");
 
             values.put(key, value);
+            return this;
+        }
+
+        public Builder set(String key, Consumer<JsonObject.Builder> consumer) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(consumer, "consumer cannot be null");
+
+            JsonObject.Builder builder = JsonObject.builder();
+            consumer.accept(builder);
+            values.put(key, builder.build());
             return this;
         }
         

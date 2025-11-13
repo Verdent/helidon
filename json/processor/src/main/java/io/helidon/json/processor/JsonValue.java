@@ -3,11 +3,14 @@ package io.helidon.json.processor;
 /**
  * TODO javadoc
  */
-public sealed abstract class JsonValue permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString, JsonComma, JsonColon {
+public sealed abstract class JsonValue
+        permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString, JsonControlValue {
 
     public abstract JsonValueType type();
 
     public abstract void toJson(Generator generator);
+
+    abstract byte jsonStartChar();
 
     public JsonString asString() {
         if (type() == JsonValueType.STRING) {

@@ -26,4 +26,9 @@ public final class JsonBoolean extends JsonValue {
         generator.write(value);
     }
 
+    @Override
+    byte jsonStartChar() {
+        return (byte) (value ? 't' : 'f');
+    }
+
 }

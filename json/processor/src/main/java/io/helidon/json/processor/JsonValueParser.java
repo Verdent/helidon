@@ -1,6 +1,7 @@
 package io.helidon.json.processor;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 
 class JsonValueParser implements JsonParser {
 
@@ -8,7 +9,6 @@ class JsonValueParser implements JsonParser {
     private JsonValue current;
     private int index = 0;
     private byte lastByte;
-    private boolean theFirstValue = true;
 
     JsonValueParser(JsonValue jsonValue) {
         this.current = jsonValue;
@@ -26,52 +26,56 @@ class JsonValueParser implements JsonParser {
 
     @Override
     public byte nextToken() {
-        if (current.type() == JsonValueType.OBJECT) {
-            JsonObject object = current.asObject();
-        } else if (current.type() == JsonValueType.ARRAY) {
-            JsonArray array = current.asArray();
-            int size = array.values().size();
-            for (JsonValue value : array.values()) {
-                values[index + --size] = value;
+        if (current != null) {
+            if (current.type() == JsonValueType.OBJECT) {
+                JsonObject object = current.asObject();
+                Set<JsonString> keys = object.keys();
+                //We need to calculate how many values we need to add + how many commas
+                // key size needs to be multiplied by 4, because for every key, nad value we will add : and , (-1 for the last object)
+                int size = (keys.size() * 4) - 1;
+                if (index > 0) {
+                    //We are having some values before this one. index need to be raised to prevet overwriting.
+                    index++;
+                }
+                values[index++] = new JsonControlValue('}');
+                for (JsonString key : keys) {
+                    values[index + --size] = key;
+                    values[index + --size] = new JsonControlValue(':');
+                    values[index + --size] = object.value(key.value(), JsonNull.instance());
+                    if (size > 0) {
+                        values[index + --size] = new JsonControlValue(',');
+                    }
+                }
+                index += (keys.size() * 4) - 2;
+            } else if (current.type() == JsonValueType.ARRAY) {
+                JsonArray array = current.asArray();
+                //We need to calculate how many values we need to add + how many commas
+                int size = (array.values().size() * 2) - 1;
+                if (index > 0) {
+                    //We are having some values before this one. index need to be raised to prevet overwriting.
+                    index++;
+                }
+                values[++index] = new JsonControlValue(']');
+                for (JsonValue value : array.values()) {
+                    values[index + --size] = value;
+                    if (size > 0) {
+                        values[index + --size] = new JsonControlValue(',');
+                    }
+                }
+                index += (array.values().size() * 2) - 2;
             }
-            index += array.values().size() - 1;
         }
         if (index >= 0) {
-            current = values[index--];
-            values[index + 1] = null;
-            return switch (current.type()) {
-                case NULL -> lastByte = 'n';
-                case BOOLEAN -> {
-                    if (current.asBoolean().value()) {
-                        yield lastByte = 't';
-                    }
-                    yield lastByte = 'f';
-                }
-                case STRING -> lastByte = '"';
-                case NUMBER -> lastByte = '1';
-                case ARRAY -> lastByte = '[';
-                case OBJECT -> lastByte = '{';
-            };
+            current = values[index];
+            values[index--] = null;
+            return current.jsonStartChar();
         }
-
-        throw new UnsupportedOperationException("CHANGE");
+        throw new UnsupportedOperationException("No more JSON Values available");
     }
 
     @Override
     public byte lastByte() {
-        return switch (current.type()) {
-            case NULL -> 'n';
-            case BOOLEAN -> {
-                if (current.asBoolean().value()) {
-                    yield 't';
-                }
-                yield 'f';
-            }
-            case STRING -> '"';
-            case NUMBER -> '1';
-            case ARRAY -> '[';
-            case OBJECT -> '{';
-        };
+        return current.jsonStartChar();
     }
 
     @Override

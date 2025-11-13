@@ -21,4 +21,9 @@ public final class JsonNull extends JsonValue {
         generator.writeNull();
     }
 
+    @Override
+    byte jsonStartChar() {
+        return 'n';
+    }
+
 }

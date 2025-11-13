@@ -24,6 +24,11 @@ public final class JsonString extends JsonValue {
         return new JsonString(buffer, start);
     }
 
+    @Override
+    byte jsonStartChar() {
+        return '"';
+    }
+
     public String value() {
         if (resolvedValue == null) {
             CachedParser cachedParser = JsonParserCache.getCachedParser();

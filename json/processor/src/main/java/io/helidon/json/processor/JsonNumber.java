@@ -34,6 +34,16 @@ public final class JsonNumber extends JsonValue {
         return new JsonNumber(buffer, start);
     }
 
+    @Override
+    byte jsonStartChar() {
+        int val = intValue();
+        if (val < 0) {
+            return '-';
+        }
+        int digits = (int) Math.log10(val);
+        return (byte) (val / Math.pow(10, digits));
+    }
+
     public double doubleValue() {
         if (doubleValue == null) {
             CachedParser cachedParser = JsonParserCache.getCachedParser();

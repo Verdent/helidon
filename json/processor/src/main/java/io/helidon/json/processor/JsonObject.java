@@ -1,6 +1,7 @@
 package io.helidon.json.processor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,7 +18,7 @@ public final class JsonObject extends JsonValue {
 
     static final JsonObject EMPTY_OBJECT = JsonObject.create(List.of());
 
-    private final List<Pair> pairs;
+    private List<Pair> pairs;
     private LinkedHashMap<String, JsonValue> content;
 
     private JsonObject(List<Pair> pairs) {
@@ -26,7 +27,7 @@ public final class JsonObject extends JsonValue {
 
     private JsonObject(LinkedHashMap<String, JsonValue> content) {
         this.content = content;
-        this.pairs = List.of();
+        this.pairs = new ArrayList<>();
     }
 
     public static JsonObject.Builder builder() {
@@ -41,7 +42,10 @@ public final class JsonObject extends JsonValue {
         return new JsonObject(pairs);
     }
 
-
+    @Override
+    byte jsonStartChar() {
+        return '{';
+    }
 
     public boolean containsKey(String key) {
         ensureResolvedKeys();
@@ -178,7 +182,17 @@ public final class JsonObject extends JsonValue {
     }
 
     public Set<JsonString> keys() {
+        if (pairs.isEmpty() && !content.isEmpty()) {
+            content.forEach((key, value) -> {
+                pairs.add(new Pair(JsonString.create(key), value));
+            });
+        }
         return pairs.stream().map(Pair::key).collect(Collectors.toSet());
+    }
+
+    public Set<String> keysAsStrings() {
+        ensureResolvedKeys();
+        return content.keySet();
     }
 
     public int size() {
@@ -226,6 +240,9 @@ public final class JsonObject extends JsonValue {
         }
 
         public Builder set(String key, JsonValue value) {
+            Objects.requireNonNull(key, "key cannot be null");
+            Objects.requireNonNull(value, "value cannot be null");
+
             values.put(key, value);
             return this;
         }

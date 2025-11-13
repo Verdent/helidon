@@ -55,4 +55,9 @@ public final class JsonArray extends JsonValue {
         }
         generator.writeArrayEnd();
     }
+
+    @Override
+    byte jsonStartChar() {
+        return '[';
+    }
 }

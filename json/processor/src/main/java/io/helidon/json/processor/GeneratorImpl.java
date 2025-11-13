@@ -136,7 +136,7 @@ class GeneratorImpl implements Generator {
         beforeWrite();
         writeString(key);
         writeColon();
-        writeDouble(value);
+        writeFloat(value);
         return this;
     }
 
@@ -310,8 +310,32 @@ class GeneratorImpl implements Generator {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        writeDouble(value);
+        writeFloat(value);
         return this;
+    }
+
+    private void writeFloat(float value) {
+        //Performance improvement needed
+        if (Float.isNaN(value) || Float.isInfinite(value)) {
+            writeNull();
+            return;
+        } else if (value < 0) {
+            ensureCapacity(1);
+            buffer[index++] = MINUS;
+        } else if (value == 0.0) {
+            buffer[index++] = (byte) '0';
+            return;
+        }
+
+        // Convert to string (optimized native routine)
+        String str = Float.toString(value);
+        int len = str.length();
+
+        ensureCapacity(len);
+        for (int i = 0; i < len; i++) {
+            buffer[index + i] = (byte) str.charAt(i); // ASCII digits + '.', 'E', '-', etc.
+        }
+        index += len;
     }
 
     @Override
@@ -325,7 +349,27 @@ class GeneratorImpl implements Generator {
     }
 
     private void writeDouble(double value) {
-        throw new JsonException("Not implemented yet");
+        //Performance improvement needed
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            writeNull();
+            return;
+        } else if (value < 0) {
+            ensureCapacity(1);
+            buffer[index++] = MINUS;
+        } else if (value == 0.0) {
+            buffer[index++] = (byte) '0';
+            return;
+        }
+
+        // Convert to string (optimized native routine)
+        String str = Double.toString(value);
+        int len = str.length();
+
+        ensureCapacity(len);
+        for (int i = 0; i < len; i++) {
+            buffer[index + i] = (byte) str.charAt(i); // ASCII digits + '.', 'E', '-', etc.
+        }
+        index += len;
     }
 
     @Override

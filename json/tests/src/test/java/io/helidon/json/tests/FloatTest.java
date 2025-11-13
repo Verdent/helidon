@@ -1,0 +1,64 @@
+package io.helidon.json.tests;
+
+import io.helidon.json.binding.Json;
+import io.helidon.json.binding.JsonBinding;
+
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
+
+public class FloatTest {
+
+    private static final JsonBinding HELIDON = JsonBinding.create();
+
+    @Test
+    public void testFloatSerialization() {
+        FloatModel model = new FloatModel(123.456F, 456.789F);
+
+        String expected = "{\"object\":123.456,\"primitive\":456.789}";
+        assertThat(HELIDON.serialize(model), is(expected));
+    }
+
+    @Test
+    public void testFloatDeserializationFromFloatAsStringValue() {
+        FloatModel floatModel = HELIDON.deserialize("{\"object\":\"123.456\",\"primitive\":\"456.789\"}", FloatModel.class);
+        assertThat(floatModel.object, is(123.456F));
+        assertThat(floatModel.primitive, is(456.789F));
+    }
+
+    @Test
+    public void testFloatDeserializationFromFloatRawValue() {
+        FloatModel floatModel = HELIDON.deserialize("{\"object\":123.456,\"primitive\":456.789}", FloatModel.class);
+        assertThat(floatModel.object, is(123.456F));
+        assertThat(floatModel.primitive, is(456.789F));
+    }
+
+    @Test
+    public void testRawFloats() {
+        Float value = HELIDON.deserialize("123.456", Float.class);
+        assertThat(value, is(123.456F));
+        value = HELIDON.deserialize("123.456", float.class);
+        assertThat(value, is(123.456F));
+        value = HELIDON.deserialize("\"123.456\"", Float.class);
+        assertThat(value, is(123.456F));
+        value = HELIDON.deserialize("\"123.456\"", float.class);
+        assertThat(value, is(123.456F));
+        value = HELIDON.deserialize("null", Float.class);
+        assertThat(value, is(nullValue()));
+        value = HELIDON.deserialize("null", float.class);
+        assertThat(value, is(0.0F));
+
+        String serialized = HELIDON.serialize(123.456F);
+        assertThat(serialized, is("123.456"));
+        serialized = HELIDON.serialize(Float.valueOf(123.456F));
+        assertThat(serialized, is("123.456"));
+    }
+
+    @Json.Entity
+    record FloatModel(Float object, float primitive) {
+
+    }
+    
+}

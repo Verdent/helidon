@@ -1,0 +1,96 @@
+package io.helidon.json.binding.factories;
+
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Optional;
+import java.util.Set;
+
+import io.helidon.common.GenericType;
+import io.helidon.common.Weight;
+import io.helidon.common.Weighted;
+import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonBindingFactory;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.JsonDeserializer;
+import io.helidon.json.binding.JsonSerializer;
+import io.helidon.json.processor.Generator;
+import io.helidon.json.processor.JsonParser;
+import io.helidon.service.registry.Service;
+
+@Service.Singleton
+@Weight(Weighted.DEFAULT_WEIGHT - 10)
+class OptionalBindingFactory implements JsonBindingFactory<Optional<?>> {
+
+    @Override
+    public JsonDeserializer<Optional<?>> createDeserializer(Class<? extends Optional<?>> type) {
+        return new OptionalConverter(type);
+    }
+
+    @Override
+    public JsonDeserializer<Optional<?>> createDeserializer(GenericType<? extends Optional<?>> type) {
+        return new OptionalConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<Optional<?>> createSerializer(Class<? extends Optional<?>> type) {
+        return new OptionalConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<Optional<?>> createSerializer(GenericType<? extends Optional<?>> type) {
+        return new OptionalConverter(type.type());
+    }
+
+    @Override
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(Optional.class);
+    }
+
+    private static final class OptionalConverter implements JsonConverter<Optional<?>> {
+
+        private final GenericType<Optional<?>> type;
+        private final Type componentType;
+        private JsonDeserializer<Object> deserializer;
+        private JsonSerializer<Object> serializer;
+
+        public OptionalConverter(Type type) {
+            this.type = GenericType.create(type);
+            if (type instanceof ParameterizedType parameterizedType) {
+                componentType = parameterizedType.getActualTypeArguments()[0];
+            } else {
+                componentType = GenericType.OBJECT;
+            }
+        }
+
+        @Override
+        public void serialize(Generator generator, Optional<?> instance, boolean writeNulls) {
+            if (instance.isEmpty()) {
+                generator.writeNull();
+                return;
+            }
+            serializer.serialize(generator, instance.get(), writeNulls);
+        }
+
+        @Override
+        public Optional<?> deserialize(JsonParser parser) {
+            return Optional.of(deserializer.deserialize(parser));
+        }
+
+        @Override
+        public Optional<?> deserializeNull() {
+            return Optional.empty();
+        }
+
+        @Override
+        public GenericType<Optional<?>> type() {
+            return type;
+        }
+
+        @Override
+        public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
+            deserializer = jsonBindingConfigurator.getDeserializer(componentType);
+            serializer = jsonBindingConfigurator.getSerializer(componentType);
+        }
+    }
+
+}

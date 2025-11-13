@@ -10,7 +10,7 @@ import io.helidon.json.processor.Generator;
 import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 
-//@Service.Singleton
+//@Service.PerLookup
 //@Weight(Weighted.DEFAULT_WEIGHT - 10)
 class CharArrayConverter implements JsonConverter<char[]> {
 

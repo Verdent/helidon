@@ -353,9 +353,6 @@ class GeneratorImpl implements Generator {
         if (Double.isNaN(value) || Double.isInfinite(value)) {
             writeNull();
             return;
-        } else if (value < 0) {
-            ensureCapacity(1);
-            buffer[index++] = MINUS;
         } else if (value == 0.0) {
             buffer[index++] = (byte) '0';
             return;

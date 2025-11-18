@@ -55,6 +55,7 @@ final class Types {
     static final TypeName JSON_EXCEPTION = TypeName.create("io.helidon.json.processor.JsonException");
 
     static final TypeName GENERIC_TYPE = TypeName.create("io.helidon.common.GenericType");
+    static final TypeName BUILDER_TYPE = TypeName.create("io.helidon.common.Builder");
 
     static final Map<TypeName, TypeName> PRIMITIVE_TO_BOXED = Map.of(
             PRIMITIVE_BOOLEAN, BOXED_BOOLEAN,

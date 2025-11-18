@@ -20,6 +20,7 @@ import io.helidon.common.types.ElementKind;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
+import io.helidon.common.types.TypedElementInfo;
 
 import static java.util.function.Predicate.not;
 
@@ -318,6 +319,7 @@ class JsonConverterGenerator {
         CreatorInfo creatorInfo = converterInfo.creatorInfo();
         ElementKind creatorKind = creatorInfo.creatorKind();
         boolean hasCreator = creatorKind != null && !creatorInfo.parameters().isEmpty();
+        boolean hasBuilder = converterInfo.builder().isPresent();
         List<JsonProperty> jsonProperties = converterInfo.jsonProperties()
                 .values()
                 .stream()
@@ -332,8 +334,7 @@ class JsonConverterGenerator {
                 .addContent(byte.class).addContentLine(" lastByte = parser.lastByte();")
                 .addContentLine("if (lastByte != '{') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContent("(\"Object start expected. Found: \" + ")
-                .addContent(Character.class).addContentLine(".toString(lastByte));")
+                .addContentLine("(\"Object start expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.readNextByte();")
                 .addContentLine("if (lastByte != '\"') {")
@@ -351,6 +352,11 @@ class JsonConverterGenerator {
             TypeName originalType = converterInfo.originalType();
             method.addContent(originalType).addContent(" generatedInstance = ")
                     .addContent(originalType).addContent("." + creatorInfo.method() + "();");
+        } else if (hasBuilder) {
+            TypedElementInfo builder = converterInfo.builder().get();
+            TypeName originalType = converterInfo.originalType();
+            method.addContent(builder.typeName()).addContent(" builder = ")
+                    .addContent(originalType).addContentLine(".builder();");
         } else {
             TypeName originalType = converterInfo.originalType();
             method.addContent(originalType).addContent(" generatedInstance = new ")
@@ -360,15 +366,13 @@ class JsonConverterGenerator {
                 .addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContent("(\"Key start expected. Found: \" + ")
-                .addContent(Character.class).addContentLine(".toString(lastByte));")
+                .addContentLine("(\"Key start expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
                 .addContent(int.class).addContentLine(" hash = parser.readStringAsHash();")
                 .addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("if (lastByte != ':') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContent("(\"Colon expected. Found: \" + ")
-                .addContent(Character.class).addContentLine(".toString(lastByte));")
+                .addContentLine("(\"Colon expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
                 .addContentLine("parser.nextToken();")
                 .addContentLine("switch(hash) {");
@@ -393,6 +397,7 @@ class JsonConverterGenerator {
                                 method,
                                 classBuilder,
                                 hasCreator,
+                                hasBuilder,
                                 processedTypes,
                                 useConstructorToConfigure,
                                 toConfigure);
@@ -412,8 +417,7 @@ class JsonConverterGenerator {
                 .decreaseContentPadding()
                 .addContentLine("} else {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContent("(\"Comma or end of object expected. Found: \" + ")
-                .addContent(Character.class).addContentLine(".toString(lastByte));")
+                .addContentLine("(\"Comma or end of object expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
                 .addContentLine("}");
         method.addContentLine("}");
@@ -451,6 +455,9 @@ class JsonConverterGenerator {
                     }
                 }
             }
+        } else if (hasBuilder) {
+            method.addContentLine("return builder.build();");
+            return;
         }
         method.addContentLine("return generatedInstance;");
     }
@@ -497,6 +504,7 @@ class JsonConverterGenerator {
                                         Method.Builder method,
                                         ClassBase.Builder<?, ?> classBuilder,
                                         boolean hasCreator,
+                                        boolean hasBuilder,
                                         Set<String> processedTypes,
                                         boolean useConstructorToConfigure,
                                         Map<String, TypeToConfigure> toConfigure) {
@@ -505,7 +513,8 @@ class JsonConverterGenerator {
                                                                      deserializer,
                                                                      method,
                                                                      classBuilder,
-                                                                     hasCreator),
+                                                                     hasCreator,
+                                                                     hasBuilder),
                                  () -> {
                                      TypeName type = jsonProperty.deserializationType().orElseThrow();
                                      createTypeDeserializer(jsonProperty,
@@ -513,6 +522,7 @@ class JsonConverterGenerator {
                                                             method,
                                                             classBuilder,
                                                             hasCreator,
+                                                            hasBuilder,
                                                             processedTypes,
                                                             useConstructorToConfigure,
                                                             toConfigure);
@@ -524,6 +534,7 @@ class JsonConverterGenerator {
                                                Method.Builder method,
                                                ClassBase.Builder<?, ?> classBuilder,
                                                boolean hasCreator,
+                                               boolean hasBuilder,
                                                Set<String> processedTypes,
                                                boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
@@ -540,7 +551,7 @@ class JsonConverterGenerator {
                                                                    resolvedType,
                                                                    type,
                                                                    fieldType));
-            valueWritingMethod(jsonProperty, method, hasCreator, fieldName);
+            valueWritingMethod(jsonProperty, method, hasCreator, hasBuilder, fieldName);
         } else {
             String converterFieldName = "deserializer" + ensureUpperStart(type);
             if (!processedTypes.contains(converterFieldName)) {
@@ -556,7 +567,7 @@ class JsonConverterGenerator {
                                                                                 type,
                                                                                 fieldType));
             }
-            valueWritingMethod(jsonProperty, method, hasCreator, converterFieldName);
+            valueWritingMethod(jsonProperty, method, hasCreator, hasBuilder, converterFieldName);
         }
     }
 
@@ -564,7 +575,8 @@ class JsonConverterGenerator {
                                             TypeName deserializer,
                                             Method.Builder method,
                                             ClassBase.Builder<?, ?> classBuilder,
-                                            boolean hasCreator) {
+                                            boolean hasCreator,
+                                            boolean hasBuilder) {
         String constantName = constantName(property.deserializationName().orElseThrow()) + "_DESERIALIZER";
         classBuilder.addField(field -> field.name(constantName)
                 .type(deserializer)
@@ -572,28 +584,30 @@ class JsonConverterGenerator {
                 .isFinal(true)
                 .addContent("new ").addContent(deserializer).addContent("()"));
 
-        valueWritingMethod(property, method, hasCreator, constantName);
+        valueWritingMethod(property, method, hasCreator, hasBuilder, constantName);
     }
 
     private static void valueWritingMethod(JsonProperty property,
                                            Method.Builder method,
                                            boolean hasCreator,
+                                           boolean hasBuilder,
                                            String reference) {
         if (hasCreator) {
             method.addContent(property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
                     .addContentLine("parser.checkNull() ? " + reference + ".deserializeNull() : "
                                             + reference + ".deserialize(parser);");
         } else {
+            String instanceName = hasBuilder ? "builder" : "generatedInstance";
             String writingMethod = property.setterName()
-                    .map(methodName -> "generatedInstance." + methodName
+                    .map(methodName -> instanceName + "." + methodName
                             + "(parser.checkNull() ? " + reference + ".deserializeNull() : "
                             + reference + ".deserialize(parser));")
                     .orElseGet(() -> property.fieldName()
                             .filter(it -> property.directFieldAccess())
-                            .map(fieldName -> "generatedInstance." + fieldName
+                            .map(fieldName -> instanceName + "." + fieldName
                                     + " = parser.checkNull() ? " + reference + ".deserializeNull() : "
                                     + reference + ".deserialize(parser);")
-                            .orElseThrow());
+                            .orElseThrow()); //TODO Add proper exception handling
             method.addContentLine(writingMethod);
         }
         method.addContentLine("break;");

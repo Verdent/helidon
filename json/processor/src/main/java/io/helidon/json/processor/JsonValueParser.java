@@ -8,7 +8,6 @@ class JsonValueParser implements JsonParser {
     private JsonValue[] values = new JsonValue[500];
     private JsonValue current;
     private int index = 0;
-    private byte lastByte;
 
     JsonValueParser(JsonValue jsonValue) {
         this.current = jsonValue;

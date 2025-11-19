@@ -84,4 +84,16 @@ public final class Json {
 
     }
 
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface BuilderInfo {
+
+        Class<?> value();
+
+        String prefix() default "";
+
+        String buildMethod() default "build";
+
+    }
+
 }

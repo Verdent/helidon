@@ -32,7 +32,7 @@ record ConvertedTypeInfo(TypeName converterType,
                          Map<String, JsonProperty> jsonProperties,
                          Comparator<String> orderedProperties,
                          CreatorInfo creatorInfo,
-                         Optional<TypedElementInfo> builder) {
+                         Optional<BuilderInfo> builderInfo) {
 
     private static final Set<MethodSignature> IGNORED_METHODS = Set.of(
             // equals, hash code and toString
@@ -63,16 +63,14 @@ record ConvertedTypeInfo(TypeName converterType,
                 .flatMap(annotation -> annotation.stringValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_ORDER.value(ctx.options()));
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
-        Optional<TypedElementInfo> builderMethod = findBuilderMethod(typeInfo, ctx);
-        TypeInfo toCheck = builderMethod.map(it -> it.typeName())
+        discoverFields(properties, typeInfo, nullable);
+        discoverGetAndSetMethods(properties, typeInfo, recordAccessors);
+        Optional<BuilderInfo> builderInfo = typeInfo.findAnnotation(Types.JSON_BUILDER_INFO)
+                .flatMap(it -> it.stringValue())
+                .map(TypeName::create)
                 .flatMap(ctx::typeInfo)
-                .orElse(typeInfo);
-        discoverFields(properties, toCheck, nullable);
-        discoverGetMethods(properties, typeInfo, recordAccessors); //we want get methods of the original type, not builder
-        discoverSetMethods(properties, toCheck, recordAccessors, builderMethod.isPresent());
-        if (builderMethod.isPresent() && !checkBuildMethod(toCheck, typeInfo)) {
-            throw new IllegalStateException("Method build needs to return the same type as the original as is the processed type"); //TODO CHANGE
-        }
+                .flatMap(it -> processBuilderInfoFromClass(it, typeInfo.typeName(), null, properties, ctx))
+                .or(() -> processBuilderInfo(typeInfo, properties, ctx));
         CreatorInfo creatorInfo = discoverCreator(properties, typeInfo);
         Map<String, JsonProperty> jsonProperties = finalizeJsonProperties(properties);
         Comparator<String> orderComparator = PROPERTY_ORDER.getOrDefault(orderStrategy, (o1, o2) -> 0);
@@ -82,18 +80,58 @@ record ConvertedTypeInfo(TypeName converterType,
                                      jsonProperties,
                                      orderComparator,
                                      creatorInfo,
-                                     builderMethod);
+                                     builderInfo);
     }
 
-    private static boolean checkBuildMethod(TypeInfo typeInfo, TypeInfo originalType) {
-        return typeInfo.elementInfo()
+    private static Optional<BuilderInfo> processBuilderInfo(TypeInfo createdTypeInfo,
+                                                            Map<String, JsonProperty.Builder> properties,
+                                                            CodegenContext ctx) {
+        Optional<TypedElementInfo> builderMethod = findBuilderMethod(createdTypeInfo, ctx);
+        if (builderMethod.isEmpty()) {
+            return Optional.empty();
+        }
+        TypeName builderTypeName = builderMethod.get().typeName();
+        TypeInfo builderTypeInfo = ctx.typeInfo(builderTypeName).orElseThrow(); //TODO Proper exception handling
+        return processBuilderInfoFromClass(builderTypeInfo,
+                                           createdTypeInfo.typeName(),
+                                           builderMethod.get().elementName(),
+                                           properties,
+                                           ctx);
+    }
+    
+    private static Optional<BuilderInfo> processBuilderInfoFromClass(TypeInfo builderTypeInfo,
+                                                                     TypeName createdType,
+                                                                     String builderMethodName,
+                                                                     Map<String, JsonProperty.Builder> properties,
+                                                                     CodegenContext ctx) {
+        if (!checkBuildMethod(builderTypeInfo, createdType, builderMethodName)) {
+            throw new IllegalStateException("Method build needs to return the same type as the original as is the processed type"); //TODO Proper exception handling
+        }
+        return Optional.empty();
+    }
+
+//    List<String> parameterNames = new ArrayList<>();
+//        for (TypedElementInfo parameter : creator.parameterArguments()) {
+//        String parameterName = parameter.elementName();
+//        parameterNames.add(parameterName);
+//        properties.computeIfAbsent(parameterName, name -> JsonProperty.builder())
+//                .usedInCreator(true)
+//                .deserializationName(parameterName)
+//                .deserializationType(resolveGenerics(parameter.typeName(), typeInfo))
+//                .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
+//                .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
+//                .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
+//    }
+
+    private static boolean checkBuildMethod(TypeInfo builderTypeInfo, TypeName originalType, String builderMethodName) {
+        return builderTypeInfo.elementInfo()
                 .stream()
-                .filter(it -> it.elementName().equals("build"))
+                .filter(it -> it.elementName().equals(builderMethodName))
                 .filter(ElementInfoPredicates::isMethod)
                 .filter(not(ElementInfoPredicates::isPrivate))
                 .filter(not(ElementInfoPredicates::isStatic))
                 .filter(ElementInfoPredicates::hasNoArgs)
-                .anyMatch(it -> it.typeName().equals(originalType.typeName()));
+                .anyMatch(it -> it.typeName().equals(originalType));
     }
 
     private static Optional<TypedElementInfo> findBuilderMethod(TypeInfo typeInfo, CodegenContext ctx) {
@@ -145,25 +183,24 @@ record ConvertedTypeInfo(TypeName converterType,
         }
     }
 
-    private static String discoverGetMethods(Map<String, JsonProperty.Builder> properties,
-                                             TypeInfo typeInfo,
-                                             String accessorStyle) {
-        //TypeInfoForSetters value can be either original type or the builder type
+    private static String discoverGetAndSetMethods(Map<String, JsonProperty.Builder> properties,
+                                                   TypeInfo typeInfo,
+                                                   String accessorStyle) {
         String detectedAccessorStyle = typeInfo.superTypeInfo()
-                .map(superType -> discoverGetMethods(properties, superType, accessorStyle))
+                .map(superType -> discoverGetAndSetMethods(properties, superType, accessorStyle))
                 .orElse(accessorStyle);
 
         for (TypeInfo interf : typeInfo.interfaceTypeInfo()) {
-            discoverGetMethods(properties, interf, detectedAccessorStyle);
+            discoverGetAndSetMethods(properties, interf, detectedAccessorStyle);
         }
 
         List<TypedElementInfo> methods = List.of();
         if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("BEAN")) {
-            methods = obtainAllAccessors(typeInfo, "BEAN", typeInfo.typeName(), false);
+            methods = obtainAllAccessors(typeInfo, "BEAN");
         }
         if (methods.isEmpty()) {
             if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("RECORD")) {
-                methods = obtainAllAccessors(typeInfo, "RECORD", typeInfo.typeName(), false);
+                methods = obtainAllAccessors(typeInfo, "RECORD");
                 detectedAccessorStyle = "RECORD";
             }
         } else {
@@ -183,41 +220,7 @@ record ConvertedTypeInfo(TypeName converterType,
                         .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::getterIgnored);
                 obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE).ifPresent(property::nullable);
-            }
-            //Not valid getter
-        }
-        return detectedAccessorStyle;
-    }
-
-    private static String discoverSetMethods(Map<String, JsonProperty.Builder> properties,
-                                             TypeInfo typeInfo,
-                                             String accessorStyle,
-                                             boolean isBuilder) {
-        //TypeInfoForSetters value can be either original type or the builder type
-        String detectedAccessorStyle = typeInfo.superTypeInfo()
-                .map(superType -> discoverSetMethods(properties, superType, accessorStyle, isBuilder))
-                .orElse(isBuilder ? "RECORD" : accessorStyle);
-
-        for (TypeInfo interf : typeInfo.interfaceTypeInfo()) {
-            discoverSetMethods(properties, interf, detectedAccessorStyle, isBuilder);
-        }
-
-        List<TypedElementInfo> methods = List.of();
-        if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("BEAN")) {
-            methods = obtainAllAccessors(typeInfo, "BEAN", typeInfo.typeName(), isBuilder);
-        }
-        if (methods.isEmpty()) {
-            if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("RECORD")) {
-                methods = obtainAllAccessors(typeInfo, "RECORD", typeInfo.typeName(), isBuilder);
-                detectedAccessorStyle = "RECORD";
-            }
-        } else {
-            detectedAccessorStyle = "BEAN";
-        }
-
-        for (TypedElementInfo method : methods) {
-            String methodName = method.elementName();
-            if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle, typeInfo.typeName(), isBuilder)) {
+            } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle)) {
                 String prefix = detectedAccessorStyle.equals("RECORD") ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
@@ -228,19 +231,19 @@ record ConvertedTypeInfo(TypeName converterType,
                         .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::setterIgnored);
             }
-            //Not a valid setter
+            //Not valid getter or setter
         }
         return detectedAccessorStyle;
     }
 
-    private static List<TypedElementInfo> obtainAllAccessors(TypeInfo typeInfo, String accessorStyle, TypeName type, boolean isBuilder) {
+    private static List<TypedElementInfo> obtainAllAccessors(TypeInfo typeInfo, String accessorStyle) {
         return typeInfo.elementInfo()
                 .stream()
                 .filter(ElementInfoPredicates::isMethod)
                 .filter(not(ElementInfoPredicates::isPrivate))
                 .filter(not(ElementInfoPredicates::isStatic))
                 .filter(not(ConvertedTypeInfo::isIgnored))
-                .filter(it -> isGetter(it, accessorStyle) || isSetter(it, accessorStyle, type, isBuilder)) //TODO UPDATE!!
+                .filter(it -> isGetter(it, accessorStyle) || isSetter(it, accessorStyle))
                 .toList();
     }
 
@@ -336,17 +339,17 @@ record ConvertedTypeInfo(TypeName converterType,
                 && !typedElementInfo.typeName().equals(PRIMITIVE_VOID);
     }
 
-    private static boolean isSetter(TypedElementInfo typedElementInfo, String accessorStyle, TypeName type, boolean isBuilder) {
+    private static boolean isSetter(TypedElementInfo typedElementInfo, String accessorStyle) {
         if (accessorStyle.equals("RECORD")) {
             return typedElementInfo.parameterArguments().size() == 1
-                    && typedElementInfo.typeName().equals(isBuilder ? type : PRIMITIVE_VOID);
+                    && typedElementInfo.typeName().equals(PRIMITIVE_VOID);
         }
         String methodName = typedElementInfo.elementName();
         return methodName.startsWith("set")
                 && methodName.length() > 3
                 && Character.isUpperCase(methodName.charAt(3))
                 && typedElementInfo.parameterArguments().size() == 1
-                && typedElementInfo.typeName().equals(isBuilder ? type : PRIMITIVE_VOID);
+                && typedElementInfo.typeName().equals(PRIMITIVE_VOID);
     }
 
     private static String methodToFieldName(String prefix, String methodName) {

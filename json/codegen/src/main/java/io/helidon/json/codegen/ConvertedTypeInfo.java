@@ -65,11 +65,16 @@ record ConvertedTypeInfo(TypeName converterType,
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
         discoverFields(properties, typeInfo, nullable);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors);
-        Optional<BuilderInfo> builderInfo = typeInfo.findAnnotation(Types.JSON_BUILDER_INFO)
-                .flatMap(it -> it.stringValue())
+        Optional<Annotation> builderAnnotation = typeInfo.findAnnotation(Types.JSON_BUILDER_INFO);
+        Optional<BuilderInfo> builderInfo = builderAnnotation.flatMap(it -> it.stringValue())
                 .map(TypeName::create)
                 .flatMap(ctx::typeInfo)
-                .flatMap(it -> processBuilderInfoFromClass(it, typeInfo.typeName(), null, properties, ctx))
+                .flatMap(it -> processBuilderInfoFromClass(it,
+                                                           typeInfo.typeName(),
+                                                           null,
+                                                           builderAnnotation.get().stringValue("methodPrefix").get(),
+                                                           builderAnnotation.get().stringValue("buildMethod").get(),
+                                                           properties))
                 .or(() -> processBuilderInfo(typeInfo, properties, ctx));
         CreatorInfo creatorInfo = discoverCreator(properties, typeInfo);
         Map<String, JsonProperty> jsonProperties = finalizeJsonProperties(properties);
@@ -86,7 +91,7 @@ record ConvertedTypeInfo(TypeName converterType,
     private static Optional<BuilderInfo> processBuilderInfo(TypeInfo createdTypeInfo,
                                                             Map<String, JsonProperty.Builder> properties,
                                                             CodegenContext ctx) {
-        Optional<TypedElementInfo> builderMethod = findBuilderMethod(createdTypeInfo, ctx);
+        Optional<TypedElementInfo> builderMethod = findHelidonBuilderMethod(createdTypeInfo, ctx);
         if (builderMethod.isEmpty()) {
             return Optional.empty();
         }
@@ -95,38 +100,68 @@ record ConvertedTypeInfo(TypeName converterType,
         return processBuilderInfoFromClass(builderTypeInfo,
                                            createdTypeInfo.typeName(),
                                            builderMethod.get().elementName(),
-                                           properties,
-                                           ctx);
+                                           "",
+                                           "build",
+                                           properties);
     }
     
     private static Optional<BuilderInfo> processBuilderInfoFromClass(TypeInfo builderTypeInfo,
                                                                      TypeName createdType,
                                                                      String builderMethodName,
-                                                                     Map<String, JsonProperty.Builder> properties,
-                                                                     CodegenContext ctx) {
-        if (!checkBuildMethod(builderTypeInfo, createdType, builderMethodName)) {
-            throw new IllegalStateException("Method build needs to return the same type as the original as is the processed type"); //TODO Proper exception handling
+                                                                     String builderMethodPrefix,
+                                                                     String buildMethod,
+                                                                     Map<String, JsonProperty.Builder> properties) {
+        if (!checkBuildMethod(builderTypeInfo, createdType, buildMethod)) {
+            throw new IllegalStateException("Build method with the name \"" + buildMethod
+                                                    + "\" does not exist or does not return: " + createdType.fqName()); //TODO Proper exception handling
         }
-        return Optional.empty();
+
+        // Find all builder methods (withXXX methods)
+        List<TypedElementInfo> builderMethods = builderTypeInfo.elementInfo()
+                .stream()
+                .filter(ElementInfoPredicates::isMethod)
+                .filter(not(ElementInfoPredicates::isPrivate))
+                .filter(not(ElementInfoPredicates::isStatic))
+                .filter(method -> method.elementName().startsWith(builderMethodPrefix))
+                .filter(it -> it.typeName().equals(builderTypeInfo.typeName()))
+                .filter(it -> it.parameterArguments().size() == 1)
+                .filter(not(ConvertedTypeInfo::isIgnored))
+                .toList();
+
+        // Configure properties with builder methods
+        List<String> builderProperties = new ArrayList<>();
+        for (TypedElementInfo method : builderMethods) {
+            String methodName = method.elementName();
+            String propertyName = methodToFieldName(builderMethodPrefix, methodName);
+
+            if (builderProperties.contains(method.elementName())) {
+                //TODO ignore or throw an exception if multiple builder methods found for a property.
+                continue;
+            }
+
+            TypedElementInfo parameter = method.parameterArguments().getFirst();
+
+            properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
+                    .setterName(methodName)
+                    .deserializationNameIfNotSet(propertyName)
+                    .deserializationType(resolveGenerics(parameter.typeName(), builderTypeInfo))
+                    .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
+
+            builderProperties.add(propertyName);
+        }
+
+        return Optional.of(new BuilderInfo(builderTypeInfo.typeName(),
+                                           Optional.ofNullable(builderMethodName),
+                                           buildMethod,
+                                           builderProperties));
     }
 
-//    List<String> parameterNames = new ArrayList<>();
-//        for (TypedElementInfo parameter : creator.parameterArguments()) {
-//        String parameterName = parameter.elementName();
-//        parameterNames.add(parameterName);
-//        properties.computeIfAbsent(parameterName, name -> JsonProperty.builder())
-//                .usedInCreator(true)
-//                .deserializationName(parameterName)
-//                .deserializationType(resolveGenerics(parameter.typeName(), typeInfo))
-//                .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
-//                .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
-//                .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
-//    }
-
-    private static boolean checkBuildMethod(TypeInfo builderTypeInfo, TypeName originalType, String builderMethodName) {
+    private static boolean checkBuildMethod(TypeInfo builderTypeInfo, TypeName originalType, String buildMethodName) {
         return builderTypeInfo.elementInfo()
                 .stream()
-                .filter(it -> it.elementName().equals(builderMethodName))
+                .filter(it -> it.elementName().equals(buildMethodName))
                 .filter(ElementInfoPredicates::isMethod)
                 .filter(not(ElementInfoPredicates::isPrivate))
                 .filter(not(ElementInfoPredicates::isStatic))
@@ -134,7 +169,7 @@ record ConvertedTypeInfo(TypeName converterType,
                 .anyMatch(it -> it.typeName().equals(originalType));
     }
 
-    private static Optional<TypedElementInfo> findBuilderMethod(TypeInfo typeInfo, CodegenContext ctx) {
+    private static Optional<TypedElementInfo> findHelidonBuilderMethod(TypeInfo typeInfo, CodegenContext ctx) {
         return typeInfo.elementInfo()
                 .stream()
                 .filter(it -> it.elementName().equals("builder"))
@@ -273,7 +308,7 @@ record ConvertedTypeInfo(TypeName converterType,
         TypedElementInfo creator = creators.getFirst();
         ElementKind creatorKind = creator.kind();
         if (creatorKind == ElementKind.METHOD && !creator.elementModifiers().contains(Modifier.STATIC)) {
-            throw new IllegalStateException("Creator has to be either on constructor or static method"); //TODO UPRAVIT ne exceptiona
+            throw new IllegalStateException("Creator has to be either on constructor or static builderMethodName"); //TODO UPRAVIT ne exceptiona
         } else if (creator.accessModifier() == AccessModifier.PRIVATE) {
             throw new IllegalStateException("Creator has to be non-private"); //TODO UPRAVIT ne exceptiona
         }
@@ -400,7 +435,7 @@ record ConvertedTypeInfo(TypeName converterType,
             JsonProperty.Builder builder = entry.getValue();
             if (!builder.directFieldAccess() && builder.setterName().isEmpty() && builder.getterName().isEmpty()) {
                 //Ignore
-                //This is a private field with no accessor method set
+                //This is a private field with no accessor builderMethodName set
                 continue;
             }
             finalProperties.put(entry.getKey(), builder.build());

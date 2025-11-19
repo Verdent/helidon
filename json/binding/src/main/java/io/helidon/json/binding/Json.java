@@ -90,7 +90,7 @@ public final class Json {
 
         Class<?> value();
 
-        String prefix() default "";
+        String methodPrefix() default "";
 
         String buildMethod() default "build";
 

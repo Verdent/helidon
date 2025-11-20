@@ -40,21 +40,21 @@ public class HelidonBuilderSupportTest {
             return value;
         }
 
+        public static class Builder implements io.helidon.common.Builder<Builder, TestPojoWithBuilder> {
+
+            private String value;
+
+            public Builder value(String value) {
+                this.value = value;
+                return this;
+            }
+
+            @Override
+            public TestPojoWithBuilder build() {
+                return new TestPojoWithBuilder(this);
+            }
+        }
     }
 
-    public static class Builder implements io.helidon.common.Builder<Builder, TestPojoWithBuilder> {
-
-        private String value;
-
-        public Builder value(String value) {
-            this.value = value;
-            return this;
-        }
-
-        @Override
-        public TestPojoWithBuilder build() {
-            return new TestPojoWithBuilder(this);
-        }
-    }
 
 }

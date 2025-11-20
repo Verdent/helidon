@@ -51,6 +51,7 @@ public class GeneralBuilderSupportTest {
     @Json.BuilderInfo(TestPojoWithBuilder.Builder.class)
     public static class TestPojoWithBuilder {
 
+        @Json.Required
         private final String value;
 
         private TestPojoWithBuilder(Builder builder) {

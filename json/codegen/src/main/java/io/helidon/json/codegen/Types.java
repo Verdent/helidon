@@ -32,8 +32,9 @@ final class Types {
     static final TypeName JSON_CONVERTER = TypeName.create("io.helidon.json.binding.Json.Converter");
     static final TypeName JSON_PROPERTY = TypeName.create("io.helidon.json.binding.Json.Property");
     static final TypeName JSON_IGNORE = TypeName.create("io.helidon.json.binding.Json.Ignore");
+    static final TypeName JSON_REQUIRED = TypeName.create("io.helidon.json.binding.Json.Required");
     static final TypeName JSON_CREATOR = TypeName.create("io.helidon.json.binding.Json.Creator");
-    static final TypeName JSON_NULLABLE = TypeName.create("io.helidon.json.binding.Json.SerializeNulls");
+    static final TypeName JSON_SERIALIZE_NULLS = TypeName.create("io.helidon.json.binding.Json.SerializeNulls");
     static final TypeName JSON_PROPERTY_ORDER = TypeName.create("io.helidon.json.binding.Json.PropertyOrder");
     static final TypeName JSON_BUILDER_INFO = TypeName.create("io.helidon.json.binding.Json.BuilderInfo");
 

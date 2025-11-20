@@ -56,7 +56,7 @@ record ConvertedTypeInfo(TypeName converterType,
         if (typeInfo.kind() == ElementKind.RECORD && recordAccessors.equals("AUTO")) {
             recordAccessors = "RECORD";
         }
-        boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_NULLABLE, typeInfo)
+        boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
         String orderStrategy = obtainClassAnnotationFromHierarchy(Types.JSON_PROPERTY_ORDER, typeInfo)
@@ -213,8 +213,9 @@ record ConvertedTypeInfo(TypeName converterType,
                     .ifPresent(value -> builder.serializer(value).deserializer(value));
             obtainTypeNameFromAnnotation(field, Types.JSON_SERIALIZER).ifPresent(builder::serializer);
             obtainTypeNameFromAnnotation(field, Types.JSON_DESERIALIZER).ifPresent(builder::deserializer);
-            field.findAnnotation(Types.JSON_IGNORE).ifPresent(annotation -> builder.propertyIgnored(true));
-            obtainBooleanFromAnnotation(field, Types.JSON_NULLABLE).ifPresent(builder::nullable);
+            obtainBooleanFromAnnotation(field, Types.JSON_IGNORE).ifPresent(builder::propertyIgnored);
+            field.findAnnotation(Types.JSON_REQUIRED).ifPresent(annotation -> builder.required(true));
+            obtainBooleanFromAnnotation(field, Types.JSON_SERIALIZE_NULLS).ifPresent(builder::nullable);
             properties.put(fieldName, builder);
         }
     }
@@ -255,7 +256,8 @@ record ConvertedTypeInfo(TypeName converterType,
                         .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
                         .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
                 obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::getterIgnored);
-                obtainBooleanFromAnnotation(method, Types.JSON_NULLABLE).ifPresent(property::nullable);
+                obtainBooleanFromAnnotation(method, Types.JSON_SERIALIZE_NULLS).ifPresent(property::nullable);
+                method.findAnnotation(Types.JSON_REQUIRED).ifPresent(annotation -> property.required(true));
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle)) {
                 String prefix = detectedAccessorStyle.equals("RECORD") ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName);

@@ -30,6 +30,7 @@ class JsonConverterGenerator {
 
     static final String CONFIGURE_PARAM = "jsonBindingConfigurator";
     private static final String PROPERTY_NAME_SUFFIX = "_";
+    private static final String MISSING_SUFFIX = "_missing";
     private static final Supplier<?> DEFAULT_TYPE_VALUE = () -> null;
     private static final Map<TypeName, Supplier<?>> DEFAULT_TYPE_VALUES = Map.of(
             TypeNames.PRIMITIVE_BOOLEAN, () -> false,
@@ -337,6 +338,10 @@ class JsonConverterGenerator {
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
         boolean additionalSetters = false;
+        jsonProperties.stream()
+                .filter(JsonProperty::required)
+                .map(JsonConverterGenerator::convertToMissingName)
+                .forEach(name ->  method.addContent(boolean.class).addContentLine(" " + name + " = true;"));
         if (hasCreator) {
             for (JsonProperty jsonProperty : jsonProperties) {
                 TypeName type = jsonProperty.deserializationType().orElseThrow();
@@ -434,6 +439,16 @@ class JsonConverterGenerator {
                 .addContentLine("}")
                 .addContentLine("}");
         method.addContentLine("}");
+        jsonProperties.stream()
+                .filter(JsonProperty::required)
+                .forEach(property -> {
+                    String name = JsonConverterGenerator.convertToMissingName(property);
+                    method.addContentLine("if (" + name + ") {")
+                            .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
+                            .addContentLine("(\"Property \\\""+property.deserializationName().orElseThrow()+"\\\" "
+                                                    + "was required to be present in the JSON, but was missing.\");")
+                            .addContentLine("}");
+                });
         if (hasCreator) {
             TypeName originalType = converterInfo.originalType();
             if (creatorKind == ElementKind.METHOD) {
@@ -496,6 +511,12 @@ class JsonConverterGenerator {
             }
         }
         method.addContentLine("return instance;");
+    }
+
+    private static String convertToMissingName(JsonProperty jsonProperty) {
+        return jsonProperty.deserializationName()
+                .map(it -> it + MISSING_SUFFIX)
+                .orElseThrow();
     }
 
     private static String constantName(String propertyName) {
@@ -646,6 +667,10 @@ class JsonConverterGenerator {
                                     + reference + ".deserialize(parser);")
                             .orElseThrow()); //TODO Add proper exception handling
             method.addContentLine(writingMethod);
+        }
+        if (property.required()) {
+            String name = convertToMissingName(property);
+            method.addContentLine(name + " = false;");
         }
         method.addContentLine("break;");
     }

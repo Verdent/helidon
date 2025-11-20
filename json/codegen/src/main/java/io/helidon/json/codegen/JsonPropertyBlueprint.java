@@ -33,6 +33,8 @@ interface JsonPropertyBlueprint {
 
     boolean propertyIgnored();
 
+    boolean required();
+
     boolean getterIgnored();
 
     boolean setterIgnored();

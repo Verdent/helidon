@@ -142,6 +142,7 @@ record ConvertedTypeInfo(TypeName converterType,
             TypedElementInfo parameter = method.parameterArguments().getFirst();
 
             properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
+                    .usedInBuilder(true)
                     .setterName(methodName)
                     .deserializationNameIfNotSet(propertyName)
                     .deserializationType(resolveGenerics(parameter.typeName(), builderTypeInfo))

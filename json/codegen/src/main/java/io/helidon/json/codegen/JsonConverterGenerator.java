@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -341,7 +340,7 @@ class JsonConverterGenerator {
                 .addContentLine("parser.byteRollback();")
                 .addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("}");
-        boolean hasExtraSettersOverBuilder = false;
+        boolean additionalSetters = false;
         if (hasCreator) {
             for (JsonProperty jsonProperty : jsonProperties) {
                 TypeName type = jsonProperty.deserializationType().orElseThrow();
@@ -365,11 +364,11 @@ class JsonConverterGenerator {
             }
             for (JsonProperty jsonProperty : jsonProperties) {
                 String deserializationName = jsonProperty.deserializationName().orElseThrow();
-                if (builderInfo.builderProperties().contains(deserializationName)) {
+                if (jsonProperty.usedInBuilder()) {
                     //This property is handled by the builder
                     continue;
                 }
-                hasExtraSettersOverBuilder = true;
+                additionalSetters = true;
                 TypeName type = jsonProperty.deserializationType().orElseThrow();
                 method.addContent(type)
                         .addContent(" " + deserializationName + PROPERTY_NAME_SUFFIX + " = ")
@@ -415,7 +414,7 @@ class JsonConverterGenerator {
                                 method,
                                 classBuilder,
                                 hasCreator,
-                                converterInfo.builderInfo(),
+                                hasBuilder,
                                 processedTypes,
                                 useConstructorToConfigure,
                                 toConfigure);
@@ -475,7 +474,7 @@ class JsonConverterGenerator {
             }
         } else if (hasBuilder) {
             BuilderInfo builderInfo = converterInfo.builderInfo().get();
-            if (hasExtraSettersOverBuilder) {
+            if (additionalSetters) {
                 method.addContent(converterInfo.originalType())
                         .addContent(" instance = builder.")
                         .addContent(builderInfo.buildMethodName())
@@ -485,8 +484,7 @@ class JsonConverterGenerator {
                 return;
             }
             for (JsonProperty property : jsonProperties) {
-                String deserializationName = property.deserializationName().orElseThrow();
-                if (builderInfo.builderProperties().contains(deserializationName)) {
+                if (property.usedInBuilder()) {
                     //This property is handled by the builder
                     continue;
                 }
@@ -546,7 +544,7 @@ class JsonConverterGenerator {
                                         Method.Builder method,
                                         ClassBase.Builder<?, ?> classBuilder,
                                         boolean hasCreator,
-                                        Optional<BuilderInfo> builderInfo,
+                                        boolean hasBuilder,
                                         Set<String> processedTypes,
                                         boolean useConstructorToConfigure,
                                         Map<String, TypeToConfigure> toConfigure) {
@@ -556,7 +554,7 @@ class JsonConverterGenerator {
                                                                      method,
                                                                      classBuilder,
                                                                      hasCreator,
-                                                                     builderInfo),
+                                                                     hasBuilder),
                                  () -> {
                                      TypeName type = jsonProperty.deserializationType().orElseThrow();
                                      createTypeDeserializer(jsonProperty,
@@ -564,7 +562,7 @@ class JsonConverterGenerator {
                                                             method,
                                                             classBuilder,
                                                             hasCreator,
-                                                            builderInfo,
+                                                            hasBuilder,
                                                             processedTypes,
                                                             useConstructorToConfigure,
                                                             toConfigure);
@@ -576,7 +574,7 @@ class JsonConverterGenerator {
                                                Method.Builder method,
                                                ClassBase.Builder<?, ?> classBuilder,
                                                boolean hasCreator,
-                                               Optional<BuilderInfo> builderInfo,
+                                               boolean hasBuilder,
                                                Set<String> processedTypes,
                                                boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
@@ -593,7 +591,7 @@ class JsonConverterGenerator {
                                                                    resolvedType,
                                                                    type,
                                                                    fieldType));
-            valueWritingMethod(jsonProperty, method, hasCreator, builderInfo, fieldName);
+            valueWritingMethod(jsonProperty, method, hasCreator, hasBuilder, fieldName);
         } else {
             String converterFieldName = "deserializer" + ensureUpperStart(type);
             if (!processedTypes.contains(converterFieldName)) {
@@ -609,7 +607,7 @@ class JsonConverterGenerator {
                                                                                 type,
                                                                                 fieldType));
             }
-            valueWritingMethod(jsonProperty, method, hasCreator, builderInfo, converterFieldName);
+            valueWritingMethod(jsonProperty, method, hasCreator, hasBuilder, converterFieldName);
         }
     }
 
@@ -618,7 +616,7 @@ class JsonConverterGenerator {
                                             Method.Builder method,
                                             ClassBase.Builder<?, ?> classBuilder,
                                             boolean hasCreator,
-                                            Optional<BuilderInfo> builderInfo) {
+                                            boolean builderInfo) {
         String constantName = constantName(property.deserializationName().orElseThrow()) + "_DESERIALIZER";
         classBuilder.addField(field -> field.name(constantName)
                 .type(deserializer)
@@ -632,15 +630,15 @@ class JsonConverterGenerator {
     private static void valueWritingMethod(JsonProperty property,
                                            Method.Builder method,
                                            boolean hasCreator,
-                                           Optional<BuilderInfo> builderInfo,
+                                           boolean hasBuilder,
                                            String reference) {
-        String deserPropertyName = property.deserializationName().orElseThrow();
-        if (hasCreator || (builderInfo.isPresent() && !builderInfo.get().builderProperties().contains(deserPropertyName))) {
+        if (hasCreator || (hasBuilder && !property.usedInBuilder())) {
+            String deserPropertyName = property.deserializationName().orElseThrow();
             method.addContent(deserPropertyName + PROPERTY_NAME_SUFFIX + " = ")
                     .addContentLine("parser.checkNull() ? " + reference + ".deserializeNull() : "
                                             + reference + ".deserialize(parser);");
         } else {
-            String instanceName = builderInfo.isPresent() ? "builder" : "instance";
+            String instanceName = hasBuilder ? "builder" : "instance";
             String writingMethod = property.setterName()
                     .map(methodName -> instanceName + "." + methodName
                             + "(parser.checkNull() ? " + reference + ".deserializeNull() : "

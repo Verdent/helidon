@@ -75,12 +75,4 @@ public interface JsonParser {
 
     void byteRollback();
 
-    /**
-     * The next byte in the buffer, without changing the current buffer position.
-     * If no byte is available, throws an {@link JsonException}.
-     *
-     * @return next byte
-     */
-    //    byte peek();
-
 }

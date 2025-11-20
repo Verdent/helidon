@@ -24,7 +24,7 @@ public class HelidonBuilderSupportTest {
     }
 
     @Json.Entity
-    public static class TestPojoWithBuilder {
+    static class TestPojoWithBuilder {
 
         private final String value;
 
@@ -32,19 +32,19 @@ public class HelidonBuilderSupportTest {
             value = builder.value;
         }
 
-        public static Builder builder() {
+        static Builder builder() {
             return new Builder();
         }
 
-        public String value() {
+        String value() {
             return value;
         }
 
-        public static class Builder implements io.helidon.common.Builder<Builder, TestPojoWithBuilder> {
+        static class Builder implements io.helidon.common.Builder<Builder, TestPojoWithBuilder> {
 
             private String value;
 
-            public Builder value(String value) {
+            Builder value(String value) {
                 this.value = value;
                 return this;
             }

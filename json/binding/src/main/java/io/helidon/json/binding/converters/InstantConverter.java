@@ -33,16 +33,16 @@ class InstantConverter implements JsonConverter<Instant> {
 
     @Override
     public Instant deserialize(JsonParser parser) {
-        boolean isString = parser.lastByte() == '"';
+        boolean isString = parser.currentByte() == '"';
         if (isString) {
-            parser.readNextByte();
+            parser.nextToken();
         }
         long value = parser.readAsLong();
         Instant instant = Instant.ofEpochMilli(value);
         if (isString) {
-            byte nextByte = parser.readNextByte();
-            if (parser.lastByte() != '"') {
-                throw new JsonException("End of the string expected, but found " + (char) nextByte);
+            byte nextToken = parser.nextToken();
+            if (parser.currentByte() != '"') {
+                throw new JsonException("End of the string expected, but found " + (char) nextToken);
             }
         }
         return instant;

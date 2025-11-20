@@ -30,9 +30,9 @@ class ShortConverter implements JsonConverter<Short> {
 
     @Override
     public Short deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             short value = parser.readAsShort();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

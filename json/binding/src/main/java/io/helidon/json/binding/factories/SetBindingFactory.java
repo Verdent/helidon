@@ -2,7 +2,6 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -84,7 +83,7 @@ class SetBindingFactory implements JsonBindingFactory<Set<?>> {
         @Override
         public Set<?> deserialize(JsonParser parser) {
             Set<Object> set = new HashSet<>();
-            byte lastByte = parser.lastByte();
+            byte lastByte = parser.currentByte();
             if (lastByte != '[') {
                 throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
             }

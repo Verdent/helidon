@@ -34,7 +34,7 @@ class BooleanArrayConverter implements JsonConverter<boolean[]> {
 
     @Override
     public boolean[] deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
         }

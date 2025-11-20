@@ -2,7 +2,6 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -94,7 +93,7 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
         @Override
         public Map<?, ?> deserialize(JsonParser parser) {
             Map<Object, Object> map = new HashMap<>();
-            byte lastByte = parser.lastByte();
+            byte lastByte = parser.currentByte();
             if (lastByte != '{') {
                 throw new JsonException("Map start '{' expected. Found: " + Character.toString(lastByte));
             }

@@ -27,9 +27,9 @@ class PrimitiveFloatConverter implements JsonConverter<Float> {
 
     @Override
     public Float deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             float value = parser.readAsFloat();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

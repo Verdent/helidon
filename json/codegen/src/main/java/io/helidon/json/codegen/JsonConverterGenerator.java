@@ -330,16 +330,12 @@ class JsonConverterGenerator {
                 .returnType(converterInfo.originalType())
                 .addParameter(param -> param.name("parser").type(Types.JSON_PARSER))
                 .addAnnotation(Annotation.create(Override.class))
-                .addContent(byte.class).addContentLine(" lastByte = parser.lastByte();")
+                .addContent(byte.class).addContentLine(" lastByte = parser.currentByte();")
                 .addContentLine("if (lastByte != '{') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContentLine("(\"Object start expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
-                .addContentLine("lastByte = parser.readNextByte();")
-                .addContentLine("if (lastByte != '\"') {")
-                .addContentLine("parser.byteRollback();")
-                .addContentLine("lastByte = parser.nextToken();")
-                .addContentLine("}");
+                .addContentLine("lastByte = parser.nextToken();");
         boolean additionalSetters = false;
         if (hasCreator) {
             for (JsonProperty jsonProperty : jsonProperties) {

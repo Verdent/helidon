@@ -19,11 +19,6 @@ class JsonValueParser implements JsonParser {
     }
 
     @Override
-    public byte readNextByte() {
-        return nextToken();
-    }
-
-    @Override
     public byte nextToken() {
         if (current != null) {
             if (current.type() == JsonValueType.OBJECT) {
@@ -84,7 +79,7 @@ class JsonValueParser implements JsonParser {
     }
 
     @Override
-    public byte lastByte() {
+    public byte currentByte() {
         return current.jsonStartChar();
     }
 
@@ -180,8 +175,4 @@ class JsonValueParser implements JsonParser {
         current = null;
     }
 
-    @Override
-    public void byteRollback() {
-        throw new UnsupportedOperationException("This is unsupported");
-    }
 }

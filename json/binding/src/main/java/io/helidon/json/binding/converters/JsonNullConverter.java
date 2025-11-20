@@ -21,7 +21,7 @@ class JsonNullConverter implements JsonConverter<JsonNull> {
         if (parser.checkNull()) {
             return JsonNull.instance();
         }
-        throw new JsonException("Expected null value, but got: " + (char) parser.lastByte());
+        throw new JsonException("Expected null value, but got: " + (char) parser.currentByte());
     }
 
     @Override

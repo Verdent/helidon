@@ -31,7 +31,7 @@ class CharArrayConverter implements JsonConverter<char[]> {
 
     @Override
     public char[] deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
         }

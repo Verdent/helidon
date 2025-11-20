@@ -145,7 +145,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     @Override
-    public byte lastByte() {
+    public byte currentByte() {
         return buffer[currentIndex];
     }
 
@@ -205,14 +205,13 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         return currentIndex + 1 < bufferLength;
     }
 
-    @Override
-    public byte readNextByte() {
+    byte readNextByte() {
         return buffer[++currentIndex];
     }
 
     @Override
     public JsonValue readJsonValue() {
-        byte b = currentIndex == -1 ? nextToken() : lastByte();
+        byte b = currentIndex == -1 ? nextToken() : currentByte();
         switch (b) {
         case '{':
             return readJsonObject();
@@ -247,8 +246,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public JsonObject readJsonObject() {
-        if (lastByte() != '{') {
-            throw new JsonException("Object start expected at index: " + realIndex() + ", but was: " + (char) lastByte());
+        if (currentByte() != '{') {
+            throw new JsonException("Object start expected at index: " + realIndex() + ", but was: " + (char) currentByte());
         }
         byte b = nextToken();
         if (b == '}') {
@@ -391,8 +390,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public String readString() {
         if (checkNull()) {
             return null;
-        } else if (lastByte() != '\"') {
-            throw new JsonException("Start of a string expected, but found: " + (char) lastByte());
+        } else if (currentByte() != '\"') {
+            throw new JsonException("Start of a string expected, but found: " + (char) currentByte());
         }
         int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
         int stringBuffIndex = 0;
@@ -535,7 +534,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                 stringBuffer[i++] = (char) c;
                 break;
             default:
-                byteRollback();
+                --currentIndex;
                 char[] numberBuffer = new char[i];
                 System.arraycopy(stringBuffer, 0, numberBuffer, 0, i);
                 return numberBuffer;
@@ -548,7 +547,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public boolean readAsBoolean() {
-        switch (lastByte()) {
+        switch (currentByte()) {
         case 't':
             ensure(3);
             if (buffer[++currentIndex] == 'r'
@@ -573,7 +572,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public byte readAsByte() {
-        if (lastByte() == '-') {
+        if (currentByte() == '-') {
             currentIndex = currentIndex + 1;
             return (byte) -parseByte(true);
         } else {
@@ -582,9 +581,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private byte parseByte(boolean negative) {
-        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) lastByte());
+            throw new JsonException("Expected number, but was: " + (char) currentByte());
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
@@ -640,7 +639,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public short readAsShort() {
-        if (lastByte() == '-') {
+        if (currentByte() == '-') {
             currentIndex = currentIndex + 1;
             return (short) -parseShort(true);
         } else {
@@ -649,9 +648,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     private short parseShort(boolean negative) {
-        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) lastByte());
+            throw new JsonException("Expected number, but was: " + (char) currentByte());
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
@@ -723,7 +722,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public int readAsInt() {
-        if (lastByte() == '-') {
+        if (currentByte() == '-') {
             currentIndex++;
             return -parseInt(true);
         } else {
@@ -733,9 +732,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     private int parseInt(boolean negative) {
         if (currentIndex + 11 < bufferLength) {
-            int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+            int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
             if (digit1 == -1) {
-                throw new JsonException("Expected number, but was: " + (char) lastByte());
+                throw new JsonException("Expected number, but was: " + (char) currentByte());
             }
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
             if (digit2 == -1) {
@@ -831,9 +830,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             }
             //TODO upravit na handling prilis dlouhych cisel
         }
-        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) lastByte());
+            throw new JsonException("Expected number, but was: " + (char) currentByte());
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex]] : -1;
@@ -980,7 +979,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public long readAsLong() {
-        if (lastByte() == '-') {
+        if (currentByte() == '-') {
             currentIndex++;
             return -parseLong(true);
         } else {
@@ -990,9 +989,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     private long parseLong(boolean negative) {
         if (currentIndex + 19 < bufferLength) {
-            int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+            int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
             if (digit1 == -1) {
-                throw new IllegalStateException("Expected number, but was: " + (char) lastByte());
+                throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
             }
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex]];
             if (digit2 == -1) {
@@ -1203,9 +1202,9 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             //TODO upravit na handling prilis dlouhych cisel
         }
         boolean hasNext = hasNext();
-        int digit1 = WHOLE_NUMBER_PARTS[lastByte()];
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new IllegalStateException("Expected number, but was: " + (char) lastByte());
+            throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
         }
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte()] : -1;
         if (digit2 == -1) {
@@ -1529,7 +1528,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                 }
             }
         } else if (rollback) {
-            byteRollback();
+            --currentIndex;
         }
         return result;
     }
@@ -1575,7 +1574,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
                 }
             }
         } else if (rollback) {
-            byteRollback();
+            --currentIndex;
         }
         return result;
     }
@@ -1592,7 +1591,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public boolean checkNull() {
-        if (lastByte() == 'n') {
+        if (currentByte() == 'n') {
             ensure(3);
             if (buffer[++currentIndex] == 'u'
                     && buffer[++currentIndex] == 'l'
@@ -1606,7 +1605,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public int readStringAsHash() {
-        if (lastByte() != '"') {
+        if (currentByte() != '"') {
             throw new JsonException("This is supported only for Strings.");
         } else if (!hasNext()) {
             throw new JsonException("Incomplete JSON.");
@@ -1627,13 +1626,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     @Override
-    public void byteRollback() {
-        --currentIndex;
-    }
-
-    @Override
     public void skip() {
-        switch (lastByte()) {
+        switch (currentByte()) {
         case '"':
             skipStringValue();
             break;

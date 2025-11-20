@@ -18,7 +18,7 @@ class BigDecimalConverter implements JsonConverter<BigDecimal> {
 
     @Override
     public BigDecimal deserialize(JsonParser parser) {
-        if (parser.lastByte() == '\"') {
+        if (parser.currentByte() == '\"') {
             return new BigDecimal(parser.readString());
         } else {
             return new BigDecimal(parser.readNumberAsArray());

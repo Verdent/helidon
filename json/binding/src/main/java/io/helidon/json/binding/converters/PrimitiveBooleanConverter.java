@@ -27,10 +27,10 @@ class PrimitiveBooleanConverter implements JsonConverter<Boolean> {
 
     @Override
     public Boolean deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         switch (lastByte) {
         case '\"':
-            lastByte = parser.readNextByte();
+            lastByte = parser.nextToken();
             boolean toReturn;
             switch (lastByte) {
             case 't':
@@ -44,7 +44,7 @@ class PrimitiveBooleanConverter implements JsonConverter<Boolean> {
             default:
                 throw new JsonException("Expected Boolean value but got '" + (char) lastByte + "'");
             }
-            if (parser.readNextByte() != '\"') {
+            if (parser.nextToken() != '\"') {
                 throw new JsonException("Expected end of the boolean value was '\"' but got '" + (char) lastByte + "'");
             }
             return toReturn;

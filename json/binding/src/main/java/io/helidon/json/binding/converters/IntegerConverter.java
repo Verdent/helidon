@@ -30,9 +30,9 @@ class IntegerConverter implements JsonConverter<Integer> {
 
     @Override
     public Integer deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             int value = parser.readAsInt();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

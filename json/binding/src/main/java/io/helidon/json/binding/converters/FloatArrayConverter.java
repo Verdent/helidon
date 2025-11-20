@@ -34,7 +34,7 @@ class FloatArrayConverter implements JsonConverter<float[]> {
 
     @Override
     public float[] deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte != '[') {
             throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
         }

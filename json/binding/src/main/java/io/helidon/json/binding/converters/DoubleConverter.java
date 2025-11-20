@@ -37,9 +37,9 @@ class DoubleConverter implements JsonConverter<Double> {
 
     @Override
     public Double deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             double value = parser.readAsDouble();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

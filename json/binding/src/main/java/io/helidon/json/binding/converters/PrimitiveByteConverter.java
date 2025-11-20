@@ -27,9 +27,9 @@ class PrimitiveByteConverter implements JsonConverter<Byte> {
 
     @Override
     public Byte deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             byte value = parser.readAsByte();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

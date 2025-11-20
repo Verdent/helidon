@@ -126,18 +126,6 @@ public interface JsonParser {
     boolean hasNext();
 
     /**
-     * Reads the next byte from the JSON stream.
-     * <p>
-     * This is a low-level method that advances the parser position by one byte.
-     * Most users should prefer higher-level methods like {@link #readJsonValue()}.
-     * </p>
-     *
-     * @return the next byte in the stream
-     * @throws JsonException if no more bytes are available or an I/O error occurs
-     */
-    byte readNextByte();
-
-    /**
      * Reads the next JSON token without consuming it.
      * <p>
      * This method advances the parser to the next significant token (skipping
@@ -159,7 +147,7 @@ public interface JsonParser {
      *
      * @return the last byte read, or 0 if no bytes have been read yet
      */
-    byte lastByte();
+    byte currentByte();
 
     /**
      * Reads a complete JSON value from the current position.
@@ -283,8 +271,7 @@ public interface JsonParser {
      * </p>
      *
      * @return the byte value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to byte
+     * @throws JsonException if parsing fails
      */
     byte readAsByte();
 
@@ -296,8 +283,7 @@ public interface JsonParser {
      * </p>
      *
      * @return the short value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to short
+     * @throws JsonException if parsing fails
      */
     short readAsShort();
 
@@ -309,8 +295,7 @@ public interface JsonParser {
      * </p>
      *
      * @return the int value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to int
+     * @throws JsonException if parsing fails
      */
     int readAsInt();
 
@@ -322,8 +307,7 @@ public interface JsonParser {
      * </p>
      *
      * @return the long value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to long
+     * @throws JsonException if parsing fails
      */
     long readAsLong();
 
@@ -335,8 +319,7 @@ public interface JsonParser {
      * </p>
      *
      * @return the float value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to float
+     * @throws JsonException if parsing fails
      */
     float readAsFloat();
 
@@ -347,16 +330,15 @@ public interface JsonParser {
      * </p>
      *
      * @return the double value
-     * @throws JsonException if the next token is not a number or parsing fails
-     * @throws NumberFormatException if the number cannot be converted to double
+     * @throws JsonException if parsing fails
      */
     double readAsDouble();
 
     /**
-     * Checks if the current position contains a null value without consuming it.
+     * Checks if the current position contains a null value.
      * <p>
-     * This method peeks at the next value to determine if it's null without
-     * advancing the parser position. Useful for conditional parsing logic.
+     * This method peeks at the next value to determine if it's null and advances
+     * the parser position if it is.
      * </p>
      *
      * @return true if the next value is null, false otherwise
@@ -371,21 +353,8 @@ public interface JsonParser {
      * string, number, boolean, or null) without constructing Java objects.
      * Useful for skipping unwanted parts of large JSON documents.
      * </p>
-     *
-     * @throws JsonException if skipping fails or no value is available
+     * @throws JsonException if parsing fails
      */
     void skip();
-
-    /**
-     * Rolls back the last byte read from the stream.
-     * <p>
-     * This method allows the parser to back up by one byte, effectively
-     * "unreading" the last byte. Useful for parser implementations that
-     * need to peek ahead.
-     * </p>
-     *
-     * @throws JsonException if rollback is not supported or fails
-     */
-    void byteRollback();
 
 }

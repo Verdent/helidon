@@ -30,9 +30,9 @@ class LongConverter implements JsonConverter<Long> {
 
     @Override
     public Long deserialize(JsonParser parser) {
-        byte lastByte = parser.lastByte();
+        byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
-            parser.readNextByte();
+            parser.nextToken();
             long value = parser.readAsLong();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {

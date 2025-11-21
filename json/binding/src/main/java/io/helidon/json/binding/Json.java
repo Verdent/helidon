@@ -96,4 +96,9 @@ public final class Json {
 
     }
 
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface FailOnUnknown {
+    }
+
 }

@@ -30,6 +30,7 @@ import static io.helidon.common.types.TypeNames.STRING;
 record ConvertedTypeInfo(TypeName converterType,
                          TypeName originalType,
                          boolean nullable,
+                         boolean failOnUnknown,
                          Map<String, JsonProperty> jsonProperties,
                          Comparator<String> orderedProperties,
                          CreatorInfo creatorInfo,
@@ -60,6 +61,7 @@ record ConvertedTypeInfo(TypeName converterType,
         boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
+        boolean failOnUnknown = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo).isPresent();
         String orderStrategy = obtainClassAnnotationFromHierarchy(Types.JSON_PROPERTY_ORDER, typeInfo)
                 .flatMap(annotation -> annotation.stringValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_ORDER.value(ctx.options()));
@@ -83,6 +85,7 @@ record ConvertedTypeInfo(TypeName converterType,
         return new ConvertedTypeInfo(converterTypeName,
                                      typeInfo.typeName(),
                                      nullable,
+                                     failOnUnknown,
                                      jsonProperties,
                                      orderComparator,
                                      creatorInfo,

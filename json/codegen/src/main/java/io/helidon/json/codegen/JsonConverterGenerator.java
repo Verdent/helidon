@@ -448,11 +448,16 @@ class JsonConverterGenerator {
                 }
             }
             if (switchUsed) {
-                method.addContentLine("default:")
-                        .padContent().addContentLine("parser.skip();");
+                method.addContentLine("default:").padContent();
             } else {
-                method.addContentLine(" else {")
-                        .addContentLine("parser.skip();");
+                method.addContentLine(" else {");
+            }
+            if (converterInfo.failOnUnknown()) {
+                method.addContentLine("parser.skip();");
+            } else {
+                method.addContent("throw new ").addContent(Types.JSON_EXCEPTION)
+                        .addContent("(\"Unknown properties are not allowed for this type:\" + ")
+                        .addContent(converterInfo.converterType()).addContentLine(".class.getName());");
             }
             method.addContentLine("}");
         } else {

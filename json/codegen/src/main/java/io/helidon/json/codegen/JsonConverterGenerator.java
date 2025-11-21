@@ -174,7 +174,7 @@ class JsonConverterGenerator {
         if (typeName.typeArguments().isEmpty()) {
             if (needsResolving(typeName)) {
                 return builder -> builder.addContent(TypeNames.GENERIC_TYPE)
-                                .addContent(".create(parameterizedType.getActualTypeArguments()[0])");
+                        .addContent(".create(parameterizedType.getActualTypeArguments()[0])");
             } else {
                 return builder -> builder.addContent(TypeNames.GENERIC_TYPE)
                         .addContent(".create(").addContent(typeName).addContent(")");
@@ -329,6 +329,7 @@ class JsonConverterGenerator {
                 .filter(not(JsonProperty::propertyIgnored))
                 .filter(it -> !it.setterIgnored() || it.directFieldAccess())
                 .toList();
+        boolean hasProperties = !jsonProperties.isEmpty();
 
         method.name("deserialize")
                 .returnType(converterInfo.originalType())
@@ -344,7 +345,7 @@ class JsonConverterGenerator {
         jsonProperties.stream()
                 .filter(JsonProperty::required)
                 .map(JsonConverterGenerator::convertToMissingName)
-                .forEach(name ->  method.addContent(boolean.class).addContentLine(" " + name + " = true;"));
+                .forEach(name -> method.addContent(boolean.class).addContentLine(" " + name + " = true;"));
         if (hasCreator) {
             for (JsonProperty jsonProperty : jsonProperties) {
                 TypeName type = jsonProperty.deserializationType().orElseThrow();
@@ -388,47 +389,76 @@ class JsonConverterGenerator {
                 .addContentLine("if (lastByte != '\"') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContentLine("(\"Key start expected. Found: \" + (char) lastByte);")
-                .addContentLine("}")
-                .addContent(int.class).addContentLine(" hash = parser.readStringAsHash();")
-                .addContentLine("lastByte = parser.nextToken();")
+                .addContentLine("}");
+        if (hasProperties) {
+            method.addContent(int.class).addContentLine(" hash = parser.readStringAsHash();");
+        } else {
+            method.addContentLine("parser.skip();");
+        }
+        method.addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("if (lastByte != ':') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContentLine("(\"Colon expected. Found: \" + (char) lastByte);")
                 .addContentLine("}")
-                .addContentLine("parser.nextToken();")
-                .addContentLine("switch(hash) {");
-        Map<Integer, List<JsonProperty>> hashes = jsonProperties.stream()
-                .collect(Collectors.groupingBy(jsonProperty ->
-                                                       calculateNameHash(jsonProperty.deserializationName().orElseThrow())));
-        Set<String> processedTypes = new HashSet<>(); //Used to identify already configured type deserializers
-        for (Map.Entry<Integer, List<JsonProperty>> entry : hashes.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                throw new UnsupportedOperationException("Naming collision, not implemented yet");
-            } else {
-                JsonProperty jsonProperty = entry.getValue().getFirst();
-                String constantName = constantName(jsonProperty.deserializationName().orElseThrow());
-                classBuilder.addField(builder -> builder.isFinal(true)
-                        .isStatic(true)
-                        .type(int.class)
-                        .name(constantName)
-                        .defaultValue(String.valueOf(entry.getKey())));
-                method.addContentLine("case " + constantName + ":");
-                method.increaseContentPadding();
-                addTypeHandling(jsonProperty,
-                                method,
-                                classBuilder,
-                                hasCreator,
-                                hasBuilder,
-                                processedTypes,
-                                useConstructorToConfigure,
-                                toConfigure);
-                method.decreaseContentPadding();
+                .addContentLine("parser.nextToken();");
+        if (hasProperties) {
+            boolean switchUsed = jsonProperties.size() > 3;
+            if (switchUsed) {
+                method.addContentLine("switch(hash) {");
             }
+            Map<Integer, List<JsonProperty>> hashes = jsonProperties.stream()
+                    .collect(Collectors.groupingBy(jsonProperty ->
+                                                           calculateNameHash(jsonProperty.deserializationName().orElseThrow())));
+            Set<String> processedTypes = new HashSet<>(); //Used to identify already configured type deserializers
+            boolean first = true;
+            for (Map.Entry<Integer, List<JsonProperty>> entry : hashes.entrySet()) {
+                if (entry.getValue().size() > 1) {
+                    throw new UnsupportedOperationException("Naming collision, not implemented yet");
+                } else {
+                    JsonProperty jsonProperty = entry.getValue().getFirst();
+                    String constantName = constantName(jsonProperty.deserializationName().orElseThrow());
+                    classBuilder.addField(builder -> builder.isFinal(true)
+                            .isStatic(true)
+                            .type(int.class)
+                            .name(constantName)
+                            .defaultValue(String.valueOf(entry.getKey())));
+                    if (switchUsed) {
+                        method.addContentLine("case " + constantName + ":");
+                        method.increaseContentPadding();
+                    } else if (first) {
+                        method.addContentLine("if (hash == " + constantName + ") {");
+                        first = false;
+                    } else {
+                        method.addContentLine(" else if (hash == " + constantName + ") {");
+                    }
+                    addTypeHandling(jsonProperty,
+                                    method,
+                                    classBuilder,
+                                    hasCreator,
+                                    hasBuilder,
+                                    processedTypes,
+                                    useConstructorToConfigure,
+                                    toConfigure);
+                    if (!switchUsed) {
+                        method.addContent("}");
+                    } else {
+                        method.addContentLine("break;");
+                        method.decreaseContentPadding();
+                    }
+                }
+            }
+            if (switchUsed) {
+                method.addContentLine("default:")
+                        .padContent().addContentLine("parser.skip();");
+            } else {
+                method.addContentLine(" else {")
+                        .addContentLine("parser.skip();");
+            }
+            method.addContentLine("}");
+        } else {
+            method.addContentLine("parser.skip();");
         }
-        method.addContentLine("default:")
-                .padContent().addContentLine("parser.skip();");
-        method.addContentLine("}")
-                .addContentLine("lastByte = parser.nextToken();")
+        method.addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("if (lastByte == ',') {")
                 .addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("continue;")
@@ -448,7 +478,7 @@ class JsonConverterGenerator {
                     String name = JsonConverterGenerator.convertToMissingName(property);
                     method.addContentLine("if (" + name + ") {")
                             .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                            .addContentLine("(\"Property \\\""+property.deserializationName().orElseThrow()+"\\\" "
+                            .addContentLine("(\"Property \\\"" + property.deserializationName().orElseThrow() + "\\\" "
                                                     + "was required to be present in the JSON, but was missing.\");")
                             .addContentLine("}");
                 });
@@ -675,7 +705,6 @@ class JsonConverterGenerator {
             String name = convertToMissingName(property);
             method.addContentLine(name + " = false;");
         }
-        method.addContentLine("break;");
     }
 
     private static String ensureUpperStart(TypeName typeName) {

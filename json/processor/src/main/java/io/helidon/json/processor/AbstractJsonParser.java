@@ -75,16 +75,19 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     static final boolean[] WHITESPACE_CHARS = new boolean[256];
 
     static {
-        WHITESPACE_CHARS[9 + 128] = true;
-        WHITESPACE_CHARS[10 + 128] = true;
-        WHITESPACE_CHARS[11 + 128] = true;
-        WHITESPACE_CHARS[12 + 128] = true;
-        WHITESPACE_CHARS[13 + 128] = true;
-        WHITESPACE_CHARS[32 + 128] = true;
-        WHITESPACE_CHARS[-96 + 128] = true;
-        WHITESPACE_CHARS[-31 + 128] = true;
-        WHITESPACE_CHARS[-30 + 128] = true;
-        WHITESPACE_CHARS[-29 + 128] = true;
+        // ASCII whitespace
+        WHITESPACE_CHARS[0x09 & 0xFF] = true; // TAB
+        WHITESPACE_CHARS[0x0A & 0xFF] = true; // LF
+        WHITESPACE_CHARS[0x0B & 0xFF] = true; // VT
+        WHITESPACE_CHARS[0x0C & 0xFF] = true; // FF
+        WHITESPACE_CHARS[0x0D & 0xFF] = true; // CR
+        WHITESPACE_CHARS[0x20 & 0xFF] = true; // SPACE
+
+        // Non-ASCII UTF-8 whitespace BEGIN bytes
+        WHITESPACE_CHARS[0xC2 & 0xFF] = true; // NEL, NBSP
+        WHITESPACE_CHARS[0xE1 & 0xFF] = true; // U+1680
+        WHITESPACE_CHARS[0xE2 & 0xFF] = true; // U+2000..U+200A, separators, U+202F, U+205F
+        WHITESPACE_CHARS[0xE3 & 0xFF] = true; // U+3000
     }
 
     final static int[] HEX_DIGITS = new int['f' + 1];
@@ -154,45 +157,28 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         //Optimization for faster reading data without a space
         //No loop is used.
         byte b;
-        if (++currentIndex == bufferLength) {
+        int index = currentIndex + 1;
+        if (index == bufferLength) {
             throw new JsonException("Incomplete JSON.");
-        } else {
-            b = buffer[currentIndex];
-            switch (b) {
-            case '\r':
-            case '\t':
-            case '\n':
-            case ' ':
-                break;
-            default:
-                return b;
-            }
+        }
+        b = buffer[index];
+        if (!WHITESPACE_CHARS[b & 0xFF]) {
+            currentIndex = index;
+            return b;
         }
         //If since space or why character was used between tokens, we should still try to optimize
-        if (++currentIndex == bufferLength) {
+        if (++index == bufferLength) {
             throw new JsonException("Incomplete JSON.");
-        } else {
-            b = buffer[currentIndex];
-            switch (b) {
-            case '\r':
-            case '\t':
-            case '\n':
-            case ' ':
-                break;
-            default:
-                return b;
-            }
+        }
+        b = buffer[index];
+        if (!WHITESPACE_CHARS[b & 0xFF]) {
+            currentIndex = index;
+            return b;
         }
         //We dont know how many spaces, new lines etc is there present, lets start looping
-        for (int i = currentIndex + 1; i < bufferLength; i++) {
+        for (int i = index; i < bufferLength; i++) {
             b = buffer[i];
-            switch (b) {
-            case '\r':
-            case '\t':
-            case '\n':
-            case ' ':
-                continue;
-            default:
+            if (!WHITESPACE_CHARS[b & 0xFF]) {
                 currentIndex = i;
                 return b;
             }

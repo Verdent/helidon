@@ -5,9 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * TODO javadoc
- */
 abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     static final int FNV_OFFSET_BASIS = 0x811c9dc5;
@@ -83,11 +80,11 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         WHITESPACE_CHARS[0x0D & 0xFF] = true; // CR
         WHITESPACE_CHARS[0x20 & 0xFF] = true; // SPACE
 
-        // Non-ASCII UTF-8 whitespace BEGIN bytes
-        WHITESPACE_CHARS[0xC2 & 0xFF] = true; // NEL, NBSP
-        WHITESPACE_CHARS[0xE1 & 0xFF] = true; // U+1680
-        WHITESPACE_CHARS[0xE2 & 0xFF] = true; // U+2000..U+200A, separators, U+202F, U+205F
-        WHITESPACE_CHARS[0xE3 & 0xFF] = true; // U+3000
+//        // Non-ASCII UTF-8 whitespace BEGIN bytes
+//        WHITESPACE_CHARS[0xC2 & 0xFF] = true; // NEL, NBSP
+//        WHITESPACE_CHARS[0xE1 & 0xFF] = true; // U+1680
+//        WHITESPACE_CHARS[0xE2 & 0xFF] = true; // U+2000..U+200A, separators, U+202F, U+205F
+//        WHITESPACE_CHARS[0xE3 & 0xFF] = true; // U+3000
     }
 
     final static int[] HEX_DIGITS = new int['f' + 1];

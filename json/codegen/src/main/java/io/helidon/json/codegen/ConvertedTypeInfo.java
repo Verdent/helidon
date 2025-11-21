@@ -13,6 +13,7 @@ import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
 import io.helidon.common.types.ElementKind;
+import io.helidon.common.types.ElementSignature;
 import io.helidon.common.types.Modifier;
 import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
@@ -34,11 +35,11 @@ record ConvertedTypeInfo(TypeName converterType,
                          CreatorInfo creatorInfo,
                          Optional<BuilderInfo> builderInfo) {
 
-    private static final Set<MethodSignature> IGNORED_METHODS = Set.of(
+    private static final Set<ElementSignature> IGNORED_METHODS = Set.of(
             // equals, hash code and toString
-            new MethodSignature(PRIMITIVE_BOOLEAN, "equals", List.of(OBJECT)),
-            new MethodSignature(PRIMITIVE_INT, "hashCode", List.of()),
-            new MethodSignature(STRING, "toString", List.of())
+            ElementSignature.createMethod(PRIMITIVE_BOOLEAN, "equals", List.of(OBJECT)),
+            ElementSignature.createMethod(PRIMITIVE_INT, "hashCode", List.of()),
+            ElementSignature.createMethod(STRING, "toString", List.of())
     );
 
     private static final Map<String, Comparator<String>> PROPERTY_ORDER = Map.of(
@@ -405,7 +406,7 @@ record ConvertedTypeInfo(TypeName converterType,
     }
 
     private static boolean isIgnored(TypedElementInfo elementInfo) {
-        return IGNORED_METHODS.contains(MethodSignature.create(elementInfo));
+        return IGNORED_METHODS.contains(elementInfo.signature());
     }
 
     private static Optional<String> obtainStringFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {

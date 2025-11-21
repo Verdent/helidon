@@ -157,26 +157,23 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         //Optimization for faster reading data without a space
         //No loop is used.
         byte b;
-        int index = currentIndex + 1;
-        if (index == bufferLength) {
+        if (++currentIndex == bufferLength) {
             throw new JsonException("Incomplete JSON.");
         }
-        b = buffer[index];
+        b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
-            currentIndex = index;
             return b;
         }
         //If since space or why character was used between tokens, we should still try to optimize
-        if (++index == bufferLength) {
+        if (++currentIndex == bufferLength) {
             throw new JsonException("Incomplete JSON.");
         }
-        b = buffer[index];
+        b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
-            currentIndex = index;
             return b;
         }
         //We dont know how many spaces, new lines etc is there present, lets start looping
-        for (int i = index; i < bufferLength; i++) {
+        for (int i = currentIndex + 1; i < bufferLength; i++) {
             b = buffer[i];
             if (!WHITESPACE_CHARS[b & 0xFF]) {
                 currentIndex = i;

@@ -61,7 +61,9 @@ record ConvertedTypeInfo(TypeName converterType,
         boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo)
                 .flatMap(annotation -> annotation.booleanValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
-        boolean failOnUnknown = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo).isPresent();
+        boolean failOnUnknown = obtainClassAnnotationFromHierarchy(Types.JSON_FAIL_ON_UNKNOWN, typeInfo)
+                .map(annotation -> true)
+                .orElse(CodegenOptions.CODEGEN_JSON_UNKNOWN.value(ctx.options()));
         String orderStrategy = obtainClassAnnotationFromHierarchy(Types.JSON_PROPERTY_ORDER, typeInfo)
                 .flatMap(annotation -> annotation.stringValue("value"))
                 .orElse(CodegenOptions.CODEGEN_JSON_ORDER.value(ctx.options()));

@@ -9,6 +9,12 @@ public interface CodegenOptions {
                                                               + "serializers should write nulls or not.",
                                                       false);
 
+    Option<Boolean> CODEGEN_JSON_UNKNOWN = Option.create("helidon.codegen.json.unknown",
+                                                         "Sets the default for whether generated type "
+                                                                 + "deserializers should fail when unknow property is "
+                                                                 + "encountered.",
+                                                         false);
+
     Option<String> CODEGEN_JSON_ORDER = Option.create("helidon.codegen.json.order",
                                                       "Sets the default for default ordering of the "
                                                               + "properties in the JSON document. "

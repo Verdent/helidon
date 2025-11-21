@@ -28,6 +28,9 @@ import static io.helidon.json.codegen.Types.PRIMITIVE_TO_BOXED;
 
 class JsonConverterGenerator {
 
+    private static final int FNV_OFFSET_BASIS = 0x811c9dc5;
+    private static final int FNV_PRIME = 0x01000193;
+
     static final String CONFIGURE_PARAM = "jsonBindingConfigurator";
     private static final String PROPERTY_NAME_SUFFIX = "_";
     private static final String MISSING_SUFFIX = "_missing";
@@ -695,13 +698,12 @@ class JsonConverterGenerator {
     }
 
     private static int calculateNameHash(String name) {
-        long fnvHash = 2166136261L;
-        byte[] array = name.getBytes(StandardCharsets.UTF_8);
-        for (byte b : array) {
-            fnvHash ^= b;
-            fnvHash *= 16777619;
+        int fnvHash = FNV_OFFSET_BASIS;
+        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
+            fnvHash ^= (b & 0xFF);
+            fnvHash *= FNV_PRIME;
         }
-        return (int) fnvHash;
+        return fnvHash;
     }
 
     private record TypeToConfigure(TypeConfigMode mode,

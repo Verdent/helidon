@@ -10,6 +10,9 @@ import java.util.List;
  */
 abstract class AbstractJsonParser implements ReusableJsonParser  {
 
+    static final int FNV_OFFSET_BASIS = 0x811c9dc5;
+    static final int FNV_PRIME = 0x01000193;
+
     //We need this to check if the next number digit overflows int max capacity
     static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
     static final short SHORT_SIZE_BORDER = Short.MAX_VALUE / 10;
@@ -1611,16 +1614,16 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             throw new JsonException("Incomplete JSON.");
         }
         //Based on recommended offset basis and prime values.
-        long fnv1aHash = 2166136261L;
+        int fnv1aHash = FNV_OFFSET_BASIS;
         byte b;
         currentIndex++;
         for ( ; currentIndex < bufferLength; currentIndex++) {
             b = buffer[currentIndex];
             if (b == '"') {
-                return (int) fnv1aHash;
+                return fnv1aHash;
             }
-            fnv1aHash ^= b;
-            fnv1aHash *= 16777619;
+            fnv1aHash ^= (b & 0xFF);
+            fnv1aHash *= FNV_PRIME;
         }
         throw new JsonException("Incomplete JSON.");
     }

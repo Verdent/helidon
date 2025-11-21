@@ -116,13 +116,12 @@ class JsonValueParser implements JsonParser {
     @Override
     public int readStringAsHash() {
         String key = current.asString().value();
-        long fnvHash = 2166136261L;
-        byte[] array = key.getBytes(StandardCharsets.UTF_8);
-        for (byte b : array) {
-            fnvHash ^= b;
-            fnvHash *= 16777619;
+        int fnvHash = AbstractJsonParser.FNV_OFFSET_BASIS;
+        for (byte b : key.getBytes(StandardCharsets.UTF_8)) {
+            fnvHash ^= (b & 0xFF);
+            fnvHash *= AbstractJsonParser.FNV_PRIME;
         }
-        return (int) fnvHash;
+        return fnvHash;
     }
 
     @Override

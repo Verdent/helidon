@@ -402,7 +402,7 @@ class JsonConverterGenerator {
                 .addContentLine("}")
                 .addContentLine("parser.nextToken();");
         if (hasProperties) {
-            boolean switchUsed = jsonProperties.size() > 3;
+            boolean switchUsed = jsonProperties.size() > 9;
             if (switchUsed) {
                 method.addContentLine("switch(hash) {");
             }

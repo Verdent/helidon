@@ -4,15 +4,18 @@ public final class JsonString extends JsonValue {
 
     private final byte[] buffer;
     private final int start;
+    private final int length;
     private String resolvedValue;
 
-    private JsonString(byte[] buffer, int start) {
+    private JsonString(byte[] buffer, int start, int length) {
         this.buffer = buffer;
         this.start = start;
+        this.length = length;
     }
     private JsonString(String value) {
         this.buffer = JsonValues.EMPTY_BYTES;
         this.start = -1;
+        this.length = value.length();
         this.resolvedValue = value;
     }
 
@@ -20,8 +23,8 @@ public final class JsonString extends JsonValue {
         return new JsonString(value);
     }
 
-    static JsonString create(byte[] buffer, int start) {
-        return new JsonString(buffer, start);
+    static JsonString create(byte[] buffer, int start, int length) {
+        return new JsonString(buffer, start, length);
     }
 
     @Override
@@ -31,17 +34,13 @@ public final class JsonString extends JsonValue {
 
     public String value() {
         if (resolvedValue == null) {
-            CachedParser cachedParser = JsonParserCache.getCachedParser();
-            ReusableJsonParser parser = cachedParser.get();
-            resolveValue(parser);
-            cachedParser.set(parser);
+            resolveValue();
         }
         return resolvedValue;
     }
 
-    String resolveValue(ReusableJsonParser parser) {
-        parser.reset(buffer, start);
-        resolvedValue = parser.readString();
+    String resolveValue() {
+        resolvedValue = new String(buffer, start, length);
         return resolvedValue;
     }
 

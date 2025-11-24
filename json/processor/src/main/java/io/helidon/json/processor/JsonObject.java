@@ -59,7 +59,7 @@ public final class JsonObject extends JsonValue {
             CachedParser cachedParser = JsonParserCache.getCachedParser();
             ReusableJsonParser parser = cachedParser.get();
             for (Pair pair : pairs) {
-                content.put(pair.key.resolveValue(parser), pair.value);
+                content.put(pair.key.resolveValue(), pair.value);
             }
             cachedParser.set(parser);
         }

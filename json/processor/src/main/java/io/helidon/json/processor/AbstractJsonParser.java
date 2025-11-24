@@ -1,6 +1,5 @@
 package io.helidon.json.processor;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -79,12 +78,6 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         WHITESPACE_CHARS[0x0C & 0xFF] = true; // FF
         WHITESPACE_CHARS[0x0D & 0xFF] = true; // CR
         WHITESPACE_CHARS[0x20 & 0xFF] = true; // SPACE
-
-//        // Non-ASCII UTF-8 whitespace BEGIN bytes
-//        WHITESPACE_CHARS[0xC2 & 0xFF] = true; // NEL, NBSP
-//        WHITESPACE_CHARS[0xE1 & 0xFF] = true; // U+1680
-//        WHITESPACE_CHARS[0xE2 & 0xFF] = true; // U+2000..U+200A, separators, U+202F, U+205F
-//        WHITESPACE_CHARS[0xE3 & 0xFF] = true; // U+3000
     }
 
     final static int[] HEX_DIGITS = new int['f' + 1];
@@ -109,25 +102,14 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     byte[] buffer;
     int currentIndex = -1;
     int bufferLength;
-    boolean doNotReuseBuffer = false;
 
     AbstractJsonParser() {
         this(new byte[500]);
     }
 
-    AbstractJsonParser(String json) {
-        this(json.getBytes(StandardCharsets.UTF_8));
-    }
-
     AbstractJsonParser(byte[] buffer) {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
-    }
-
-    AbstractJsonParser(byte[] buffer, int start) {
-        this.buffer = buffer;
-        this.bufferLength = buffer.length;
-        this.currentIndex = start;
     }
 
     @Override
@@ -352,7 +334,8 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public JsonString readJsonString() {
         int start = currentIndex;
         skipStringValue();
-        return JsonString.create(buffer, start);
+        int length = currentIndex - start;
+        return JsonString.create(buffer, start, length);
     }
 
     @Override
@@ -1621,8 +1604,6 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public int readStringAsHash() {
         if (currentByte() != '"') {
             throw new JsonException("This is supported only for Strings.");
-        } else if (!hasNext()) {
-            throw new JsonException("Incomplete JSON.");
         }
         //Based on recommended offset basis and prime values.
         int fnv1aHash = FNV_OFFSET_BASIS;
@@ -1679,21 +1660,18 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         }
     }
 
-    private void skipStringValue() {
+    void skipStringValue() {
         boolean isEscaped = false;
         for (int index = this.currentIndex + 1; index < this.bufferLength; index++) {
             byte b = this.buffer[index];
-            switch (b) {
-            case '\\':
+            if (b == '\\') {
                 isEscaped = !isEscaped;
-                break;
-            case '"':
+            } else if (b == '"') {
                 if (!isEscaped) {
                     this.currentIndex = index;
                     return;
                 }
-                break;
-            default:
+            } else {
                 isEscaped = false;
             }
         }
@@ -1744,7 +1722,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
         throw new JsonException("Comma or the end of the array expected, but received " + (char) b);
     }
 
-    private void skipNumber() {
+    void skipNumber() {
         byte b;
         for (int index = this.currentIndex + 1; index < this.bufferLength; index++) {
             b = this.buffer[index];
@@ -1764,7 +1742,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     }
 
     public static int translateHex(byte b) {
-        int val = HEX_DIGITS[b];
+        int val = HEX_DIGITS[b & 0xFF];
         if (val == -1) {
             throw new JsonException(b + " is not valid hex digit");
         }

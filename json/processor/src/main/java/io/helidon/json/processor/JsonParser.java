@@ -1,26 +1,23 @@
 package io.helidon.json.processor;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-///**
-// * A streaming JSON parser interface for parsing JSON data from various sources.
-// * <p>
-// * This interface provides methods to parse JSON content in a streaming fashion,
-// * allowing for efficient processing of large JSON documents without loading
-// * the entire content into memory at once. It supports parsing from strings,
-// * input streams, and pre-parsed JSON values.
-// * </p>
-// * <p>
-// * The parser operates on a byte-by-byte basis, providing low-level access to
-// * JSON tokens and values. Implementations may buffer data internally for
-// * performance optimization.
-// * </p>
-// *
-// * @see JsonValue
-// * @see JsonObject
-// * @see JsonArray
-// */
+/**
+ * A JSON parser interface for parsing JSON data from various sources.
+ * <p>
+ * This interface provides methods to parse JSON content in a streaming fashion,
+ * allowing for efficient processing of large JSON documents without loading
+ * the entire content into memory at once. It supports parsing from strings,
+ * input streams, and pre-parsed JSON values.
+ * </p>
+ * <p>
+ * The parser operates on a byte-by-byte basis, providing low-level access to
+ * JSON tokens and values. Implementations may buffer data internally for
+ * performance optimization.
+ * </p>
+ */
 public interface JsonParser {
 
     /**
@@ -35,7 +32,7 @@ public interface JsonParser {
      */
     static JsonParser create(String json) {
         Objects.requireNonNull(json);
-        return new ArrayJsonParser(json);
+        return new ArrayJsonParser(json.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

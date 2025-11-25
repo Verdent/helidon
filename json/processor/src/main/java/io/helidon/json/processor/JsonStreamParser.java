@@ -4,7 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-final class JsonStreamParser extends AbstractJsonParser {
+final class JsonStreamParser extends ArrayJsonParser {
 
     private static final int DEFAULT_BUFFER_SIZE = 8192;
     private static final int DEFAULT_KEEP_AMOUNT = 2;

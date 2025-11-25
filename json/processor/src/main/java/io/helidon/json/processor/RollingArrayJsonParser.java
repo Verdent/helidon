@@ -1,6 +1,6 @@
 package io.helidon.json.processor;
 
-class RollingArrayJsonParser extends AbstractJsonParser {
+class RollingArrayJsonParser extends ArrayJsonParser {
 
     private boolean finalBuffer;
     private byte[][] buffers;

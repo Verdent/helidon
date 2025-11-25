@@ -1,12 +1,12 @@
 package io.helidon.json.processor;
 
-public class CachedParser {
+class CachedParser {
 
     private ReusableJsonParser parser = new ArrayJsonParser();
 
     ReusableJsonParser get() {
         if (parser == null) {
-            return  new ArrayJsonParser();
+            return new ArrayJsonParser();
         }
         ReusableJsonParser toReturn = parser;
         parser = null;

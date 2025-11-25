@@ -9,18 +9,21 @@ public final class JsonNumber extends JsonValue {
 
     private final byte[] buffer;
     private final int start;
+    private final int length;
     private Double doubleValue;
     private Integer intValue;
     private BigDecimal bigDecimalValue;
 
-    private JsonNumber(byte[] buffer, int start) {
+    private JsonNumber(byte[] buffer, int start, int length) {
         this.buffer = buffer;
         this.start = start;
+        this.length = length;
     }
 
     private JsonNumber(BigDecimal bigDecimalValue) {
         this.buffer = JsonValues.EMPTY_BYTES;
         this.start = -1;
+        this.length = -1;
         this.bigDecimalValue = bigDecimalValue;
         this.intValue = bigDecimalValue.intValue();
         this.doubleValue = bigDecimalValue.doubleValue();
@@ -30,8 +33,8 @@ public final class JsonNumber extends JsonValue {
         return new JsonNumber(bigDecimalValue);
     }
 
-    static JsonNumber create(byte[] buffer, int start) {
-        return new JsonNumber(buffer, start);
+    static JsonNumber create(byte[] buffer, int start, int length) {
+        return new JsonNumber(buffer, start, length);
     }
 
     @Override

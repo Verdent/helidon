@@ -56,12 +56,9 @@ public final class JsonObject extends JsonValue {
     private void ensureResolvedKeys() {
         if (content == null) {
             this.content = new LinkedHashMap<>(pairs.size());
-            CachedParser cachedParser = JsonParserCache.getCachedParser();
-            ReusableJsonParser parser = cachedParser.get();
             for (Pair pair : pairs) {
                 content.put(pair.key.resolveValue(), pair.value);
             }
-            cachedParser.set(parser);
         }
     }
 

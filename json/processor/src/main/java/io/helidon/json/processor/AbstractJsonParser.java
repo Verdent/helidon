@@ -332,7 +332,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     @Override
     public JsonString readJsonString() {
-        int start = currentIndex;
+        int start = currentIndex + 1;
         skipStringValue();
         int length = currentIndex - start;
         return JsonString.create(buffer, start, length);
@@ -342,7 +342,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
     public JsonNumber readJsonNumber() {
         int start = currentIndex;
         skipNumber();
-        return JsonNumber.create(buffer, start);
+        return JsonNumber.create(buffer, start, currentIndex - start);
     }
 
     int realIndex() {
@@ -1676,7 +1676,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             }
         }
         //TODO UPRAVIT log hlaska
-        throw new JsonException("Incomplete JSON or incorrect usage of skip method");
+        throw new JsonException("Incomplete JSON or incorrect usage of the skip method");
     }
 
     private void skipObject() {
@@ -1724,7 +1724,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
 
     void skipNumber() {
         byte b;
-        for (int index = this.currentIndex + 1; index < this.bufferLength; index++) {
+        for (int index = this.currentIndex; index < this.bufferLength; index++) {
             b = this.buffer[index];
             //we do not need to validate whether this is a valid number since we are not processing it.
             //simply skip until you find any valid character after the number
@@ -1735,7 +1735,7 @@ abstract class AbstractJsonParser implements ReusableJsonParser  {
             case ',':
             case '}':
             case ']':
-                this.currentIndex = index;
+                this.currentIndex = index - 1;
                 return;
             }
         }

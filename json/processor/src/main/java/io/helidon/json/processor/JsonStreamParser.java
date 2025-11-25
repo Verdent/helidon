@@ -13,7 +13,7 @@ final class JsonStreamParser extends AbstractJsonParser {
     private InputStream inputStream;
     private boolean finished;
     private boolean bufferingJsonValue;
-    private boolean doNotReuseBuffer = false;
+    private int jsonValueStart;
 
     JsonStreamParser(InputStream inputStream, int bufferSize) {
         this.bufferSize = bufferSize;
@@ -22,7 +22,7 @@ final class JsonStreamParser extends AbstractJsonParser {
         buffer = new byte[bufferSize];
         try {
             bufferLength = inputStream.read(buffer);
-            finished = bufferLength != DEFAULT_BUFFER_SIZE;
+            finished = bufferLength != bufferSize;
         } catch (IOException e) {
             throw new JsonException("Error occurred while reading JSON to the buffer.", e);
         }
@@ -55,16 +55,23 @@ final class JsonStreamParser extends AbstractJsonParser {
     private void readMoreData() {
         try {
             if (bufferingJsonValue) {
-                bufferLength = buffer.length + bufferSize;
-                byte[] tmp = new byte[bufferLength];
-                System.arraycopy(buffer, 0, tmp, 0, buffer.length);
-                int lastRead = inputStream.read(tmp, buffer.length, bufferSize);
-                finished = lastRead != bufferSize;
-                buffer = tmp;
-            } else {
-                if (doNotReuseBuffer) {
-                    buffer = new byte[bufferSize];
+                if (jsonValueStart > 0) {
+                    //There is still some free space in this current buffer to be used
+                    currentIndex = bufferLength - jsonValueStart; //index has to be at the very end of the value
+                    System.arraycopy(buffer, jsonValueStart, buffer, 0, bufferLength - jsonValueStart);
+                    jsonValueStart = 0;
+                    int lastRead = inputStream.read(buffer, currentIndex, bufferLength - currentIndex);
+                    finished = lastRead != (bufferLength - currentIndex);
+                } else {
+                    bufferLength = buffer.length + bufferSize;
+                    currentIndex = buffer.length;
+                    byte[] tmp = new byte[bufferLength];
+                    System.arraycopy(buffer, 0, tmp, 0, buffer.length);
+                    int lastRead = inputStream.read(tmp, currentIndex, bufferLength - currentIndex);
+                    finished = lastRead != bufferSize;
+                    buffer = tmp;
                 }
+            } else {
                 System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
                 bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
                 finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != bufferSize;
@@ -78,6 +85,7 @@ final class JsonStreamParser extends AbstractJsonParser {
 
     @Override
     public void reset(InputStream is) {
+        bufferingJsonValue = false;
         inputStream = is;
         currentIndex = -1;
         try {
@@ -127,10 +135,57 @@ final class JsonStreamParser extends AbstractJsonParser {
     }
 
     @Override
-    void skipStringValue() {
-        doNotReuseBuffer = true;
+    public JsonNumber readJsonNumber() {
         bufferingJsonValue = true;
-        this.currentIndex++;
+        jsonValueStart = currentIndex;
+        skipNumber();
+        int length = currentIndex -  jsonValueStart;
+        byte[] numberBytes = new byte[length];
+        System.arraycopy(buffer, jsonValueStart, numberBytes, 0, length);
+        bufferingJsonValue = false;
+        return JsonNumber.create(numberBytes, 0, length);
+    }
+
+    @Override
+    void skipNumber() {
+        byte b;
+        int index;
+        while (true) {
+            for (index = this.currentIndex; index < this.bufferLength; index++) {
+                b = this.buffer[index];
+                //we do not need to validate whether this is a valid number since we are not processing it.
+                //simply skip until you find any valid character after the number
+                if (b == ',' || b == '}' || b == ']' || b == ' ' || b == '\n' || b == '\t') {
+                    this.currentIndex = index;
+                    return;
+                }
+            }
+            if (!finished) {
+                readMoreData();
+            } else {
+                this.currentIndex = index;
+                break;
+            }
+        }
+    }
+
+    @Override
+    public JsonString readJsonString() {
+        bufferingJsonValue = true;
+        jsonValueStart = currentIndex;
+        skipStringValue();
+        int length = currentIndex - jsonValueStart;
+        byte[] stringBytes = new byte[length];
+        System.arraycopy(buffer, jsonValueStart, stringBytes, 0, length);
+        bufferingJsonValue = false;
+        return JsonString.create(stringBytes, 0, length);
+    }
+
+    @Override
+    void skipStringValue() {
+        if (currentByte() == '"') {
+            jsonValueStart = ++this.currentIndex;
+        }
         boolean isEscaped = false;
         byte b;
         while (true) {
@@ -140,7 +195,6 @@ final class JsonStreamParser extends AbstractJsonParser {
                     isEscaped = !isEscaped;
                 } else if (b == '"' && !isEscaped) {
                     this.currentIndex = index;
-                    bufferingJsonValue = false;
                     return;
                 } else {
                     isEscaped = false;

@@ -223,20 +223,20 @@ class GeneratorImpl implements Generator {
             } else if (c < 0x800) {
                 ensureCapacity(2);
                 buffer[index++] = (byte) (0b11000000 | (c >> 6));
-                buffer[index++] = (byte) (0b10000000 | (c & 0b00111111));
+                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
             } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
                 ensureCapacity(6);
                 buffer[index++] = SLASH;
                 buffer[index++] = 'u';
-                buffer[index++] = HEX_DIGITS[(c >> 12) & 0xF];
-                buffer[index++] = HEX_DIGITS[(c >> 8) & 0xF];
-                buffer[index++] = HEX_DIGITS[(c >> 4) & 0xF];
-                buffer[index++] = HEX_DIGITS[c & 0xF];
+                buffer[index++] = HEX_DIGITS[(c >> 12) & 0xFF];
+                buffer[index++] = HEX_DIGITS[(c >> 8) & 0xFF];
+                buffer[index++] = HEX_DIGITS[(c >> 4) & 0xFF];
+                buffer[index++] = HEX_DIGITS[c & 0xFF];
             } else {
                 ensureCapacity(3);
                 buffer[index++] = (byte) (0b11100000 | (c >> 12));
-                buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0b00111111));
-                buffer[index++] = (byte) (0b10000000 | (c & 0b00111111));
+                buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F));
+                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
             }
         }
         ensureCapacity(1);

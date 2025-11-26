@@ -2,10 +2,14 @@ package io.helidon.http.media.helidon;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.nio.charset.Charset;
+import java.util.Optional;
 
 import io.helidon.common.GenericType;
 import io.helidon.http.Headers;
+import io.helidon.http.HttpMediaType;
 import io.helidon.http.media.EntityReader;
 import io.helidon.json.binding.JsonBinding;
 
@@ -18,20 +22,33 @@ class HelidonJsonReader<T> implements EntityReader<T> {
 
     @Override
     public T read(GenericType<T> type, InputStream stream, Headers headers) {
-        return read(type, stream);
+        InputStream inputStream = contentTypeCharset(headers)
+                .map(charset -> new InputStreamReader(stream, charset))
+                .map(reader -> (InputStream) new ReaderInputStream(reader))
+                .orElse(stream);
+        return read(type, inputStream);
     }
 
     @Override
     public T read(GenericType<T> type, InputStream stream, Headers requestHeaders, Headers responseHeaders) {
-        return read(type, stream);
+        InputStream inputStream = contentTypeCharset(responseHeaders)
+                .map(charset -> new InputStreamReader(stream, charset))
+                .map(reader -> (InputStream) new ReaderInputStream(reader))
+                .orElse(stream);
+        return read(type, inputStream);
     }
 
     private T read(GenericType<T> type, InputStream in) {
-        //Charset is not supported yet
         try (in) {
             return jsonBinding.deserialize(in, type);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private Optional<Charset> contentTypeCharset(Headers headers) {
+        return headers.contentType()
+                .flatMap(HttpMediaType::charset)
+                .map(Charset::forName);
     }
 }

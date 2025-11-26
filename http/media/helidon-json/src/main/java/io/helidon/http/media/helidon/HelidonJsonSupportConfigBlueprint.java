@@ -7,15 +7,15 @@ import io.helidon.json.binding.JsonBinding;
 
 @Prototype.Configured(value = "helidon-json", root = false)
 @Prototype.Provides(MediaSupportProvider.class)
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = HelidonJsonSupport.Decorator.class)
 interface HelidonJsonSupportConfigBlueprint extends Prototype.Factory<HelidonJsonSupport> {
 
     /**
-     * Name of the support. Default value is {@code helison}.
+     * Name of the support. Default value is {@code helidon-json}.
      *
      * @return name of the support
      */
-    @Option.Default("helison")
+    @Option.Default("helidon-json")
     @Option.Configured
     String name();
 

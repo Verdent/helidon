@@ -8,7 +8,7 @@ import io.helidon.http.media.spi.MediaSupportProvider;
 public class HelidonJsonMediaSupportProvider implements MediaSupportProvider, Weighted {
     @Override
     public String configKey() {
-        return "helidon-json";
+        return HelidonJsonSupport.HELIDON_JSON_DEFAULT_NAME;
     }
 
     @Override

@@ -1,7 +1,12 @@
 package io.helidon.http.media.helidon;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
+import io.helidon.builder.api.Prototype;
 import io.helidon.builder.api.RuntimeType;
 import io.helidon.common.GenericType;
 import io.helidon.common.config.Config;
@@ -21,6 +26,8 @@ import static io.helidon.http.HeaderValues.CONTENT_TYPE_JSON;
 @RuntimeType.PrototypedBy(HelidonJsonSupportConfig.class)
 public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<HelidonJsonSupportConfig> {
 
+    static final String HELIDON_JSON_DEFAULT_NAME = "helidon-json";
+
     private final String name;
     private final HelidonJsonSupportConfig supportConfig;
     private final JsonBinding jsonBinding;
@@ -35,6 +42,10 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
         
         this.reader = new HelidonJsonReader(jsonBinding);
         this.writer = new HelidonJsonWriter(jsonBinding);
+    }
+
+    public static MediaSupport create(Config config) {
+        return create(config, HELIDON_JSON_DEFAULT_NAME);
     }
 
     public static MediaSupport create(Config config, String name) {
@@ -63,7 +74,7 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
 
     @Override
     public String type() {
-        return "helidon-json";
+        return HELIDON_JSON_DEFAULT_NAME;
     }
 
     @Override
@@ -136,5 +147,15 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
             return new WriterResponse<>(SupportLevel.SUPPORTED, this::writer);
         }
         return WriterResponse.unsupported();
+    }
+
+    static class Decorator implements Prototype.BuilderDecorator<HelidonJsonSupportConfig.BuilderBase<?, ?>> {
+
+        @Override
+        public void decorate(HelidonJsonSupportConfig.BuilderBase<?, ?> target) {
+            if (target.jsonBinding().isEmpty()) {
+                target.jsonBinding(JsonBinding.create());
+            }
+        }
     }
 }

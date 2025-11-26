@@ -6,6 +6,7 @@ import io.helidon.json.processor.JsonException;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -32,6 +33,18 @@ class EnumTest {
 
         RecordWithEnum recordWithEnum = HELIDON.deserialize(expected, RecordWithEnum.class);
         assertThat(recordWithEnum.enumValue, is(TestEnum.VALUE2));
+    }
+
+    @Test
+    public void testEnumInObjectAsNull() {
+        String json = HELIDON.serialize(new RecordWithEnum(null));
+        assertThat(json, is("{}"));
+
+        String expected = "{\"enumValue\":null}";
+        RecordWithEnum recordWithEnum = HELIDON.deserialize(expected, RecordWithEnum.class);
+        assertThat(recordWithEnum.enumValue, is(nullValue()));
+        recordWithEnum = HELIDON.deserialize("{}", RecordWithEnum.class);
+        assertThat(recordWithEnum.enumValue, is(nullValue()));
     }
 
     @Test

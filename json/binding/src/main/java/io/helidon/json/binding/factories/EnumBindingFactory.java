@@ -95,7 +95,7 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
             int enumNameHash = parser.readStringAsHash();
             Enum<?> enumValue = enumConstants.get(enumNameHash);
             if (enumValue == null) {
-                throw new JsonException("Invalid hash \"" + enumNameHash + "\". Valid names and hashes are: " + names);
+                throw new JsonException("Invalid enum name hash \"" + enumNameHash + "\". Valid names and hashes are: " + names);
             }
             return enumValue;
         }

@@ -3,6 +3,7 @@ package io.helidon.http.media.helidon;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.util.Optional;
@@ -22,25 +23,35 @@ class HelidonJsonReader<T> implements EntityReader<T> {
 
     @Override
     public T read(GenericType<T> type, InputStream stream, Headers headers) {
-        InputStream inputStream = contentTypeCharset(headers)
-                .map(charset -> new InputStreamReader(stream, charset))
-                .map(reader -> (InputStream) new ReaderInputStream(reader))
-                .orElse(stream);
-        return read(type, inputStream);
+        Optional<InputStreamReader> reader = contentTypeCharset(headers)
+                .map(charset -> new InputStreamReader(stream, charset));
+        if (reader.isPresent()) {
+            return read(type, reader.get());
+        }
+        return read(type, stream);
     }
 
     @Override
     public T read(GenericType<T> type, InputStream stream, Headers requestHeaders, Headers responseHeaders) {
-        InputStream inputStream = contentTypeCharset(responseHeaders)
-                .map(charset -> new InputStreamReader(stream, charset))
-                .map(reader -> (InputStream) new ReaderInputStream(reader))
-                .orElse(stream);
-        return read(type, inputStream);
+        Optional<InputStreamReader> reader = contentTypeCharset(responseHeaders)
+                .map(charset -> new InputStreamReader(stream, charset));
+        if (reader.isPresent()) {
+            return read(type, reader.get());
+        }
+        return read(type, stream);
     }
 
     private T read(GenericType<T> type, InputStream in) {
         try (in) {
             return jsonBinding.deserialize(in, type);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private T read(GenericType<T> type, Reader reader) {
+        try (reader) {
+            return jsonBinding.deserialize(reader, type);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

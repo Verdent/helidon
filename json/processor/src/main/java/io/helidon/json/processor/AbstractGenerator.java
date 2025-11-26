@@ -1,61 +1,42 @@
 package io.helidon.json.processor;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+abstract class AbstractGenerator implements Generator {
 
-class GeneratorImpl implements Generator {
+    static final int STACK_SIZE = 64;
 
-    private static final int STACK_SIZE = 64;
+    static final byte QUOTES = '"';
+    static final byte COMMA = ',';
+    static final byte COLON = ':';
+    static final byte ARRAY_START = '[';
+    static final byte ARRAY_END = ']';
+    static final byte OBJECT_START = '{';
+    static final byte OBJECT_END = '}';
+    static final byte SLASH = '\\';
+    static final byte ZERO = '0';
+    static final byte MINUS = '-';
 
-    private static final byte QUOTES = '"';
-    private static final byte COMMA = ',';
-    private static final byte COLON = ':';
-    private static final byte ARRAY_START = '[';
-    private static final byte ARRAY_END = ']';
-    private static final byte OBJECT_START = '{';
-    private static final byte OBJECT_END = '}';
-    private static final byte SLASH = '\\';
-    private static final byte ZERO = '0';
-    private static final byte MINUS = '-';
-
-    private final static byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
-
-    private final OutputStream outputStream;
-    private final byte[] buffer = new byte[5120];
-    private final byte[] digits = new byte[20];
     // stack structure tracking: true = object, false = array
-    private boolean[] structureType = new boolean[STACK_SIZE];
-    private boolean first = true;
-    private boolean keyWritten = false;
-    private int depth = 0;
-    private int index = 0;
-    private boolean failed = false;
+    final boolean[] structureType = new boolean[STACK_SIZE];
 
-    GeneratorImpl(OutputStream outputStream) {
-        this.outputStream = outputStream;
-    }
+    boolean first = true;
+    boolean keyWritten = false;
+    int depth = 0;
 
-    private void ensureCapacity(int extra) {
-        if (index + extra >= buffer.length) {
-            flushBuffer();
-        }
-    }
+    abstract void writeByte(byte value);
 
-    private void flushBuffer() {
-        if (index == 0) {
-            return;
-        }
-        try {
-            outputStream.write(buffer, 0, index);
-            index = 0;
-        } catch (IOException e) {
-            failed = true;
-            throw new JsonException("Stream write failed", e);
-        }
-    }
+    abstract void writeLong(long value);
 
-    private void beforeWrite() {
+    abstract void writeFloat(float value);
+
+    abstract void writeDouble(double value);
+
+    abstract void writeString(String value);
+
+    abstract void writeBoolean(boolean value);
+
+    abstract void writeNullValue();
+
+    void beforeWrite() {
         if (depth > 0) {
             if (first) {
                 first = false;
@@ -63,13 +44,17 @@ class GeneratorImpl implements Generator {
                 keyWritten = false;
             } else {
                 ensureCapacity(1);
-                buffer[index++] = COMMA;
+                writeByte(COMMA);
             }
         } else if (first) {
             first = false;
         } else {
             throw new JsonException("Multiple values not supported as a root value.");
         }
+    }
+
+    void ensureCapacity(int extra) {
+        //NOOP by default
     }
 
     @Override
@@ -81,7 +66,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         keyWritten = true;
         return this;
     }
@@ -95,7 +80,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         writeString(value);
         return this;
     }
@@ -109,8 +94,9 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
-        return writeLong(value);
+        writeByte(COLON);
+        writeLong(value);
+        return this;
     }
 
     @Override
@@ -122,8 +108,9 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
-        return writeLong(value);
+        writeByte(COLON);
+        writeLong(value);
+        return this;
     }
 
     @Override
@@ -135,7 +122,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         writeFloat(value);
         return this;
     }
@@ -149,7 +136,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         writeDouble(value);
         return this;
     }
@@ -163,7 +150,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         writeBoolean(value);
         return this;
     }
@@ -177,7 +164,7 @@ class GeneratorImpl implements Generator {
         }
         beforeWrite();
         writeString(key);
-        writeColon();
+        writeByte(COLON);
         writeJsonValue(value);
         return this;
     }
@@ -192,67 +179,16 @@ class GeneratorImpl implements Generator {
         return this;
     }
 
-    private void writeString(String value) {
-        ensureCapacity(1);
-        buffer[index++] = QUOTES;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c < 0x20) {
-                //Non-printable character
-                if (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') {
-                    ensureCapacity(2);
-                    buffer[index++] = SLASH;
-                    buffer[index++] = (byte) c;
-                } else {
-                    ensureCapacity(6);
-                    buffer[index++] = SLASH;
-                    buffer[index++] = 'u';
-                    buffer[index++] = '0';
-                    buffer[index++] = '0';
-                    buffer[index++] = HEX_DIGITS[(c >> 4) & 0xF];
-                    buffer[index++] = HEX_DIGITS[c & 0xF];
-                }
-            } else if (c == '"' || c == '\\') {
-                ensureCapacity(2);
-                buffer[index++] = SLASH;
-                buffer[index++] = (byte) c;
-            } else if (c < 0x80) {
-                //Character is an ASCII char. No multibyte handling required.
-                ensureCapacity(1);
-                buffer[index++] = (byte) c;
-            } else if (c < 0x800) {
-                ensureCapacity(2);
-                buffer[index++] = (byte) (0b11000000 | (c >> 6));
-                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
-            } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
-                ensureCapacity(6);
-                buffer[index++] = SLASH;
-                buffer[index++] = 'u';
-                buffer[index++] = HEX_DIGITS[(c >> 12) & 0xFF];
-                buffer[index++] = HEX_DIGITS[(c >> 8) & 0xFF];
-                buffer[index++] = HEX_DIGITS[(c >> 4) & 0xFF];
-                buffer[index++] = HEX_DIGITS[c & 0xFF];
-            } else {
-                ensureCapacity(3);
-                buffer[index++] = (byte) (0b11100000 | (c >> 12));
-                buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F));
-                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
-            }
-        }
-        ensureCapacity(1);
-        buffer[index++] = QUOTES;
-    }
-
     @Override
     public Generator write(byte value) {
         if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        ensureCapacity(1);
-        buffer[index++] = value;
+        writeByte(value);
         return this;
     }
+
 
     @Override
     public Generator write(short value) {
@@ -260,7 +196,8 @@ class GeneratorImpl implements Generator {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        return writeLong(value);
+        writeLong(value);
+        return this;
     }
 
     @Override
@@ -269,7 +206,8 @@ class GeneratorImpl implements Generator {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        return writeLong(value);
+        writeLong(value);
+        return this;
     }
 
     @Override
@@ -278,29 +216,7 @@ class GeneratorImpl implements Generator {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        return writeLong(value);
-    }
-
-    private Generator writeLong(long value) {
-        if (value == 0) {
-            return write(ZERO);
-        }
-        long toProcess = value;
-        int digits = 0;
-        boolean negative = value < 0;
-        if (negative) {
-            ensureCapacity(1);
-            buffer[index++] = MINUS;
-            toProcess = -toProcess;
-        }
-        while (toProcess > 0) {
-            this.digits[digits++] = (byte) ('0' + toProcess % 10);
-            toProcess /= 10;
-        }
-        ensureCapacity(digits);
-        for (int i = --digits; i >= 0; i--) {
-            buffer[index++] = this.digits[i];
-        }
+        writeLong(value);
         return this;
     }
 
@@ -314,27 +230,6 @@ class GeneratorImpl implements Generator {
         return this;
     }
 
-    private void writeFloat(float value) {
-        //Performance improvement needed
-        if (Float.isNaN(value) || Float.isInfinite(value)) {
-            writeNull();
-            return;
-        } else if (value == 0.0) {
-            buffer[index++] = (byte) '0';
-            return;
-        }
-
-        // Convert to string (optimized native routine)
-        String str = Float.toString(value);
-        int len = str.length();
-
-        ensureCapacity(len);
-        for (int i = 0; i < len; i++) {
-            buffer[index + i] = (byte) str.charAt(i); // ASCII digits + '.', 'E', '-', etc.
-        }
-        index += len;
-    }
-
     @Override
     public Generator write(double value) {
         if (depth > 0 && structureType[depth - 1] && !keyWritten) {
@@ -343,27 +238,6 @@ class GeneratorImpl implements Generator {
         beforeWrite();
         writeDouble(value);
         return this;
-    }
-
-    private void writeDouble(double value) {
-        //Performance improvement needed
-        if (Double.isNaN(value) || Double.isInfinite(value)) {
-            writeNull();
-            return;
-        } else if (value == 0.0) {
-            buffer[index++] = (byte) '0';
-            return;
-        }
-
-        // Convert to string (optimized native routine)
-        String str = Double.toString(value);
-        int len = str.length();
-
-        ensureCapacity(len);
-        for (int i = 0; i < len; i++) {
-            buffer[index + i] = (byte) str.charAt(i); // ASCII digits + '.', 'E', '-', etc.
-        }
-        index += len;
     }
 
     @Override
@@ -376,23 +250,6 @@ class GeneratorImpl implements Generator {
         return this;
     }
 
-    private void writeBoolean(boolean value) {
-        if (value) {
-            ensureCapacity(4);
-            buffer[index++] = 't';
-            buffer[index++] = 'r';
-            buffer[index++] = 'u';
-            buffer[index++] = 'e';
-        } else {
-            ensureCapacity(5);
-            buffer[index++] = 'f';
-            buffer[index++] = 'a';
-            buffer[index++] = 'l';
-            buffer[index++] = 's';
-            buffer[index++] = 'e';
-        }
-    }
-
     @Override
     public Generator write(JsonValue value) {
         if (depth > 0 && structureType[depth - 1] && !keyWritten) {
@@ -403,26 +260,13 @@ class GeneratorImpl implements Generator {
         return this;
     }
 
-    private void writeJsonValue(JsonValue value) {
-        value.toJson(this);
-    }
-
-    private void writeColon() {
-        ensureCapacity(1);
-        buffer[index++] = COLON;
-    }
-
     @Override
     public Generator writeNull() {
         if (depth > 0 && structureType[depth - 1] && !keyWritten) {
             throw new JsonException("Value without key is supported only as a root or in the array.");
         }
         beforeWrite();
-        ensureCapacity(4);
-        buffer[index++] = 'n';
-        buffer[index++] = 'u';
-        buffer[index++] = 'l';
-        buffer[index++] = 'l';
+        writeNullValue();
         return this;
     }
 
@@ -434,16 +278,14 @@ class GeneratorImpl implements Generator {
             keyWritten = false;
         }
         pushStructureType(false);
-        ensureCapacity(1);
-        buffer[index++] = ARRAY_START;
+        writeByte(ARRAY_START);
         return this;
     }
 
     @Override
     public Generator writeArrayEnd() {
         popStackType();
-        ensureCapacity(1);
-        buffer[index++] = ARRAY_END;
+        writeByte(ARRAY_END);
         first = false;
         return this;
     }
@@ -455,8 +297,7 @@ class GeneratorImpl implements Generator {
         } else {
             keyWritten = false;
         }
-        ensureCapacity(1);
-        buffer[index++] = OBJECT_START;
+        writeByte(OBJECT_START);
         pushStructureType(true);
         return this;
     }
@@ -464,16 +305,13 @@ class GeneratorImpl implements Generator {
     @Override
     public Generator writeObjectEnd() {
         popStackType();
-        ensureCapacity(1);
-        buffer[index++] = OBJECT_END;
+        writeByte(OBJECT_END);
         first = false;
         return this;
     }
 
-    @Override
-    public void close() throws Exception {
-        outputStream.write(buffer, 0, index);
-        outputStream.flush();
+    void writeJsonValue(JsonValue value) {
+        value.toJson(this);
     }
 
     private void pushStructureType(boolean isObject) {
@@ -491,5 +329,4 @@ class GeneratorImpl implements Generator {
             throw new IllegalStateException("Invalid JSON structure");
         }
     }
-
 }

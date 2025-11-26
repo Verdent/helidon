@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Reader;
+import java.io.Writer;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +25,7 @@ import io.helidon.json.processor.ReusableJsonParser;
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     public static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
+    public static final char[] NULL_CHARS = "null".toCharArray();
     private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
     private final ThreadLocal<CachedStreamParser> parserStreamCache = ThreadLocal.withInitial(CachedStreamParser::new);
 
@@ -128,7 +131,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @SuppressWarnings("unchecked")
     public void serialize(OutputStream outputStream, Object obj) {
         if (obj == null) {
-            try {
+            try (outputStream) {
                 outputStream.write(NULL_BYTES);
                 return;
             } catch (IOException e) {
@@ -148,7 +151,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, Class<? super T> type) {
         if (obj == null) {
-            try {
+            try (outputStream) {
                 outputStream.write(NULL_BYTES);
                 return;
             } catch (IOException e) {
@@ -168,7 +171,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type) {
         if (obj == null) {
-            try {
+            try (outputStream) {
                 outputStream.write(NULL_BYTES);
                 return;
             } catch (IOException e) {
@@ -176,6 +179,67 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
+            JsonSerializer<? super T> converter = getSerializer(type);
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void serialize(Writer writer, Object obj) {
+        if (obj == null) {
+            try (writer) {
+                writer.write(NULL_CHARS);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(writer)) {
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public <T> void serialize(Writer writer, T obj, Class<? super T> type) {
+        if (obj == null) {
+            try (writer) {
+                writer.write(NULL_CHARS);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(writer)) {
+            JsonSerializer<? super T> converter = getSerializer(type);
+            converter.serialize(generator, obj, true);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public <T> void serialize(Writer writer, T obj, GenericType<? super T> type) {
+        if (obj == null) {
+            try (writer) {
+                writer.write(NULL_CHARS);
+                return;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (Generator generator = Generator.create(writer)) {
             JsonSerializer<? super T> converter = getSerializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
@@ -241,6 +305,16 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
         T deserialized = Deserializers.deserialize(parser, deserializer);
         cachedParser.set(parser);
         return deserialized;
+    }
+
+    @Override
+    public <T> T deserialize(Reader reader, Class<T> type) {
+        return deserialize(new ReaderInputStream(reader), type);
+    }
+
+    @Override
+    public <T> T deserialize(Reader reader, GenericType<T> type) {
+        return deserialize(new ReaderInputStream(reader), type);
     }
 
     @Override

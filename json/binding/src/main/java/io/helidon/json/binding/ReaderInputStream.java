@@ -1,4 +1,4 @@
-package io.helidon.http.media.helidon;
+package io.helidon.json.binding;
 
 import java.io.IOException;
 import java.io.InputStream;

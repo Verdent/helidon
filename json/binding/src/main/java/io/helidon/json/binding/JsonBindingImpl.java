@@ -361,6 +361,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             if (factory == null) {
                 if (type.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (type.isEnum()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Enum.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
@@ -400,6 +402,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             if (factory == null) {
                 if (rawType.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (rawType.isEnum()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Enum.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
@@ -451,6 +455,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             if (factory == null) {
                 if (type.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (type.isEnum()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Enum.class);
                 } else if (List.class.isAssignableFrom(type)) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
                 } else if (Map.class.isAssignableFrom(type)) {
@@ -496,6 +502,8 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             if (factory == null) {
                 if (rawType.isArray()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
+                } else if (rawType.isEnum()) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Enum.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "

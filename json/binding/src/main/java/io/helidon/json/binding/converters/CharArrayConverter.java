@@ -61,12 +61,10 @@ class CharArrayConverter implements JsonConverter<char[]> {
         }
         if (index == array.length) {
             return array;
-        } else if (index > 0) {
-            char[] toReturn = new char[index];
-            System.arraycopy(array, 0, toReturn, 0, toReturn.length);
-            return toReturn;
         }
-        return emptyArray;
+        char[] toReturn = new char[index];
+        System.arraycopy(array, 0, toReturn, 0, toReturn.length);
+        return toReturn;
     }
 
     @Override

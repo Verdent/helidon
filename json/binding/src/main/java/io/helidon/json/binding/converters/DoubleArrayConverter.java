@@ -41,31 +41,30 @@ class DoubleArrayConverter implements JsonConverter<double[]> {
         double[] array = new double[5];
         lastByte = parser.nextToken();
         int index = 0;
-        if (lastByte != ']') {
+        if (lastByte == ']') {
+            return emptyArray;
+        }
+        array[index++] = Deserializers.deserialize(parser, deserializer);
+        lastByte = parser.nextToken();
+        while (lastByte == ',') {
+            if (index == array.length) {
+                double[] tmp = new double[array.length * 2];
+                System.arraycopy(array, 0, tmp, 0, array.length);
+                array = tmp;
+            }
+            parser.nextToken();
             array[index++] = Deserializers.deserialize(parser, deserializer);
             lastByte = parser.nextToken();
-            while (lastByte == ',') {
-                if (index == array.length) {
-                    double[] tmp = new double[array.length * 2];
-                    System.arraycopy(array, 0, tmp, 0, array.length);
-                    array = tmp;
-                }
-                parser.nextToken();
-                array[index++] = Deserializers.deserialize(parser, deserializer);
-                lastByte = parser.nextToken();
-            }
-            if (lastByte != ']') {
-                throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
-            }
+        }
+        if (lastByte != ']') {
+            throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
         }
         if (index == array.length) {
             return array;
-        } else if (index > 0) {
-            double[] toReturn = new double[index];
-            System.arraycopy(array, 0, toReturn, 0, toReturn.length);
-            return toReturn;
         }
-        return emptyArray;
+        double[] toReturn = new double[index];
+        System.arraycopy(array, 0, toReturn, 0, toReturn.length);
+        return toReturn;
     }
 
     @Override

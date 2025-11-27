@@ -41,31 +41,30 @@ class FloatArrayConverter implements JsonConverter<float[]> {
         float[] array = new float[5];
         lastByte = parser.nextToken();
         int index = 0;
-        if (lastByte != ']') {
+        if (lastByte == ']') {
+            return emptyArray;
+        }
+        array[index++] = Deserializers.deserialize(parser, deserializer);
+        lastByte = parser.nextToken();
+        while (lastByte == ',') {
+            if (index == array.length) {
+                float[] tmp = new float[array.length * 2];
+                System.arraycopy(array, 0, tmp, 0, array.length);
+                array = tmp;
+            }
+            parser.nextToken();
             array[index++] = Deserializers.deserialize(parser, deserializer);
             lastByte = parser.nextToken();
-            while (lastByte == ',') {
-                if (index == array.length) {
-                    float[] tmp = new float[array.length * 2];
-                    System.arraycopy(array, 0, tmp, 0, array.length);
-                    array = tmp;
-                }
-                parser.nextToken();
-                array[index++] = Deserializers.deserialize(parser, deserializer);
-                lastByte = parser.nextToken();
-            }
-            if (lastByte != ']') {
-                throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
-            }
+        }
+        if (lastByte != ']') {
+            throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
         }
         if (index == array.length) {
             return array;
-        } else if (index > 0) {
-            float[] toReturn = new float[index];
-            System.arraycopy(array, 0, toReturn, 0, toReturn.length);
-            return toReturn;
         }
-        return emptyArray;
+        float[] toReturn = new float[index];
+        System.arraycopy(array, 0, toReturn, 0, toReturn.length);
+        return toReturn;
     }
 
     @Override

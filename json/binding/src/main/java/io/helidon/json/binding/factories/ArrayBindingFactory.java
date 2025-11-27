@@ -87,31 +87,30 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
             Object[] array = createArrayInstance(5);
             lastByte = parser.nextToken();
             int index = 0;
-            if (lastByte != ']') {
+            if (lastByte == ']') {
+                return emptyArray;
+            }
+            array[index++] = Deserializers.deserialize(parser, deserializer);
+            lastByte = parser.nextToken();
+            while (lastByte == ',') {
+                if (index == array.length) {
+                    Object[] tmp = createArrayInstance(array.length * 2);
+                    System.arraycopy(array, 0, tmp, 0, array.length);
+                    array = tmp;
+                }
+                parser.nextToken();
                 array[index++] = Deserializers.deserialize(parser, deserializer);
                 lastByte = parser.nextToken();
-                while (lastByte == ',') {
-                    if (index == array.length) {
-                        Object[] tmp = createArrayInstance(array.length * 2);
-                        System.arraycopy(array, 0, tmp, 0, array.length);
-                        array = tmp;
-                    }
-                    parser.nextToken();
-                    array[index++] = Deserializers.deserialize(parser, deserializer);
-                    lastByte = parser.nextToken();
-                }
-                if (lastByte != ']') {
-                    throw new JsonException("Array end or comma expected, received: " + Character.toString(lastByte));
-                }
             }
-            if (index > 0) {
-                Object[] toReturn = createArrayInstance(index);
-                System.arraycopy(array, 0, toReturn, 0, toReturn.length);
-                return toReturn;
-            } else if (index == array.length) {
+            if (lastByte != ']') {
+                throw new JsonException("Array end or comma expected, received: " + Character.toString(lastByte));
+            }
+            if (index == array.length) {
                 return array;
             }
-            return emptyArray;
+            Object[] toReturn = createArrayInstance(index);
+            System.arraycopy(array, 0, toReturn, 0, toReturn.length);
+            return toReturn;
         }
 
         @Override

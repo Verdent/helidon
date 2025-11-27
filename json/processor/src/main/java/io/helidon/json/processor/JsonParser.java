@@ -212,7 +212,7 @@ public interface JsonParser {
     JsonNumber readJsonNumber();
 
     /**
-     * Reads a string value from the current position.
+     * Reads a string value from the current position. The value has to start and end with the {@code "}.
      * <p>
      * This method expects the next token to be a string and returns
      * the string content as a Java String.
@@ -247,6 +247,18 @@ public interface JsonParser {
      * @throws JsonException if the next token is not a number or parsing fails
      */
     char[] readNumberAsArray();
+
+    /**
+     * Reads a char value from the current position. The value has to start and end with the {@code "}.
+     * <p>
+     * This method expects the next token to be a string and returns
+     * the string content as a Java char value. It has to be one character.
+     * </p>
+     *
+     * @return the boolean value
+     * @throws JsonException if the next token is not a boolean or parsing fails
+     */
+    char readAsChar();
 
     /**
      * Reads a boolean value from the current position.

@@ -50,37 +50,37 @@ class ReaderInputStream extends InputStream {
             readMoreChars(false);
         }
         int bytesIndex = off;
-        int bytesRead = 0;
+        int readBytes = 0;
         if (leftoversLength > 0) {
-            while (leftoversPosition < leftoversLength && bytesRead < len) {
+            while (leftoversPosition < leftoversLength && readBytes < len) {
                 bytes[bytesIndex++] = leftovers[leftoversPosition++];
             }
             if (leftoversPosition == leftoversLength) {
                 leftoversLength = 0;
                 leftoversPosition = 0;
             }
-            if (bytesRead >= len) {
-                return bytesRead;
+            if (readBytes >= len) {
+                return readBytes;
             }
         }
         while (true) {
             boolean expectHighSurrogate = false;
-            while (charPosition < charLength && bytesRead < len) {
+            while (charPosition < charLength && readBytes < len) {
                 char character = charArray[charPosition++];
                 if (character < 0x80) {
                     // 1-byte (ASCII)
                     bytes[bytesIndex++] = (byte) character;
-                    bytesRead++;
+                    readBytes++;
                 } else if (character < 0x800) {
                     // 2-byte
                     bytes[bytesIndex++] = (byte) (0xC0 | (character >> 6));
-                    bytesRead++;
-                    if (bytesRead < len) {
+                    readBytes++;
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = (byte) (0x80 | (character & 0x3F));
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = (byte) (0x80 | (character & 0x3F));
-                        return bytesRead;
+                        return readBytes;
                     }
                 } else if (Character.isHighSurrogate(character)) {
                     // 4-byte (surrogate pair), we need to obtain low surrogate.
@@ -88,61 +88,61 @@ class ReaderInputStream extends InputStream {
                     if (charPosition >= charLength) {
                         //keep this high surrogate and buffer more chars
                         expectHighSurrogate = true;
-                        continue;
+                        break;
                     }
                     int codePoint = Character.toCodePoint(character, charArray[charPosition++]);
                     bytes[bytesIndex++] = (byte) (0xF0 | (codePoint >> 18));
-                    bytesRead++;
+                    readBytes++;
                     byte b = (byte) (0x80 | ((codePoint >> 12) & 0x3F));
-                    if (bytesRead < len) {
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = b;
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = b;
                     }
                     b = (byte) (0x80 | ((codePoint >> 6) & 0x3F));
-                    if (bytesRead < len) {
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = b;
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = b;
                     }
                     b = (byte) (0x80 | (codePoint & 0x3F));
-                    if (bytesRead < len) {
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = b;
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = b;
-                        return bytesRead;
+                        return readBytes;
                     }
                 } else {
                     // 3-byte
                     bytes[bytesIndex++] = (byte) (0xE0 | (character >> 12));
-                    bytesRead++;
+                    readBytes++;
                     byte b = (byte) (0x80 | ((character >> 6) & 0x3F));
-                    if (bytesRead < len) {
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = b;
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = b;
                     }
                     b = (byte) (0x80 | (character & 0x3F));
-                    if (bytesRead < len) {
+                    if (readBytes < len) {
                         bytes[bytesIndex++] = b;
-                        bytesRead++;
+                        readBytes++;
                     } else {
                         leftovers[leftoversLength++] = b;
-                        return bytesRead;
+                        return readBytes;
                     }
                 }
             }
-            if (bytesRead < len) {
+            if (readBytes < len) {
                 if (eof) {
-                    return bytesRead;
+                    return readBytes;
                 }
                 readMoreChars(expectHighSurrogate);
             } else {
-                return bytesRead;
+                return readBytes;
             }
         }
     }

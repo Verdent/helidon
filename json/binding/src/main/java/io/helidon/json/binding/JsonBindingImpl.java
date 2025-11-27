@@ -24,8 +24,9 @@ import io.helidon.json.processor.ReusableJsonParser;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
-    public static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
-    public static final char[] NULL_CHARS = "null".toCharArray();
+    private static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
+    private static final char[] NULL_CHARS = "null".toCharArray();
+
     private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
     private final ThreadLocal<CachedStreamParser> parserStreamCache = ThreadLocal.withInitial(CachedStreamParser::new);
 

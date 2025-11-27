@@ -509,6 +509,57 @@ class ArrayJsonParser implements ReusableJsonParser  {
     }
 
     @Override
+    public char readAsChar() {
+        if (currentByte() != '\"') {
+            throw new JsonException("Start of a string expected, but found: " + (char) currentByte());
+        }
+        ensure(1);
+        byte b = this.buffer[++currentIndex];
+        char c;
+        if (b == '\\') {
+            c = processEscapedSequence();
+        } else if ((b & 0x80) == 0) {
+            c = (char) b;
+        } else {
+            c = decodeUtf8ToChar(b);
+        }
+        if (nextToken() != '\"') {
+            throw new JsonException("End of a string expected, but found: " + (char) currentByte());
+        }
+        return c;
+    }
+
+    private char decodeUtf8ToChar(byte currentByte) {
+        if ((currentByte & 0xE0) == 0xC0) {
+            int c2 = readNextByte() & 0x3F;
+            int codePoint = ((currentByte & 0x1F) << 6) | c2;
+            return (char) codePoint;
+        } else if ((currentByte & 0xF0) == 0xE0) {
+            ensure(2);
+            int c2 = buffer[++currentIndex] & 0x3F;
+            int c3 = buffer[++currentIndex] & 0x3F;
+            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3;
+            return (char) codePoint;
+        } else if ((currentByte & 0xF8) == 0xF0) {
+            ensure(3);
+            int c2 = buffer[++currentIndex] & 0x3F;
+            int c3 = buffer[++currentIndex] & 0x3F;
+            int c4 = buffer[++currentIndex] & 0x3F;
+            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
+            if (codePoint >= 0x10000) {
+                if (codePoint >= 0x110000) {
+                    throw new JsonException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
+                }
+                throw new JsonException("UTF-16 high and low surrogates cant be represented as a single char");
+            } else {
+                return (char) codePoint;
+            }
+        } else {
+            throw new JsonException("Invalid UTF-8 byte: " + currentByte);
+        }
+    }
+
+    @Override
     public boolean readAsBoolean() {
         switch (currentByte()) {
         case 't':

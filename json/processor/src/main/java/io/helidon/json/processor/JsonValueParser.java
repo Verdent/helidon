@@ -130,6 +130,11 @@ class JsonValueParser implements JsonParser {
     }
 
     @Override
+    public char readAsChar() {
+        return current.asString().value().charAt(0);
+    }
+
+    @Override
     public boolean readAsBoolean() {
         return current.asBoolean().value();
     }

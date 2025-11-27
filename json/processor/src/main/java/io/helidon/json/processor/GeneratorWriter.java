@@ -63,6 +63,17 @@ class GeneratorWriter extends AbstractGenerator {
     }
 
     @Override
+    void writeChar(char value) {
+        try {
+            writer.write('\"');
+            writer.write(value);
+            writer.write('\"');
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
     void writeBoolean(boolean value) {
         try {
             if (value) {

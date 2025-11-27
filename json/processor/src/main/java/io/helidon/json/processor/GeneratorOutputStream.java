@@ -9,7 +9,7 @@ class GeneratorOutputStream extends AbstractGenerator {
     private final static byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
 
     private final OutputStream outputStream;
-    private final byte[] buffer = new byte[5120];
+    private final byte[] buffer = new byte[512];
     private final byte[] digits = new byte[20];
     private int index = 0;
     private boolean closed;
@@ -43,50 +43,63 @@ class GeneratorOutputStream extends AbstractGenerator {
         buffer[index++] = QUOTES;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            if (c < 0x20) {
-                //Non-printable character
-                if (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') {
-                    ensureCapacity(2);
-                    buffer[index++] = SLASH;
-                    buffer[index++] = (byte) c;
-                } else {
-                    ensureCapacity(6);
-                    buffer[index++] = SLASH;
-                    buffer[index++] = 'u';
-                    buffer[index++] = '0';
-                    buffer[index++] = '0';
-                    buffer[index++] = HEX_DIGITS[(c >> 4) & 0xF];
-                    buffer[index++] = HEX_DIGITS[c & 0xF];
-                }
-            } else if (c == '"' || c == '\\') {
-                ensureCapacity(2);
-                buffer[index++] = SLASH;
-                buffer[index++] = (byte) c;
-            } else if (c < 0x80) {
-                //Character is an ASCII char. No multibyte handling required.
-                ensureCapacity(1);
-                buffer[index++] = (byte) c;
-            } else if (c < 0x800) {
-                ensureCapacity(2);
-                buffer[index++] = (byte) (0b11000000 | (c >> 6));
-                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
-            } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
-                ensureCapacity(6);
-                buffer[index++] = SLASH;
-                buffer[index++] = 'u';
-                buffer[index++] = HEX_DIGITS[(c >> 12) & 0xFF];
-                buffer[index++] = HEX_DIGITS[(c >> 8) & 0xFF];
-                buffer[index++] = HEX_DIGITS[(c >> 4) & 0xFF];
-                buffer[index++] = HEX_DIGITS[c & 0xFF];
-            } else {
-                ensureCapacity(3);
-                buffer[index++] = (byte) (0b11100000 | (c >> 12));
-                buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F));
-                buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
-            }
+            encodeChar(c);
         }
         ensureCapacity(1);
         buffer[index++] = QUOTES;
+    }
+
+    @Override
+    void writeChar(char value) {
+        ensureCapacity(1);
+        buffer[index++] = QUOTES;
+        encodeChar(value);
+        ensureCapacity(1);
+        buffer[index++] = QUOTES;
+    }
+
+    private void encodeChar(char c) {
+        if (c < 0x20) {
+            //Non-printable character
+            if (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') {
+                ensureCapacity(2);
+                buffer[index++] = SLASH;
+                buffer[index++] = (byte) c;
+            } else {
+                ensureCapacity(6);
+                buffer[index++] = SLASH;
+                buffer[index++] = 'u';
+                buffer[index++] = '0';
+                buffer[index++] = '0';
+                buffer[index++] = HEX_DIGITS[(c >> 4) & 0xF];
+                buffer[index++] = HEX_DIGITS[c & 0xF];
+            }
+        } else if (c == '"' || c == '\\') {
+            ensureCapacity(2);
+            buffer[index++] = SLASH;
+            buffer[index++] = (byte) c;
+        } else if (c < 0x80) {
+            //Character is an ASCII char. No multibyte handling required.
+            ensureCapacity(1);
+            buffer[index++] = (byte) c;
+        } else if (c < 0x800) {
+            ensureCapacity(2);
+            buffer[index++] = (byte) (0b11000000 | (c >> 6));
+            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
+        } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
+            ensureCapacity(6);
+            buffer[index++] = SLASH;
+            buffer[index++] = 'u';
+            buffer[index++] = HEX_DIGITS[(c >> 12) & 0xFF];
+            buffer[index++] = HEX_DIGITS[(c >> 8) & 0xFF];
+            buffer[index++] = HEX_DIGITS[(c >> 4) & 0xFF];
+            buffer[index++] = HEX_DIGITS[c & 0xFF];
+        } else {
+            ensureCapacity(3);
+            buffer[index++] = (byte) (0b11100000 | (c >> 12));
+            buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F));
+            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
+        }
     }
 
     @Override

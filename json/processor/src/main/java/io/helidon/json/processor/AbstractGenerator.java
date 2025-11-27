@@ -32,6 +32,8 @@ abstract class AbstractGenerator implements Generator {
 
     abstract void writeString(String value);
 
+    abstract void writeChar(char value);
+
     abstract void writeBoolean(boolean value);
 
     abstract void writeNullValue();
@@ -156,6 +158,20 @@ abstract class AbstractGenerator implements Generator {
     }
 
     @Override
+    public Generator write(String key, char value) {
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice.");
+        }
+        beforeWrite();
+        writeString(key);
+        writeByte(COLON);
+        writeChar(value);
+        return this;
+    }
+
+    @Override
     public Generator write(String key, JsonValue value) {
         if (depth == 0 || !structureType[depth - 1]) {
             throw new JsonException("Key can be written only into the object.");
@@ -247,6 +263,16 @@ abstract class AbstractGenerator implements Generator {
         }
         beforeWrite();
         writeBoolean(value);
+        return this;
+    }
+
+    @Override
+    public Generator write(char value) {
+        if (depth > 0 && structureType[depth - 1] && !keyWritten) {
+            throw new JsonException("Value without key is supported only as a root or in the array.");
+        }
+        beforeWrite();
+        writeChar(value);
         return this;
     }
 

@@ -61,6 +61,17 @@ public class ArrayTest {
         assertThat(deserialized.stringArray(), is(expectedArray));
     }
 
+    @Test
+    public void testCharArray() {
+        char[] expectedArray = {'a', 'b', 'c'};
+        String serializedJson = HELIDON.serialize(expectedArray);
+        assertThat(serializedJson, is("[\"a\",\"b\",\"c\"]"));
+
+        char[] deserialized = HELIDON.deserialize(serializedJson, char[].class);
+        assertThat(deserialized, notNullValue());
+        assertThat(deserialized, is(expectedArray));
+    }
+
     @Json.Entity
     record OneDimensionPrimitiveArray(int[] intArray) {
     }

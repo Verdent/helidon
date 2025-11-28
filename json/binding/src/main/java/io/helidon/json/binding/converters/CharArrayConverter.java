@@ -69,8 +69,8 @@ class CharArrayConverter implements JsonConverter<char[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(char.class);
-        serializer = jsonBindingConfigurator.getSerializer(char.class);
+        deserializer = jsonBindingConfigurator.deserializer(char.class);
+        serializer = jsonBindingConfigurator.serializer(char.class);
     }
 
     @Override

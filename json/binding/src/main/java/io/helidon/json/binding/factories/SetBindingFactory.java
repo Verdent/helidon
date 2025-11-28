@@ -110,8 +110,8 @@ class SetBindingFactory implements JsonBindingFactory<Set<?>> {
 
         @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-            deserializer = jsonBindingConfigurator.getDeserializer(componentType);
-            serializer = jsonBindingConfigurator.getSerializer(componentType);
+            deserializer = jsonBindingConfigurator.deserializer(componentType);
+            serializer = jsonBindingConfigurator.serializer(componentType);
         }
     }
 

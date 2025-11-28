@@ -69,8 +69,8 @@ class ShortArrayConverter implements JsonConverter<short[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(short.class);
-        serializer = jsonBindingConfigurator.getSerializer(short.class);
+        deserializer = jsonBindingConfigurator.deserializer(short.class);
+        serializer = jsonBindingConfigurator.serializer(short.class);
     }
 
     @Override

@@ -69,8 +69,8 @@ class FloatArrayConverter implements JsonConverter<float[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(float.class);
-        serializer = jsonBindingConfigurator.getSerializer(float.class);
+        deserializer = jsonBindingConfigurator.deserializer(float.class);
+        serializer = jsonBindingConfigurator.serializer(float.class);
     }
 
     @Override

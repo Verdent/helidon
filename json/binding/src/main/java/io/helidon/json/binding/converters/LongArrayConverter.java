@@ -69,8 +69,8 @@ class LongArrayConverter implements JsonConverter<long[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(long.class);
-        serializer = jsonBindingConfigurator.getSerializer(long.class);
+        deserializer = jsonBindingConfigurator.deserializer(long.class);
+        serializer = jsonBindingConfigurator.serializer(long.class);
     }
 
     @Override

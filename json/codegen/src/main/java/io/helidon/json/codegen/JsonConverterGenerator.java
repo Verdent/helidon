@@ -752,8 +752,8 @@ class JsonConverterGenerator {
     }
 
     private enum TypeConfigMode {
-        SERIALIZATION("getSerializer"),
-        DESERIALIZATION("getDeserializer");
+        SERIALIZATION("serializer"),
+        DESERIALIZATION("deserializer");
 
         private final String method;
 

@@ -69,8 +69,8 @@ class DoubleArrayConverter implements JsonConverter<double[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(double.class);
-        serializer = jsonBindingConfigurator.getSerializer(double.class);
+        deserializer = jsonBindingConfigurator.deserializer(double.class);
+        serializer = jsonBindingConfigurator.serializer(double.class);
     }
 
     @Override

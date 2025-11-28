@@ -69,8 +69,8 @@ class IntArrayConverter implements JsonConverter<int[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(int.class);
-        serializer = jsonBindingConfigurator.getSerializer(int.class);
+        deserializer = jsonBindingConfigurator.deserializer(int.class);
+        serializer = jsonBindingConfigurator.serializer(int.class);
     }
 
     @Override

@@ -70,8 +70,8 @@ class ByteArrayConverter implements JsonConverter<byte[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(byte.class);
-        serializer = jsonBindingConfigurator.getSerializer(byte.class);
+        deserializer = jsonBindingConfigurator.deserializer(byte.class);
+        serializer = jsonBindingConfigurator.serializer(byte.class);
     }
 
     @Override

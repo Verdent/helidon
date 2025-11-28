@@ -84,7 +84,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -101,7 +101,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -118,7 +118,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -140,7 +140,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -160,7 +160,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -180,7 +180,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -201,7 +201,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) getSerializer(obj.getClass());
+            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -221,7 +221,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -241,7 +241,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             }
         }
         try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<? super T> converter = getSerializer(type);
+            JsonSerializer<? super T> converter = serializer(type);
             converter.serialize(generator, obj, true);
         } catch (RuntimeException e) {
             throw e;
@@ -252,7 +252,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(byte[] bytes, Class<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = deserializer(type);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(bytes);
@@ -264,7 +264,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(byte[] bytes, GenericType<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = deserializer(type);
         CachedParser cachedParser = parserCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(bytes);
@@ -286,7 +286,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(InputStream inputStream, Class<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = deserializer(type);
         CachedStreamParser cachedParser = parserStreamCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(inputStream);
@@ -298,7 +298,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(InputStream inputStream, GenericType<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = deserializer(type);
         CachedStreamParser cachedParser = parserStreamCache.get();
         ReusableJsonParser parser = cachedParser.get();
         parser.reset(inputStream);
@@ -320,7 +320,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(JsonValue jsonValue, Class<T> type) {
-        JsonDeserializer<T> deserializer = getDeserializer(type);
+        JsonDeserializer<T> deserializer = deserializer(type);
         JsonParser parser = JsonParser.create(jsonValue);
         return Deserializers.deserialize(parser, deserializer);
     }
@@ -332,17 +332,17 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(Type type) {
+    public <T> JsonDeserializer<T> deserializer(Type type) {
         return switch (type) {
-            case Class<?> clazz -> (JsonDeserializer<T>) getDeserializer(clazz);
-            case GenericType<?> genericType -> (JsonDeserializer<T>) getDeserializer(genericType);
-            case null, default -> getDeserializer(GenericType.create(type));
+            case Class<?> clazz -> (JsonDeserializer<T>) deserializer(clazz);
+            case GenericType<?> genericType -> (JsonDeserializer<T>) deserializer(genericType);
+            case null, default -> deserializer(GenericType.create(type));
         };
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(Class<T> type) {
+    public <T> JsonDeserializer<T> deserializer(Class<T> type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialIdentityDeserializers.get(type);
         if (deserializer != null) {
             return deserializer;
@@ -382,7 +382,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonDeserializer<T> getDeserializer(GenericType<T> type) {
+    public <T> JsonDeserializer<T> deserializer(GenericType<T> type) {
         JsonDeserializer<T> deserializer = (JsonDeserializer<T>) initialDeserializers.get(type);
         if (deserializer != null) {
             return deserializer;
@@ -426,17 +426,17 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(Type type) {
+    public <T> JsonSerializer<T> serializer(Type type) {
         return switch (type) {
-            case Class<?> clazz -> (JsonSerializer<T>) getSerializer(clazz);
-            case GenericType<?> genericType -> (JsonSerializer<T>) getSerializer(genericType);
-            case null, default -> getSerializer(GenericType.create(type));
+            case Class<?> clazz -> (JsonSerializer<T>) serializer(clazz);
+            case GenericType<?> genericType -> (JsonSerializer<T>) serializer(genericType);
+            case null, default -> serializer(GenericType.create(type));
         };
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(Class<T> type) {
+    public <T> JsonSerializer<T> serializer(Class<T> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) initialIdentitySerializers.get(type);
         if (serializer != null) {
             return serializer;
@@ -482,7 +482,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> JsonSerializer<T> getSerializer(GenericType<T> type) {
+    public <T> JsonSerializer<T> serializer(GenericType<T> type) {
         JsonSerializer<T> serializer = (JsonSerializer<T>) initialSerializers.get(type);
         if (serializer != null) {
             return serializer;

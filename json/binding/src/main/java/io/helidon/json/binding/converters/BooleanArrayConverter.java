@@ -69,8 +69,8 @@ class BooleanArrayConverter implements JsonConverter<boolean[]> {
 
     @Override
     public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-        deserializer = jsonBindingConfigurator.getDeserializer(boolean.class);
-        serializer = jsonBindingConfigurator.getSerializer(boolean.class);
+        deserializer = jsonBindingConfigurator.deserializer(boolean.class);
+        serializer = jsonBindingConfigurator.serializer(boolean.class);
     }
 
     @Override

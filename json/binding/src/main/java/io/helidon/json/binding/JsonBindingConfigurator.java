@@ -6,16 +6,16 @@ import io.helidon.common.GenericType;
 
 public interface JsonBindingConfigurator {
 
-    <T> JsonDeserializer<T> getDeserializer(Type type);
+    <T> JsonDeserializer<T> deserializer(Type type);
 
-    <T> JsonDeserializer<T> getDeserializer(Class<T> type);
+    <T> JsonDeserializer<T> deserializer(Class<T> type);
 
-    <T> JsonDeserializer<T> getDeserializer(GenericType<T> type);
+    <T> JsonDeserializer<T> deserializer(GenericType<T> type);
 
-    <T> JsonSerializer<T> getSerializer(Type type);
+    <T> JsonSerializer<T> serializer(Type type);
 
-    <T> JsonSerializer<T> getSerializer(Class<T> type);
+    <T> JsonSerializer<T> serializer(Class<T> type);
 
-    <T> JsonSerializer<T> getSerializer(GenericType<T> type);
+    <T> JsonSerializer<T> serializer(GenericType<T> type);
 
 }

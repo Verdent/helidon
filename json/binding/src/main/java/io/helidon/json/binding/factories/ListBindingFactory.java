@@ -144,8 +144,8 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
 
         @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-            deserializer = jsonBindingConfigurator.getDeserializer(componentType);
-            serializer = jsonBindingConfigurator.getSerializer(componentType);
+            deserializer = jsonBindingConfigurator.deserializer(componentType);
+            serializer = jsonBindingConfigurator.serializer(componentType);
         }
 
         List<Object> createInstance(int capacity) {

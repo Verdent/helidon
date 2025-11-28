@@ -88,8 +88,8 @@ class OptionalBindingFactory implements JsonBindingFactory<Optional<?>> {
 
         @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-            deserializer = jsonBindingConfigurator.getDeserializer(componentType);
-            serializer = jsonBindingConfigurator.getSerializer(componentType);
+            deserializer = jsonBindingConfigurator.deserializer(componentType);
+            serializer = jsonBindingConfigurator.serializer(componentType);
         }
     }
 

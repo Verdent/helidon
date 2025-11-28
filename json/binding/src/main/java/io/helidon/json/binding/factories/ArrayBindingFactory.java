@@ -125,8 +125,8 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
         @Override
         @SuppressWarnings("unchecked")
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-            deserializer = (JsonDeserializer<Object>) jsonBindingConfigurator.getDeserializer(componentType);
-            serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(componentType);
+            deserializer = (JsonDeserializer<Object>) jsonBindingConfigurator.deserializer(componentType);
+            serializer = (JsonSerializer<Object>) jsonBindingConfigurator.serializer(componentType);
         }
     }
 }

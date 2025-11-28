@@ -35,7 +35,7 @@ class ObjectConverter implements JsonConverter<Object> {
     @Override
     @SuppressWarnings("unchecked")
     public void serialize(Generator generator, Object instance, boolean writeNulls) {
-        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(instance.getClass());
+        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.serializer(instance.getClass());
         serializer.serialize(generator, instance, writeNulls);
     }
 
@@ -47,7 +47,7 @@ class ObjectConverter implements JsonConverter<Object> {
     @Override
     @SuppressWarnings("unchecked")
     public String serializeAsMapKey(Object instance) {
-        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.getSerializer(instance.getClass());
+        JsonSerializer<Object> serializer = (JsonSerializer<Object>) jsonBindingConfigurator.serializer(instance.getClass());
         return serializer.serializeAsMapKey(instance);
     }
 }

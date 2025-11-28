@@ -137,13 +137,13 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
 
         @Override
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-            keyDeserializer = jsonBindingConfigurator.getDeserializer(keyType);
-            valueDeserializer = jsonBindingConfigurator.getDeserializer(valueType);
-            keySerializer = jsonBindingConfigurator.getSerializer(keyType);
+            keyDeserializer = jsonBindingConfigurator.deserializer(keyType);
+            valueDeserializer = jsonBindingConfigurator.deserializer(valueType);
+            keySerializer = jsonBindingConfigurator.serializer(keyType);
             if (!keySerializer.isMapKeySerializer()) {
                 throw new JsonException("Unsupported key serializer: " + keySerializer.type());
             }
-            valueSerializer = jsonBindingConfigurator.getSerializer(valueType);
+            valueSerializer = jsonBindingConfigurator.serializer(valueType);
         }
     }
 

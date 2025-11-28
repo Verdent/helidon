@@ -5,6 +5,7 @@ import java.util.Map;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ import static org.hamcrest.Matchers.notNullValue;
 
 public class MapTest {
 
-    private static final JsonBinding HELIDON = JsonBinding.create();
+    private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test
     public void testMapSerialization() {

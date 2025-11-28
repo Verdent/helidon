@@ -3,6 +3,7 @@ package io.helidon.json.benchmark;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,7 +38,7 @@ public class PrettyPrintBeanBenchmark {
                 }
             }""";
 
-    private static final JsonBinding HELIDON = JsonBinding.create();
+    private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 

@@ -1,5 +1,6 @@
 package io.helidon.json.benchmark;
 
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.json.binding.JsonBinding;
@@ -22,14 +23,10 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Fork(value = 2, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
-public class BeanWithCollectionsBenchmark {
+//@Fork(value = 2, jvmArgs = "--add-opens=java.base/java.lang=ALL-UNNAMED")
+public class EnumBenchmark {
 
-    static final String TEMPLATE = "{"
-            + "\"list\":[123,321],"
-//            + "\"list2\":[[123456, 654321], [987456321, 123456789,123456789]]"
-            + "\"list2\":[[123456,654321],[123,456,789]]"
-            + "}";
+    static final String ENUM_VALUE = "[\"VALUE1\",\"VALUE1\",\"VALUE2\",\"VALUE3\"]";
 
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
@@ -41,28 +38,32 @@ public class BeanWithCollectionsBenchmark {
     }
 
     public static void main(String[] args) {
-//        ClassWithList deserialize = JsonBinding.deserialize(TEMPLATE, ClassWithList.class);
-//        System.out.println();
+        TestEnum[] deserialize = HELIDON.deserialize(ENUM_VALUE, TestEnum[].class);
+        System.out.println(Arrays.toString(deserialize));
     }
-    
+
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(HELIDON.deserialize(TEMPLATE, ClassWithList.class));
+        bh.consume(HELIDON.deserialize(ENUM_VALUE, TestEnum[].class));
     }
 
     @Benchmark
     public void jsoniter(Blackhole bh) {
-        bh.consume(JsonIterator.deserialize(TEMPLATE, ClassWithList.class));
+        bh.consume(JsonIterator.deserialize(ENUM_VALUE, TestEnum[].class));
     }
 
     @Benchmark
     public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {
-        bh.consume(JACKSON_BLACKBIRD.readValue(TEMPLATE, ClassWithList.class));
+        bh.consume(JACKSON_BLACKBIRD.readValue(ENUM_VALUE, TestEnum[].class));
     }
 
     @Benchmark
     public void jackson(Blackhole bh) throws JsonProcessingException {
-        bh.consume(BASIC_JACKSON.readValue(TEMPLATE, ClassWithList.class));
+        bh.consume(BASIC_JACKSON.readValue(ENUM_VALUE, TestEnum[].class));
+    }
+
+    public static enum TestEnum {
+        VALUE1, VALUE2, VALUE3
     }
 
 }

@@ -104,6 +104,12 @@ class ArrayJsonParser implements ReusableJsonParser  {
         this.bufferLength = buffer.length;
     }
 
+    ArrayJsonParser(byte[] buffer, int start, int length) {
+        this.buffer = buffer;
+        this.currentIndex = start;
+        this.bufferLength = length;
+    }
+
     @Override
     public void reset(byte[] buffer) {
         this.buffer = buffer;
@@ -348,7 +354,8 @@ class ArrayJsonParser implements ReusableJsonParser  {
         } else if (currentByte() != '\"') {
             throw new JsonException("Start of a string expected, but found: " + (char) currentByte());
         }
-        int firstRun = stringBufferLength > bufferLength - currentIndex ? bufferLength : stringBufferLength;
+        int readableBytes = bufferLength - currentIndex - 1;
+        int firstRun = Math.min(stringBufferLength, readableBytes);
         int stringBuffIndex = 0;
         byte b;
         for ( ; stringBuffIndex < firstRun; stringBuffIndex++) {
@@ -369,7 +376,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             increaseStringBuffer();
         }
 
-        while (currentIndex + 1 < this.bufferLength) {
+        while (hasNext()) {
             b = readNextByte();
             if (b == '\\') {
                 stringBuffer[stringBuffIndex++] = processEscapedSequence();
@@ -1044,7 +1051,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1;
         }
         hasNext = hasNext();
-        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit3 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1052,7 +1059,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 10L + digit2;
         }
         hasNext = hasNext();
-        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit4 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit4 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1060,7 +1067,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 100L + digit2 * 10L + digit3;
         }
         hasNext = hasNext();
-        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit5 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit5 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1068,7 +1075,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
         }
         hasNext = hasNext();
-        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit6 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit6 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1076,7 +1083,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
         }
         hasNext = hasNext();
-        int digit7 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit7 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit7 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1084,7 +1091,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
         }
         hasNext = hasNext();
-        int digit8 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit8 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit8 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1092,7 +1099,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
         }
         hasNext = hasNext();
-        int digit9 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit9 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit9 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1101,7 +1108,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit7 * 10L + digit8;
         }
         hasNext = hasNext();
-        int digit10 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit10 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit10 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1117,7 +1124,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit9;
         }
         hasNext = hasNext();
-        int digit11 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit11 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit11 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1134,7 +1141,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit10;
         }
         hasNext = hasNext();
-        int digit12 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit12 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit12 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1152,7 +1159,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit11;
         }
         hasNext = hasNext();
-        int digit13 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit13 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit13 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1171,7 +1178,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit12;
         }
         hasNext = hasNext();
-        int digit14 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit14 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit14 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1191,7 +1198,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit13;
         }
         hasNext = hasNext();
-        int digit15 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit15 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit15 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1212,7 +1219,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit14;
         }
         hasNext = hasNext();
-        int digit16 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit16 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit16 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1234,7 +1241,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit15;
         }
         hasNext = hasNext();
-        int digit17 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit17 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit17 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1257,7 +1264,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
                     + digit16;
         }
         hasNext = hasNext();
-        int digit18 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit18 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         long possibleResult = digit1 * 10000000000000000L
                 + digit2 * 1000000000000000L
                 + digit3 * 100000000000000L
@@ -1282,7 +1289,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
             return possibleResult;
         }
         hasNext = hasNext();
-        int digit19 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
+        int digit19 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit19 == -1) {
             if (hasNext) {
                 currentIndex--;

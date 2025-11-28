@@ -11,7 +11,7 @@ class JsonStreamParserSingleValueTest extends SingleValueTest{
     @Override
     JsonParser createParser(String template) {
         ByteArrayInputStream stream = new ByteArrayInputStream(template.getBytes(StandardCharsets.UTF_8));
-        return JsonParser.create(stream);
+        return JsonParser.create(stream, 8);
     }
 
 }

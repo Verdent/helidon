@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
@@ -41,8 +42,8 @@ public class BasicBeanStreamBenchmark {
             + "\"otherString\":\"Hello there!\""
             + "}}";
 
-    private static final JsonBinding HELIDON = JsonBinding.create();
-    private static final JsonIterator JSON_ITERATOR = JsonIterator.parse(new ByteArrayInputStream(new byte[0]), 8000);
+    private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
+    private static final JsonIterator JSON_ITERATOR = JsonIterator.parse(new ByteArrayInputStream(new byte[0]), 512);
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
 
@@ -52,7 +53,7 @@ public class BasicBeanStreamBenchmark {
         JsonStream.setMode(EncodingMode.DYNAMIC_MODE);
     }
 
-    private ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
+    private final ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
 
     @Setup(Level.Invocation)
     public void setup() {

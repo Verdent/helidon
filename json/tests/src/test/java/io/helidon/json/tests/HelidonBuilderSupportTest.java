@@ -2,6 +2,7 @@ package io.helidon.json.tests;
 
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +11,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 public class HelidonBuilderSupportTest {
 
-    private static final JsonBinding HELIDON = JsonBinding.create();
+    private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test
     public void testHelidonBuilderSupport() {

@@ -2,6 +2,7 @@ package io.helidon.json.tests;
 
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class BasicTest {
 
     private static final String EXPECTED_VALUE = "{\"value\":\"abc\"}";
-    private static final JsonBinding HELIDON = JsonBinding.create();
+    private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test
     public void testSimpleSerialize() {

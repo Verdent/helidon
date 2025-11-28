@@ -6,8 +6,7 @@ import java.io.InputStream;
 
 final class JsonStreamParser extends ArrayJsonParser {
 
-    private static final int DEFAULT_BUFFER_SIZE = 512;
-    private static final int DEFAULT_KEEP_AMOUNT = 2;
+    private static final int DEFAULT_BUFFER_SIZE = 8192;
 
     private final int bufferSize;
     private InputStream inputStream;
@@ -38,18 +37,21 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     @Override
     public boolean hasNext() {
-        return !finished || super.hasNext();
+        if (!finished && currentIndex + 1 >= bufferLength) {
+            fetchData();
+        }
+        return super.hasNext();
     }
 
     @Override
     public byte readNextByte() {
-        if (++currentIndex == bufferLength) {
+        if (currentIndex + 1 == bufferLength) {
             if (finished) {
                 throw new JsonException("Incomplete JSON data.");
             }
             readMoreData();
         }
-        return buffer[currentIndex];
+        return buffer[++currentIndex];
     }
 
     private void readMoreData() {
@@ -72,11 +74,15 @@ final class JsonStreamParser extends ArrayJsonParser {
                     buffer = tmp;
                 }
             } else {
-                System.arraycopy(buffer, bufferLength - DEFAULT_KEEP_AMOUNT, buffer, 0, DEFAULT_KEEP_AMOUNT);
-                bufferLength = inputStream.read(buffer, DEFAULT_KEEP_AMOUNT, buffer.length - DEFAULT_KEEP_AMOUNT);
-                finished = (bufferLength + DEFAULT_KEEP_AMOUNT) != bufferSize;
-                currentIndex = DEFAULT_KEEP_AMOUNT - 1;
-                bufferLength += DEFAULT_KEEP_AMOUNT;
+                //Some parsing methods need to detect one byte after their value to see, if they are supposed to end
+                //When end is detected, they go 1 byte back to be on the right state -> end of the value
+                //if the value ends at the end of the buffer, and we would not keep the last byte from the previous
+                //we would risk to getting out of the bounds of the array buffer
+                buffer[0] = buffer[currentIndex - 1];
+                bufferLength = inputStream.read(buffer, 1, buffer.length - 1);
+                bufferLength += 1;
+                finished = bufferLength != bufferSize;
+                currentIndex = 0;
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -87,7 +93,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     public void reset(InputStream is) {
         bufferingJsonValue = false;
         inputStream = is;
-        currentIndex = -1;
+        currentIndex = 0;
         try {
             bufferLength = inputStream.read(buffer);
             finished = bufferLength != DEFAULT_BUFFER_SIZE;

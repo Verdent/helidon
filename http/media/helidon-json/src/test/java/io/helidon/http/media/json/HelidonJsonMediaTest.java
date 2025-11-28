@@ -1,4 +1,5 @@
-package io.helidon.http.media.helidon;/*
+package io.helidon.http.media.json;
+/*
  * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");

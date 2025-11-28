@@ -5,7 +5,7 @@ import io.helidon.common.features.api.HelidonFlavor;
 @Features.Description("Helidon JSON media support")
 @Features.Flavor(HelidonFlavor.SE)
 @Features.Path({"Media", "HelidonJSON"})
-module helidon.http.media.helidon.json {
+module helidon.http.media.json {
     requires io.helidon.builder.api;
     requires io.helidon.common.config;
     requires io.helidon.http.media;
@@ -15,8 +15,8 @@ module helidon.http.media.helidon.json {
 
     requires static io.helidon.common.features.api;
 
-    exports io.helidon.http.media.helidon;
+    exports io.helidon.http.media.json;
 
     provides io.helidon.http.media.spi.MediaSupportProvider
-            with io.helidon.http.media.helidon.HelidonJsonMediaSupportProvider;
+            with io.helidon.http.media.json.HelidonJsonMediaSupportProvider;
 }

@@ -7,6 +7,7 @@ import java.util.OptionalLong;
 
 import io.helidon.common.GenericType;
 import io.helidon.json.binding.JsonBinding;
+import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +16,7 @@ import static org.hamcrest.Matchers.is;
 
 public class OptionalTest {
 
-    private static final JsonBinding JSON_BINDING = JsonBinding.create();
+    private static final JsonBinding JSON_BINDING = Services.get(JsonBinding.class);
 
     @Test
     void testEmptyOptional() {

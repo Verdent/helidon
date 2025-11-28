@@ -9,7 +9,7 @@ class GeneratorOutputStream extends AbstractGenerator {
     private final static byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
 
     private final OutputStream outputStream;
-    private final byte[] buffer = new byte[512];
+    private final byte[] buffer = new byte[256];
     private final byte[] digits = new byte[20];
     private int index = 0;
     private boolean closed;

@@ -1,4 +1,4 @@
-package io.helidon.http.media.helidon;
+package io.helidon.http.media.json;
 
 import java.util.Map;
 import java.util.Optional;

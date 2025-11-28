@@ -26,7 +26,6 @@ import static java.time.ZoneOffset.UTC;
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
 class CalendarConverter implements JsonConverter<Calendar> {
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
     private static final LocalTime ZERO_LOCAL_TIME = LocalTime.parse("00:00:00");
 
     @Override

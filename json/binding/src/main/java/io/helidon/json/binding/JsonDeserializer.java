@@ -1,9 +1,7 @@
 package io.helidon.json.binding;
 
-import java.math.BigDecimal;
-
 import io.helidon.common.GenericType;
-import io.helidon.json.processor.JsonParser;
+import io.helidon.json.JsonParser;
 
 public interface JsonDeserializer<T> {
 

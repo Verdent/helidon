@@ -51,7 +51,7 @@
         </dependency>
         <dependency>
             <groupId>io.helidon.json</groupId>
-            <artifactId>helidon-json-processor</artifactId>
+            <artifactId>helidon-json</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

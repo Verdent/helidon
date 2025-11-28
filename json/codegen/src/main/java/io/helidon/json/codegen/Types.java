@@ -53,9 +53,9 @@ final class Types {
     static final TypeName JSON_DESERIALIZERS = TypeName.create("io.helidon.json.binding.Deserializers");
     static final TypeName JSON_SERIALIZERS = TypeName.create("io.helidon.json.binding.Serializers");
 
-    static final TypeName JSON_GENERATOR = TypeName.create("io.helidon.json.processor.Generator");
-    static final TypeName JSON_PARSER = TypeName.create("io.helidon.json.processor.JsonParser");
-    static final TypeName JSON_EXCEPTION = TypeName.create("io.helidon.json.processor.JsonException");
+    static final TypeName JSON_GENERATOR = TypeName.create("io.helidon.json.Generator");
+    static final TypeName JSON_PARSER = TypeName.create("io.helidon.json.JsonParser");
+    static final TypeName JSON_EXCEPTION = TypeName.create("io.helidon.json.JsonException");
 
     static final TypeName GENERIC_TYPE = TypeName.create("io.helidon.common.GenericType");
     static final TypeName BUILDER_TYPE = TypeName.create("io.helidon.common.Builder");

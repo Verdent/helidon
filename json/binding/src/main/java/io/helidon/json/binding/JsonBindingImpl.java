@@ -17,10 +17,10 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import io.helidon.common.GenericType;
-import io.helidon.json.processor.Generator;
-import io.helidon.json.processor.JsonParser;
-import io.helidon.json.processor.JsonValue;
-import io.helidon.json.processor.ReusableJsonParser;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
+import io.helidon.json.JsonValue;
+import io.helidon.json.ReusableJsonParser;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 

@@ -4,9 +4,9 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.binding.JsonConverter;
-import io.helidon.json.processor.Generator;
-import io.helidon.json.processor.JsonException;
-import io.helidon.json.processor.JsonParser;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonException;
+import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton

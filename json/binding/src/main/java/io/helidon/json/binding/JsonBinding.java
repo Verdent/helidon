@@ -4,14 +4,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Consumer;
 
 import io.helidon.builder.api.RuntimeType;
 import io.helidon.common.GenericType;
-import io.helidon.json.processor.JsonObject;
-import io.helidon.json.processor.JsonValue;
+import io.helidon.json.JsonValue;
 
 @RuntimeType.PrototypedBy(JsonBindingConfig.class)
 public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {

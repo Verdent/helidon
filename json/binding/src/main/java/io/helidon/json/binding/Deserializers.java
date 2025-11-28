@@ -1,6 +1,6 @@
 package io.helidon.json.binding;
 
-import io.helidon.json.processor.JsonParser;
+import io.helidon.json.JsonParser;
 
 public final class Deserializers {
 

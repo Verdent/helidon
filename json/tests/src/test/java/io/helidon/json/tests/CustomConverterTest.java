@@ -4,8 +4,8 @@ import io.helidon.common.GenericType;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.json.binding.JsonConverter;
-import io.helidon.json.processor.Generator;
-import io.helidon.json.processor.JsonParser;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
 
 import org.junit.jupiter.api.Test;
 

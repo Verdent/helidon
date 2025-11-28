@@ -1,6 +1,6 @@
 package io.helidon.json.binding;
 
-import io.helidon.json.processor.Generator;
+import io.helidon.json.Generator;
 
 public final class Serializers {
 

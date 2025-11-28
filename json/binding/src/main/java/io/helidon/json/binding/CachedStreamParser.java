@@ -1,7 +1,7 @@
 package io.helidon.json.binding;
 
-import io.helidon.json.processor.JsonParser;
-import io.helidon.json.processor.ReusableJsonParser;
+import io.helidon.json.JsonParser;
+import io.helidon.json.ReusableJsonParser;
 
 class CachedStreamParser {
 

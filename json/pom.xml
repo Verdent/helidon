@@ -39,7 +39,7 @@
         <module>codegen</module>
         <module>benchamark</module>
         <module>binding</module>
-        <module>processor</module>
+        <module>json</module>
         <module>tests</module>
     </modules>
 

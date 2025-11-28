@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-public abstract class JsonValueParsingTest {
+abstract class JsonValueParsingTest {
 
     @Test
     public void testJsonStringValueParsing() {

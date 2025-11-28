@@ -1,8 +1,6 @@
 package io.helidon.json.binding.converters;
 
-import java.time.Instant;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAccessor;
+import java.time.ZonedDateTime;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
@@ -13,14 +11,14 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-import static java.time.ZoneOffset.UTC;
-
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class InstantConverter implements JsonConverter<Instant> {
+class ZonedDateTimeConverter implements JsonConverter<ZonedDateTime> {
+
+    private static final GenericType<ZonedDateTime> TYPE = GenericType.create(ZonedDateTime.class);
 
     @Override
-    public void serialize(Generator generator, Instant instance, boolean writeNulls) {
+    public void serialize(Generator generator, ZonedDateTime instance, boolean writeNulls) {
         generator.write(instance.toString());
     }
 
@@ -30,22 +28,21 @@ class InstantConverter implements JsonConverter<Instant> {
     }
 
     @Override
-    public String serializeAsMapKey(Instant instance) {
+    public String serializeAsMapKey(ZonedDateTime instance) {
         return instance.toString();
     }
 
     @Override
-    public Instant deserialize(JsonParser parser) {
+    public ZonedDateTime deserialize(JsonParser parser) {
         if (parser.currentByte() == '"') {
-            return Instant.parse(parser.readString());
+            return ZonedDateTime.parse(parser.readString());
         }
-        long value = parser.readAsLong();
-        return Instant.ofEpochMilli(value);
+        throw new JsonException("Only the string format of the ZonedDateTime supported.");
     }
 
     @Override
-    public GenericType<Instant> type() {
-        return GenericType.create(Instant.class);
+    public GenericType<ZonedDateTime> type() {
+        return TYPE;
     }
 
 }

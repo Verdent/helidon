@@ -2,10 +2,8 @@ package io.helidon.json.binding.factories;
 
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,7 +30,7 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
 
     @Override
     public JsonDeserializer<Enum<?>> createDeserializer(GenericType<? extends Enum<?>> type) {
-        return new EnumConverter(type);
+        return new EnumConverter(type.rawType());
     }
 
     @Override
@@ -42,7 +40,7 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
 
     @Override
     public JsonSerializer<Enum<?>> createSerializer(GenericType<? extends Enum<?>> type) {
-        return new EnumConverter(type);
+        return new EnumConverter(type.rawType());
     }
 
     @Override
@@ -59,17 +57,14 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
         private final Map<Integer, Enum<?>> enumConstants;
         private final Map<String, Integer> names;
 
-        private EnumConverter(Type type) {
+        private EnumConverter(Class<?> type) {
             this.type = type;
-            if (!(type instanceof Class<?> clazz)) {
-                throw new IllegalArgumentException("Type \"" + type + "\" is not a class type");
-            }
-            if (!clazz.isEnum()) {
+            if (!type.isEnum()) {
                 throw new IllegalStateException("Type \"" + type + "\" is not an enum");
             }
             HashMap<Integer, Enum<?>> map = new HashMap<>();
             Map<String, Integer> names = new HashMap<>();
-            Object[] constants = clazz.getEnumConstants();
+            Object[] constants = type.getEnumConstants();
             for (Object o : constants) {
                 Enum<?> constant = (Enum<?>) o;
                 String costName = constant.name();

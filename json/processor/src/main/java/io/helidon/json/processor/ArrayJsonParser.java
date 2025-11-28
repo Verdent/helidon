@@ -16,7 +16,8 @@ class ArrayJsonParser implements ReusableJsonParser  {
     static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
 
     static final int[] WHOLE_NUMBER_PARTS = new int[256];
-
+    static final boolean[] WHITESPACE_CHARS = new boolean[256];
+    static final int[] HEX_DIGITS = new int['f' + 1];
     static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
             10,
@@ -28,15 +29,15 @@ class ArrayJsonParser implements ReusableJsonParser  {
             10000000,
             100000000,
             1000000000,
-            10000000000L,
-            100000000000L,
-            1000000000000L,
-            10000000000000L,
-            100000000000000L,
-            1000000000000000L,
-            10000000000000000L,
-            100000000000000000L,
-            1000000000000000000L,
+            10000000000D,
+            100000000000D,
+            1000000000000D,
+            10000000000000D,
+            100000000000000D,
+            1000000000000000D,
+            10000000000000000D,
+            100000000000000000D,
+            1000000000000000000D,
     };
     static final float[] POW_FLOAT_CACHE = new float[] {
             1,
@@ -62,27 +63,18 @@ class ArrayJsonParser implements ReusableJsonParser  {
 
     static {
         Arrays.fill(WHOLE_NUMBER_PARTS, -1);
-
         for (int i = '0'; i <= '9'; ++i) {
-            WHOLE_NUMBER_PARTS[i] = (i - '0') & 0xFF;
+            WHOLE_NUMBER_PARTS[i] = i - '0';
         }
-    }
 
-    static final boolean[] WHITESPACE_CHARS = new boolean[256];
-
-    static {
         // ASCII whitespace
-        WHITESPACE_CHARS[0x09 & 0xFF] = true; // TAB
-        WHITESPACE_CHARS[0x0A & 0xFF] = true; // LF
-        WHITESPACE_CHARS[0x0B & 0xFF] = true; // VT
-        WHITESPACE_CHARS[0x0C & 0xFF] = true; // FF
-        WHITESPACE_CHARS[0x0D & 0xFF] = true; // CR
-        WHITESPACE_CHARS[0x20 & 0xFF] = true; // SPACE
-    }
+        WHITESPACE_CHARS[0x09] = true; // TAB
+        WHITESPACE_CHARS[0x0A] = true; // LF
+        WHITESPACE_CHARS[0x0B] = true; // VT
+        WHITESPACE_CHARS[0x0C] = true; // FF
+        WHITESPACE_CHARS[0x0D] = true; // CR
+        WHITESPACE_CHARS[0x20] = true; // SPACE
 
-    final static int[] HEX_DIGITS = new int['f' + 1];
-
-    static {
         Arrays.fill(HEX_DIGITS, -1);
         for (int i = '0'; i <= '9'; ++i) {
             HEX_DIGITS[i] = (i - '0');
@@ -1037,222 +1029,12 @@ class ArrayJsonParser implements ReusableJsonParser  {
 
     private long parseLong(boolean negative) {
         if (currentIndex + 19 < bufferLength) {
-            int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
-            if (digit1 == -1) {
-                throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
-            }
-            int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit2 == -1) {
-                currentIndex--;
-                return digit1;
-            }
-            int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit3 == -1) {
-                currentIndex--;
-                return digit1 * 10L + digit2;
-            }
-            int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit4 == -1) {
-                currentIndex--;
-                return digit1 * 100L + digit2 * 10L + digit3;
-            }
-            int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit5 == -1) {
-                currentIndex--;
-                return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
-            }
-            int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit6 == -1) {
-                currentIndex--;
-                return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
-            }
-            int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit7 == -1) {
-                currentIndex--;
-                return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
-            }
-            int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit8 == -1) {
-                currentIndex--;
-                return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
-            }
-            int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit9 == -1) {
-                currentIndex--;
-                return digit1 * 10000000L + digit2 * 1000000L + digit3 * 100000L + digit4 * 10000L + digit5 * 1000L + digit6 * 100L
-                        + digit7 * 10L + digit8;
-            }
-            int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit10 == -1) {
-                currentIndex--;
-                return digit1 * 100000000L
-                        + digit2 * 10000000L
-                        + digit3 * 1000000L
-                        + digit4 * 100000L
-                        + digit5 * 10000L
-                        + digit6 * 1000L
-                        + digit7 * 100L
-                        + digit8 * 10L
-                        + digit9;
-            }
-            int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit11 == -1) {
-                currentIndex--;
-                return digit1 * 1000000000L
-                        + digit2 * 100000000L
-                        + digit3 * 10000000L
-                        + digit4 * 1000000L
-                        + digit5 * 100000L
-                        + digit6 * 10000L
-                        + digit7 * 1000L
-                        + digit8 * 100L
-                        + digit9 * 10L
-                        + digit10;
-            }
-            int digit12 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit12 == -1) {
-                currentIndex--;
-                return digit1 * 10000000000L
-                        + digit2 * 1000000000L
-                        + digit3 * 100000000L
-                        + digit4 * 10000000L
-                        + digit5 * 1000000L
-                        + digit6 * 100000L
-                        + digit7 * 10000L
-                        + digit8 * 1000L
-                        + digit9 * 100L
-                        + digit10 * 10L
-                        + digit11;
-            }
-            int digit13 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit13 == -1) {
-                currentIndex--;
-                return digit1 * 100000000000L
-                        + digit2 * 10000000000L
-                        + digit3 * 1000000000L
-                        + digit4 * 100000000L
-                        + digit5 * 10000000L
-                        + digit6 * 1000000L
-                        + digit7 * 100000L
-                        + digit8 * 10000L
-                        + digit9 * 1000L
-                        + digit10 * 100L
-                        + digit11 * 10L
-                        + digit12;
-            }
-            int digit14 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit14 == -1) {
-                currentIndex--;
-                return digit1 * 1000000000000L
-                        + digit2 * 100000000000L
-                        + digit3 * 10000000000L
-                        + digit4 * 1000000000L
-                        + digit5 * 100000000L
-                        + digit6 * 10000000L
-                        + digit7 * 1000000L
-                        + digit8 * 100000L
-                        + digit9 * 10000L
-                        + digit10 * 1000L
-                        + digit11 * 100L
-                        + digit12 * 10L
-                        + digit13;
-            }
-            int digit15 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit15 == -1) {
-                currentIndex--;
-                return digit1 * 10000000000000L
-                        + digit2 * 1000000000000L
-                        + digit3 * 100000000000L
-                        + digit4 * 10000000000L
-                        + digit5 * 1000000000L
-                        + digit6 * 100000000L
-                        + digit7 * 10000000L
-                        + digit8 * 1000000L
-                        + digit9 * 100000L
-                        + digit10 * 10000L
-                        + digit11 * 1000L
-                        + digit12 * 100L
-                        + digit13 * 10L
-                        + digit14;
-            }
-            int digit16 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit16 == -1) {
-                currentIndex--;
-                return digit1 * 100000000000000L
-                        + digit2 * 10000000000000L
-                        + digit3 * 1000000000000L
-                        + digit4 * 100000000000L
-                        + digit5 * 10000000000L
-                        + digit6 * 1000000000L
-                        + digit7 * 100000000L
-                        + digit8 * 10000000L
-                        + digit9 * 1000000L
-                        + digit10 * 100000L
-                        + digit11 * 10000L
-                        + digit12 * 1000L
-                        + digit13 * 100L
-                        + digit14 * 10L
-                        + digit15;
-            }
-            int digit17 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit17 == -1) {
-                currentIndex--;
-                return digit1 * 1000000000000000L
-                        + digit2 * 100000000000000L
-                        + digit3 * 10000000000000L
-                        + digit4 * 1000000000000L
-                        + digit5 * 100000000000L
-                        + digit6 * 10000000000L
-                        + digit7 * 1000000000L
-                        + digit8 * 100000000L
-                        + digit9 * 10000000L
-                        + digit10 * 1000000L
-                        + digit11 * 100000L
-                        + digit12 * 10000L
-                        + digit13 * 1000L
-                        + digit14 * 100L
-                        + digit15 * 10L
-                        + digit16;
-            }
-            int digit18 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            long possibleResult = digit1 * 10000000000000000L
-                    + digit2 * 1000000000000000L
-                    + digit3 * 100000000000000L
-                    + digit4 * 10000000000000L
-                    + digit5 * 1000000000000L
-                    + digit6 * 100000000000L
-                    + digit7 * 10000000000L
-                    + digit8 * 1000000000L
-                    + digit9 * 100000000L
-                    + digit10 * 10000000L
-                    + digit11 * 1000000L
-                    + digit12 * 100000L
-                    + digit13 * 10000L
-                    + digit14 * 1000L
-                    + digit15 * 100L
-                    + digit16 * 10L
-                    + digit17;
-            if (digit18 == -1) {
-                currentIndex--;
-                return possibleResult;
-            }
-            int digit19 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit19 == -1) {
-                currentIndex--;
-                if (negative) {
-                    if (-possibleResult > -LONG_SIZE_BORDER || (-possibleResult == -LONG_SIZE_BORDER && digit18 <= 8)) {
-                        return possibleResult * 10 + digit18;
-                    }
-                } else if (possibleResult < LONG_SIZE_BORDER || (possibleResult == LONG_SIZE_BORDER && digit18 <= 7)) {
-                    return possibleResult * 10 + digit18;
-                }
-            }
-            //TODO upravit na handling prilis dlouhych cisel
+            return parseLongFast(negative);
         }
         boolean hasNext = hasNext();
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
+            throw new JsonException("Expected number, but was: " + (char) currentByte());
         }
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit2 == -1) {
@@ -1513,25 +1295,221 @@ class ArrayJsonParser implements ReusableJsonParser  {
                 return possibleResult * 10 + digit18;
             }
         }
-        hasNext = hasNext();
-        //The Number is too big. Lets read it all and report in the exception
-        StringBuilder number = new StringBuilder();
-        if (negative) {
-            number.insert(0, "-");
+        throw new JsonException("The number is too big for a long value");
+    }
+
+    private long parseLongFast(boolean negative) {
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
+        if (digit1 == -1) {
+            throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
         }
-        number.append(possibleResult).append(digit18);
-        if (digit19 != -1) {
-            int digit = digit19;
-            while (digit != -1) {
-                number.append(digit);
-                digit = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
-                hasNext = hasNext();
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit2 == -1) {
+            currentIndex--;
+            return digit1;
+        }
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit3 == -1) {
+            currentIndex--;
+            return digit1 * 10L + digit2;
+        }
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit4 == -1) {
+            currentIndex--;
+            return digit1 * 100L + digit2 * 10L + digit3;
+        }
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit5 == -1) {
+            currentIndex--;
+            return digit1 * 1000L + digit2 * 100L + digit3 * 10L + digit4;
+        }
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit6 == -1) {
+            currentIndex--;
+            return digit1 * 10000L + digit2 * 1000L + digit3 * 100L + digit4 * 10L + digit5;
+        }
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit7 == -1) {
+            currentIndex--;
+            return digit1 * 100000L + digit2 * 10000L + digit3 * 1000L + digit4 * 100L + digit5 * 10L + digit6;
+        }
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit8 == -1) {
+            currentIndex--;
+            return digit1 * 1000000L + digit2 * 100000L + digit3 * 10000L + digit4 * 1000L + digit5 * 100L + digit6 * 10L + digit7;
+        }
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit9 == -1) {
+            currentIndex--;
+            return digit1 * 10000000L + digit2 * 1000000L + digit3 * 100000L + digit4 * 10000L + digit5 * 1000L + digit6 * 100L
+                    + digit7 * 10L + digit8;
+        }
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit10 == -1) {
+            currentIndex--;
+            return digit1 * 100000000L
+                    + digit2 * 10000000L
+                    + digit3 * 1000000L
+                    + digit4 * 100000L
+                    + digit5 * 10000L
+                    + digit6 * 1000L
+                    + digit7 * 100L
+                    + digit8 * 10L
+                    + digit9;
+        }
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit11 == -1) {
+            currentIndex--;
+            return digit1 * 1000000000L
+                    + digit2 * 100000000L
+                    + digit3 * 10000000L
+                    + digit4 * 1000000L
+                    + digit5 * 100000L
+                    + digit6 * 10000L
+                    + digit7 * 1000L
+                    + digit8 * 100L
+                    + digit9 * 10L
+                    + digit10;
+        }
+        int digit12 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit12 == -1) {
+            currentIndex--;
+            return digit1 * 10000000000L
+                    + digit2 * 1000000000L
+                    + digit3 * 100000000L
+                    + digit4 * 10000000L
+                    + digit5 * 1000000L
+                    + digit6 * 100000L
+                    + digit7 * 10000L
+                    + digit8 * 1000L
+                    + digit9 * 100L
+                    + digit10 * 10L
+                    + digit11;
+        }
+        int digit13 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit13 == -1) {
+            currentIndex--;
+            return digit1 * 100000000000L
+                    + digit2 * 10000000000L
+                    + digit3 * 1000000000L
+                    + digit4 * 100000000L
+                    + digit5 * 10000000L
+                    + digit6 * 1000000L
+                    + digit7 * 100000L
+                    + digit8 * 10000L
+                    + digit9 * 1000L
+                    + digit10 * 100L
+                    + digit11 * 10L
+                    + digit12;
+        }
+        int digit14 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit14 == -1) {
+            currentIndex--;
+            return digit1 * 1000000000000L
+                    + digit2 * 100000000000L
+                    + digit3 * 10000000000L
+                    + digit4 * 1000000000L
+                    + digit5 * 100000000L
+                    + digit6 * 10000000L
+                    + digit7 * 1000000L
+                    + digit8 * 100000L
+                    + digit9 * 10000L
+                    + digit10 * 1000L
+                    + digit11 * 100L
+                    + digit12 * 10L
+                    + digit13;
+        }
+        int digit15 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit15 == -1) {
+            currentIndex--;
+            return digit1 * 10000000000000L
+                    + digit2 * 1000000000000L
+                    + digit3 * 100000000000L
+                    + digit4 * 10000000000L
+                    + digit5 * 1000000000L
+                    + digit6 * 100000000L
+                    + digit7 * 10000000L
+                    + digit8 * 1000000L
+                    + digit9 * 100000L
+                    + digit10 * 10000L
+                    + digit11 * 1000L
+                    + digit12 * 100L
+                    + digit13 * 10L
+                    + digit14;
+        }
+        int digit16 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit16 == -1) {
+            currentIndex--;
+            return digit1 * 100000000000000L
+                    + digit2 * 10000000000000L
+                    + digit3 * 1000000000000L
+                    + digit4 * 100000000000L
+                    + digit5 * 10000000000L
+                    + digit6 * 1000000000L
+                    + digit7 * 100000000L
+                    + digit8 * 10000000L
+                    + digit9 * 1000000L
+                    + digit10 * 100000L
+                    + digit11 * 10000L
+                    + digit12 * 1000L
+                    + digit13 * 100L
+                    + digit14 * 10L
+                    + digit15;
+        }
+        int digit17 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit17 == -1) {
+            currentIndex--;
+            return digit1 * 1000000000000000L
+                    + digit2 * 100000000000000L
+                    + digit3 * 10000000000000L
+                    + digit4 * 1000000000000L
+                    + digit5 * 100000000000L
+                    + digit6 * 10000000000L
+                    + digit7 * 1000000000L
+                    + digit8 * 100000000L
+                    + digit9 * 10000000L
+                    + digit10 * 1000000L
+                    + digit11 * 100000L
+                    + digit12 * 10000L
+                    + digit13 * 1000L
+                    + digit14 * 100L
+                    + digit15 * 10L
+                    + digit16;
+        }
+        int digit18 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        long possibleResult = digit1 * 10000000000000000L
+                + digit2 * 1000000000000000L
+                + digit3 * 100000000000000L
+                + digit4 * 10000000000000L
+                + digit5 * 1000000000000L
+                + digit6 * 100000000000L
+                + digit7 * 10000000000L
+                + digit8 * 1000000000L
+                + digit9 * 100000000L
+                + digit10 * 10000000L
+                + digit11 * 1000000L
+                + digit12 * 100000L
+                + digit13 * 10000L
+                + digit14 * 1000L
+                + digit15 * 100L
+                + digit16 * 10L
+                + digit17;
+        if (digit18 == -1) {
+            currentIndex--;
+            return possibleResult;
+        }
+        int digit19 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit19 == -1) {
+            currentIndex--;
+            if (negative) {
+                if (-possibleResult > -LONG_SIZE_BORDER || (-possibleResult == -LONG_SIZE_BORDER && digit18 <= 8)) {
+                    return possibleResult * 10 + digit18;
+                }
+            } else if (possibleResult < LONG_SIZE_BORDER || (possibleResult == LONG_SIZE_BORDER && digit18 <= 7)) {
+                return possibleResult * 10 + digit18;
             }
         }
-        if (hasNext) {
-            currentIndex--;
-        }
-        throw new JsonException("Number is too big for long value: " + number);
+        throw new JsonException("The number is too big for a long value");
     }
 
     @Override

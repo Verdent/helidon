@@ -1,8 +1,6 @@
 package io.helidon.json.binding.converters;
 
-import java.time.Instant;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAccessor;
+import java.time.LocalTime;
 
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
@@ -13,14 +11,14 @@ import io.helidon.json.processor.JsonException;
 import io.helidon.json.processor.JsonParser;
 import io.helidon.service.registry.Service;
 
-import static java.time.ZoneOffset.UTC;
-
 @Service.Singleton
 @Weight(Weighted.DEFAULT_WEIGHT - 10)
-class InstantConverter implements JsonConverter<Instant> {
+class LocalTimeConverter implements JsonConverter<LocalTime> {
+
+    private static final GenericType<LocalTime> TYPE = GenericType.create(LocalTime.class);
 
     @Override
-    public void serialize(Generator generator, Instant instance, boolean writeNulls) {
+    public void serialize(Generator generator, LocalTime instance, boolean writeNulls) {
         generator.write(instance.toString());
     }
 
@@ -30,22 +28,21 @@ class InstantConverter implements JsonConverter<Instant> {
     }
 
     @Override
-    public String serializeAsMapKey(Instant instance) {
+    public String serializeAsMapKey(LocalTime instance) {
         return instance.toString();
     }
 
     @Override
-    public Instant deserialize(JsonParser parser) {
+    public LocalTime deserialize(JsonParser parser) {
         if (parser.currentByte() == '"') {
-            return Instant.parse(parser.readString());
+            return LocalTime.parse(parser.readString());
         }
-        long value = parser.readAsLong();
-        return Instant.ofEpochMilli(value);
+        throw new JsonException("Only the string format of the LocalTime supported.");
     }
 
     @Override
-    public GenericType<Instant> type() {
-        return GenericType.create(Instant.class);
+    public GenericType<LocalTime> type() {
+        return TYPE;
     }
 
 }

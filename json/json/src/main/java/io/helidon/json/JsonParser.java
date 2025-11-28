@@ -36,6 +36,21 @@ public interface JsonParser {
     }
 
     /**
+     * Creates a new JSON parser from a byte array.
+     * <p>
+     * This method creates an in-memory parser that processes the entire JSON byte array
+     * at once. Suitable for parsing small to medium-sized JSON content.
+     * </p>
+     *
+     * @param json the JSON string to parse
+     * @return a new JsonParser instance
+     */
+    static JsonParser create(byte[] json) {
+        Objects.requireNonNull(json);
+        return new ArrayJsonParser(json);
+    }
+
+    /**
      * Creates a new JSON parser from an input stream with default buffer size.
      * <p>
      * This method creates a streaming parser that reads JSON content from the

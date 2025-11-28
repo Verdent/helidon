@@ -253,24 +253,36 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> T deserialize(byte[] bytes, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        CachedParser cachedParser = parserCache.get();
-        ReusableJsonParser parser = cachedParser.get();
-        parser.reset(bytes);
-        parser.nextToken();
-        T deserialized = Deserializers.deserialize(parser, deserializer);
-        cachedParser.set(parser);
+        T deserialized;
+        if (Thread.currentThread().isVirtual()) {
+            JsonParser parser = JsonParser.create(bytes);
+            deserialized = Deserializers.deserialize(parser, deserializer);
+        } else {
+            CachedParser cachedParser = parserCache.get();
+            ReusableJsonParser parser = cachedParser.get();
+            parser.reset(bytes);
+            parser.nextToken();
+            deserialized = Deserializers.deserialize(parser, deserializer);
+            cachedParser.set(parser);
+        }
         return deserialized;
     }
 
     @Override
     public <T> T deserialize(byte[] bytes, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        CachedParser cachedParser = parserCache.get();
-        ReusableJsonParser parser = cachedParser.get();
-        parser.reset(bytes);
-        parser.nextToken();
-        T deserialized = Deserializers.deserialize(parser, deserializer);
-        cachedParser.set(parser);
+        T deserialized;
+        if (Thread.currentThread().isVirtual()) {
+            JsonParser parser = JsonParser.create(bytes);
+            deserialized = Deserializers.deserialize(parser, deserializer);
+        } else {
+            CachedParser cachedParser = parserCache.get();
+            ReusableJsonParser parser = cachedParser.get();
+            parser.reset(bytes);
+            parser.nextToken();
+            deserialized = Deserializers.deserialize(parser, deserializer);
+            cachedParser.set(parser);
+        }
         return deserialized;
     }
 
@@ -287,24 +299,36 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> T deserialize(InputStream inputStream, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        CachedStreamParser cachedParser = parserStreamCache.get();
-        ReusableJsonParser parser = cachedParser.get();
-        parser.reset(inputStream);
-        parser.nextToken();
-        T deserialized = Deserializers.deserialize(parser, deserializer);
-        cachedParser.set(parser);
+        T deserialized;
+        if (Thread.currentThread().isVirtual()) {
+            JsonParser parser = JsonParser.create(inputStream);
+            deserialized = Deserializers.deserialize(parser, deserializer);
+        } else {
+            CachedStreamParser cachedParser = parserStreamCache.get();
+            ReusableJsonParser parser = cachedParser.get();
+            parser.reset(inputStream);
+            parser.nextToken();
+            deserialized = Deserializers.deserialize(parser, deserializer);
+            cachedParser.set(parser);
+        }
         return deserialized;
     }
 
     @Override
     public <T> T deserialize(InputStream inputStream, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        CachedStreamParser cachedParser = parserStreamCache.get();
-        ReusableJsonParser parser = cachedParser.get();
-        parser.reset(inputStream);
-        parser.nextToken();
-        T deserialized = Deserializers.deserialize(parser, deserializer);
-        cachedParser.set(parser);
+        T deserialized;
+        if (Thread.currentThread().isVirtual()) {
+            JsonParser parser = JsonParser.create(inputStream);
+            deserialized = Deserializers.deserialize(parser, deserializer);
+        } else {
+            CachedStreamParser cachedParser = parserStreamCache.get();
+            ReusableJsonParser parser = cachedParser.get();
+            parser.reset(inputStream);
+            parser.nextToken();
+            deserialized = Deserializers.deserialize(parser, deserializer);
+            cachedParser.set(parser);
+        }
         return deserialized;
     }
 
@@ -327,7 +351,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(JsonValue jsonValue, GenericType<T> type) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        JsonDeserializer<T> deserializer = deserializer(type);
+        JsonParser parser = JsonParser.create(jsonValue);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override

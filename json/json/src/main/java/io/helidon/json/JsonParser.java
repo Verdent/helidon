@@ -42,10 +42,25 @@ public interface JsonParser {
      * at once. Suitable for parsing small to medium-sized JSON content.
      * </p>
      *
-     * @param json the JSON string to parse
+     * @param json the JSON byte array to parse
      * @return a new JsonParser instance
      */
     static JsonParser create(byte[] json) {
+        Objects.requireNonNull(json);
+        return new ArrayJsonParser(json);
+    }
+
+    /**
+     * Creates a new JSON parser from a byte array.
+     * <p>
+     * This method creates an in-memory parser that processes the entire JSON byte array
+     * at once. Suitable for parsing small to medium-sized JSON content.
+     * </p>
+     *
+     * @param json the JSON string to parse
+     * @return a new JsonParser instance
+     */
+    static JsonParser create(byte[] json, int start, int length) {
         Objects.requireNonNull(json);
         return new ArrayJsonParser(json);
     }

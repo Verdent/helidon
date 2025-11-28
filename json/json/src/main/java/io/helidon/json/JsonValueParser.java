@@ -5,7 +5,7 @@ import java.util.Set;
 
 class JsonValueParser implements JsonParser {
 
-    private JsonValue[] values = new JsonValue[500];
+    private JsonValue[] values = new JsonValue[64];
     private JsonValue current;
     private int index = 0;
 

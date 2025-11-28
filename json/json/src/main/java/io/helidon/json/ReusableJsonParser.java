@@ -2,7 +2,7 @@ package io.helidon.json;
 
 import java.io.InputStream;
 
-public interface ReusableJsonParser extends JsonParser {
+interface ReusableJsonParser extends JsonParser {
 
     default void reset(byte[] buffer) {
         throw new UnsupportedOperationException("This is not supported reset operation");

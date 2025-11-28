@@ -92,7 +92,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
     boolean expectLowSurrogate = false;
 
     byte[] buffer;
-    int currentIndex = -1;
+    int currentIndex = 0;
     int bufferLength;
 
     ArrayJsonParser() {
@@ -108,7 +108,7 @@ class ArrayJsonParser implements ReusableJsonParser  {
     public void reset(byte[] buffer) {
         this.buffer = buffer;
         this.bufferLength = buffer.length;
-        this.currentIndex = -1;
+        this.currentIndex = 0;
     }
 
     @Override

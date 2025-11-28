@@ -20,15 +20,11 @@ import io.helidon.common.GenericType;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonParser;
 import io.helidon.json.JsonValue;
-import io.helidon.json.ReusableJsonParser;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     private static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
     private static final char[] NULL_CHARS = "null".toCharArray();
-
-    private final ThreadLocal<CachedParser> parserCache = ThreadLocal.withInitial(CachedParser::new);
-    private final ThreadLocal<CachedStreamParser> parserStreamCache = ThreadLocal.withInitial(CachedStreamParser::new);
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> initialIdentitySerializers = new IdentityHashMap<>();
@@ -253,37 +249,15 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> T deserialize(byte[] bytes, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        T deserialized;
-        if (Thread.currentThread().isVirtual()) {
-            JsonParser parser = JsonParser.create(bytes);
-            deserialized = Deserializers.deserialize(parser, deserializer);
-        } else {
-            CachedParser cachedParser = parserCache.get();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(bytes);
-            parser.nextToken();
-            deserialized = Deserializers.deserialize(parser, deserializer);
-            cachedParser.set(parser);
-        }
-        return deserialized;
+        JsonParser parser = JsonParser.create(bytes);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override
     public <T> T deserialize(byte[] bytes, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        T deserialized;
-        if (Thread.currentThread().isVirtual()) {
-            JsonParser parser = JsonParser.create(bytes);
-            deserialized = Deserializers.deserialize(parser, deserializer);
-        } else {
-            CachedParser cachedParser = parserCache.get();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(bytes);
-            parser.nextToken();
-            deserialized = Deserializers.deserialize(parser, deserializer);
-            cachedParser.set(parser);
-        }
-        return deserialized;
+        JsonParser parser = JsonParser.create(bytes);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override
@@ -299,37 +273,15 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> T deserialize(InputStream inputStream, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        T deserialized;
-        if (Thread.currentThread().isVirtual()) {
-            JsonParser parser = JsonParser.create(inputStream);
-            deserialized = Deserializers.deserialize(parser, deserializer);
-        } else {
-            CachedStreamParser cachedParser = parserStreamCache.get();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(inputStream);
-            parser.nextToken();
-            deserialized = Deserializers.deserialize(parser, deserializer);
-            cachedParser.set(parser);
-        }
-        return deserialized;
+        JsonParser parser = JsonParser.create(inputStream);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override
     public <T> T deserialize(InputStream inputStream, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        T deserialized;
-        if (Thread.currentThread().isVirtual()) {
-            JsonParser parser = JsonParser.create(inputStream);
-            deserialized = Deserializers.deserialize(parser, deserializer);
-        } else {
-            CachedStreamParser cachedParser = parserStreamCache.get();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(inputStream);
-            parser.nextToken();
-            deserialized = Deserializers.deserialize(parser, deserializer);
-            cachedParser.set(parser);
-        }
-        return deserialized;
+        JsonParser parser = JsonParser.create(inputStream);
+        return Deserializers.deserialize(parser, deserializer);
     }
 
     @Override

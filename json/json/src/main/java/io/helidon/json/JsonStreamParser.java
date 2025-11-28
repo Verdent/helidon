@@ -6,7 +6,7 @@ import java.io.InputStream;
 
 final class JsonStreamParser extends ArrayJsonParser {
 
-    private static final int DEFAULT_BUFFER_SIZE = 8192;
+    private static final int DEFAULT_BUFFER_SIZE = 512;
     private static final int DEFAULT_KEEP_AMOUNT = 2;
 
     private final int bufferSize;
@@ -18,7 +18,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     JsonStreamParser(InputStream inputStream, int bufferSize) {
         this.bufferSize = bufferSize;
         this.inputStream = inputStream;
-        currentIndex = -1;
+        currentIndex = 0;
         buffer = new byte[bufferSize];
         try {
             bufferLength = inputStream.read(buffer);

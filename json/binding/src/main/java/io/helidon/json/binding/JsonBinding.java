@@ -71,6 +71,10 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
     <T> T deserialize(InputStream inputStream, GenericType<T> type);
 
+    <T> T deserialize(InputStream inputStream, int bufferSize, Class<T> type);
+
+    <T> T deserialize(InputStream inputStream, int bufferSize, GenericType<T> type);
+
     <T> T deserialize(Reader reader, Class<T> type);
 
     <T> T deserialize(Reader reader, GenericType<T> type);

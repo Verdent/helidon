@@ -1,6 +1,8 @@
 package io.helidon.json;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
@@ -63,5 +65,24 @@ abstract class JsonValueParsingTest {
     }
 
     abstract JsonParser createParser(String template);
+
+    static class JsonStreamParserJsonValueTest extends JsonValueParsingTest {
+
+        @Override
+        JsonParser createParser(String template) {
+            ByteArrayInputStream stream = new ByteArrayInputStream(template.getBytes(StandardCharsets.UTF_8));
+            return JsonParser.create(stream, 15);
+        }
+
+    }
+
+    static class JsonParserJsonValueTest extends JsonValueParsingTest {
+
+        @Override
+        JsonParser createParser(String template) {
+            return JsonParser.create(template);
+        }
+
+    }
 
 }

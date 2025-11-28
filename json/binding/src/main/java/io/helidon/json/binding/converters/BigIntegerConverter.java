@@ -21,7 +21,8 @@ class BigIntegerConverter implements JsonConverter<BigInteger> {
         if (parser.currentByte() == '\"') {
             return new BigInteger(parser.readString());
         } else {
-            return BigInteger.valueOf(parser.readAsLong());
+            char[] numberAsArray = parser.readNumberAsArray();
+            return new BigInteger(new String(numberAsArray));
         }
     }
 

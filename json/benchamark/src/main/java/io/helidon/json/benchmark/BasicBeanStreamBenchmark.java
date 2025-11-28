@@ -62,13 +62,12 @@ public class BasicBeanStreamBenchmark {
 
     @Benchmark
     public void helidon(Blackhole bh) {
-        bh.consume(HELIDON.deserialize(stream, MyJavaBean.class));
+        bh.consume(HELIDON.deserialize(stream, 512, MyJavaBean.class));
     }
 
     @Benchmark
     public void jsoniter(Blackhole bh) throws IOException {
-        JSON_ITERATOR.reset(stream);
-        bh.consume(JSON_ITERATOR.read(MyJavaBean.class));
+        bh.consume(JsonIterator.parse(stream, 512).read(MyJavaBean.class));
     }
 
     @Benchmark

@@ -18,10 +18,12 @@ class JsonNullConverter implements JsonConverter<JsonNull> {
 
     @Override
     public JsonNull deserialize(JsonParser parser) {
-        if (parser.checkNull()) {
-            return JsonNull.instance();
-        }
         throw new JsonException("Expected null value, but got: " + (char) parser.currentByte());
+    }
+
+    @Override
+    public JsonNull deserializeNull() {
+        return JsonNull.instance();
     }
 
     @Override

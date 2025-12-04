@@ -1,0 +1,1191 @@
+///////////////////////////////////////////////////////////////////////////////
+
+    Copyright (c) 2025 Oracle and/or its affiliates.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+///////////////////////////////////////////////////////////////////////////////
+
+= JSON Processing in Helidon SE
+
+:description: Helidon SE JSON Processing Support
+:keywords: helidon, java, json, se, parsing, binding, serialization
+:feature-name: JSON Processing
+:rootdir: {docdir}/..
+
+include::{rootdir}/includes/se.adoc[]
+
+== Contents
+
+- <<Overview, Overview>>
+- <<JSON Binding, JSON Binding>>
+- <<JSON Processor, JSON Processor>>
+
+== Overview
+
+Helidon provides comprehensive JSON processing capabilities through two core modules that work together to offer efficient, streaming JSON processing optimized for virtual threads and modern Java applications.
+
+== JSON Binding
+
+The JSON Binding module (`helidon-json-binding`) provides high-level object serialization and deserialization.
+
+=== Maven Coordinates
+
+[source,xml,subs="attributes+"]
+----
+<dependency>
+    <groupId>io.helidon.json.binding</groupId>
+    <artifactId>helidon-json-binding</artifactId>
+</dependency>
+----
+
+=== Features
+
+* Automatic conversion between Java objects and JSON
+* Custom serializers and deserializers for complex types
+* Type-safe binding with generic support
+* Configurable null handling and property ordering
+
+=== Code Generation
+
+For JSON binding to work properly with annotated classes, you need to use code generation.
+This generates the necessary serialization and deserialization logic at compile time.
+
+You have two options for JSON binding:
+
+1. **Implement custom converters yourself** - Create `JsonSerializer`, `JsonDeserializer`, or `JsonConverter` implementations
+2. **Use code generation** - Annotate your classes with JSON annotations and let Helidon generate the converters automatically
+
+For automatic code generation, you can either add individual annotation processors or use the Helidon bundles APT dependency that includes all necessary processors.
+
+==== Option 1: Individual Annotation Processors
+
+Configure the annotation processors in your Maven build:
+
+[source,xml]
+.Annotation processor configuration
+----
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>io.helidon.codegen</groupId>
+                        <artifactId>helidon-codegen-apt</artifactId>
+                        <version>${helidon.version}</version>
+                    </path>
+                    <path>
+                        <groupId>io.helidon.json.codegen</groupId>
+                        <artifactId>helidon-json-codegen</artifactId>
+                        <version>${helidon.version}</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+            <dependencies>
+                <dependency>
+                    <groupId>io.helidon.codegen</groupId>
+                    <artifactId>helidon-codegen-apt</artifactId>
+                    <version>${helidon.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>io.helidon.json.codegen</groupId>
+                    <artifactId>helidon-json-codegen</artifactId>
+                    <version>${helidon.version}</version>
+                </dependency>
+            </dependencies>
+        </plugin>
+    </plugins>
+</build>
+----
+
+==== Option 2: Using Helidon Bundles APT
+
+Alternatively, you can use the `helidon-bundles-apt` dependency which includes the JSON code generation processor along with other Helidon annotation processors:
+
+[source,xml]
+.Annotation processor configuration with bundles
+----
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>io.helidon.bundles</groupId>
+                        <artifactId>helidon-bundles-apt</artifactId>
+                        <version>${helidon.version}</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+            <dependencies>
+                <dependency>
+                    <groupId>io.helidon.bundles</groupId>
+                    <artifactId>helidon-bundles-apt</artifactId>
+                    <version>${helidon.version}</version>
+                </dependency>
+            </dependencies>
+        </plugin>
+    </plugins>
+</build>
+----
+
+The code generator will automatically create the necessary converters for classes annotated with `@Json.Entity` and other JSON annotations.
+
+=== API
+
+==== JSON Binding
+
+The binding API provides high-level object mapping:
+
+[source,java]
+.JsonBinding usage
+----
+JsonBinding binding = JsonBinding.create();
+
+// Deserialize JSON string to object
+Person person = binding.deserialize("{\"name\":\"John\",\"age\":30}", Person.class);
+
+// Serialize object to JSON string
+String json = binding.serialize(person);
+----
+
+=== Annotations
+
+Helidon JSON binding provides annotations to control serialization and deserialization behavior.
+
+==== @Json.Entity
+
+Marks a class as a JSON entity that can be serialized/deserialized.
+
+[source,java]
+.Using @Json.Entity
+----
+@Json.Entity
+public class Person {
+    private String name;
+    private int age;
+
+    // getters and setters
+}
+----
+
+Why use it: Required for classes to participate in JSON binding. Without this annotation, serialization/deserialization will fail.
+
+==== @Json.Property
+
+Customizes the JSON property name for a field or method. This affects how fields are named in JSON output and input, providing control over JSON structure and API compatibility.
+
+[source,java]
+.Basic property name customization
+----
+@Json.Entity
+public class Person {
+    private String firstName;    // JSON: "firstName"
+
+    @Json.Property("last_name")
+    private String lastName;     // JSON: "last_name"
+
+    // getters and setters
+}
+// JSON: {"firstName":"John","last_name":"Doe"}
+----
+
+[source,java]
+.Method-level property naming
+----
+@Json.Entity
+public class Person {
+    private String firstName;
+    private String lastName;
+
+    @Json.Property("fullName")
+    public String getDisplayName() {  // method becomes "fullName" in JSON
+        return firstName + " " + lastName;
+    }
+
+    // getters and setters
+}
+// JSON: {"firstName":"John","lastName":"Doe","fullName":"John Doe"}
+----
+
+**Impact on serialization and deserialization:**
+
+- **Serialization:** Fields/methods get custom names in JSON output
+- **Deserialization:** JSON with custom names maps back to correct Java fields
+- **API Evolution:** Enables smooth API changes without breaking existing clients
+- **Naming Standards:** Allows mixing different naming conventions (camelCase, snake_case, PascalCase)
+
+Why use it: Allows mapping between Java field names and JSON property names, enabling better JSON structure control and compatibility with existing APIs. Essential for maintaining API contracts when Java field names don't match desired JSON structure.
+
+==== @Json.Ignore
+
+Excludes fields or methods from serialization/deserialization. Fields marked as `transient` are ignored automatically, or you can explicitly use this annotation. This affects field visibility in JSON output and input processing.
+
+[source,java]
+.Basic field exclusion
+----
+@Json.Entity
+public class Person {
+    private String name;        // included in JSON
+    private int age;            // included in JSON
+
+    @Json.Ignore
+    private String password;    // excluded from JSON
+
+    // getters and setters
+}
+// JSON: {"name":"John","age":30}
+----
+
+[source,java]
+.Automatic transient field exclusion
+----
+@Json.Entity
+public class Person {
+    private String name;             // included
+    private transient String temp;   // automatically excluded
+    private String data;             // included
+
+    // getters and setters
+}
+// JSON: {"name":"John","data":"value"}
+----
+
+[source,java]
+.Method-level exclusion
+----
+@Json.Entity
+public class Person {
+    private String firstName;  // included
+    private String lastName;   // included
+
+    @Json.Ignore
+    public String getFullName() {  // method excluded from serialization
+        return firstName + " " + lastName;
+    }
+
+    // other getters and setters
+}
+// JSON: {"firstName":"John","lastName":"Doe"}
+----
+
+[source,java]
+.Conditional exclusion with annotation parameter
+----
+@Json.Entity
+public class Person {
+    private String name;        // included
+    private String email;       // included
+
+    @Json.Ignore                // explicitly ignored
+    private String secret;      // excluded
+
+    @Json.Ignore(false)         // explicitly included (default behavior)
+    private String publicData;  // included
+
+    // getters and setters
+}
+// JSON: {"name":"John","email":"john@example.com","publicData":"value"}
+----
+
+[source,java]
+.Different visibility scenarios
+----
+@Json.Entity
+public class User {
+    private String username;     // always included
+    private String password;     // should never be serialized
+
+    private transient String sessionToken;  // temp data, excluded
+
+    @Json.Ignore
+    private List<String> internalLogs;      // internal state, excluded
+
+    // Only username will appear in JSON
+}
+// JSON: {"username":"john_doe"}
+----
+
+**Impact on serialization and deserialization:**
+
+- **Serialization:** Ignored fields are completely omitted from JSON output
+- **Deserialization:** Ignored fields are not populated from JSON input (maintain existing values)
+- **Security:** Perfect for excluding sensitive data like passwords, tokens, internal state
+- **Performance:** Reduces JSON size by excluding unnecessary data
+
+Why use it: Prevents sensitive data, computed fields, or internal state from being included in JSON output. Critical for security (excluding passwords, tokens) and performance (excluding large internal data structures).
+
+==== @Json.Required
+
+Marks properties as required during deserialization.
+
+[source,java]
+.Using @Json.Required
+----
+@Json.Entity
+public class Person {
+    @Json.Required
+    private String name;
+
+    private Integer age; // optional
+
+    // getters and setters
+}
+----
+
+Why use it: Ensures critical properties are present in JSON input, failing deserialization if they're missing.
+
+==== @Json.SerializeNulls
+
+Controls whether null values are included in JSON output. By default, null values are omitted from JSON output, unless explicitly configured otherwise using this annotation. This affects the visibility and size of generated JSON.
+
+[source,java]
+.Default behavior - nulls omitted
+----
+@Json.Entity
+public class PersonDefault {
+    private String name;     // "John" -> included
+    private Integer age;     // null -> omitted
+
+    // getters and setters
+}
+// JSON: {"name":"John"}
+----
+
+[source,java]
+.Class-level null serialization
+----
+@Json.Entity
+@Json.SerializeNulls
+public class PersonWithNulls {
+    private String name;     // "John" -> included
+    private Integer age;     // null -> included as null
+
+    // getters and setters
+}
+// JSON: {"name":"John","age":null}
+----
+
+[source,java]
+.Field-level null serialization
+----
+@Json.Entity
+public class PersonSelective {
+    private String name;     // "John" -> included
+
+    @Json.SerializeNulls
+    private Integer age;     // null -> included as null
+
+    private String city;     // null -> omitted
+
+    // getters and setters
+}
+// JSON: {"name":"John","age":null}
+----
+
+[source,java]
+.Mixed scenarios - different null handling
+----
+@Json.Entity
+@Json.SerializeNulls
+public class PersonMixed {
+    private String name;         // "John" -> included
+    private Integer age;         // null -> included as null
+
+    @Json.SerializeNulls(false)  // Override to omit nulls
+    private String city;         // null -> omitted
+
+    // getters and setters
+}
+// JSON: {"name":"John","age":null}
+----
+
+**Impact on JSON size and API contracts:**
+
+- **Without @Json.SerializeNulls:** Smaller JSON, explicit null checks needed in clients
+- **With @Json.SerializeNulls:** Larger JSON, clients can distinguish between missing fields and null values
+- **Field-level control:** Fine-grained control over which nulls to include/exclude
+
+Why use it: Provides control over JSON size and API contract. Including nulls can help distinguish between "field not present" and "field set to null", but increases JSON size. Omitting nulls creates smaller payloads but requires clients to handle missing fields appropriately.
+
+==== @Json.Creator
+
+Marks constructors or factory methods for object creation during deserialization.
+
+[source,java]
+.Using @Json.Creator
+----
+@Json.Entity
+public class Person {
+    private final String name;
+    private final int age;
+
+    @Json.Creator
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+
+    // getters
+}
+
+// Or with factory method
+@Json.Entity
+public class Person2 {
+    private final String name;
+
+    private Person2(String name) {
+        this.name = name;
+    }
+
+    @Json.Creator
+    public static Person2 create(String name) {
+        return new Person2(name);
+    }
+}
+----
+
+Why use it: Enables deserialization of immutable objects or objects requiring specific construction logic.
+
+==== @Json.PropertyOrder
+
+Controls the order of properties in JSON output. By default, properties are serialized in the order they appear in the class definition.
+
+[source,java]
+.Using @Json.PropertyOrder
+----
+@Json.Entity
+@Json.PropertyOrder(Order.ALPHABETICAL)
+public class Person {
+    private String name;
+    private int age;
+    private String city;
+
+    // getters and setters
+}
+----
+
+**Different ordering scenarios:**
+
+[source,java]
+.Field declaration order (default)
+----
+@Json.Entity
+public class PersonDefault {
+    private String zebra;    // appears first in JSON
+    private String alpha;    // appears second in JSON
+    private String beta;     // appears third in JSON
+}
+// JSON: {"zebra":"value","alpha":"value","beta":"value"}
+----
+
+[source,java]
+.Alphabetical ordering
+----
+@Json.Entity
+@Json.PropertyOrder(Order.ALPHABETICAL)
+public class PersonAlphabetical {
+    private String zebra;    // appears third in JSON
+    private String alpha;    // appears first in JSON
+    private String beta;     // appears second in JSON
+}
+// JSON: {"alpha":"value","beta":"value","zebra":"value"}
+----
+
+[source,java]
+.Custom ordering with explicit property names
+----
+@Json.Entity
+@Json.PropertyOrder({"city", "name", "age"})
+public class PersonCustom {
+    private String name;     // appears second in JSON
+    private int age;         // appears third in JSON
+    private String city;     // appears first in JSON
+}
+// JSON: {"city":"value","name":"value","age":30}
+----
+
+[source,java]
+.Reverse alphabetical ordering
+----
+@Json.Entity
+@Json.PropertyOrder(Order.REVERSE_ALPHABETICAL)
+public class PersonReverse {
+    private String alpha;    // appears third in JSON
+    private String beta;     // appears second in JSON
+    private String zebra;    // appears first in JSON
+}
+// JSON: {"zebra":"value","beta":"value","alpha":"value"}
+----
+
+Why use it: Ensures consistent JSON structure for APIs, debugging, or when order matters for processing. Different ordering can help with:
+- API compatibility
+- Human-readable debugging output
+- Integration with systems that expect specific property orders
+- Version control and diff comparisons
+
+==== @Json.Deserializer, @Json.Serializer, @Json.Converter
+
+Specify custom serialization/deserialization logic.
+
+[source,java]
+.Using @Json.Deserializer
+----
+@Json.Entity
+public class CustomType {
+
+    @Json.Deserializer(CustomDeserializer.class)
+    private MyType value;
+
+    // getters and setters
+}
+
+public class CustomDeserializer implements JsonDeserializer<MyType> {
+    @Override
+    public MyType deserialize(JsonParser parser) {
+        // custom deserialization logic
+    }
+}
+----
+
+Why use it: Enables handling of complex types, legacy formats, or types requiring special conversion logic.
+
+==== @Json.BuilderInfo
+
+Provides information about a builder class for object construction.
+
+[source,java]
+.Using @Json.BuilderInfo
+----
+@Json.Entity
+@Json.BuilderInfo(PersonBuilder.class)
+public class Person {
+    private final String name;
+    private final int age;
+
+    // constructor, getters
+}
+
+public class PersonBuilder {
+    private String name;
+    private int age;
+
+    public PersonBuilder name(String name) {
+        this.name = name;
+        return this;
+    }
+
+    public PersonBuilder age(int age) {
+        this.age = age;
+        return this;
+    }
+
+    public Person build() {
+        return new Person(name, age);
+    }
+}
+----
+
+Why use it: Specifies custom builder classes for object construction during deserialization, enabling more complex instantiation patterns.
+
+==== @Json.FailOnUnknown
+
+Controls behavior when unknown properties are encountered during deserialization.
+
+[source,java]
+.Using @Json.FailOnUnknown
+----
+@Json.Entity
+@Json.FailOnUnknown
+public class StrictPerson {
+    private String name;
+
+    // getters and setters
+}
+----
+
+Why use it: Provides strict validation of JSON input, failing if unexpected properties are present.
+
+=== Automatic Service Registration
+
+In addition to using annotations directly on classes, custom serializers, deserializers, and converters can be automatically registered with the JSON binding system through Helidon's Service Registry. This approach allows for better separation of concerns and enables the use of dependency injection in your serialization logic.
+
+==== Service Registry Annotations
+
+To enable automatic registration, annotate your custom converter classes with service registry annotations:
+
+[source,java]
+.Custom converter with Singleton scope
+----
+import io.helidon.service.registry.Service;
+
+@Service.Singleton  // <1>
+public class CustomMoneyConverter implements JsonConverter<Money> {
+    // Implementation
+}
+----
+<1> Singleton scope for stateless converters that can be safely shared
+
+[source,java]
+.Custom converter with PerLookup scope
+----
+import io.helidon.service.registry.Service;
+
+@Service.PerLookup  // <1>
+public class CustomUserConverter implements JsonConverter<User> {
+    @Service.Inject  // <2>
+    private UserRepository repository;
+
+    // Implementation that uses injected dependencies
+}
+----
+<1> PerLookup scope for converters that have state or dependencies
+<2> Injection support for dependencies
+
+==== Supported Scopes
+
+- **`@Service.Singleton`** - Single shared instance, ideal for stateless converters without dependencies
+- **`@Service.PerLookup`** - New instance created for each use, suitable for converters with state or injected dependencies
+
+==== Annotation Processor Configuration
+
+To enable automatic service registration, add the service codegen annotation processor to your build:
+
+[source,xml]
+.Annotation processor configuration
+----
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>io.helidon.service</groupId>
+                        <artifactId>helidon-service-codegen</artifactId>
+                        <version>${helidon.version}</version>
+                    </path>
+                    <path>
+                        <groupId>io.helidon.json.codegen</groupId>
+                        <artifactId>helidon-json-codegen</artifactId>
+                        <version>${helidon.version}</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+----
+
+==== Automatic Discovery
+
+Once configured, your custom converters are automatically discovered and registered with the JSON binding system. The generated service descriptors handle the registration process, eliminating the need for manual registration code.
+
+[source,java]
+.Usage with automatic registration
+----
+JsonBinding binding = JsonBinding.create();
+// Custom converters are automatically available
+Money amount = binding.deserialize("{\"amount\":100,\"currency\":\"USD\"}", Money.class);
+----
+
+This approach provides several benefits:
+
+- **Separation of Concerns** - Serialization logic can be separated from business logic
+- **Dependency Injection** - Converters can access other services through injection
+- **Automatic Registration** - No manual registration code required
+- **Scope Control** - Choose appropriate lifecycle management for your converters
+
+=== Examples
+
+==== JSON Binding
+
+[source,java]
+----
+public class Person {
+    private String name;
+    private int age;
+
+    // getters and setters
+}
+
+JsonBinding binding = JsonBinding.create();
+Person person = binding.deserialize("{\"name\":\"John\",\"age\":30}", Person.class);
+String json = binding.serialize(person);
+----
+
+==== Custom Serializers and Deserializers
+
+For complex types that require custom conversion logic, you can implement custom serializers and deserializers.
+
+===== Custom Serializer
+
+[source,java]
+.Custom JsonSerializer
+----
+public class PersonSerializer implements JsonSerializer<Person> {
+    @Override
+    public void serialize(Generator generator, Person person, boolean writeNulls) {
+        generator.writeObjectStart();
+        generator.write("name", person.getName());
+        generator.write("age", person.getAge());
+        generator.writeObjectEnd();
+    }
+
+    @Override
+    public GenericType<Person> type() {
+        return GenericType.create(Person.class);
+    }
+}
+----
+
+===== Custom Deserializer
+
+[source,java]
+.Custom JsonDeserializer
+----
+public class PersonDeserializer implements JsonDeserializer<Person> {
+    @Override
+    public Person deserialize(JsonParser parser) {
+        JsonObject object = parser.readJsonObject();
+
+        String name = object.stringValue("name").orElse("");
+        int age = object.intValue("age", 0);
+
+        return new Person(name, age);
+    }
+
+    @Override
+    public GenericType<Person> type() {
+        return GenericType.create(Person.class);
+    }
+}
+----
+
+===== Using Custom Converters
+
+[source,java]
+.Using @Json.Converter for combined serializer/deserializer
+----
+@Json.Entity
+public class CustomType {
+    @Json.Converter(CustomConverter.class)
+    private MyType value;
+
+    // getters and setters
+}
+
+public class CustomConverter implements JsonConverter<MyType> {
+    @Override
+    public void serialize(Generator generator, MyType instance, boolean writeNulls) {
+        // custom serialization logic
+    }
+
+    @Override
+    public MyType deserialize(JsonParser parser) {
+        // custom deserialization logic
+        return null;
+    }
+
+    @Override
+    public GenericType<MyType> type() {
+        return GenericType.create(MyType.class);
+    }
+}
+----
+
+===== Custom Binding Factories
+
+For more complex scenarios where you need to create serializers and deserializers for entire type families or generic types, you can implement custom `JsonBindingFactory` instances. Binding factories are particularly useful for handling parameterized types, collections, or types that require special instantiation logic.
+
+====== What is a Binding Factory?
+
+A `JsonBindingFactory<T>` is responsible for creating type-specific serializers and deserializers for a family of related types. Unlike individual converters that handle specific types, binding factories can create converters dynamically for various subtypes or parameterized versions of a base type.
+
+====== How Binding Factories Work
+
+Binding factories implement the `JsonBindingFactory<T>` interface, which requires:
+
+- `createDeserializer(Class<? extends T> type)` - Creates a deserializer for a specific class type
+- `createDeserializer(GenericType<? extends T> type)` - Creates a deserializer for a generic type
+- `createSerializer(Class<? extends T> type)` - Creates a serializer for a specific class type
+- `createSerializer(GenericType<? extends T> type)` - Creates a serializer for a generic type
+- `supportedTypes()` - Returns the set of types this factory can handle
+
+====== When to Use Binding Factories
+
+Binding factories are ideal for:
+
+- **Parameterized types**: `List<String>`, `Map<String, Integer>`, `Optional<User>`
+- **Type hierarchies**: All implementations of an interface
+- **Collection types**: Arrays, Sets, Queues with custom element handling
+- **Complex generic types**: Types requiring special construction logic
+
+====== Example: Custom Collection Binding Factory
+
+[source,java]
+.Custom binding factory for custom collection types
+----
+import io.helidon.json.binding.JsonBindingFactory;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.service.registry.Service;
+
+@Service.Singleton
+public class CustomListBindingFactory implements JsonBindingFactory<CustomList<?>> {
+
+    @Override
+    public JsonDeserializer<CustomList<?>> createDeserializer(Class<? extends CustomList<?>> type) {
+        return new CustomListConverter(type);
+    }
+
+    @Override
+    public JsonDeserializer<CustomList<?>> createDeserializer(GenericType<? extends CustomList<?>> type) {
+        return new CustomListConverter(type.type());
+    }
+
+    @Override
+    public JsonSerializer<CustomList<?>> createSerializer(Class<? extends CustomList<?>> type) {
+        return new CustomListConverter(type);
+    }
+
+    @Override
+    public JsonSerializer<CustomList<?>> createSerializer(GenericType<? extends CustomList<?>> type) {
+        return new CustomListConverter(type.type());
+    }
+
+    @Override
+    public Set<Class<?>> supportedTypes() {
+        return Set.of(CustomList.class);
+    }
+
+    static class CustomListConverter implements JsonConverter<CustomList<?>> {
+        private final GenericType<CustomList<?>> type;
+        private volatile JsonSerializer<Object> serializer;
+
+        CustomListConverter(Type type) {
+            this.type = GenericType.create(type);
+        }
+
+        @Override
+        public void serialize(Generator generator, CustomList<?> list, boolean writeNulls) {
+            if (list == null) {
+                generator.writeNull();
+                return;
+            }
+            generator.writeArrayStart();
+            for (Object item : list) {
+                if (item == null && !writeNulls) {
+                    continue;
+                }
+                serializer.serialize(generator, item, writeNulls);
+            }
+            generator.writeArrayEnd();
+        }
+
+        @Override
+        public CustomList<?> deserialize(JsonParser parser) {
+            // Custom deserialization logic for CustomList
+            CustomList<Object> result = new CustomList<>();
+            // Parse JSON array and populate CustomList
+            return result;
+        }
+
+        @Override
+        public GenericType<CustomList<?>> type() {
+            return type;
+        }
+
+        @Override
+        public void configure(JsonBindingConfigurator configurator) {
+            serializer = configurator.serializer(GenericType.OBJECT);
+        }
+    }
+}
+----
+
+====== Automatic Registration
+
+Binding factories can be automatically registered through the Service Registry by annotating them with `@Service.Singleton` or `@Service.PerLookup`. Once registered, they're automatically discovered and used by the JSON binding system.
+
+====== Built-in Binding Factories
+
+Helidon provides several built-in binding factories for common types:
+
+- **Collection types**: `List<?>`, `Set<?>`, `Map<?, ?>`
+- **Optional types**: `Optional<?>`
+- **Array types**: `Object[]`
+- **Enum types**: `Enum<?>`
+
+These handle the serialization and deserialization of standard Java collection and container types automatically.
+
+== JSON Processor
+
+The JSON module (`helidon-json`) provides fundamental JSON parsing and generation capabilities.
+
+=== Maven Coordinates
+
+[source,xml,subs="attributes+"]
+----
+<dependency>
+    <groupId>io.helidon.json</groupId>
+    <artifactId>helidon-json</artifactId>
+</dependency>
+----
+
+=== Features
+
+* Streaming JSON parser for efficient processing of large documents
+* JSON generator for building JSON output
+* Support for all JSON data types
+* Memory-efficient processing without loading entire documents
+
+=== JsonParser
+
+JsonParser is a streaming JSON parser that provides efficient, low-level access to JSON data without loading the entire document into memory. It's designed for processing large JSON documents or streaming data sources.
+
+==== What it's used for
+
+* Parsing large JSON documents efficiently
+* Streaming JSON processing from files, network streams, or other sources
+* Token-by-token JSON parsing with fine-grained control
+* Memory-efficient processing of JSON data
+
+==== How to use it
+
+[source,java]
+.Creating and using JsonParser
+----
+JsonParser parser = JsonParser.create("{\"name\":\"John\",\"age\":30}");
+
+JsonObject object = parser.readJsonObject();
+
+String name = object.stringValue("name"); // "John"
+int age = object.intValue("age"); // 30
+----
+
+[source,java]
+.Parsing from InputStream
+----
+try (InputStream inputStream = Files.newInputStream(Paths.get("large-file.json"))) {
+    JsonParser parser = JsonParser.create(inputStream);
+    JsonValue value = parser.readJsonValue();
+    // Handle value
+}
+----
+
+=== Generator
+
+Generator is a streaming JSON generator that builds JSON output efficiently. It provides a fluent API for constructing JSON documents without building intermediate representations.
+
+==== What it's used for
+
+* Building JSON documents programmatically
+* Streaming JSON generation to files or network streams
+* Memory-efficient JSON construction
+* Building complex nested JSON structures
+
+==== How to use it
+
+[source,java]
+.Basic JSON generation
+----
+Generator generator = Generator.create(outputStream);
+
+generator.writeObjectStart();
+generator.write("name", "John");
+generator.write("age", 30);
+generator.writeObjectEnd();
+----
+
+This generates the following JSON output:
+[source,json]
+----
+{"name":"John","age":30}
+----
+
+[source,java]
+.Complex JSON structure generation
+----
+Generator generator = Generator.create(outputStream);
+
+generator.writeObjectStart();
+generator.writeKey("person");
+generator.writeObjectStart();
+generator.write("name", "John");
+generator.write("age", 30);
+generator.writeObjectEnd();
+
+generator.writeKey("hobbies");
+generator.writeArrayStart();
+generator.write("reading");
+generator.write("coding");
+generator.writeArrayEnd();
+generator.writeObjectEnd();
+----
+
+This generates the following JSON output:
+[source,json]
+----
+{
+  "person": {
+    "name": "John",
+    "age": 30
+  },
+  "hobbies": ["reading", "coding"]
+}
+----
+
+=== JsonValue Types
+
+JsonValue is the base class for all JSON value types in Helidon. It provides a type-safe representation of JSON data with specific implementations for different JSON data types.
+
+==== JsonObject
+
+JsonObject represents a JSON object (key-value pairs enclosed in `{}`). It's used for structured data with named properties.
+
+[source,java]
+.Using JsonObject
+----
+JsonObject person = JsonObject.builder()
+    .set("name", "John")
+    .set("age", 30)
+    .set("active", true)
+    .build();
+
+String name = person.stringValue("name", "");
+int age = person.intValue("age", 0);
+boolean active = person.booleanValue("active", false);
+
+// Nested objects
+JsonObject address = JsonObject.builder()
+    .set("street", "123 Main St")
+    .set("city", "Springfield")
+    .build();
+
+JsonObject personWithAddress = JsonObject.builder()
+    .set("name", "John")
+    .set("address", address)
+    .build();
+----
+
+==== JsonArray
+
+JsonArray represents a JSON array (ordered list of values enclosed in `[]`). It's used for collections of values.
+
+[source,java]
+.Using JsonArray
+----
+JsonArray hobbies = JsonArray.createStrings(List.of("reading", "coding", "gaming"));
+JsonArray numbers = JsonArray.createNumbers(List.of(
+    new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3")));
+
+// Access elements - JsonArray doesn't provide direct indexed access
+// Use values() to get the list and then access elements
+List<JsonValue> hobbyValues = hobbies.values();
+List<JsonValue> numberValues = numbers.values();
+----
+
+==== JsonString
+
+JsonString represents a JSON string value (text enclosed in `"`). It's used for textual data.
+
+[source,java]
+.Using JsonString
+----
+JsonString name = JsonString.create("John Doe");
+String value = name.value(); // "John Doe"
+
+// From parser
+JsonParser parser = JsonParser.create("\"Hello World\"");
+JsonString greeting = parser.readJsonString();
+----
+
+==== JsonNumber
+
+JsonNumber represents a JSON number value. It's used for numeric data and provides access to different numeric types.
+
+[source,java]
+.Using JsonNumber
+----
+JsonNumber age = JsonNumber.create(new BigDecimal("30"));
+int intValue = age.intValue();
+double doubleValue = age.doubleValue();
+BigDecimal bigDecimalValue = age.bigDecimalValue();
+
+// From parser
+JsonParser parser = JsonParser.create("123.45");
+JsonNumber number = parser.readJsonNumber();
+----
+
+==== JsonBoolean
+
+JsonBoolean represents a JSON boolean value (`true` or `false`). It's used for logical values.
+
+[source,java]
+.Using JsonBoolean
+----
+JsonBoolean active = JsonBoolean.create(true);
+boolean value = active.value(); // true
+
+JsonBoolean inactive = JsonBoolean.FALSE; // Predefined constants
+----
+
+==== JsonNull
+
+JsonNull represents a JSON null value. It's used when a value is absent or undefined.
+
+[source,java]
+.Using JsonNull
+----
+JsonNull nullValue = JsonNull.instance();
+
+// In collections
+JsonArray array = JsonArray.create(List.of(
+    JsonString.create("value1"),
+    JsonNull.instance(), // null value
+    JsonString.create("value3")));
+----
+
+== Additional Information
+
+=== Performance Considerations
+
+* Use streaming APIs for large JSON documents
+* Configure appropriate buffer sizes for I/O operations
+
+=== Thread Safety
+
+* JsonParser instances are not thread-safe
+* JsonBinding instances are thread-safe
+
+=== Error Handling
+
+* JsonException is thrown for parsing/serialization errors
+
+=== Integration with Other Helidon Features
+
+JSON processing integrates seamlessly with:
+
+* WebServer for HTTP request/response processing
+* WebClient for outgoing HTTP requests
+* Config for JSON configuration sources
+* Database clients for JSON data handling
+
+For more examples, see the {helidon-github-examples-url}/json[Helidon JSON Examples].
+----

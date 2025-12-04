@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-class ArrayJsonParser implements ReusableJsonParser  {
+class ArrayJsonParser implements JsonParser  {
 
     static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     static final int FNV_PRIME = 0x01000193;
@@ -124,20 +124,6 @@ class ArrayJsonParser implements ReusableJsonParser  {
         this.buffer = buffer;
         this.currentIndex = start;
         this.bufferLength = length;
-    }
-
-    @Override
-    public void reset(byte[] buffer) {
-        this.buffer = buffer;
-        this.bufferLength = buffer.length;
-        this.currentIndex = 0;
-    }
-
-    @Override
-    public void reset(byte[] buffer, int start) {
-        this.buffer = buffer;
-        this.bufferLength = buffer.length;
-        this.currentIndex = start;
     }
 
     @Override

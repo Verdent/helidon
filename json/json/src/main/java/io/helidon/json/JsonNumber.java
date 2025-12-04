@@ -76,11 +76,8 @@ public final class JsonNumber extends JsonValue {
      */
     public double doubleValue() {
         if (doubleValue == null) {
-            CachedParser cachedParser = JsonParserCache.getCachedParser();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(buffer, start);
+            JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
             doubleValue = parser.readAsDouble();
-            cachedParser.set(parser);
         }
         return doubleValue;
     }
@@ -92,11 +89,8 @@ public final class JsonNumber extends JsonValue {
      */
     public int intValue() {
         if (intValue == null) {
-            CachedParser cachedParser = JsonParserCache.getCachedParser();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(buffer, start);
+            JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
             intValue = parser.readAsInt();
-            cachedParser.set(parser);
         }
         return intValue;
     }
@@ -108,11 +102,8 @@ public final class JsonNumber extends JsonValue {
      */
     public BigDecimal bigDecimalValue() {
         if (bigDecimalValue == null) {
-            CachedParser cachedParser = JsonParserCache.getCachedParser();
-            ReusableJsonParser parser = cachedParser.get();
-            parser.reset(buffer, start);
+            JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
             bigDecimalValue = new BigDecimal(parser.readNumberAsArray());
-            cachedParser.set(parser);
         }
         return bigDecimalValue;
     }

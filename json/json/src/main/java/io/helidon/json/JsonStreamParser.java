@@ -25,7 +25,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     private static final int DEFAULT_BUFFER_SIZE = 8192;
 
     private final int bufferSize;
-    private InputStream inputStream;
+    private final InputStream inputStream;
     private boolean finished;
     private boolean bufferingJsonValue;
     private int jsonValueStart;
@@ -123,20 +123,6 @@ final class JsonStreamParser extends ArrayJsonParser {
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public void reset(InputStream is) {
-        bufferingJsonValue = false;
-        inputStream = is;
-        currentIndex = 0;
-        try {
-            int read = inputStream.read(buffer);
-            bufferLength = (read == -1 ? 0 : read);
-            finished = (read == -1);
-        } catch (IOException e) {
-            throw new JsonException("Error occurred while reading JSON to the buffer.", e);
         }
     }
 

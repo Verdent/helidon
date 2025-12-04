@@ -80,6 +80,9 @@ public interface JsonParser {
      */
     static JsonParser create(byte[] json, int start, int length) {
         Objects.requireNonNull(json);
+        if (start >= length) {
+            throw new JsonException("JSON length must be greater than start");
+        }
         return new ArrayJsonParser(json, start, length);
     }
 

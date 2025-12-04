@@ -155,13 +155,7 @@ The binding API provides high-level object mapping:
 [source,java]
 .JsonBinding usage
 ----
-JsonBinding binding = JsonBinding.create();
-
-// Deserialize JSON string to object
-Person person = binding.deserialize("{\"name\":\"John\",\"age\":30}", Person.class);
-
-// Serialize object to JSON string
-String json = binding.serialize(person);
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_1, indent=0]
 ----
 
 === Annotations
@@ -170,18 +164,12 @@ Helidon JSON binding provides annotations to control serialization and deseriali
 
 ==== @Json.Entity
 
-Marks a class as a JSON entity that can be serialized/deserialized.
+Marks a class/record as a JSON entity that can be serialized/deserialized.
 
 [source,java]
 .Using @Json.Entity
 ----
-@Json.Entity
-public class Person {
-    private String name;
-    private int age;
-
-    // getters and setters
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_2, indent=0]
 ----
 
 Why use it: Required for classes to participate in JSON binding. Without this annotation, serialization/deserialization will fail.
@@ -193,34 +181,13 @@ Customizes the JSON property name for a field or method. This affects how fields
 [source,java]
 .Basic property name customization
 ----
-@Json.Entity
-public class Person {
-    private String firstName;    // JSON: "firstName"
-
-    @Json.Property("last_name")
-    private String lastName;     // JSON: "last_name"
-
-    // getters and setters
-}
-// JSON: {"firstName":"John","last_name":"Doe"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_16, indent=0]
 ----
 
 [source,java]
 .Method-level property naming
 ----
-@Json.Entity
-public class Person {
-    private String firstName;
-    private String lastName;
-
-    @Json.Property("fullName")
-    public String getDisplayName() {  // method becomes "fullName" in JSON
-        return firstName + " " + lastName;
-    }
-
-    // getters and setters
-}
-// JSON: {"firstName":"John","lastName":"Doe","fullName":"John Doe"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_17, indent=0]
 ----
 
 **Impact on serialization and deserialization:**
@@ -239,86 +206,31 @@ Excludes fields or methods from serialization/deserialization. Fields marked as 
 [source,java]
 .Basic field exclusion
 ----
-@Json.Entity
-public class Person {
-    private String name;        // included in JSON
-    private int age;            // included in JSON
-
-    @Json.Ignore
-    private String password;    // excluded from JSON
-
-    // getters and setters
-}
-// JSON: {"name":"John","age":30}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_18, indent=0]
 ----
 
 [source,java]
 .Automatic transient field exclusion
 ----
-@Json.Entity
-public class Person {
-    private String name;             // included
-    private transient String temp;   // automatically excluded
-    private String data;             // included
-
-    // getters and setters
-}
-// JSON: {"name":"John","data":"value"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_19, indent=0]
 ----
 
 [source,java]
 .Method-level exclusion
 ----
-@Json.Entity
-public class Person {
-    private String firstName;  // included
-    private String lastName;   // included
-
-    @Json.Ignore
-    public String getFullName() {  // method excluded from serialization
-        return firstName + " " + lastName;
-    }
-
-    // other getters and setters
-}
-// JSON: {"firstName":"John","lastName":"Doe"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_20, indent=0]
 ----
 
 [source,java]
 .Conditional exclusion with annotation parameter
 ----
-@Json.Entity
-public class Person {
-    private String name;        // included
-    private String email;       // included
-
-    @Json.Ignore                // explicitly ignored
-    private String secret;      // excluded
-
-    @Json.Ignore(false)         // explicitly included (default behavior)
-    private String publicData;  // included
-
-    // getters and setters
-}
-// JSON: {"name":"John","email":"john@example.com","publicData":"value"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_21, indent=0]
 ----
 
 [source,java]
 .Different visibility scenarios
 ----
-@Json.Entity
-public class User {
-    private String username;     // always included
-    private String password;     // should never be serialized
-
-    private transient String sessionToken;  // temp data, excluded
-
-    @Json.Ignore
-    private List<String> internalLogs;      // internal state, excluded
-
-    // Only username will appear in JSON
-}
-// JSON: {"username":"john_doe"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_22, indent=0]
 ----
 
 **Impact on serialization and deserialization:**
@@ -337,15 +249,7 @@ Marks properties as required during deserialization.
 [source,java]
 .Using @Json.Required
 ----
-@Json.Entity
-public class Person {
-    @Json.Required
-    private String name;
-
-    private Integer age; // optional
-
-    // getters and setters
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_37, indent=0]
 ----
 
 Why use it: Ensures critical properties are present in JSON input, failing deserialization if they're missing.
@@ -357,62 +261,25 @@ Controls whether null values are included in JSON output. By default, null value
 [source,java]
 .Default behavior - nulls omitted
 ----
-@Json.Entity
-public class PersonDefault {
-    private String name;     // "John" -> included
-    private Integer age;     // null -> omitted
-
-    // getters and setters
-}
-// JSON: {"name":"John"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_23, indent=0]
 ----
 
 [source,java]
 .Class-level null serialization
 ----
-@Json.Entity
-@Json.SerializeNulls
-public class PersonWithNulls {
-    private String name;     // "John" -> included
-    private Integer age;     // null -> included as null
-
-    // getters and setters
-}
-// JSON: {"name":"John","age":null}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_24, indent=0]
 ----
 
 [source,java]
 .Field-level null serialization
 ----
-@Json.Entity
-public class PersonSelective {
-    private String name;     // "John" -> included
-
-    @Json.SerializeNulls
-    private Integer age;     // null -> included as null
-
-    private String city;     // null -> omitted
-
-    // getters and setters
-}
-// JSON: {"name":"John","age":null}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_25, indent=0]
 ----
 
 [source,java]
 .Mixed scenarios - different null handling
 ----
-@Json.Entity
-@Json.SerializeNulls
-public class PersonMixed {
-    private String name;         // "John" -> included
-    private Integer age;         // null -> included as null
-
-    @Json.SerializeNulls(false)  // Override to omit nulls
-    private String city;         // null -> omitted
-
-    // getters and setters
-}
-// JSON: {"name":"John","age":null}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_26, indent=0]
 ----
 
 **Impact on JSON size and API contracts:**
@@ -428,36 +295,15 @@ Why use it: Provides control over JSON size and API contract. Including nulls ca
 Marks constructors or factory methods for object creation during deserialization.
 
 [source,java]
-.Using @Json.Creator
+.Using @Json.Creator constructor
 ----
-@Json.Entity
-public class Person {
-    private final String name;
-    private final int age;
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_38, indent=0]
+----
 
-    @Json.Creator
-    public Person(String name, int age) {
-        this.name = name;
-        this.age = age;
-    }
-
-    // getters
-}
-
-// Or with factory method
-@Json.Entity
-public class Person2 {
-    private final String name;
-
-    private Person2(String name) {
-        this.name = name;
-    }
-
-    @Json.Creator
-    public static Person2 create(String name) {
-        return new Person2(name);
-    }
-}
+[source,java]
+.Using @Json.Creator factory method
+----
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_39, indent=0]
 ----
 
 Why use it: Enables deserialization of immutable objects or objects requiring specific construction logic.
@@ -469,15 +315,7 @@ Controls the order of properties in JSON output. By default, properties are seri
 [source,java]
 .Using @Json.PropertyOrder
 ----
-@Json.Entity
-@Json.PropertyOrder(Order.ALPHABETICAL)
-public class Person {
-    private String name;
-    private int age;
-    private String city;
-
-    // getters and setters
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_40, indent=0]
 ----
 
 **Different ordering scenarios:**
@@ -485,52 +323,25 @@ public class Person {
 [source,java]
 .Field declaration order (default)
 ----
-@Json.Entity
-public class PersonDefault {
-    private String zebra;    // appears first in JSON
-    private String alpha;    // appears second in JSON
-    private String beta;     // appears third in JSON
-}
-// JSON: {"zebra":"value","alpha":"value","beta":"value"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_41, indent=0]
 ----
 
 [source,java]
 .Alphabetical ordering
 ----
-@Json.Entity
-@Json.PropertyOrder(Order.ALPHABETICAL)
-public class PersonAlphabetical {
-    private String zebra;    // appears third in JSON
-    private String alpha;    // appears first in JSON
-    private String beta;     // appears second in JSON
-}
-// JSON: {"alpha":"value","beta":"value","zebra":"value"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_42, indent=0]
 ----
 
 [source,java]
 .Custom ordering with explicit property names
 ----
-@Json.Entity
-@Json.PropertyOrder({"city", "name", "age"})
-public class PersonCustom {
-    private String name;     // appears second in JSON
-    private int age;         // appears third in JSON
-    private String city;     // appears first in JSON
-}
-// JSON: {"city":"value","name":"value","age":30}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_43, indent=0]
 ----
 
 [source,java]
 .Reverse alphabetical ordering
 ----
-@Json.Entity
-@Json.PropertyOrder(Order.REVERSE_ALPHABETICAL)
-public class PersonReverse {
-    private String alpha;    // appears third in JSON
-    private String beta;     // appears second in JSON
-    private String zebra;    // appears first in JSON
-}
-// JSON: {"zebra":"value","beta":"value","alpha":"value"}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_44, indent=0]
 ----
 
 Why use it: Ensures consistent JSON structure for APIs, debugging, or when order matters for processing. Different ordering can help with:
@@ -546,21 +357,7 @@ Specify custom serialization/deserialization logic.
 [source,java]
 .Using @Json.Deserializer
 ----
-@Json.Entity
-public class CustomType {
-
-    @Json.Deserializer(CustomDeserializer.class)
-    private MyType value;
-
-    // getters and setters
-}
-
-public class CustomDeserializer implements JsonDeserializer<MyType> {
-    @Override
-    public MyType deserialize(JsonParser parser) {
-        // custom deserialization logic
-    }
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_45, indent=0]
 ----
 
 Why use it: Enables handling of complex types, legacy formats, or types requiring special conversion logic.
@@ -572,33 +369,7 @@ Provides information about a builder class for object construction.
 [source,java]
 .Using @Json.BuilderInfo
 ----
-@Json.Entity
-@Json.BuilderInfo(PersonBuilder.class)
-public class Person {
-    private final String name;
-    private final int age;
-
-    // constructor, getters
-}
-
-public class PersonBuilder {
-    private String name;
-    private int age;
-
-    public PersonBuilder name(String name) {
-        this.name = name;
-        return this;
-    }
-
-    public PersonBuilder age(int age) {
-        this.age = age;
-        return this;
-    }
-
-    public Person build() {
-        return new Person(name, age);
-    }
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_46, indent=0]
 ----
 
 Why use it: Specifies custom builder classes for object construction during deserialization, enabling more complex instantiation patterns.
@@ -610,13 +381,7 @@ Controls behavior when unknown properties are encountered during deserialization
 [source,java]
 .Using @Json.FailOnUnknown
 ----
-@Json.Entity
-@Json.FailOnUnknown
-public class StrictPerson {
-    private String name;
-
-    // getters and setters
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_47, indent=0]
 ----
 
 Why use it: Provides strict validation of JSON input, failing if unexpected properties are present.
@@ -718,16 +483,7 @@ This approach provides several benefits:
 
 [source,java]
 ----
-public class Person {
-    private String name;
-    private int age;
-
-    // getters and setters
-}
-
-JsonBinding binding = JsonBinding.create();
-Person person = binding.deserialize("{\"name\":\"John\",\"age\":30}", Person.class);
-String json = binding.serialize(person);
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_12, indent=0]
 ----
 
 ==== Custom Serializers and Deserializers
@@ -739,20 +495,7 @@ For complex types that require custom conversion logic, you can implement custom
 [source,java]
 .Custom JsonSerializer
 ----
-public class PersonSerializer implements JsonSerializer<Person> {
-    @Override
-    public void serialize(Generator generator, Person person, boolean writeNulls) {
-        generator.writeObjectStart();
-        generator.write("name", person.getName());
-        generator.write("age", person.getAge());
-        generator.writeObjectEnd();
-    }
-
-    @Override
-    public GenericType<Person> type() {
-        return GenericType.create(Person.class);
-    }
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_13, indent=0]
 ----
 
 ===== Custom Deserializer
@@ -760,22 +503,7 @@ public class PersonSerializer implements JsonSerializer<Person> {
 [source,java]
 .Custom JsonDeserializer
 ----
-public class PersonDeserializer implements JsonDeserializer<Person> {
-    @Override
-    public Person deserialize(JsonParser parser) {
-        JsonObject object = parser.readJsonObject();
-
-        String name = object.stringValue("name").orElse("");
-        int age = object.intValue("age", 0);
-
-        return new Person(name, age);
-    }
-
-    @Override
-    public GenericType<Person> type() {
-        return GenericType.create(Person.class);
-    }
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_14, indent=0]
 ----
 
 ===== Using Custom Converters
@@ -783,31 +511,7 @@ public class PersonDeserializer implements JsonDeserializer<Person> {
 [source,java]
 .Using @Json.Converter for combined serializer/deserializer
 ----
-@Json.Entity
-public class CustomType {
-    @Json.Converter(CustomConverter.class)
-    private MyType value;
-
-    // getters and setters
-}
-
-public class CustomConverter implements JsonConverter<MyType> {
-    @Override
-    public void serialize(Generator generator, MyType instance, boolean writeNulls) {
-        // custom serialization logic
-    }
-
-    @Override
-    public MyType deserialize(JsonParser parser) {
-        // custom deserialization logic
-        return null;
-    }
-
-    @Override
-    public GenericType<MyType> type() {
-        return GenericType.create(MyType.class);
-    }
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_15, indent=0]
 ----
 
 ===== Custom Binding Factories
@@ -971,22 +675,7 @@ JsonParser is a streaming JSON parser that provides efficient, low-level access 
 [source,java]
 .Creating and using JsonParser
 ----
-JsonParser parser = JsonParser.create("{\"name\":\"John\",\"age\":30}");
-
-JsonObject object = parser.readJsonObject();
-
-String name = object.stringValue("name"); // "John"
-int age = object.intValue("age"); // 30
-----
-
-[source,java]
-.Parsing from InputStream
-----
-try (InputStream inputStream = Files.newInputStream(Paths.get("large-file.json"))) {
-    JsonParser parser = JsonParser.create(inputStream);
-    JsonValue value = parser.readJsonValue();
-    // Handle value
-}
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_3, indent=0]
 ----
 
 === Generator
@@ -1005,12 +694,7 @@ Generator is a streaming JSON generator that builds JSON output efficiently. It 
 [source,java]
 .Basic JSON generation
 ----
-Generator generator = Generator.create(outputStream);
-
-generator.writeObjectStart();
-generator.write("name", "John");
-generator.write("age", 30);
-generator.writeObjectEnd();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_4, indent=0]
 ----
 
 This generates the following JSON output:
@@ -1022,21 +706,7 @@ This generates the following JSON output:
 [source,java]
 .Complex JSON structure generation
 ----
-Generator generator = Generator.create(outputStream);
-
-generator.writeObjectStart();
-generator.writeKey("person");
-generator.writeObjectStart();
-generator.write("name", "John");
-generator.write("age", 30);
-generator.writeObjectEnd();
-
-generator.writeKey("hobbies");
-generator.writeArrayStart();
-generator.write("reading");
-generator.write("coding");
-generator.writeArrayEnd();
-generator.writeObjectEnd();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_5, indent=0]
 ----
 
 This generates the following JSON output:
@@ -1062,26 +732,7 @@ JsonObject represents a JSON object (key-value pairs enclosed in `{}`). It's use
 [source,java]
 .Using JsonObject
 ----
-JsonObject person = JsonObject.builder()
-    .set("name", "John")
-    .set("age", 30)
-    .set("active", true)
-    .build();
-
-String name = person.stringValue("name", "");
-int age = person.intValue("age", 0);
-boolean active = person.booleanValue("active", false);
-
-// Nested objects
-JsonObject address = JsonObject.builder()
-    .set("street", "123 Main St")
-    .set("city", "Springfield")
-    .build();
-
-JsonObject personWithAddress = JsonObject.builder()
-    .set("name", "John")
-    .set("address", address)
-    .build();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_6, indent=0]
 ----
 
 ==== JsonArray
@@ -1091,14 +742,7 @@ JsonArray represents a JSON array (ordered list of values enclosed in `[]`). It'
 [source,java]
 .Using JsonArray
 ----
-JsonArray hobbies = JsonArray.createStrings(List.of("reading", "coding", "gaming"));
-JsonArray numbers = JsonArray.createNumbers(List.of(
-    new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3")));
-
-// Access elements - JsonArray doesn't provide direct indexed access
-// Use values() to get the list and then access elements
-List<JsonValue> hobbyValues = hobbies.values();
-List<JsonValue> numberValues = numbers.values();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_7, indent=0]
 ----
 
 ==== JsonString
@@ -1108,12 +752,7 @@ JsonString represents a JSON string value (text enclosed in `"`). It's used for 
 [source,java]
 .Using JsonString
 ----
-JsonString name = JsonString.create("John Doe");
-String value = name.value(); // "John Doe"
-
-// From parser
-JsonParser parser = JsonParser.create("\"Hello World\"");
-JsonString greeting = parser.readJsonString();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_8, indent=0]
 ----
 
 ==== JsonNumber
@@ -1123,14 +762,7 @@ JsonNumber represents a JSON number value. It's used for numeric data and provid
 [source,java]
 .Using JsonNumber
 ----
-JsonNumber age = JsonNumber.create(new BigDecimal("30"));
-int intValue = age.intValue();
-double doubleValue = age.doubleValue();
-BigDecimal bigDecimalValue = age.bigDecimalValue();
-
-// From parser
-JsonParser parser = JsonParser.create("123.45");
-JsonNumber number = parser.readJsonNumber();
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_9, indent=0]
 ----
 
 ==== JsonBoolean
@@ -1140,10 +772,7 @@ JsonBoolean represents a JSON boolean value (`true` or `false`). It's used for l
 [source,java]
 .Using JsonBoolean
 ----
-JsonBoolean active = JsonBoolean.create(true);
-boolean value = active.value(); // true
-
-JsonBoolean inactive = JsonBoolean.FALSE; // Predefined constants
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_10, indent=0]
 ----
 
 ==== JsonNull
@@ -1153,13 +782,7 @@ JsonNull represents a JSON null value. It's used when a value is absent or undef
 [source,java]
 .Using JsonNull
 ----
-JsonNull nullValue = JsonNull.instance();
-
-// In collections
-JsonArray array = JsonArray.create(List.of(
-    JsonString.create("value1"),
-    JsonNull.instance(), // null value
-    JsonString.create("value3")));
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_11, indent=0]
 ----
 
 == Additional Information

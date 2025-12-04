@@ -252,4 +252,13 @@ public interface Generator extends AutoCloseable {
      * @return this generator for method chaining
      */
     Generator writeObjectEnd();
+
+    /**
+     * This method does not close the stream it is writing to.
+     * It only performs final writing operations.
+     *
+     * @throws Exception exception when closing the generator
+     */
+    @Override
+    void close() throws Exception;
 }

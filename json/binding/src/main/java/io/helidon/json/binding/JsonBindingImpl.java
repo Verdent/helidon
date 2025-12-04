@@ -108,13 +108,14 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> String serialize(T obj, Class<? super T> type) {
-        if (obj == null) {
-            return "null";
-        }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, true);
+            if (obj == null) {
+                converter.serializeNull(generator);
+            } else {
+                converter.serialize(generator, obj, true);
+            }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -125,13 +126,14 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> String serialize(T obj, GenericType<? super T> type) {
-        if (obj == null) {
-            return "null";
-        }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (Generator generator = Generator.create(outputStream)) {
             JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, true);
+            if (obj == null) {
+                converter.serializeNull(generator);
+            } else {
+                converter.serialize(generator, obj, true);
+            }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -144,8 +146,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @SuppressWarnings("unchecked")
     public void serialize(OutputStream outputStream, Object obj) {
         if (obj == null) {
-            try (outputStream) {
+            try {
                 outputStream.write(NULL_BYTES);
+                outputStream.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -164,8 +167,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, Class<? super T> type) {
         if (obj == null) {
-            try (outputStream) {
+            try {
                 outputStream.write(NULL_BYTES);
+                outputStream.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -184,8 +188,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type) {
         if (obj == null) {
-            try (outputStream) {
+            try {
                 outputStream.write(NULL_BYTES);
+                outputStream.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -205,8 +210,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @SuppressWarnings("unchecked")
     public void serialize(Writer writer, Object obj) {
         if (obj == null) {
-            try (writer) {
+            try {
                 writer.write(NULL_CHARS);
+                writer.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -225,8 +231,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(Writer writer, T obj, Class<? super T> type) {
         if (obj == null) {
-            try (writer) {
+            try {
                 writer.write(NULL_CHARS);
+                writer.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -245,8 +252,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> void serialize(Writer writer, T obj, GenericType<? super T> type) {
         if (obj == null) {
-            try (writer) {
+            try {
                 writer.write(NULL_CHARS);
+                writer.flush();
                 return;
             } catch (IOException e) {
                 throw new RuntimeException(e);

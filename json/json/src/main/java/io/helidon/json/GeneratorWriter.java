@@ -112,7 +112,6 @@ class GeneratorWriter extends AbstractGenerator {
     }
 
     @Override
-    public void close() throws Exception {
-        writer.close();
+    public void close() {
     }
 }

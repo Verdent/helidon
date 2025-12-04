@@ -225,7 +225,6 @@ class GeneratorOutputStream extends AbstractGenerator {
             closed = true;
             outputStream.write(buffer, 0, index);
             outputStream.flush();
-            outputStream.close();
         }
     }
 

@@ -181,13 +181,25 @@ Customizes the JSON property name for a field or method. This affects how fields
 [source,java]
 .Basic property name customization
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_16, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_3, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"firstName":"John","last_name":"Doe"}
 ----
 
 [source,java]
 .Method-level property naming
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_17, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_4, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"firstName":"John","lastName":"Doe","fullName":"John Doe"}
 ----
 
 **Impact on serialization and deserialization:**
@@ -206,31 +218,37 @@ Excludes fields or methods from serialization/deserialization. Fields marked as 
 [source,java]
 .Basic field exclusion
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_18, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_5, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John","age":30}
 ----
 
 [source,java]
 .Automatic transient field exclusion
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_19, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_6, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John","data":"value"}
 ----
 
 [source,java]
 .Method-level exclusion
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_20, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_7, indent=0]
 ----
 
-[source,java]
-.Conditional exclusion with annotation parameter
+This produces the following JSON output:
+[source,json]
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_21, indent=0]
-----
-
-[source,java]
-.Different visibility scenarios
-----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_22, indent=0]
+{"lastName":"Doe"}
 ----
 
 **Impact on serialization and deserialization:**
@@ -249,7 +267,7 @@ Marks properties as required during deserialization.
 [source,java]
 .Using @Json.Required
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_37, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_10, indent=0]
 ----
 
 Why use it: Ensures critical properties are present in JSON input, failing deserialization if they're missing.
@@ -261,25 +279,49 @@ Controls whether null values are included in JSON output. By default, null value
 [source,java]
 .Default behavior - nulls omitted
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_23, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_11, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John"}
 ----
 
 [source,java]
 .Class-level null serialization
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_24, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_12, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John","age":null}
 ----
 
 [source,java]
 .Field-level null serialization
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_25, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_13, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John","age":null}
 ----
 
 [source,java]
 .Mixed scenarios - different null handling
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_26, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_14, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"name":"John","age":null}
 ----
 
 **Impact on JSON size and API contracts:**
@@ -297,13 +339,13 @@ Marks constructors or factory methods for object creation during deserialization
 [source,java]
 .Using @Json.Creator constructor
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_38, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_15, indent=0]
 ----
 
 [source,java]
 .Using @Json.Creator factory method
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_39, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_16, indent=0]
 ----
 
 Why use it: Enables deserialization of immutable objects or objects requiring specific construction logic.
@@ -315,7 +357,7 @@ Controls the order of properties in JSON output. By default, properties are seri
 [source,java]
 .Using @Json.PropertyOrder
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_40, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_17, indent=0]
 ----
 
 **Different ordering scenarios:**
@@ -323,25 +365,37 @@ include::{sourcedir}/se/JsonSnippets.java[tag=snippet_40, indent=0]
 [source,java]
 .Field declaration order (default)
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_41, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_18, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"zebra":"value","alpha":"value","beta":"value"}
 ----
 
 [source,java]
 .Alphabetical ordering
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_42, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_19, indent=0]
 ----
 
-[source,java]
-.Custom ordering with explicit property names
+This produces the following JSON output:
+[source,json]
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_43, indent=0]
+{"alpha":"value","beta":"value","zebra":"value"}
 ----
 
 [source,java]
 .Reverse alphabetical ordering
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_44, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_21, indent=0]
+----
+
+This produces the following JSON output:
+[source,json]
+----
+{"zebra":"value","beta":"value","alpha":"value"}
 ----
 
 Why use it: Ensures consistent JSON structure for APIs, debugging, or when order matters for processing. Different ordering can help with:
@@ -357,7 +411,7 @@ Specify custom serialization/deserialization logic.
 [source,java]
 .Using @Json.Deserializer
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_45, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_22, indent=0]
 ----
 
 Why use it: Enables handling of complex types, legacy formats, or types requiring special conversion logic.
@@ -369,7 +423,7 @@ Provides information about a builder class for object construction.
 [source,java]
 .Using @Json.BuilderInfo
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_46, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_23, indent=0]
 ----
 
 Why use it: Specifies custom builder classes for object construction during deserialization, enabling more complex instantiation patterns.
@@ -381,7 +435,7 @@ Controls behavior when unknown properties are encountered during deserialization
 [source,java]
 .Using @Json.FailOnUnknown
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_47, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_24, indent=0]
 ----
 
 Why use it: Provides strict validation of JSON input, failing if unexpected properties are present.
@@ -675,7 +729,7 @@ JsonParser is a streaming JSON parser that provides efficient, low-level access 
 [source,java]
 .Creating and using JsonParser
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_3, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_29, indent=0]
 ----
 
 === Generator
@@ -694,7 +748,7 @@ Generator is a streaming JSON generator that builds JSON output efficiently. It 
 [source,java]
 .Basic JSON generation
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_4, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_30, indent=0]
 ----
 
 This generates the following JSON output:
@@ -706,7 +760,7 @@ This generates the following JSON output:
 [source,java]
 .Complex JSON structure generation
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_5, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_31, indent=0]
 ----
 
 This generates the following JSON output:
@@ -732,7 +786,7 @@ JsonObject represents a JSON object (key-value pairs enclosed in `{}`). It's use
 [source,java]
 .Using JsonObject
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_6, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_32, indent=0]
 ----
 
 ==== JsonArray
@@ -742,7 +796,7 @@ JsonArray represents a JSON array (ordered list of values enclosed in `[]`). It'
 [source,java]
 .Using JsonArray
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_7, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_33, indent=0]
 ----
 
 ==== JsonString
@@ -752,7 +806,7 @@ JsonString represents a JSON string value (text enclosed in `"`). It's used for 
 [source,java]
 .Using JsonString
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_8, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_34, indent=0]
 ----
 
 ==== JsonNumber
@@ -762,7 +816,7 @@ JsonNumber represents a JSON number value. It's used for numeric data and provid
 [source,java]
 .Using JsonNumber
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_9, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_35, indent=0]
 ----
 
 ==== JsonBoolean
@@ -772,7 +826,7 @@ JsonBoolean represents a JSON boolean value (`true` or `false`). It's used for l
 [source,java]
 .Using JsonBoolean
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_10, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_36, indent=0]
 ----
 
 ==== JsonNull
@@ -782,7 +836,7 @@ JsonNull represents a JSON null value. It's used when a value is absent or undef
 [source,java]
 .Using JsonNull
 ----
-include::{sourcedir}/se/JsonSnippets.java[tag=snippet_11, indent=0]
+include::{sourcedir}/se/JsonSnippets.java[tag=snippet_37, indent=0]
 ----
 
 == Additional Information

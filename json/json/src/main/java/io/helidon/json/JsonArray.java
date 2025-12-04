@@ -52,7 +52,7 @@ public final class JsonArray extends JsonValue {
      * @param values the list of string values
      * @return a new JsonArray containing JsonString values
      */
-    public static JsonValue createStrings(List<String> values) {
+    public static JsonArray createStrings(List<String> values) {
         List<JsonString> jsonValues = values.stream()
                 .map(JsonString::create)
                 .toList();
@@ -65,7 +65,7 @@ public final class JsonArray extends JsonValue {
      * @param values the list of BigDecimal values
      * @return a new JsonArray containing JsonNumber values
      */
-    public static JsonValue createNumbers(List<BigDecimal> values) {
+    public static JsonArray createNumbers(List<BigDecimal> values) {
         List<JsonNumber> jsonValues = values.stream()
                 .map(JsonNumber::create)
                 .toList();
@@ -78,7 +78,7 @@ public final class JsonArray extends JsonValue {
      * @param values the list of boolean values
      * @return a new JsonArray containing JsonBoolean values
      */
-    public static JsonValue createBooleans(List<Boolean> values) {
+    public static JsonArray createBooleans(List<Boolean> values) {
         List<JsonBoolean> jsonValues = values.stream()
                 .map(JsonBoolean::create)
                 .toList();

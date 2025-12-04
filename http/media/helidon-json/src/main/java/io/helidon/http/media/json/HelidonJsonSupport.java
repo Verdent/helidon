@@ -1,10 +1,22 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.http.media.json;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.builder.api.RuntimeType;
@@ -22,6 +34,15 @@ import io.helidon.json.binding.JsonBinding;
 
 import static io.helidon.http.HeaderValues.CONTENT_TYPE_JSON;
 
+/**
+ * Helidon JSON media support implementation.
+ * <p>
+ * This class provides comprehensive JSON media support for Helidon HTTP,
+ * enabling automatic serialization and deserialization of Java objects to/from
+ * JSON format in HTTP requests and responses. It supports content negotiation,
+ * character encoding detection, and integrates with the Helidon media support
+ * framework.
+ */
 @SuppressWarnings({"rawtypes", "unchecked"})
 @RuntimeType.PrototypedBy(HelidonJsonSupportConfig.class)
 public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<HelidonJsonSupportConfig> {
@@ -39,15 +60,28 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
         this.name = supportConfig.name();
         this.supportConfig = supportConfig;
         this.jsonBinding = supportConfig.jsonBinding();
-        
+
         this.reader = new HelidonJsonReader(jsonBinding);
         this.writer = new HelidonJsonWriter(jsonBinding);
     }
 
+    /**
+     * Create a new Helidon JSON media support from configuration.
+     *
+     * @param config the configuration to use
+     * @return a new MediaSupport instance
+     */
     public static MediaSupport create(Config config) {
         return create(config, HELIDON_JSON_DEFAULT_NAME);
     }
 
+    /**
+     * Create a new Helidon JSON media support from configuration with a custom name.
+     *
+     * @param config the configuration to use
+     * @param name the name for this media support instance
+     * @return a new MediaSupport instance
+     */
     public static MediaSupport create(Config config, String name) {
         return builder()
                 .name(name)
@@ -55,14 +89,31 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
                 .build();
     }
 
+    /**
+     * Create a new Helidon JSON support from a configuration object.
+     *
+     * @param config the configuration object
+     * @return a new HelidonJsonSupport instance
+     */
     public static HelidonJsonSupport create(HelidonJsonSupportConfig config) {
         return new HelidonJsonSupport(config);
     }
 
+    /**
+     * Create a new Helidon JSON support using a configuration consumer.
+     *
+     * @param consumer the consumer to configure the builder
+     * @return a new HelidonJsonSupport instance
+     */
     public static HelidonJsonSupport create(Consumer<HelidonJsonSupportConfig.Builder> consumer) {
         return builder().update(consumer).build();
     }
 
+    /**
+     * Create a new builder for HelidonJsonSupport.
+     *
+     * @return a new builder instance
+     */
     public static HelidonJsonSupportConfig.Builder builder() {
         return HelidonJsonSupportConfig.builder();
     }

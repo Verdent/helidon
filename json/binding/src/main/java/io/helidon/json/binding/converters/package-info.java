@@ -14,22 +14,11 @@
  * limitations under the License.
  */
 
-import io.helidon.common.features.api.Features;
-import io.helidon.common.features.api.HelidonFlavor;
-
 /**
- * Helidon JSON Processor.
- * Provides fundamental JSON parsing and generation capabilities.
+ * Helidon JSON Binding Converters.
+ * Provide built-in converters for common Java types to JSON
+ * and vice versa.
+ *
+ * @see io.helidon.json.binding.JsonConverter
  */
-@Features.Name("JSON Core")
-@Features.Description("JSON parsing and generation")
-@Features.Flavor(HelidonFlavor.SE)
-@Features.Path({"JSON", "JSON"})
-module io.helidon.json {
-
-    requires static io.helidon.common.features.api;
-
-    requires io.helidon.common;
-
-    exports io.helidon.json;
-}
+package io.helidon.json.binding.converters;

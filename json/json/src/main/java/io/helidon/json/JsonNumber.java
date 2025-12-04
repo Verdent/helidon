@@ -1,9 +1,25 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.json;
 
 import java.math.BigDecimal;
 
 /**
- * TODO javadoc
+ * Represents a JSON number value.
  */
 public final class JsonNumber extends JsonValue {
 
@@ -21,7 +37,7 @@ public final class JsonNumber extends JsonValue {
     }
 
     private JsonNumber(BigDecimal bigDecimalValue) {
-        this.buffer = JsonValues.EMPTY_BYTES;
+        this.buffer = EMPTY_BYTES;
         this.start = -1;
         this.length = -1;
         this.bigDecimalValue = bigDecimalValue;
@@ -29,6 +45,12 @@ public final class JsonNumber extends JsonValue {
         this.doubleValue = bigDecimalValue.doubleValue();
     }
 
+    /**
+     * Create a JsonNumber from a BigDecimal value.
+     *
+     * @param bigDecimalValue the BigDecimal value
+     * @return a new JsonNumber
+     */
     public static JsonNumber create(BigDecimal bigDecimalValue) {
         return new JsonNumber(bigDecimalValue);
     }
@@ -47,6 +69,11 @@ public final class JsonNumber extends JsonValue {
         return (byte) (val / Math.pow(10, digits));
     }
 
+    /**
+     * Return the double value of this JsonNumber.
+     *
+     * @return the double value
+     */
     public double doubleValue() {
         if (doubleValue == null) {
             CachedParser cachedParser = JsonParserCache.getCachedParser();
@@ -58,6 +85,11 @@ public final class JsonNumber extends JsonValue {
         return doubleValue;
     }
 
+    /**
+     * Return the int value of this JsonNumber.
+     *
+     * @return the int value
+     */
     public int intValue() {
         if (intValue == null) {
             CachedParser cachedParser = JsonParserCache.getCachedParser();
@@ -69,6 +101,11 @@ public final class JsonNumber extends JsonValue {
         return intValue;
     }
 
+    /**
+     * Return the BigDecimal value of this JsonNumber.
+     *
+     * @return the BigDecimal value
+     */
     public BigDecimal bigDecimalValue() {
         if (bigDecimalValue == null) {
             CachedParser cachedParser = JsonParserCache.getCachedParser();

@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.json;
 
 import java.nio.charset.StandardCharsets;
@@ -32,13 +48,13 @@ class JsonValueParser implements JsonParser {
                     //We are having some values before this one. index need to be raised to prevet overwriting.
                     index++;
                 }
-                values[index++] = new JsonControlValue('}');
+                values[index++] = JsonControlValue.RBRACE;
                 for (JsonString key : keys) {
                     values[index + --size] = key;
-                    values[index + --size] = new JsonControlValue(':');
+                    values[index + --size] = JsonControlValue.COLON;
                     values[index + --size] = object.value(key.value(), JsonNull.instance());
                     if (size > 0) {
-                        values[index + --size] = new JsonControlValue(',');
+                        values[index + --size] = JsonControlValue.COMMA;
                     }
                 }
                 index += (keys.size() * 4) - 2;
@@ -52,11 +68,11 @@ class JsonValueParser implements JsonParser {
                     //We are having some values before this one. index need to be raised to prevet overwriting.
                     index++;
                 }
-                values[++index] = new JsonControlValue(']');
+                values[++index] = JsonControlValue.RBRACKET;
                 for (JsonValue value : array.values()) {
                     values[index + --size] = value;
                     if (size > 0) {
-                        values[index + --size] = new JsonControlValue(',');
+                        values[index + --size] = JsonControlValue.COMMA;
                     }
                 }
                 index += (array.values().size() * 2) - 2;

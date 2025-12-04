@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.json;
 
 import java.io.ByteArrayInputStream;
@@ -20,8 +36,9 @@ final class JsonStreamParser extends ArrayJsonParser {
         currentIndex = 0;
         buffer = new byte[bufferSize];
         try {
-            bufferLength = inputStream.read(buffer);
-            finished = bufferLength != bufferSize;
+            int read = inputStream.read(buffer);
+            bufferLength = (read == -1 ? 0 : read);
+            finished = (read == -1);
         } catch (IOException e) {
             throw new JsonException("Error occurred while reading JSON to the buffer.", e);
         }
@@ -58,30 +75,50 @@ final class JsonStreamParser extends ArrayJsonParser {
         try {
             if (bufferingJsonValue) {
                 if (jsonValueStart > 0) {
-                    //There is still some free space in this current buffer to be used
-                    currentIndex = bufferLength - jsonValueStart; //index has to be at the very end of the value
-                    System.arraycopy(buffer, jsonValueStart, buffer, 0, bufferLength - jsonValueStart);
+                    // There is still some free space in this current buffer to be used
+                    int valueLen = bufferLength - jsonValueStart;
+                    // index has to be at the very end of the value
+                    currentIndex = valueLen;
+                    System.arraycopy(buffer, jsonValueStart, buffer, 0, valueLen);
                     jsonValueStart = 0;
-                    int lastRead = inputStream.read(buffer, currentIndex, bufferLength - currentIndex);
-                    finished = lastRead != (bufferLength - currentIndex);
+                    int lastRead = inputStream.read(buffer, currentIndex, buffer.length - currentIndex);
+                    if (lastRead == -1) {
+                        finished = true;
+                        bufferLength = currentIndex;
+                    } else {
+                        bufferLength = currentIndex + lastRead;
+                        finished = false;
+                    }
                 } else {
-                    bufferLength = buffer.length + bufferSize;
-                    currentIndex = buffer.length;
-                    byte[] tmp = new byte[bufferLength];
-                    System.arraycopy(buffer, 0, tmp, 0, buffer.length);
-                    int lastRead = inputStream.read(tmp, currentIndex, bufferLength - currentIndex);
-                    finished = lastRead != bufferSize;
+                    int newCap = buffer.length + bufferSize;
+                    byte[] tmp = new byte[newCap];
+                    // copy only the valid bytes we currently have
+                    System.arraycopy(buffer, 0, tmp, 0, bufferLength);
+                    currentIndex = bufferLength;
+                    int lastRead = inputStream.read(tmp, currentIndex, newCap - currentIndex);
                     buffer = tmp;
+                    if (lastRead == -1) {
+                        finished = true;
+                        bufferLength = currentIndex;
+                    } else {
+                        bufferLength = currentIndex + lastRead;
+                        finished = false;
+                    }
                 }
             } else {
-                //Some parsing methods need to detect one byte after their value to see, if they are supposed to end
-                //When end is detected, they go 1 byte back to be on the right state -> end of the value
-                //if the value ends at the end of the buffer, and we would not keep the last byte from the previous
-                //we would risk to getting out of the bounds of the array buffer
+                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end
+                // When end is detected, they go 1 byte back to be on the right state -> end of the value
+                // if the value ends at the end of the buffer, and we would not keep the last byte from the previous
+                // we would risk to getting out of the bounds of the array buffer
                 buffer[0] = buffer[currentIndex - 1];
-                bufferLength = inputStream.read(buffer, 1, buffer.length - 1);
-                bufferLength += 1;
-                finished = bufferLength != bufferSize;
+                int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
+                if (lastRead == -1) {
+                    finished = true;
+                    bufferLength = 1;
+                } else {
+                    bufferLength = lastRead + 1;
+                    finished = false;
+                }
                 currentIndex = 0;
             }
         } catch (IOException e) {
@@ -95,8 +132,9 @@ final class JsonStreamParser extends ArrayJsonParser {
         inputStream = is;
         currentIndex = 0;
         try {
-            bufferLength = inputStream.read(buffer);
-            finished = bufferLength != DEFAULT_BUFFER_SIZE;
+            int read = inputStream.read(buffer);
+            bufferLength = (read == -1 ? 0 : read);
+            finished = (read == -1);
         } catch (IOException e) {
             throw new JsonException("Error occurred while reading JSON to the buffer.", e);
         }

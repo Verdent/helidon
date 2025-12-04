@@ -14,22 +14,11 @@
  * limitations under the License.
  */
 
-import io.helidon.common.features.api.Features;
-import io.helidon.common.features.api.HelidonFlavor;
-
 /**
- * Helidon JSON Processor.
- * Provides fundamental JSON parsing and generation capabilities.
+ * Helidon JSON Media Support.
+ * Provide JSON media type support for HTTP requests and responses,
+ * enabling automatic serialization and deserialization of JSON data.
+ *
+ * @see io.helidon.http.media.json.HelidonJsonSupport
  */
-@Features.Name("JSON Core")
-@Features.Description("JSON parsing and generation")
-@Features.Flavor(HelidonFlavor.SE)
-@Features.Path({"JSON", "JSON"})
-module io.helidon.json {
-
-    requires static io.helidon.common.features.api;
-
-    requires io.helidon.common;
-
-    exports io.helidon.json;
-}
+package io.helidon.http.media.json;

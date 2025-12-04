@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2025 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.helidon.json;
 
 import java.io.InputStream;
@@ -21,7 +37,7 @@ import java.util.Objects;
 public interface JsonParser {
 
     /**
-     * Creates a new JSON parser from a JSON string.
+     * Create a new JSON parser from a JSON string.
      * <p>
      * This method creates an in-memory parser that processes the entire JSON string
      * at once. Suitable for parsing small to medium-sized JSON content.
@@ -36,7 +52,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates a new JSON parser from a byte array.
+     * Create a new JSON parser from a byte array.
      * <p>
      * This method creates an in-memory parser that processes the entire JSON byte array
      * at once. Suitable for parsing small to medium-sized JSON content.
@@ -51,7 +67,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates a new JSON parser from a byte array.
+     * Create a new JSON parser from a byte array.
      * <p>
      * This method creates an in-memory parser that processes the entire JSON byte array
      * at once. Suitable for parsing small to medium-sized JSON content.
@@ -68,7 +84,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates a new JSON parser from an input stream with default buffer size.
+     * Create a new JSON parser from an input stream with default buffer size.
      * <p>
      * This method creates a streaming parser that reads JSON content from the
      * input stream incrementally. Suitable for parsing large JSON content or
@@ -84,7 +100,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates a new JSON parser from an input stream with specified buffer size.
+     * Create a new JSON parser from an input stream with specified buffer size.
      * <p>
      * This method creates a streaming parser with a custom buffer size for
      * reading JSON content from the input stream. Use this when you need to
@@ -104,7 +120,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates a new JSON parser from a pre-parsed JsonValue.
+     * Create a new JSON parser from a pre-parsed JsonValue.
      * <p>
      * This method wraps an existing JsonValue in a parser interface,
      * allowing JsonValue objects to be used wherever a JsonParser is expected.
@@ -118,7 +134,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates an empty JSON parser with no content.
+     * Create an empty JSON parser with no content.
      * <p>
      * This parser has no tokens and {@link #hasNext()} will always return false.
      * Useful for testing or as a placeholder.
@@ -131,7 +147,7 @@ public interface JsonParser {
     }
 
     /**
-     * Creates an empty streaming JSON parser.
+     * Create an empty streaming JSON parser.
      * <p>
      * This parser has no content and {@link #hasNext()} will always return false.
      * Useful for testing streaming scenarios or as a placeholder.
@@ -168,7 +184,7 @@ public interface JsonParser {
     byte nextToken();
 
     /**
-     * Returns the last byte that was read from the stream.
+     * Return the last byte that was read from the stream.
      * <p>
      * This method can be used to inspect the current parser position without
      * advancing it. Useful for debugging or conditional parsing logic.

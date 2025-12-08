@@ -208,18 +208,17 @@ public final class Json {
 
     /**
      * Controls behavior when unknown properties are encountered during deserialization.
-     * When enabled, deserialization fails if unknown properties are present.
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
     public @interface FailOnUnknown {
 
         /**
-         * Whether to fal on unknown properties during deserialization.
+         * Whether to fail on unknown properties during deserialization.
          *
          * @return true to fail, false to ignore them
          */
-        boolean value() default false;
+        boolean value() default true;
 
     }
 

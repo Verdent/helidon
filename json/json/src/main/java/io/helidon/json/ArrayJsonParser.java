@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import io.helidon.common.buffers.BufferData;
+
 class ArrayJsonParser implements JsonParser  {
 
     static final int FNV_OFFSET_BASIS = 0x811c9dc5;
@@ -137,15 +139,15 @@ class ArrayJsonParser implements JsonParser  {
         //No loop is used.
         byte b;
         if (++currentIndex == bufferLength) {
-            throw new JsonException("Incomplete JSON.");
+            throw createException("Unexpected end of the JSON found.");
         }
         b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
             return b;
         }
-        //If since space or why character was used between tokens, we should still try to optimize
+        //If space or white character was used between tokens, we should still try to optimize
         if (++currentIndex == bufferLength) {
-            throw new JsonException("Incomplete JSON.");
+            throw createException("Unexpected end of the JSON found.");
         }
         b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
@@ -159,7 +161,7 @@ class ArrayJsonParser implements JsonParser  {
                 return b;
             }
         }
-        throw new JsonException("Json incomplete!");
+        throw createException("Unexpected end of the JSON found.");
     }
 
     @Override
@@ -173,8 +175,7 @@ class ArrayJsonParser implements JsonParser  {
 
     @Override
     public JsonValue readJsonValue() {
-        byte b = currentIndex == -1 ? nextToken() : currentByte();
-        switch (b) {
+        switch (currentByte()) {
         case '{':
             return readJsonObject();
         case '[':
@@ -202,14 +203,14 @@ class ArrayJsonParser implements JsonParser  {
             checkNull();
             return JsonNull.instance();
         default:
-            throw new JsonException("Unsupported yet!");
+            throw createException("Unexpected json value type.", currentByte());
         }
     }
 
     @Override
     public JsonObject readJsonObject() {
         if (currentByte() != '{') {
-            throw new JsonException("Object start expected at index: " + realIndex() + ", but was: " + (char) currentByte());
+            throw createException("Object start expected.", currentByte());
         }
         byte b = nextToken();
         if (b == '}') {
@@ -221,11 +222,11 @@ class ArrayJsonParser implements JsonParser  {
             if (b == '"') {
                 key = readJsonString();
             } else {
-                throw new JsonException("Key name expected at index: " + realIndex() + ", but was: " + Character.toString(b));
+                throw createException("Key name start expected.", b);
             }
             b = nextToken();
             if (b != ':') {
-                throw new JsonException("Colon expected at index: " + realIndex() + ", but was: " + Character.toString(b));
+                throw createException("Colon expected.", b);
             }
             b = nextToken();
             switch (b) {
@@ -262,17 +263,17 @@ class ArrayJsonParser implements JsonParser  {
                 pairs.add(new JsonObject.Pair(key, JsonBoolean.create(readAsBoolean())));
                 break;
             default:
-                throw new JsonException("Unexpected token at index: " + realIndex());
+                throw createException("Unexpected json value type.", b);
             }
             b = nextToken();
             if (b == '}') {
                 return JsonObject.create(pairs);
             } else if (b != ',') {
-                throw new JsonException("Comma or } expected at index: " + realIndex() + ", but was: " + (char) b);
+                throw createException("Comma or object end expected.", b);
             }
             b = nextToken();
         }
-        throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
+        throw createException("Unexpected end of the object. Possibly incomplete JSON.");
     }
 
     @Override
@@ -317,17 +318,17 @@ class ArrayJsonParser implements JsonParser  {
                 values.add(JsonBoolean.create(readAsBoolean()));
                 break;
             default:
-                throw new JsonException("Invalid array value token at index: " + realIndex());
+                throw createException("Invalid json value type.", b);
             }
             b = nextToken();
             if (b == ']') {
                 return JsonArray.create(values);
             } else if (b != ',') {
-                throw new JsonException("Comma or ] expected at index: " + realIndex() + ", but was: " + (char) b);
+                throw createException("Comma or array end expected.", b);
             }
             b = nextToken();
         }
-        throw new JsonException("Unexpected end of the object at index: " + realIndex() + ", but was: " + (char) b);
+        throw createException("Unexpected end of the array. Possibly incomplete JSON.");
     }
 
     @Override
@@ -345,7 +346,7 @@ class ArrayJsonParser implements JsonParser  {
         return JsonNumber.create(buffer, start, currentIndex - start);
     }
 
-    int realIndex() {
+    long realIndex() {
         return currentIndex - 1;
     }
 
@@ -354,7 +355,7 @@ class ArrayJsonParser implements JsonParser  {
         if (checkNull()) {
             return null;
         } else if (currentByte() != '\"') {
-            throw new JsonException("Start of a string expected, but found: " + (char) currentByte());
+            throw createException("Start of a string expected", currentByte());
         }
         int readableBytes = bufferLength - currentIndex - 1;
         int firstRun = Math.min(stringBufferLength, readableBytes);
@@ -393,12 +394,12 @@ class ArrayJsonParser implements JsonParser  {
                 increaseStringBuffer();
             }
         }
-        throw new JsonException("Incomplete JSON");
+        throw createException("End of the string expected. Incomplete JSON.");
     }
 
     private char processEscapedSequence() {
         if (!hasNext()) {
-            throw new JsonException("Incomplete JSON.");
+            throw createException("Error while processing an escaped string sequence. Incomplete JSON.");
         }
         byte c = buffer[++currentIndex];
         switch (c) {
@@ -425,7 +426,7 @@ class ArrayJsonParser implements JsonParser  {
                             translateHex(buffer[++currentIndex]));
             if (Character.isHighSurrogate(tmp)) {
                 if (expectLowSurrogate) {
-                    throw new JsonException("High surrogate is always required to be followed by the low surrogate");
+                    throw createException("High surrogate is always required to be followed by the low surrogate");
                 } else {
                     expectLowSurrogate = true;
                 }
@@ -433,14 +434,15 @@ class ArrayJsonParser implements JsonParser  {
                 if (expectLowSurrogate) {
                     expectLowSurrogate = false;
                 } else {
-                    throw new JsonException("Low surrogate is always required to be after the high surrogate");
+                    throw createException("Low surrogate is always required to be after the high surrogate");
                 }
             } else if (expectLowSurrogate) {
-                throw new JsonException("Low surrogate was expected to follow the high surrogate, but was '" + tmp + "'");
+                throw createException("Low surrogate was expected to follow the high surrogate, "
+                                              + "but found " + Parsers.toPrintableForm(tmp) + "'");
             }
             return tmp;
         default:
-            throw new JsonException("Invalid escaped character: " + c);
+            throw createException("Invalid escaped value.", c);
         }
     }
 
@@ -463,7 +465,7 @@ class ArrayJsonParser implements JsonParser  {
             int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
             if (codePoint >= 0x10000) {
                 if (codePoint >= 0x110000) {
-                    throw new JsonException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
+                    throw createException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
                 }
                 codePoint -= 0x10000;
                 stringBuffer[position++] = (char) ((codePoint >> 10) + 0xD800); //High surrogate
@@ -475,7 +477,7 @@ class ArrayJsonParser implements JsonParser  {
                 stringBuffer[position++] = (char) codePoint;
             }
         } else {
-            throw new JsonException("Invalid UTF-8 byte: " + currentByte);
+            throw createException("Invalid UTF-8 byte.", currentByte);
         }
         return position;
     }
@@ -512,7 +514,7 @@ class ArrayJsonParser implements JsonParser  {
     @Override
     public char readAsChar() {
         if (currentByte() != '\"') {
-            throw new JsonException("Start of a string expected, but found: " + (char) currentByte());
+            throw createException("Start of a string expected.", currentByte());
         }
         ensure(1);
         byte b = this.buffer[++currentIndex];
@@ -525,7 +527,7 @@ class ArrayJsonParser implements JsonParser  {
             c = decodeUtf8ToChar(b);
         }
         if (nextToken() != '\"') {
-            throw new JsonException("End of a string expected, but found: " + (char) currentByte());
+            throw createException("End of a string expected.", currentByte());
         }
         return c;
     }
@@ -549,29 +551,29 @@ class ArrayJsonParser implements JsonParser  {
             int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
             if (codePoint >= 0x10000) {
                 if (codePoint >= 0x110000) {
-                    throw new JsonException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
+                    throw createException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
                 }
-                throw new JsonException("UTF-16 high and low surrogates cant be represented as a single char");
+                throw createException("UTF-16 high and low surrogates cant be represented as a single char");
             } else {
                 return (char) codePoint;
             }
         } else {
-            throw new JsonException("Invalid UTF-8 byte: " + currentByte);
+            throw createException("Invalid UTF-8 byte.", currentByte);
         }
     }
 
     @Override
     public boolean readAsBoolean() {
-        switch (currentByte()) {
-        case 't':
+        byte b = currentByte();
+        if (b == 't') {
             ensure(3);
             if (buffer[++currentIndex] == 'r'
                     && buffer[++currentIndex] == 'u'
                     && buffer[++currentIndex] == 'e') {
                 return true;
             }
-            throw new JsonException("Expected value true at index: " + (currentIndex - 3));
-        case 'f':
+            throw createException("Expected value true.");
+        } else if (b == 'f') {
             ensure(4);
             if (buffer[++currentIndex] == 'a'
                     && buffer[++currentIndex] == 'l'
@@ -579,10 +581,9 @@ class ArrayJsonParser implements JsonParser  {
                     && buffer[++currentIndex] == 'e') {
                 return false;
             }
-            throw new JsonException("Expected value false at index: " + (currentIndex - 4));
-        default:
-            throw new JsonException("Expected boolean value at index: " + currentIndex);
+            throw createException("Expected value false.");
         }
+        throw createException("Expected boolean value.", b);
     }
 
     @Override
@@ -598,7 +599,32 @@ class ArrayJsonParser implements JsonParser  {
     private byte parseByte(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) currentByte());
+            throw createException("Expected number.", currentByte());
+        }
+        if (currentIndex + 4 < bufferLength) {
+            int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+            if (digit2 == -1) {
+                currentIndex--;
+                return (byte) digit1;
+            }
+            int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+            int possibleResult = digit1 * 10 + digit2;
+            if (digit3 == -1) {
+                currentIndex--;
+                return (byte) possibleResult;
+            }
+            int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+            if (digit4 == -1) {
+                currentIndex--;
+                if (negative) {
+                    if (-possibleResult > -BYTE_SIZE_BORDER || (-possibleResult == -BYTE_SIZE_BORDER && digit3 <= 8)) {
+                        return (byte) (possibleResult * 10 + digit3);
+                    }
+                } else if (possibleResult < BYTE_SIZE_BORDER || (possibleResult == BYTE_SIZE_BORDER && digit3 <= 7)) {
+                    return (byte) (possibleResult * 10 + digit3);
+                }
+            }
+            throw createException("The number is too big for a byte value.");
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
@@ -631,25 +657,7 @@ class ArrayJsonParser implements JsonParser  {
                 return (byte) (possibleResult * 10 + digit3);
             }
         }
-        hasNext = hasNext();
-        //The Number is too big. Lets read it all and report in the exception
-        StringBuilder number = new StringBuilder();
-        if (negative) {
-            number.append("-");
-        }
-        number.append(possibleResult).append(digit3);
-        if (digit4 != -1) {
-            int digit = digit4;
-            while (digit != -1) {
-                number.append(digit);
-                digit = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
-                hasNext = hasNext();
-            }
-        }
-        if (hasNext) {
-            currentIndex--;
-        }
-        throw new JsonException("Number is too big for a byte value: " + number);
+        throw createException("The number is too big for a byte value.");
     }
 
     @Override
@@ -665,7 +673,7 @@ class ArrayJsonParser implements JsonParser  {
     private short parseShort(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) currentByte());
+            throw createException("Expected number.", currentByte());
         }
         if (currentIndex + 6 < bufferLength) {
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
@@ -700,6 +708,7 @@ class ArrayJsonParser implements JsonParser  {
                     return (short) (possibleResult * 10 + digit5);
                 }
             }
+            throw createException("The number is too big for a short value.");
         }
         boolean hasNext = hasNext();
         int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
@@ -748,25 +757,7 @@ class ArrayJsonParser implements JsonParser  {
                 return (short) (possibleResult * 10 + digit5);
             }
         }
-        hasNext = hasNext();
-        //The Number is too big. Lets read it all and report in the exception
-        StringBuilder number = new StringBuilder();
-        if (negative) {
-            number.append("-");
-        }
-        number.append(possibleResult).append(digit5);
-        if (digit6 != -1) {
-            int digit = digit6;
-            while (digit != -1) {
-                number.append(digit);
-                digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
-                hasNext = hasNext();
-            }
-        }
-        if (hasNext) {
-            currentIndex--;
-        }
-        throw new JsonException("Number is too big for a short value: " + number);
+        throw createException("The number is too big for a short value.");
     }
 
     @Override
@@ -783,7 +774,7 @@ class ArrayJsonParser implements JsonParser  {
         if (currentIndex + 11 < bufferLength) {
             int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
             if (digit1 == -1) {
-                throw new JsonException("Expected number, but was: " + (char) currentByte());
+                throw createException("Expected number.", currentByte());
             }
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
             if (digit2 == -1) {
@@ -877,11 +868,11 @@ class ArrayJsonParser implements JsonParser  {
                     return possibleResult * 10 + digit10;
                 }
             }
-            //TODO upravit na handling prilis dlouhych cisel
+            throw createException("The number is too big for an int value.");
         }
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) currentByte());
+            throw createException("Expected number.", currentByte());
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
@@ -1005,25 +996,7 @@ class ArrayJsonParser implements JsonParser  {
                 return possibleResult * 10 + digit10;
             }
         }
-        hasNext = hasNext();
-        //The Number is too big. Lets read it all and report in the exception
-        StringBuilder number = new StringBuilder();
-        if (negative) {
-            number.insert(0, "-");
-        }
-        number.append(possibleResult).append(digit10);
-        if (digit11 != -1) {
-            int digit = digit11;
-            number.append(digit);
-            while (digit != -1) {
-                digit = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
-                hasNext = hasNext();
-            }
-        }
-        if (hasNext) {
-            currentIndex--;
-        }
-        throw new JsonException("Number is too big for an int value: " + number);
+        throw createException("The number is too big for an int value.");
     }
 
     @Override
@@ -1043,7 +1016,7 @@ class ArrayJsonParser implements JsonParser  {
         boolean hasNext = hasNext();
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new JsonException("Expected number, but was: " + (char) currentByte());
+            throw createException("Expected number.", currentByte());
         }
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit2 == -1) {
@@ -1304,13 +1277,13 @@ class ArrayJsonParser implements JsonParser  {
                 return possibleResult * 10 + digit18;
             }
         }
-        throw new JsonException("The number is too big for a long value");
+        throw createException("The number is too big for a long value.");
     }
 
     private long parseLongFast(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw new IllegalStateException("Expected number, but was: " + (char) currentByte());
+            throw createException("Expected number.", currentByte());
         }
         int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
         if (digit2 == -1) {
@@ -1518,7 +1491,7 @@ class ArrayJsonParser implements JsonParser  {
                 return possibleResult * 10 + digit18;
             }
         }
-        throw new JsonException("The number is too big for a long value");
+        throw createException("The number is too big for a long value.");
     }
 
     @Override
@@ -1616,12 +1589,8 @@ class ArrayJsonParser implements JsonParser  {
 
     void ensure(int amount) {
         if (currentIndex + amount >= bufferLength) {
-            throw new JsonException("Incomplete JSON.");
+            throw createException("There is not enough data to be fetched. Incomplete JSON.");
         }
-    }
-
-    void fetchData() {
-        throw new JsonException("There are no more data to fetch. Incomplete JSON.");
     }
 
     @Override
@@ -1633,7 +1602,7 @@ class ArrayJsonParser implements JsonParser  {
                     && buffer[++currentIndex] == 'l') {
                 return true;
             }
-            throw new JsonException("Expected value null at index: " + (currentIndex - 3));
+            throw createException("Unexpected value in the JSON.");
         }
         return false;
     }
@@ -1641,7 +1610,7 @@ class ArrayJsonParser implements JsonParser  {
     @Override
     public int readStringAsHash() {
         if (currentByte() != '"') {
-            throw new JsonException("This is supported only for Strings.");
+            throw createException("Hash calculation is intended only for a String values.");
         }
         //Based on recommended offset basis and prime values.
         int fnv1aHash = FNV_OFFSET_BASIS;
@@ -1655,7 +1624,20 @@ class ArrayJsonParser implements JsonParser  {
             fnv1aHash ^= (b & 0xFF);
             fnv1aHash *= FNV_PRIME;
         }
-        throw new JsonException("Incomplete JSON.");
+        throw createException("Unexpected end of a String value. Probably an incomplete JSON.");
+    }
+
+    public JsonException createException(String message) {
+        int start = Math.max(currentIndex - 10, 0);
+        int length = Math.min(currentIndex + 10, bufferLength - start);
+        int dataIndex = currentIndex - start + 1;
+        BufferData bufferData = BufferData.create(buffer, start, length);
+
+        return new JsonException("Error at JSON index: " + realIndex() + "\n"
+                                         + "Message: " + message + "\n"
+                                         + "Data index: " + dataIndex + "\n"
+                                         + "Data: \n"
+                                         + bufferData.debugDataHex());
     }
 
     @Override
@@ -1693,8 +1675,7 @@ class ArrayJsonParser implements JsonParser  {
             currentIndex += 4;
             break;
         default:
-            //TODO UPRAVIT
-            throw new UnsupportedOperationException();
+            throw createException("Invalid JSON value to skip.");
         }
     }
 
@@ -1713,8 +1694,7 @@ class ArrayJsonParser implements JsonParser  {
                 isEscaped = false;
             }
         }
-        //TODO UPRAVIT log hlaska
-        throw new JsonException("Incomplete JSON or incorrect usage of the skip method");
+        throw createException("Unexpected end of the String. Incomplete JSON or incorrect usage of the skip method.");
     }
 
     private void skipObject() {
@@ -1727,11 +1707,10 @@ class ArrayJsonParser implements JsonParser  {
                 skipStringValue();
                 b = nextToken();
             } else {
-                throw new JsonException("Key name expected, but found: " + (char) b + ". Error at index " + realIndex());
+                throw createException("Key name start expected.", b);
             }
             if (b != ':') {
-                throw new JsonException("Colon expected after the key, but found: "
-                                                + (char) b + ". Error at index " + realIndex());
+                throw createException("Colon expected after the key.", b);
             }
             nextToken();
             skip();
@@ -1741,7 +1720,7 @@ class ArrayJsonParser implements JsonParser  {
         if (b == '}') {
             return;
         }
-        throw new JsonException("Comma or the end of the object expected, but received " + (char) b);
+        throw createException("Comma or the end of the object expected.", b);
     }
 
     private void skipArray() {
@@ -1757,7 +1736,7 @@ class ArrayJsonParser implements JsonParser  {
         if (b == ']') {
             return;
         }
-        throw new JsonException("Comma or the end of the array expected, but received " + (char) b);
+        throw createException("Comma or the end of the array expected.", b);
     }
 
     void skipNumber() {
@@ -1779,10 +1758,10 @@ class ArrayJsonParser implements JsonParser  {
         }
     }
 
-    public static int translateHex(byte b) {
+    private int translateHex(byte b) {
         int val = HEX_DIGITS[b & 0xFF];
         if (val == -1) {
-            throw new JsonException(b + " is not valid hex digit");
+            throw createException("Invalid hex digit found.", b);
         }
         return val;
     }

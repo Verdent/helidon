@@ -130,13 +130,10 @@ final class JsonStreamParser extends ArrayJsonParser {
     void ensure(int amount) {
         if (currentIndex + amount >= bufferLength) {
             fetchData();
-            if (currentIndex + amount >= bufferLength) {
-                throw new JsonException("There is not enough data to be fetched. Incomplete JSON.");
-            }
+            super.ensure(amount);
         }
     }
 
-    @Override
     void fetchData() {
         if (finished) {
             throw new JsonException("There are no more data to fetch. Incomplete JSON.");

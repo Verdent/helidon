@@ -18,18 +18,20 @@ import io.helidon.common.features.api.Features;
 import io.helidon.common.features.api.HelidonFlavor;
 
 /**
- * Helidon JSON Processor.
+ * Helidon JSON Core.
  * Provides fundamental JSON parsing and generation capabilities.
  */
 @Features.Name("JSON Core")
 @Features.Description("JSON parsing and generation")
 @Features.Flavor(HelidonFlavor.SE)
 @Features.Path({"JSON", "JSON"})
+@Features.Incubating
 module io.helidon.json {
 
     requires static io.helidon.common.features.api;
 
     requires io.helidon.common;
+    requires io.helidon.common.buffers;
 
     exports io.helidon.json;
 }

@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.codegen.CodegenContext;
+import io.helidon.codegen.CodegenException;
 import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
@@ -91,7 +92,7 @@ record ConvertedTypeInfo(TypeName converterType,
                 .map(TypeName::create)
                 .flatMap(ctx::typeInfo)
                 .flatMap(it -> processBuilderInfoFromClass(it,
-                                                           typeInfo.typeName(),
+                                                           typeInfo,
                                                            null,
                                                            builderAnnotation.get().stringValue("methodPrefix").get(),
                                                            builderAnnotation.get().stringValue("buildMethod").get(),
@@ -118,9 +119,10 @@ record ConvertedTypeInfo(TypeName converterType,
             return Optional.empty();
         }
         TypeName builderTypeName = builderMethod.get().typeName();
-        TypeInfo builderTypeInfo = ctx.typeInfo(builderTypeName).orElseThrow(); //TODO Proper exception handling
+        TypeInfo builderTypeInfo = ctx.typeInfo(builderTypeName)
+                .orElseThrow(() -> new CodegenException("Could not find builder type: " + builderTypeName, createdTypeInfo));
         return processBuilderInfoFromClass(builderTypeInfo,
-                                           createdTypeInfo.typeName(),
+                                           createdTypeInfo,
                                            builderMethod.get().elementName(),
                                            "",
                                            "build",
@@ -128,14 +130,15 @@ record ConvertedTypeInfo(TypeName converterType,
     }
     
     private static Optional<BuilderInfo> processBuilderInfoFromClass(TypeInfo builderTypeInfo,
-                                                                     TypeName createdType,
+                                                                     TypeInfo createdTypeInfo,
                                                                      String builderMethodName,
                                                                      String builderMethodPrefix,
                                                                      String buildMethod,
                                                                      Map<String, JsonProperty.Builder> properties) {
-        if (!checkBuildMethod(builderTypeInfo, createdType, buildMethod)) {
-            throw new IllegalStateException("Build method with the name \"" + buildMethod
-                                                    + "\" does not exist or does not return: " + createdType.fqName()); //TODO Proper exception handling
+        if (!checkBuildMethod(builderTypeInfo, createdTypeInfo, buildMethod)) {
+            throw new CodegenException("Build method with the name \"" + buildMethod
+                                               + "\" does not exist or does not return: " + createdTypeInfo.typeName().fqName(),
+                                       createdTypeInfo);
         }
 
         // Find all builder methods (withXXX methods)
@@ -181,7 +184,7 @@ record ConvertedTypeInfo(TypeName converterType,
                                            builderProperties));
     }
 
-    private static boolean checkBuildMethod(TypeInfo builderTypeInfo, TypeName originalType, String buildMethodName) {
+    private static boolean checkBuildMethod(TypeInfo builderTypeInfo, TypeInfo originalTypeInfo, String buildMethodName) {
         return builderTypeInfo.elementInfo()
                 .stream()
                 .filter(it -> it.elementName().equals(buildMethodName))
@@ -189,7 +192,7 @@ record ConvertedTypeInfo(TypeName converterType,
                 .filter(not(ElementInfoPredicates::isPrivate))
                 .filter(not(ElementInfoPredicates::isStatic))
                 .filter(ElementInfoPredicates::hasNoArgs)
-                .anyMatch(it -> it.typeName().equals(originalType));
+                .anyMatch(it -> it.typeName().equals(originalTypeInfo.typeName()));
     }
 
     private static Optional<TypedElementInfo> findHelidonBuilderMethod(TypeInfo typeInfo, CodegenContext ctx) {
@@ -320,22 +323,22 @@ record ConvertedTypeInfo(TypeName converterType,
                         .filter(ElementInfoPredicates::isConstructor)
                         .toList();
                 if (creators.size() > 1) {
-                    throw new IllegalStateException("Only one record constructor is allowed. "
-                                                            + "If multiple is needed, one has to be annotated with "
-                                                            + Types.JSON_CREATOR); //TODO UPRAVIT ne exceptiona
+                    throw new CodegenException("Only one record constructor is allowed. "
+                                                       + "If multiple is needed, one has to be annotated with "
+                                                       + Types.JSON_CREATOR, typeInfo);
                 }
             } else {
                 return new CreatorInfo(null, "", List.of());
             }
         } else if (creators.size() > 1) {
-            throw new IllegalStateException("Only one Creator is allowed to be set"); //TODO UPRAVIT ne exceptiona
+            throw new CodegenException("Only one Creator is allowed to be set", typeInfo);
         }
         TypedElementInfo creator = creators.getFirst();
         ElementKind creatorKind = creator.kind();
         if (creatorKind == ElementKind.METHOD && !creator.elementModifiers().contains(Modifier.STATIC)) {
-            throw new IllegalStateException("Creator has to be either on constructor or static builderMethodName"); //TODO UPRAVIT ne exceptiona
+            throw new CodegenException("Creator has to be either on constructor or static method", typeInfo);
         } else if (creator.accessModifier() == AccessModifier.PRIVATE) {
-            throw new IllegalStateException("Creator has to be non-private"); //TODO UPRAVIT ne exceptiona
+            throw new CodegenException("Creator has to be non-private", typeInfo);
         }
         String creatorMethod = creator.elementName();
         List<String> parameterNames = new ArrayList<>();

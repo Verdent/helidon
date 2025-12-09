@@ -400,8 +400,29 @@ class JsonConverterGenerator {
             method.addContent(originalType).addContent(" instance = new ")
                     .addContent(originalType).addContentLine("();");
         }
-        method.addContentLine("if (lastByte != '}') {")
-                .addContentLine("while(true) {")
+        method.addContentLine("if (lastByte == '}') {");
+        if (hasCreator) {
+            TypeName originalType = converterInfo.originalType();
+
+            method.addContent("return ");
+            if (creatorKind == ElementKind.METHOD) {
+                method.addContent(originalType).addContent("." + creatorInfo.method() + "(");
+            } else {
+                method.addContent("new ").addContent(originalType).addContent("(");
+            }
+            String properties = jsonProperties.stream()
+                    .filter(JsonProperty::usedInCreator)
+                    .map(property -> property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX)
+                    .collect(Collectors.joining(", "));
+            method.addContent(properties).addContentLine(");");
+        } else if (hasBuilder) {
+            BuilderInfo builderInfo = converterInfo.builderInfo().get();
+            method.addContent("return builder.").addContent(builderInfo.buildMethodName()).addContentLine("();");
+        } else {
+            method.addContentLine("return instance;");
+        }
+        method.addContentLine("}");
+        method.addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContentLine("(\"Key start expected. Found: \" + (char) lastByte);")
@@ -494,7 +515,6 @@ class JsonConverterGenerator {
                 .addContentLine("} else {")
                 .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
                 .addContentLine("(\"Comma or end of object expected. Found: \" + (char) lastByte);")
-                .addContentLine("}")
                 .addContentLine("}");
         method.addContentLine("}");
         jsonProperties.stream()
@@ -516,18 +536,11 @@ class JsonConverterGenerator {
                 method.addContent(originalType).addContent(" instance = new ")
                         .addContent(originalType).addContent("(");
             }
-            boolean first = true;
-            for (JsonProperty property : jsonProperties) {
-                if (property.usedInCreator()) {
-                    if (first) {
-                        first = false;
-                    } else {
-                        method.addContent(", ");
-                    }
-                    method.addContent(property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX);
-                }
-            }
-            method.addContentLine(");");
+            String properties = jsonProperties.stream()
+                    .filter(JsonProperty::usedInCreator)
+                    .map(property -> property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX)
+                    .collect(Collectors.joining(", "));
+            method.addContent(properties).addContentLine(");");
             for (JsonProperty property : jsonProperties) {
                 if (!property.usedInCreator()) {
                     if (property.directFieldAccess()) {

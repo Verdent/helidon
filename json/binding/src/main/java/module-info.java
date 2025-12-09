@@ -26,6 +26,7 @@ import io.helidon.common.features.api.HelidonFlavor;
 @Features.Description("JSON object binding")
 @Features.Flavor(HelidonFlavor.SE)
 @Features.Path({"JSON", "Binding"})
+@Features.Incubating
 module io.helidon.json.binding {
 
     requires static io.helidon.common.features.api;

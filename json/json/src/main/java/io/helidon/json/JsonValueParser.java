@@ -195,4 +195,9 @@ class JsonValueParser implements JsonParser {
         current = null;
     }
 
+    @Override
+    public JsonException createException(String message) {
+        return new JsonException(message);
+    }
+
 }

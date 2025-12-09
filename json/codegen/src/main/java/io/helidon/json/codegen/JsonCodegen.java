@@ -19,6 +19,7 @@ package io.helidon.json.codegen;
 import java.util.Collection;
 
 import io.helidon.codegen.CodegenContext;
+import io.helidon.codegen.CodegenException;
 import io.helidon.codegen.RoundContext;
 import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassModel;
@@ -40,7 +41,11 @@ class JsonCodegen implements CodegenExtension {
     public void process(RoundContext roundContext) {
         Collection<TypeInfo> typeInfos = roundContext.annotatedTypes(Types.JSON_ENTITY);
         for (TypeInfo typeInfo : typeInfos) {
-            process(typeInfo, roundContext);
+            try {
+                process(typeInfo, roundContext);
+            } catch (Throwable ex) {
+                throw new CodegenException("Failed to generate JSON code for the type: " + typeInfo, ex, typeInfo);
+            }
         }
     }
 
@@ -63,7 +68,7 @@ class JsonCodegen implements CodegenExtension {
         } else {
             generatedType = TypeName.builder()
                     .from(annotatedTypeName)
-                    .className(annotatedTypeName.className()+"_BindingFactory")
+                    .className(annotatedTypeName.className() + "_BindingFactory")
                     .build();
             builder = ClassModel.builder().type(generatedType);
             JsonBindingFactoryGenerator.generateBindingFactory(builder, typeInfo, ctx);

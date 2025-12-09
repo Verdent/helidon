@@ -417,4 +417,10 @@ public interface JsonParser {
      */
     void skip();
 
+    JsonException createException(String message);
+
+    default JsonException createException(String message, byte c) {
+        return createException(message + " Found byte: " + Parsers.toPrintableForm(c));
+    }
+
 }

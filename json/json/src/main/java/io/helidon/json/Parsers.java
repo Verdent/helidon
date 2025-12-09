@@ -14,30 +14,27 @@
  * limitations under the License.
  */
 
-package io.helidon.json.binding;
+package io.helidon.json;
 
-import java.util.Optional;
+class Parsers {
 
-import io.helidon.builder.api.Prototype;
+    static String toPrintableForm(byte c) {
+        return toPrintableForm((char) c);
+    }
 
-/**
- * Configuration for JSON formatting.
- */
-@Prototype.Blueprint
-interface FormatterBlueprint {
+    static String toPrintableForm(char c) {
+        if (Character.isDigit(c) || Character.isAlphabetic(c)) {
+            return "'" + c + "'";
+        }
+        return "0x" + hex(c);
+    }
 
-    /**
-     * The format pattern.
-     *
-     * @return the format pattern
-     */
-    Optional<String> format();
-
-    /**
-     * The locale string.
-     *
-     * @return the locale
-     */
-    Optional<String> locale();
+    private static String hex(char c) {
+        String hexString = Integer.toHexString(c);
+        if (hexString.length() == 1) {
+            return "0" + hexString;
+        }
+        return hexString;
+    }
 
 }

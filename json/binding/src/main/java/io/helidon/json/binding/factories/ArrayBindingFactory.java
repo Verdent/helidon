@@ -98,7 +98,7 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
         public Object[] deserialize(JsonParser parser) {
             byte lastByte = parser.currentByte();
             if (lastByte != '[') {
-                throw new JsonException("Expected '[' to start an array but found: " + Character.toString(lastByte));
+                throw parser.createException("Expected '[' to start an array.", lastByte);
             }
             Object[] array = createArrayInstance(5);
             lastByte = parser.nextToken();
@@ -119,7 +119,7 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {
-                throw new JsonException("Expected ',' or ']' but found: " + Character.toString(lastByte));
+                throw parser.createException("Expected ',' or ']'.", lastByte);
             }
             if (index == array.length) {
                 return array;

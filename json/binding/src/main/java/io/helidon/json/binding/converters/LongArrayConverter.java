@@ -52,7 +52,7 @@ class LongArrayConverter implements JsonConverter<long[]> {
     public long[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw new JsonException("Expected '[' to start an array but found: " + Character.toString(lastByte));
+            throw parser.createException("Expected '[' to start an array", lastByte);
         }
         long[] array = new long[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class LongArrayConverter implements JsonConverter<long[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw new JsonException("Expected ']' but found: " + Character.toString(lastByte));
+            throw parser.createException("Expected ']'", lastByte);
         }
         if (index == array.length) {
             return array;

@@ -1004,103 +1004,7 @@ class ArrayJsonParser implements JsonParser {
 
     private int parseInt(boolean negative) {
         if (currentIndex + 11 < bufferLength) {
-            int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
-            if (digit1 == -1) {
-                throw createException("Expected number.", currentByte());
-            }
-            int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit2 == -1) {
-                currentIndex--;
-                return digit1;
-            }
-            int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit3 == -1) {
-                currentIndex--;
-                return digit1 * 10 + digit2;
-            }
-            int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit4 == -1) {
-                currentIndex--;
-                return digit1 * 100
-                        + digit2 * 10
-                        + digit3;
-            }
-            int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit5 == -1) {
-                currentIndex--;
-                return digit1 * 1000
-                        + digit2 * 100
-                        + digit3 * 10
-                        + digit4;
-            }
-            int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit6 == -1) {
-                currentIndex--;
-                return digit1 * 10000
-                        + digit2 * 1000
-                        + digit3 * 100
-                        + digit4 * 10
-                        + digit5;
-            }
-            int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit7 == -1) {
-                currentIndex--;
-                return digit1 * 100000
-                        + digit2 * 10000
-                        + digit3 * 1000
-                        + digit4 * 100
-                        + digit5 * 10
-                        + digit6;
-            }
-            int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit8 == -1) {
-                currentIndex--;
-                return digit1 * 1000000
-                        + digit2 * 100000
-                        + digit3 * 10000
-                        + digit4 * 1000
-                        + digit5 * 100
-                        + digit6 * 10
-                        + digit7;
-            }
-            int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit9 == -1) {
-                currentIndex--;
-                return digit1 * 10000000
-                        + digit2 * 1000000
-                        + digit3 * 100000
-                        + digit4 * 10000
-                        + digit5 * 1000
-                        + digit6 * 100
-                        + digit7 * 10
-                        + digit8;
-            }
-            int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            int possibleResult = digit1 * 100000000
-                    + digit2 * 10000000
-                    + digit3 * 1000000
-                    + digit4 * 100000
-                    + digit5 * 10000
-                    + digit6 * 1000
-                    + digit7 * 100
-                    + digit8 * 10
-                    + digit9;
-            if (digit10 == -1) {
-                currentIndex--;
-                return possibleResult;
-            }
-            int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
-            if (digit11 == -1) {
-                currentIndex--;
-                if (negative) {
-                    if (-possibleResult > -INT_SIZE_BORDER || (-possibleResult == -INT_SIZE_BORDER && digit10 <= 8)) {
-                        return possibleResult * 10 + digit10;
-                    }
-                } else if (possibleResult < INT_SIZE_BORDER || (possibleResult == INT_SIZE_BORDER && digit10 <= 7)) {
-                    return possibleResult * 10 + digit10;
-                }
-            }
-            throw createException("The number is too big for an int value.");
+            return parseIntFast(negative);
         }
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
@@ -1231,6 +1135,107 @@ class ArrayJsonParser implements JsonParser {
         throw createException("The number is too big for an int value.");
     }
 
+    private int parseIntFast(boolean negative) {
+        int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
+        if (digit1 == -1) {
+            throw createException("Expected number.", currentByte());
+        }
+        int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit2 == -1) {
+            currentIndex--;
+            return digit1;
+        }
+        int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit3 == -1) {
+            currentIndex--;
+            return digit1 * 10 + digit2;
+        }
+        int digit4 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit4 == -1) {
+            currentIndex--;
+            return digit1 * 100
+                    + digit2 * 10
+                    + digit3;
+        }
+        int digit5 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit5 == -1) {
+            currentIndex--;
+            return digit1 * 1000
+                    + digit2 * 100
+                    + digit3 * 10
+                    + digit4;
+        }
+        int digit6 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit6 == -1) {
+            currentIndex--;
+            return digit1 * 10000
+                    + digit2 * 1000
+                    + digit3 * 100
+                    + digit4 * 10
+                    + digit5;
+        }
+        int digit7 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit7 == -1) {
+            currentIndex--;
+            return digit1 * 100000
+                    + digit2 * 10000
+                    + digit3 * 1000
+                    + digit4 * 100
+                    + digit5 * 10
+                    + digit6;
+        }
+        int digit8 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit8 == -1) {
+            currentIndex--;
+            return digit1 * 1000000
+                    + digit2 * 100000
+                    + digit3 * 10000
+                    + digit4 * 1000
+                    + digit5 * 100
+                    + digit6 * 10
+                    + digit7;
+        }
+        int digit9 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit9 == -1) {
+            currentIndex--;
+            return digit1 * 10000000
+                    + digit2 * 1000000
+                    + digit3 * 100000
+                    + digit4 * 10000
+                    + digit5 * 1000
+                    + digit6 * 100
+                    + digit7 * 10
+                    + digit8;
+        }
+        int digit10 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        int possibleResult = digit1 * 100000000
+                + digit2 * 10000000
+                + digit3 * 1000000
+                + digit4 * 100000
+                + digit5 * 10000
+                + digit6 * 1000
+                + digit7 * 100
+                + digit8 * 10
+                + digit9;
+        if (digit10 == -1) {
+            currentIndex--;
+            return possibleResult;
+        }
+        int digit11 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        if (digit11 == -1) {
+            currentIndex--;
+            if (negative) {
+                if (-possibleResult > -INT_SIZE_BORDER || (-possibleResult == -INT_SIZE_BORDER && digit10 <= 8)) {
+                    return possibleResult * 10 + digit10;
+                }
+            } else if (possibleResult < INT_SIZE_BORDER || (possibleResult == INT_SIZE_BORDER && digit10 <= 7)) {
+                return possibleResult * 10 + digit10;
+            }
+        }
+        throw createException("The number is too big for an int value.");
+    }
+
+    @SuppressWarnings("checkstyle:MethodLength")
     private long parseLong(boolean negative) {
         if (currentIndex + 19 < bufferLength) {
             return parseLongFast(negative);
@@ -1502,6 +1507,7 @@ class ArrayJsonParser implements JsonParser {
         throw createException("The number is too big for a long value.");
     }
 
+    @SuppressWarnings("checkstyle:MethodLength")
     private long parseLongFast(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {

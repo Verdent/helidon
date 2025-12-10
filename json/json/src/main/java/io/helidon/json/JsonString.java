@@ -90,6 +90,11 @@ public final class JsonString extends JsonValue {
     }
 
     @Override
+    public int hashCode() {
+        return value().hashCode();
+    }
+
+    @Override
     public JsonValueType type() {
         return JsonValueType.STRING;
     }

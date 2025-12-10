@@ -52,7 +52,7 @@ class FloatArrayConverter implements JsonConverter<float[]> {
     public float[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw new JsonException("Expected '[' to start an array but found: " + Character.toString(lastByte));
+            throw parser.createException("Expected '[' to start an array", lastByte);
         }
         float[] array = new float[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class FloatArrayConverter implements JsonConverter<float[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw new JsonException("Expected ']' but found: " + Character.toString(lastByte));
+            throw parser.createException("Expected ']'", lastByte);
         }
         if (index == array.length) {
             return array;

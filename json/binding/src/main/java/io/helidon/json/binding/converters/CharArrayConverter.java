@@ -52,7 +52,7 @@ class CharArrayConverter implements JsonConverter<char[]> {
     public char[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw new JsonException("Expected '[' to start an array but found: " + (char) lastByte);
+            throw parser.createException("Expected '[' to start an array", lastByte);
         }
         char[] array = new char[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class CharArrayConverter implements JsonConverter<char[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw new JsonException("Expected ',' or ']' but found: " + (char) lastByte);
+            throw parser.createException("Expected ',' or ']'", lastByte);
         }
         if (index == array.length) {
             return array;

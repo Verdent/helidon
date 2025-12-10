@@ -418,10 +418,26 @@ public interface JsonParser {
      */
     void skip();
 
+    /**
+     * Create a JsonException with the given message.
+     *
+     * @param message the exception message
+     * @return a JsonException
+     */
     JsonException createException(String message);
 
+    /**
+     * Create a JsonException with the given message and found byte.
+     *
+     * @param message the exception message
+     * @param c the byte that caused the exception
+     * @return a JsonException
+     */
     default JsonException createException(String message, byte c) {
-        return createException(message + " Found: " + Parsers.toPrintableForm(c));
+        if (message.endsWith(".")) {
+            return createException(message + " Found: " + Parsers.toPrintableForm(c));
+        }
+        return createException(message + ". Found: " + Parsers.toPrintableForm(c));
     }
 
 }

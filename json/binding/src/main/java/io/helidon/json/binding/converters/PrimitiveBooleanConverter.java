@@ -58,17 +58,17 @@ class PrimitiveBooleanConverter implements JsonConverter<Boolean> {
                 toReturn = false;
                 break;
             default:
-                throw new JsonException("Expected a boolean value but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected a boolean value", lastByte);
             }
             if (parser.nextToken() != '\"') {
-                throw new JsonException("Expected '\"' to end the boolean value but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected '\"' to end the boolean value", lastByte);
             }
             return toReturn;
         case 't':
         case 'f':
             return parser.readAsBoolean();
         default:
-            throw new JsonException("Expected a boolean value but got '" + (char) lastByte + "'");
+            throw parser.createException("Expected a boolean value", lastByte);
         }
     }
 

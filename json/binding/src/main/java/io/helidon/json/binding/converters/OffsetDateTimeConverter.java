@@ -53,7 +53,7 @@ class OffsetDateTimeConverter implements JsonConverter<OffsetDateTime> {
         if (parser.currentByte() == '"') {
             return OffsetDateTime.parse(parser.readString());
         }
-        throw new JsonException("Only the string format of the OffsetDateTime is supported.");
+        throw parser.createException("Only the string format of the OffsetDateTime is supported.");
     }
 
     @Override

@@ -18,6 +18,9 @@ package io.helidon.json;
 
 class Parsers {
 
+    private Parsers() {
+    }
+
     static String toPrintableForm(byte c) {
         return toPrintableForm((char) c);
     }

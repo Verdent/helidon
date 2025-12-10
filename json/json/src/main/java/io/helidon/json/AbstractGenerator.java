@@ -32,11 +32,11 @@ abstract class AbstractGenerator implements Generator {
     static final byte MINUS = '-';
 
     // stack structure tracking: true = object, false = array
-    final boolean[] structureType = new boolean[STACK_SIZE];
+    private final boolean[] structureType = new boolean[STACK_SIZE];
 
-    boolean first = true;
-    boolean keyWritten = false;
-    int depth = 0;
+    private boolean first = true;
+    private boolean keyWritten = false;
+    private int depth = 0;
 
     abstract void writeByte(byte value);
 

@@ -83,7 +83,7 @@ class CalendarConverter implements JsonConverter<Calendar> {
             ZonedDateTime result = LocalDate.from(parsed).atTime(time).atZone(zone);
             return GregorianCalendar.from(result);
         }
-        throw new JsonException("Only the string format of the Calendar is supported.");
+        throw parser.createException("Only the string format of the Calendar is supported.");
     }
 
     @Override

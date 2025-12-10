@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
 
 class GeneratorOutputStream extends AbstractGenerator {
 
-    private final static byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
 
     private final OutputStream outputStream;
     private final byte[] buffer = new byte[256];

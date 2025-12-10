@@ -19,7 +19,7 @@ package io.helidon.json;
 /**
  * Base class for all JSON value types in Helidon JSON processing.
  */
-public sealed abstract class JsonValue
+public abstract sealed class JsonValue
         permits JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString, JsonControlValue {
 
     static final byte[] EMPTY_BYTES = new byte[0];

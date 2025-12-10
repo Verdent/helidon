@@ -19,11 +19,10 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonNull;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -34,7 +33,7 @@ class JsonNullConverter implements JsonConverter<JsonNull> {
 
     @Override
     public JsonNull deserialize(JsonParser parser) {
-        throw new JsonException("Expected null value, but got: " + (char) parser.currentByte());
+        throw parser.createException("Expected null value", parser.currentByte());
     }
 
     @Override

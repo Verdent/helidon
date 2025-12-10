@@ -94,7 +94,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             if (value) {
                 writer.write(TRUE);
-            }  else {
+            } else {
                 writer.write(FALSE);
             }
         } catch (IOException e) {

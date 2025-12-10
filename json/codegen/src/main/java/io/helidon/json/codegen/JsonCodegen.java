@@ -33,7 +33,7 @@ class JsonCodegen implements CodegenExtension {
 
     private final CodegenContext ctx;
 
-    public JsonCodegen(CodegenContext ctx) {
+    JsonCodegen(CodegenContext ctx) {
         this.ctx = ctx;
     }
 

@@ -25,15 +25,15 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonException;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -75,7 +75,7 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
         private JsonSerializer<Object> keySerializer;
         private JsonSerializer<Object> valueSerializer;
 
-        public MapConverter(Type type) {
+        MapConverter(Type type) {
             this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 keyType = parameterizedType.getActualTypeArguments()[0];
@@ -111,17 +111,17 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
             Map<Object, Object> map = new HashMap<>();
             byte lastByte = parser.currentByte();
             if (lastByte != '{') {
-                throw new JsonException("Map start '{' expected. Found: " + Character.toString(lastByte));
+                throw parser.createException("Expected '{' to start a map", lastByte);
             }
             lastByte = parser.nextToken();
             if (lastByte != '}') {
                 if (lastByte != '"') {
-                    throw new JsonException("Map key expected. Found: " + Character.toString(lastByte));
+                    throw parser.createException("Expected a map key", lastByte);
                 }
                 Object key = Deserializers.deserialize(parser, keyDeserializer);
                 lastByte = parser.nextToken();
                 if (lastByte != ':') {
-                    throw new JsonException("Key value separator ':' expected. Found: " + Character.toString(lastByte));
+                    throw parser.createException("Expected ':' to separate key and value", lastByte);
                 }
                 parser.nextToken();
                 Object value = Deserializers.deserialize(parser, valueDeserializer);
@@ -132,7 +132,7 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
                     key = Deserializers.deserialize(parser, keyDeserializer);
                     lastByte = parser.nextToken();
                     if (lastByte != ':') {
-                        throw new JsonException("Key value separator ':' expected. Found: " + Character.toString(lastByte));
+                        throw parser.createException("Expected ':' to separate key and value", lastByte);
                     }
                     parser.nextToken();
                     value = Deserializers.deserialize(parser, valueDeserializer);
@@ -140,7 +140,7 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
                     lastByte = parser.nextToken();
                 }
                 if (lastByte != '}') {
-                    throw new JsonException("Map key expected. Found: " + Character.toString(lastByte));
+                    throw parser.createException("Expected a map key", lastByte);
                 }
             }
             return map;
@@ -157,7 +157,8 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
             valueDeserializer = jsonBindingConfigurator.deserializer(valueType);
             keySerializer = jsonBindingConfigurator.serializer(keyType);
             if (!keySerializer.isMapKeySerializer()) {
-                throw new JsonException("Unsupported key serializer: " + keySerializer.type());
+                throw new JsonException("Unsupported key serializer: "
+                        + keySerializer.type());
             }
             valueSerializer = jsonBindingConfigurator.serializer(valueType);
         }

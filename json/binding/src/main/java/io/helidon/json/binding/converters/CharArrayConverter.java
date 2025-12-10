@@ -19,14 +19,14 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonDeserializer;
-import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.Deserializers;
+import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.JsonDeserializer;
+import io.helidon.json.binding.JsonSerializer;
 import io.helidon.service.registry.Service;
 
 @Service.PerLookup
@@ -52,7 +52,7 @@ class CharArrayConverter implements JsonConverter<char[]> {
     public char[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw new JsonException("Array start expected. Found: " + (char) lastByte);
+            throw new JsonException("Expected '[' to start an array but found: " + (char) lastByte);
         }
         char[] array = new char[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class CharArrayConverter implements JsonConverter<char[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+            throw new JsonException("Expected ',' or ']' but found: " + (char) lastByte);
         }
         if (index == array.length) {
             return array;

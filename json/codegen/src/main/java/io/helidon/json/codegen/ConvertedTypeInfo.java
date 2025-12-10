@@ -36,13 +36,12 @@ import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypedElementInfo;
 
-import static java.util.function.Predicate.not;
-
 import static io.helidon.common.types.TypeNames.OBJECT;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_BOOLEAN;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_INT;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_VOID;
 import static io.helidon.common.types.TypeNames.STRING;
+import static java.util.function.Predicate.not;
 
 record ConvertedTypeInfo(TypeName converterType,
                          TypeName originalType,
@@ -111,6 +110,15 @@ record ConvertedTypeInfo(TypeName converterType,
                                      builderInfo);
     }
 
+    static boolean needsResolving(TypeName typeName) {
+        for (TypeName typeArgument : typeName.typeArguments()) {
+            if (needsResolving(typeArgument)) {
+                return true;
+            }
+        }
+        return typeName.generic();
+    }
+
     private static Optional<BuilderInfo> processBuilderInfo(TypeInfo createdTypeInfo,
                                                             Map<String, JsonProperty.Builder> properties,
                                                             CodegenContext ctx) {
@@ -128,7 +136,7 @@ record ConvertedTypeInfo(TypeName converterType,
                                            "build",
                                            properties);
     }
-    
+
     private static Optional<BuilderInfo> processBuilderInfoFromClass(TypeInfo builderTypeInfo,
                                                                      TypeInfo createdTypeInfo,
                                                                      String builderMethodName,
@@ -160,7 +168,7 @@ record ConvertedTypeInfo(TypeName converterType,
             String propertyName = methodToFieldName(builderMethodPrefix, methodName);
 
             if (builderProperties.contains(method.elementName())) {
-                //TODO ignore or throw an exception if multiple builder methods found for a property.
+                // Multiple builder methods found for a property; ignoring duplicates.
                 continue;
             }
 
@@ -272,7 +280,9 @@ record ConvertedTypeInfo(TypeName converterType,
         for (TypedElementInfo method : methods) {
             String methodName = method.elementName();
             if (isGetter(method, detectedAccessorStyle)) {
-                String prefix = detectedAccessorStyle.equals("RECORD") ? "" : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
+                String prefix = detectedAccessorStyle.equals("RECORD")
+                        ? ""
+                        : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
                 String propertyName = methodToFieldName(prefix, methodName);
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .getterName(methodName)
@@ -372,15 +382,6 @@ record ConvertedTypeInfo(TypeName converterType,
             return builder.build();
         }
         return elementTypeName;
-    }
-
-    static boolean needsResolving(TypeName typeName) {
-        for (TypeName typeArgument : typeName.typeArguments()) {
-            if (needsResolving(typeArgument)) {
-                return true;
-            }
-        }
-        return typeName.generic();
     }
 
     private static boolean isGetter(TypedElementInfo typedElementInfo, String accessorStyle) {

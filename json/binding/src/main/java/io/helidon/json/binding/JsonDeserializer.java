@@ -28,6 +28,8 @@ public interface JsonDeserializer<T> {
 
     /**
      * Deserializes JSON data from the parser into an object of type T.
+     * This method should never be called if the value in the parser is null.
+     * If the value is null, use {@link #deserializeNull()} instead.
      *
      * @param parser the JSON parser to read from
      * @return the deserialized object

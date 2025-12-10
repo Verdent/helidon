@@ -21,10 +21,9 @@ import java.time.LocalDate;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -53,7 +52,7 @@ class LocalDateConverter implements JsonConverter<LocalDate> {
         if (parser.currentByte() == '"') {
             return LocalDate.parse(parser.readString());
         }
-        throw new JsonException("Only the string format of the LocalDate supported.");
+        throw parser.createException("Only the string format of the LocalDate is supported.");
     }
 
     @Override

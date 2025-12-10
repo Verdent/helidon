@@ -25,14 +25,13 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -71,7 +70,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
         private volatile JsonDeserializer<Object> deserializer;
         private volatile JsonSerializer<Object> serializer;
 
-        public ListConverter(Type type) {
+        ListConverter(Type type) {
             this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 componentType = parameterizedType.getActualTypeArguments()[0];
@@ -100,7 +99,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
         public List<?> deserialize(JsonParser parser) {
             byte lastByte = parser.currentByte();
             if (lastByte != '[') {
-                throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
+                throw parser.createException("Expected '[' to start an array", lastByte);
             }
             lastByte = parser.nextToken();
             if (lastByte == ']') {
@@ -113,7 +112,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
                 list.add(v1);
                 return list;
             } else if (lastByte != ',') {
-                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+                throw parser.createException("Expected ',' or ']'", lastByte);
             }
             parser.nextToken();
             Object v2 = parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);
@@ -124,7 +123,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
                 list.add(v2);
                 return list;
             } else if (lastByte != ',') {
-                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+                throw parser.createException("Expected ',' or ']'", lastByte);
             }
             parser.nextToken();
             Object v3 = parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);
@@ -136,7 +135,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
                 list.add(v3);
                 return list;
             } else if (lastByte != ',') {
-                throw new JsonException("Array end or comma expected, received: " + (char) lastByte);
+                throw parser.createException("Expected ',' or ']'", lastByte);
             }
             List<Object> list = createInstance(10);
             list.add(v1);
@@ -148,7 +147,7 @@ class ListBindingFactory implements JsonBindingFactory<List<?>> {
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {
-                throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
+                throw parser.createException("Expected ']'", lastByte);
             }
             return list;
         }

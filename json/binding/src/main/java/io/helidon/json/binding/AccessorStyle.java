@@ -16,6 +16,9 @@
 
 package io.helidon.json.binding;
 
+/**
+ * Enumeration of accessor styles for JSON binding.
+ */
 public enum AccessorStyle {
 
     /**

@@ -23,7 +23,6 @@ class JsonBindingConfigCustomMethods {
     private JsonBindingConfigCustomMethods() {
     }
 
-
     /**
      * Add type converter.
      *

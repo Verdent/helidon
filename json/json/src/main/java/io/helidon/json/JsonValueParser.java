@@ -41,7 +41,8 @@ class JsonValueParser implements JsonParser {
                 JsonObject object = current.asObject();
                 Set<JsonString> keys = object.keys();
                 //We need to calculate how many values we need to add + how many commas
-                //key size needs to be multiplied by 4, because for every key, nad value we will add : and , (-1 for the last object)
+                //key size needs to be multiplied by 4, because for every key, nad value we will add : and , (-1 for the last
+                // object)
                 int size = (keys.size() * 4) - 1;
                 ensureCapacity(size + 1);
                 if (index > 0) {

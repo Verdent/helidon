@@ -123,7 +123,7 @@ abstract class SingleValueTest {
 
     abstract JsonParser createParser(String template);
 
-    static class JsonStreamParserSingleValueTest extends SingleValueTest{
+    static class JsonStreamParserSingleValueTest extends SingleValueTest {
 
         @Override
         JsonParser createParser(String template) {
@@ -133,7 +133,7 @@ abstract class SingleValueTest {
 
     }
 
-    static class JsonParserSingleValueTest extends SingleValueTest{
+    static class JsonParserSingleValueTest extends SingleValueTest {
 
         @Override
         JsonParser createParser(String template) {

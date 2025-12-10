@@ -23,15 +23,15 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonException;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -98,7 +98,7 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
         public Object[] deserialize(JsonParser parser) {
             byte lastByte = parser.currentByte();
             if (lastByte != '[') {
-                throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
+                throw new JsonException("Expected '[' to start an array but found: " + Character.toString(lastByte));
             }
             Object[] array = createArrayInstance(5);
             lastByte = parser.nextToken();
@@ -119,7 +119,7 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {
-                throw new JsonException("Array end or comma expected, received: " + Character.toString(lastByte));
+                throw new JsonException("Expected ',' or ']' but found: " + Character.toString(lastByte));
             }
             if (index == array.length) {
                 return array;
@@ -134,15 +134,15 @@ class ArrayBindingFactory implements JsonBindingFactory<Object[]> {
             return type;
         }
 
-        private Object[] createArrayInstance(int size) {
-            return (Object[]) Array.newInstance(componentType, size);
-        }
-
         @Override
         @SuppressWarnings("unchecked")
         public void configure(JsonBindingConfigurator jsonBindingConfigurator) {
             deserializer = (JsonDeserializer<Object>) jsonBindingConfigurator.deserializer(componentType);
             serializer = (JsonSerializer<Object>) jsonBindingConfigurator.serializer(componentType);
+        }
+
+        private Object[] createArrayInstance(int size) {
+            return (Object[]) Array.newInstance(componentType, size);
         }
     }
 }

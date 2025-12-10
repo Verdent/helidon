@@ -24,15 +24,14 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.Deserializers;
 import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.JsonBindingFactory;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -71,7 +70,7 @@ class SetBindingFactory implements JsonBindingFactory<Set<?>> {
         private JsonDeserializer<Object> deserializer;
         private JsonSerializer<Object> serializer;
 
-        public SetConverter(Type type) {
+        SetConverter(Type type) {
             this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 componentType = parameterizedType.getActualTypeArguments()[0];
@@ -101,7 +100,7 @@ class SetBindingFactory implements JsonBindingFactory<Set<?>> {
             Set<Object> set = new HashSet<>();
             byte lastByte = parser.currentByte();
             if (lastByte != '[') {
-                throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
+                throw parser.createException("Expected '[' to start an array", lastByte);
             }
             lastByte = parser.nextToken();
             if (lastByte != ']') {
@@ -113,7 +112,7 @@ class SetBindingFactory implements JsonBindingFactory<Set<?>> {
                     lastByte = parser.nextToken();
                 }
                 if (lastByte != ']') {
-                    throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
+                    throw parser.createException("Expected ']'", lastByte);
                 }
             }
             return set;

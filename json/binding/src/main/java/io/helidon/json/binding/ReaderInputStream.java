@@ -50,7 +50,7 @@ class ReaderInputStream extends InputStream {
     public int read(byte[] b, int off, int len) throws IOException {
         Objects.requireNonNull(b);
         if (off < 0 || len < 0 || len > b.length - off) {
-            throw new IllegalStateException("Invalid offset/length argument");
+            throw new IllegalStateException("Invalid offset/length arguments");
         }
         if (len == 0) {
             return 0;
@@ -59,6 +59,11 @@ class ReaderInputStream extends InputStream {
             return -1;
         }
         return fillByteArray(b, off, len);
+    }
+
+    @Override
+    public void close() throws IOException {
+        reader.close();
     }
 
     private int fillByteArray(byte[] bytes, int off, int len) throws IOException {
@@ -174,10 +179,5 @@ class ReaderInputStream extends InputStream {
             eof = true;
         }
         charPosition = 0;
-    }
-
-    @Override
-    public void close() throws IOException {
-        reader.close();
     }
 }

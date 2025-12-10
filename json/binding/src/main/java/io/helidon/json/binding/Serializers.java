@@ -18,11 +18,24 @@ package io.helidon.json.binding;
 
 import io.helidon.json.Generator;
 
+/**
+ * Utility class for serialization operations.
+ */
 public final class Serializers {
 
     private Serializers() {
     }
 
+    /**
+     * Serializes a value with a key using the provided serializer.
+     *
+     * @param generator the JSON generator
+     * @param serializer the serializer to use
+     * @param instance the instance to serialize
+     * @param key the key to write
+     * @param writeNulls whether to write null values
+     * @param <T> the type of the instance
+     */
     public static <T> void serialize(Generator generator,
                                      JsonSerializer<T> serializer,
                                      T instance,

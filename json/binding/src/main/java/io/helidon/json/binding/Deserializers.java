@@ -18,11 +18,22 @@ package io.helidon.json.binding;
 
 import io.helidon.json.JsonParser;
 
+/**
+ * Utility class for deserialization operations.
+ */
 public final class Deserializers {
 
     private Deserializers() {
     }
 
+    /**
+     * Deserializes a value using the provided deserializer, handling null values.
+     *
+     * @param parser the JSON parser
+     * @param deserializer the deserializer to use
+     * @param <T> the type of the deserialized value
+     * @return the deserialized value
+     */
     public static <T> T deserialize(JsonParser parser, JsonDeserializer<T> deserializer) {
         if (parser.checkNull()) {
             return deserializer.deserializeNull();

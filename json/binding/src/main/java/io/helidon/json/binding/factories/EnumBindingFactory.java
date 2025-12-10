@@ -26,13 +26,13 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonException;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -92,15 +92,6 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
             this.names = Collections.unmodifiableMap(names);
         }
 
-        private static int calculateNameHash(String name) {
-            int fnvHash = FNV_OFFSET_BASIS;
-            for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
-                fnvHash ^= (b & 0xFF);
-                fnvHash *= FNV_PRIME;
-            }
-            return fnvHash;
-        }
-
         @Override
         public Enum<?> deserialize(JsonParser parser) {
             int enumNameHash = parser.readStringAsHash();
@@ -119,6 +110,15 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
         @Override
         public GenericType<Enum<?>> type() {
             return GenericType.create(type);
+        }
+
+        private static int calculateNameHash(String name) {
+            int fnvHash = FNV_OFFSET_BASIS;
+            for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
+                fnvHash ^= (b & 0xFF);
+                fnvHash *= FNV_PRIME;
+            }
+            return fnvHash;
         }
 
     }

@@ -37,17 +37,15 @@ import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 
-import static java.util.function.Predicate.not;
-
 import static io.helidon.json.codegen.ConvertedTypeInfo.needsResolving;
 import static io.helidon.json.codegen.Types.PRIMITIVE_TO_BOXED;
+import static java.util.function.Predicate.not;
 
 class JsonConverterGenerator {
 
+    static final String CONFIGURE_PARAM = "jsonBindingConfigurator";
     private static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     private static final int FNV_PRIME = 0x01000193;
-
-    static final String CONFIGURE_PARAM = "jsonBindingConfigurator";
     private static final String PROPERTY_NAME_SUFFIX = "_";
     private static final String MISSING_SUFFIX = "_missing";
     private static final Supplier<?> DEFAULT_TYPE_VALUE = () -> null;
@@ -80,12 +78,10 @@ class JsonConverterGenerator {
                 .addMethod(method -> generateToJsonMethod(classBuilder,
                                                           method,
                                                           converterInfo,
-                                                          factory,
                                                           toConfigure))
                 .addMethod(method -> generateFromJsonMethod(classBuilder,
                                                             method,
                                                             converterInfo,
-                                                            factory,
                                                             toConfigure));
 
         if (factory) {
@@ -256,7 +252,6 @@ class JsonConverterGenerator {
     private static void generateToJsonMethod(ClassBase.Builder<?, ?> classBuilder,
                                              Method.Builder method,
                                              ConvertedTypeInfo converterInfo,
-                                             boolean useConstructorToConfigure,
                                              Map<String, TypeToConfigure> toConfigure) {
         method.name("serialize")
                 .addParameter(param -> param.name("generator").type(Types.JSON_GENERATOR))
@@ -333,7 +328,6 @@ class JsonConverterGenerator {
     private static void generateFromJsonMethod(ClassBase.Builder<?, ?> classBuilder,
                                                Method.Builder method,
                                                ConvertedTypeInfo converterInfo,
-                                               boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
         CreatorInfo creatorInfo = converterInfo.creatorInfo();
         ElementKind creatorKind = creatorInfo.creatorKind();
@@ -353,8 +347,7 @@ class JsonConverterGenerator {
                 .addAnnotation(Annotation.create(Override.class))
                 .addContent(byte.class).addContentLine(" lastByte = parser.currentByte();")
                 .addContentLine("if (lastByte != '{') {")
-                .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContentLine("(\"Object start expected. Found: \" + (char) lastByte);")
+                .addContentLine("throw parser.createException(\"Expected '{' to start an object.\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
         boolean additionalSetters = false;
@@ -401,7 +394,14 @@ class JsonConverterGenerator {
                     .addContent(originalType).addContentLine("();");
         }
         method.addContentLine("if (lastByte == '}') {");
-        if (hasCreator) {
+        String required = jsonProperties.stream()
+                .filter(JsonProperty::required)
+                .map(it -> it.deserializationName().orElseThrow())
+                .collect(Collectors.joining(", "));
+        if (!required.isEmpty()) {
+            method.addContentLine("throw parser.createException(\"The following properties were required to be present, "
+                                          + "but none were found: " + required + "\");");
+        } else if (hasCreator) {
             TypeName originalType = converterInfo.originalType();
 
             method.addContent("return ");
@@ -424,8 +424,7 @@ class JsonConverterGenerator {
         method.addContentLine("}");
         method.addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
-                .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContentLine("(\"Key start expected. Found: \" + (char) lastByte);")
+                .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start.\", lastByte);")
                 .addContentLine("}");
         if (hasProperties) {
             method.addContent(int.class).addContentLine(" hash = parser.readStringAsHash();");
@@ -434,8 +433,7 @@ class JsonConverterGenerator {
         }
         method.addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("if (lastByte != ':') {")
-                .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContentLine("(\"Colon expected. Found: \" + (char) lastByte);")
+                .addContentLine("throw parser.createException(\"Expected ':' to separate key and value\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("parser.nextToken();");
         if (hasProperties) {
@@ -474,7 +472,6 @@ class JsonConverterGenerator {
                                     hasCreator,
                                     hasBuilder,
                                     processedTypes,
-                                    useConstructorToConfigure,
                                     toConfigure);
                     if (!switchUsed) {
                         method.addContent("}");
@@ -490,16 +487,14 @@ class JsonConverterGenerator {
                 method.addContentLine(" else {");
             }
             if (converterInfo.failOnUnknown()) {
-                method.addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                        .addContent("(\"Unknown properties are not allowed for this type:\" + ")
+                method.addContent("throw parser.createException(\"Unknown properties are not allowed for this type: \" + ")
                         .addContent(converterInfo.converterType()).addContentLine(".class.getName());");
             } else {
                 method.addContentLine("parser.skip();");
             }
             method.addContentLine("}");
         } else if (converterInfo.failOnUnknown()) {
-            method.addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                    .addContent("(\"Unknown properties are not allowed for this type:\" + ")
+            method.addContent("throw parser.createException(\"Unknown properties are not allowed for this type: \" + ")
                     .addContent(converterInfo.converterType()).addContentLine(".class.getName());");
         } else {
             method.addContentLine("parser.skip();");
@@ -513,8 +508,7 @@ class JsonConverterGenerator {
                 .addContentLine("break;")
                 .decreaseContentPadding()
                 .addContentLine("} else {")
-                .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                .addContentLine("(\"Comma or end of object expected. Found: \" + (char) lastByte);")
+                .addContentLine("throw parser.createException(\"Expected ',' or '}'\", lastByte);")
                 .addContentLine("}");
         method.addContentLine("}");
         jsonProperties.stream()
@@ -522,9 +516,9 @@ class JsonConverterGenerator {
                 .forEach(property -> {
                     String name = JsonConverterGenerator.convertToMissingName(property);
                     method.addContentLine("if (" + name + ") {")
-                            .addContent("throw new ").addContent(Types.JSON_EXCEPTION)
-                            .addContentLine("(\"Property \\\"" + property.deserializationName().orElseThrow() + "\\\" "
-                                                    + "was required to be present in the JSON, but was missing.\");")
+                            .addContent("throw parser.createException(\"Property \\\"")
+                            .addContent(property.deserializationName().orElseThrow())
+                            .addContentLine("\\\" was required to be present in the JSON, but was missing.\");")
                             .addContentLine("}");
                 });
         if (hasCreator) {
@@ -634,7 +628,6 @@ class JsonConverterGenerator {
                                         boolean hasCreator,
                                         boolean hasBuilder,
                                         Set<String> processedTypes,
-                                        boolean useConstructorToConfigure,
                                         Map<String, TypeToConfigure> toConfigure) {
         jsonProperty.deserializer()
                 .ifPresentOrElse(deserializer -> addUserDeserializer(jsonProperty,
@@ -652,7 +645,6 @@ class JsonConverterGenerator {
                                                             hasCreator,
                                                             hasBuilder,
                                                             processedTypes,
-                                                            useConstructorToConfigure,
                                                             toConfigure);
                                  });
     }
@@ -664,7 +656,6 @@ class JsonConverterGenerator {
                                                boolean hasCreator,
                                                boolean hasBuilder,
                                                Set<String> processedTypes,
-                                               boolean useConstructorToConfigure,
                                                Map<String, TypeToConfigure> toConfigure) {
         TypeName resolvedType = PRIMITIVE_TO_BOXED.getOrDefault(type, type);
         if (!type.typeArguments().isEmpty()) {
@@ -736,7 +727,7 @@ class JsonConverterGenerator {
                             .map(fieldName -> instanceName + "." + fieldName
                                     + " = parser.checkNull() ? " + reference + ".deserializeNull() : "
                                     + reference + ".deserialize(parser);")
-                            .orElseThrow()); //TODO Add proper exception handling
+                            .orElseThrow()); // No valid setter or field; unreachable due to earlier filtering.
             method.addContentLine(writingMethod);
         }
         if (property.required()) {
@@ -773,13 +764,6 @@ class JsonConverterGenerator {
         return fnvHash;
     }
 
-    private record TypeToConfigure(TypeConfigMode mode,
-                                   String fieldName,
-                                   TypeName resolved,
-                                   TypeName original,
-                                   TypeName fieldType) {
-    }
-
     private enum TypeConfigMode {
         SERIALIZATION("serializer"),
         DESERIALIZATION("deserializer");
@@ -789,6 +773,13 @@ class JsonConverterGenerator {
         TypeConfigMode(String method) {
             this.method = method;
         }
+    }
+
+    private record TypeToConfigure(TypeConfigMode mode,
+                                   String fieldName,
+                                   TypeName resolved,
+                                   TypeName original,
+                                   TypeName fieldType) {
     }
 
     private static final class MethodNameCounter {

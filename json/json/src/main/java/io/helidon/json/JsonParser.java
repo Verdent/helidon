@@ -80,8 +80,9 @@ public interface JsonParser {
      */
     static JsonParser create(byte[] json, int start, int length) {
         Objects.requireNonNull(json);
-        if (start >= length) {
-            throw new JsonException("JSON length must be greater than start");
+        if (start < 0 || length < 0 || start > json.length || start + length > json.length) {
+            throw new JsonException("Invalid start/length: start="
+                                            + start + ", length=" + length + ", array length=" + json.length);
         }
         return new ArrayJsonParser(json, start, length);
     }
@@ -420,7 +421,7 @@ public interface JsonParser {
     JsonException createException(String message);
 
     default JsonException createException(String message, byte c) {
-        return createException(message + " Found byte: " + Parsers.toPrintableForm(c));
+        return createException(message + " Found: " + Parsers.toPrintableForm(c));
     }
 
 }

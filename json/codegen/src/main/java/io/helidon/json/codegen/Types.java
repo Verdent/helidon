@@ -81,8 +81,8 @@ final class Types {
     static final Map<TypeName, TypeName> PRIMITIVE_TO_BOXED = Map.of(
             PRIMITIVE_BOOLEAN, BOXED_BOOLEAN,
             PRIMITIVE_BYTE, BOXED_BYTE,
-            PRIMITIVE_SHORT,BOXED_SHORT,
-            PRIMITIVE_INT,BOXED_INT,
+            PRIMITIVE_SHORT, BOXED_SHORT,
+            PRIMITIVE_INT, BOXED_INT,
             PRIMITIVE_LONG, BOXED_LONG,
             PRIMITIVE_CHAR, BOXED_CHAR,
             PRIMITIVE_FLOAT, BOXED_FLOAT,

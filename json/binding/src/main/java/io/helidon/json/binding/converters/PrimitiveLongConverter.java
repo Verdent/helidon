@@ -19,10 +19,9 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -49,7 +48,7 @@ class PrimitiveLongConverter implements JsonConverter<Long> {
             long value = parser.readAsLong();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
-                throw new JsonException("Expected end of the long value was '\"' but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected '\"' to end the long value", lastByte);
             }
             return value;
         }

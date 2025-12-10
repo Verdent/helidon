@@ -85,15 +85,6 @@ public final class JsonObject extends JsonValue {
         return content.containsKey(key);
     }
 
-    private void ensureResolvedKeys() {
-        if (content == null) {
-            this.content = new LinkedHashMap<>(pairs.size());
-            for (Pair pair : pairs) {
-                content.put(pair.key.resolveValue(), pair.value);
-            }
-        }
-    }
-
     /**
      * Return the value associated with the specified key, or the default value if the key is not present.
      *
@@ -344,6 +335,15 @@ public final class JsonObject extends JsonValue {
         generator.writeObjectEnd();
     }
 
+    private void ensureResolvedKeys() {
+        if (content == null) {
+            this.content = new LinkedHashMap<>(pairs.size());
+            for (Pair pair : pairs) {
+                content.put(pair.key.resolveValue(), pair.value);
+            }
+        }
+    }
+
     record Pair(JsonString key, JsonValue value) {
     }
 
@@ -561,8 +561,8 @@ public final class JsonObject extends JsonValue {
             Objects.requireNonNull(value, "value cannot be null");
 
             values.put(key, JsonArray.createNumbers(value.stream()
-                                                             .map(BigDecimal::new)
-                                                             .toList()));
+                                                            .map(BigDecimal::new)
+                                                            .toList()));
             return this;
         }
 
@@ -577,8 +577,8 @@ public final class JsonObject extends JsonValue {
             Objects.requireNonNull(key, "key cannot be null");
             Objects.requireNonNull(value, "value cannot be null");
             values.put(key, JsonArray.createNumbers(value.stream()
-                                                             .map(BigDecimal::new)
-                                                             .toList()));
+                                                            .map(BigDecimal::new)
+                                                            .toList()));
             return this;
         }
 

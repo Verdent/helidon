@@ -24,10 +24,9 @@ import java.util.Date;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -56,7 +55,7 @@ class DateConverter implements JsonConverter<Date> {
         if (parser.currentByte() == '"') {
             return Date.from(ZonedDateTime.parse(parser.readString()).toInstant());
         }
-        throw new JsonException("Only the string format of the Date is supported.");
+        throw parser.createException("Only the string format of the Date is supported.");
     }
 
     @Override

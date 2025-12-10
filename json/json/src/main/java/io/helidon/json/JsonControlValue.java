@@ -18,17 +18,15 @@ package io.helidon.json;
 
 final class JsonControlValue extends JsonValue {
 
+    // Reuse common control tokens to reduce allocations during JsonValueParser traversal
+    static final JsonControlValue RBRACE = new JsonControlValue('}');
+    static final JsonControlValue RBRACKET = new JsonControlValue(']');
+    static final JsonControlValue COLON = new JsonControlValue(':');
+    static final JsonControlValue COMMA = new JsonControlValue(',');
     private final byte controlChar;
-
     JsonControlValue(char controlChar) {
         this.controlChar = (byte) controlChar;
     }
-
-    // Reuse common control tokens to reduce allocations during JsonValueParser traversal
-    static final JsonControlValue RBRACE   = new JsonControlValue('}');
-    static final JsonControlValue RBRACKET = new JsonControlValue(']');
-    static final JsonControlValue COLON    = new JsonControlValue(':');
-    static final JsonControlValue COMMA    = new JsonControlValue(',');
 
     @Override
     public JsonValueType type() {

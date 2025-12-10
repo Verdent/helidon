@@ -16,6 +16,9 @@
 
 package io.helidon.json.codegen;
 
+import java.lang.reflect.Type;
+import java.util.Set;
+
 import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.classmodel.Annotation;
 import io.helidon.codegen.classmodel.ClassBase;
@@ -28,15 +31,12 @@ import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 
-import java.lang.reflect.Type;
-import java.util.Set;
-
 class JsonBindingFactoryGenerator {
 
     private JsonBindingFactoryGenerator() {
     }
 
-    static void generateBindingFactory(ClassBase.Builder<?,?> classBuilder, TypeInfo annotatedType, CodegenContext ctx) {
+    static void generateBindingFactory(ClassBase.Builder<?, ?> classBuilder, TypeInfo annotatedType, CodegenContext ctx) {
         classBuilder.addAnnotation(b -> b.type(Types.SERVICE_REGISTRY_PER_LOOKUP))
                 .addGenericArgument(TypeArgument.create("T"))
                 .addAnnotation(Annotation.builder()

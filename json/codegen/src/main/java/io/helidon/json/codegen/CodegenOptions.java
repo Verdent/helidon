@@ -24,7 +24,10 @@ import io.helidon.codegen.Option;
  * This interface defines configuration options that control how JSON code generation behaves.
  * </p>
  */
-public interface CodegenOptions {
+public final class CodegenOptions {
+
+    private CodegenOptions() {
+    }
 
     /**
      * Option to control whether generated serializers should write null values.
@@ -33,7 +36,7 @@ public interface CodegenOptions {
      * When set to false (default), null values will be omitted.
      * </p>
      */
-    Option<Boolean> CODEGEN_JSON_NULL = Option.create("helidon.codegen.json.nulls",
+    public static final Option<Boolean> CODEGEN_JSON_NULL = Option.create("helidon.codegen.json.nulls",
                                                       "Sets the default for whether generated type "
                                                               + "serializers should write nulls or not.",
                                                       false);
@@ -45,7 +48,7 @@ public interface CodegenOptions {
      * When set to false (default), unknown properties will be ignored.
      * </p>
      */
-    Option<Boolean> CODEGEN_JSON_UNKNOWN = Option.create("helidon.codegen.json.unknown",
+    public static final Option<Boolean> CODEGEN_JSON_UNKNOWN = Option.create("helidon.codegen.json.unknown",
                                                          "Sets the default for whether generated type "
                                                                  + "deserializers should fail when unknow property is "
                                                                  + "encountered.",
@@ -58,7 +61,7 @@ public interface CodegenOptions {
      * Default value is "ALL".
      * </p>
      */
-    Option<String> CODEGEN_JSON_ORDER = Option.create("helidon.codegen.json.order",
+    public static final Option<String> CODEGEN_JSON_ORDER = Option.create("helidon.codegen.json.order",
                                                       "Sets the default for default ordering of the "
                                                               + "properties in the JSON document. "
                                                               + "Available values are: ALPHABETICAL, REVERSE_ALPHABETICAL, ANY",

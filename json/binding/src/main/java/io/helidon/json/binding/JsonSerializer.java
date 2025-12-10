@@ -100,7 +100,7 @@ public interface JsonSerializer<T> {
      * @throws JsonException if the type is not supported for map key serialization
      */
     default String serializeAsMapKey(T instance) {
-        throw new JsonException(instance.getClass().getName() + " is not supported for a Map key serialization");
+        throw new JsonException(instance.getClass().getName() + " is not supported as a map key serializer");
     }
 
 }

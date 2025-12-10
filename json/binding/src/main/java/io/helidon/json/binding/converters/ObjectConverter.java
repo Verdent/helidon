@@ -19,12 +19,11 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.JsonSerializer;
 import io.helidon.service.registry.Service;
 
 @Service.PerLookup
@@ -45,7 +44,7 @@ class ObjectConverter implements JsonConverter<Object> {
 
     @Override
     public Object deserialize(JsonParser parser) {
-        throw new JsonException("Deserialization into the Object is not supported.");
+        throw parser.createException("Deserialization into Object is not supported.");
     }
 
     @Override

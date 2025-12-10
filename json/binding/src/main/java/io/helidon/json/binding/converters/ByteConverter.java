@@ -19,10 +19,9 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -52,7 +51,7 @@ class ByteConverter implements JsonConverter<Byte> {
             byte value = parser.readAsByte();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
-                throw new JsonException("Expected end of the byte value was '\"' but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected '\"' to end the byte value", lastByte);
             }
             return value;
         }

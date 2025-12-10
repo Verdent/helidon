@@ -19,10 +19,9 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -51,17 +50,17 @@ class BooleanConverter implements JsonConverter<Boolean> {
                 toReturn = null;
                 break;
             default:
-                throw new JsonException("Expected Boolean value but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected a boolean value", lastByte);
             }
             if (parser.nextToken() != '\"') {
-                throw new JsonException("Expected end of the boolean value was '\"' but got '" + (char) lastByte + "'");
+                throw parser.createException("Expected '\"' to end the boolean value", lastByte);
             }
             return toReturn;
         case 't':
         case 'f':
             return parser.readAsBoolean();
         default:
-            throw new JsonException("Expected Boolean value but got '" + (char) lastByte + "'");
+            throw parser.createException("Expected a boolean value", lastByte);
         }
     }
 

@@ -221,7 +221,6 @@ abstract class AbstractGenerator implements Generator {
         return this;
     }
 
-
     @Override
     public Generator write(short value) {
         if (depth > 0 && structureType[depth - 1] && !keyWritten) {

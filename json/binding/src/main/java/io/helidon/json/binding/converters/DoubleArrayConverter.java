@@ -19,14 +19,14 @@ package io.helidon.json.binding.converters;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.Deserializers;
-import io.helidon.json.binding.JsonBindingConfigurator;
-import io.helidon.json.binding.JsonDeserializer;
-import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.Deserializers;
+import io.helidon.json.binding.JsonBindingConfigurator;
+import io.helidon.json.binding.JsonConverter;
+import io.helidon.json.binding.JsonDeserializer;
+import io.helidon.json.binding.JsonSerializer;
 import io.helidon.service.registry.Service;
 
 @Service.PerLookup
@@ -52,7 +52,7 @@ class DoubleArrayConverter implements JsonConverter<double[]> {
     public double[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw new JsonException("Array start expected. Found: " + Character.toString(lastByte));
+            throw new JsonException("Expected '[' to start an array but found: " + Character.toString(lastByte));
         }
         double[] array = new double[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class DoubleArrayConverter implements JsonConverter<double[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw new JsonException("Array end expected, received: " + Character.toString(lastByte));
+            throw new JsonException("Expected ']' but found: " + Character.toString(lastByte));
         }
         if (index == array.length) {
             return array;

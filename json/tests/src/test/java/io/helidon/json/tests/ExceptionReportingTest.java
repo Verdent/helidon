@@ -14,16 +14,14 @@ public class ExceptionReportingTest {
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test
-    public void unexpectedStringEnd() {
-//        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"value", TestData.class));
-//        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"value\":\"something}", TestData.class));
-        HELIDON.deserialize("{\"value:123}", TestData.class);
+    public void testUnexpectedStringEnd() {
+        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"data", TestData.class));
+        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"data\":\"something}", TestData.class));
     }
 
     @Test
-    public void unexpectedJsonValue() {
-        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"value\":none}", TestData.class));
-        //        HELIDON.deserialize("{\"value:123}", TestData.class);
+    public void testUnexpectedJsonValue() {
+        assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"data\":myValue}", TestData.class));
     }
 
     @Test
@@ -38,7 +36,7 @@ public class ExceptionReportingTest {
     }
 
     @Json.Entity
-    record TestData(String value) {
+    record TestData(String data) {
     }
 
 }

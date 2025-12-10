@@ -40,8 +40,16 @@
         <module>benchamark</module>
         <module>binding</module>
         <module>json</module>
-        <module>tests</module>
     </modules>
+
+    <profiles>
+        <profile>
+            <id>tests</id>
+            <modules>
+                <module>tests</module>
+            </modules>
+        </profile>
+    </profiles>
 
     <build>
         <plugins>

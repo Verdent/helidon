@@ -21,10 +21,10 @@ import java.time.Period;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
-import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
+import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -51,7 +51,7 @@ class PeriodConverter implements JsonConverter<Period> {
         if (parser.currentByte() == '"') {
             return Period.parse(parser.readString());
         }
-        throw new JsonException("Only the string format of the Period supported.");
+        throw new JsonException("Only the string format of the Period is supported.");
     }
 
     @Override

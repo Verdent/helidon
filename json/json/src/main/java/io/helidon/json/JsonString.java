@@ -31,6 +31,7 @@ public final class JsonString extends JsonValue {
         this.start = start;
         this.length = length;
     }
+
     private JsonString(String value) {
         this.buffer = EMPTY_BYTES;
         this.start = -1;

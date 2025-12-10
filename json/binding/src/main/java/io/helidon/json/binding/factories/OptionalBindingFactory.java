@@ -24,13 +24,13 @@ import java.util.Set;
 import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.JsonBindingConfigurator;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.json.binding.JsonDeserializer;
 import io.helidon.json.binding.JsonSerializer;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Service;
 
 @Service.Singleton
@@ -69,7 +69,7 @@ class OptionalBindingFactory implements JsonBindingFactory<Optional<?>> {
         private JsonDeserializer<Object> deserializer;
         private JsonSerializer<Object> serializer;
 
-        public OptionalConverter(Type type) {
+        OptionalConverter(Type type) {
             this.type = GenericType.create(type);
             if (type instanceof ParameterizedType parameterizedType) {
                 componentType = parameterizedType.getActualTypeArguments()[0];
@@ -89,7 +89,7 @@ class OptionalBindingFactory implements JsonBindingFactory<Optional<?>> {
 
         @Override
         public Optional<?> deserialize(JsonParser parser) {
-            return Optional.of(deserializer.deserialize(parser));
+            return Optional.ofNullable(deserializer.deserialize(parser));
         }
 
         @Override

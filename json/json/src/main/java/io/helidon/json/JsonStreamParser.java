@@ -71,61 +71,6 @@ final class JsonStreamParser extends ArrayJsonParser {
         return buffer[++currentIndex];
     }
 
-    private void readMoreData() {
-        try {
-            if (bufferingJsonValue) {
-                if (jsonValueStart > 0) {
-                    // There is still some free space in this current buffer to be used
-                    int valueLen = bufferLength - jsonValueStart;
-                    // index has to be at the very end of the value
-                    currentIndex = valueLen;
-                    System.arraycopy(buffer, jsonValueStart, buffer, 0, valueLen);
-                    jsonValueStart = 0;
-                    int lastRead = inputStream.read(buffer, currentIndex, buffer.length - currentIndex);
-                    if (lastRead == -1) {
-                        finished = true;
-                        bufferLength = currentIndex;
-                    } else {
-                        bufferLength = currentIndex + lastRead;
-                        finished = false;
-                    }
-                } else {
-                    int newCap = buffer.length + bufferSize;
-                    byte[] tmp = new byte[newCap];
-                    // copy only the valid bytes we currently have
-                    System.arraycopy(buffer, 0, tmp, 0, bufferLength);
-                    currentIndex = bufferLength;
-                    int lastRead = inputStream.read(tmp, currentIndex, newCap - currentIndex);
-                    buffer = tmp;
-                    if (lastRead == -1) {
-                        finished = true;
-                        bufferLength = currentIndex;
-                    } else {
-                        bufferLength = currentIndex + lastRead;
-                        finished = false;
-                    }
-                }
-            } else {
-                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end
-                // When end is detected, they go 1 byte back to be on the right state -> end of the value
-                // if the value ends at the end of the buffer, and we would not keep the last byte from the previous
-                // we would risk to getting out of the bounds of the array buffer
-                buffer[0] = buffer[currentIndex - 1];
-                int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
-                if (lastRead == -1) {
-                    finished = true;
-                    bufferLength = 1;
-                } else {
-                    bufferLength = lastRead + 1;
-                    finished = false;
-                }
-                currentIndex = 0;
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     @Override
     void ensure(int amount) {
         if (currentIndex + amount >= bufferLength) {
@@ -166,7 +111,7 @@ final class JsonStreamParser extends ArrayJsonParser {
         bufferingJsonValue = true;
         jsonValueStart = currentIndex;
         skipNumber();
-        int length = currentIndex -  jsonValueStart;
+        int length = currentIndex - jsonValueStart;
         byte[] numberBytes = new byte[length];
         System.arraycopy(buffer, jsonValueStart, numberBytes, 0, length);
         bufferingJsonValue = false;
@@ -253,6 +198,61 @@ final class JsonStreamParser extends ArrayJsonParser {
             if (!WHITESPACE_CHARS[b & 0xFF]) {
                 return b;
             }
+        }
+    }
+
+    private void readMoreData() {
+        try {
+            if (bufferingJsonValue) {
+                if (jsonValueStart > 0) {
+                    // There is still some free space in this current buffer to be used
+                    int valueLen = bufferLength - jsonValueStart;
+                    // index has to be at the very end of the value
+                    currentIndex = valueLen;
+                    System.arraycopy(buffer, jsonValueStart, buffer, 0, valueLen);
+                    jsonValueStart = 0;
+                    int lastRead = inputStream.read(buffer, currentIndex, buffer.length - currentIndex);
+                    if (lastRead == -1) {
+                        finished = true;
+                        bufferLength = currentIndex;
+                    } else {
+                        bufferLength = currentIndex + lastRead;
+                        finished = false;
+                    }
+                } else {
+                    int newCap = buffer.length + bufferSize;
+                    byte[] tmp = new byte[newCap];
+                    // copy only the valid bytes we currently have
+                    System.arraycopy(buffer, 0, tmp, 0, bufferLength);
+                    currentIndex = bufferLength;
+                    int lastRead = inputStream.read(tmp, currentIndex, newCap - currentIndex);
+                    buffer = tmp;
+                    if (lastRead == -1) {
+                        finished = true;
+                        bufferLength = currentIndex;
+                    } else {
+                        bufferLength = currentIndex + lastRead;
+                        finished = false;
+                    }
+                }
+            } else {
+                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end
+                // When end is detected, they go 1 byte back to be on the right state -> end of the value
+                // if the value ends at the end of the buffer, and we would not keep the last byte from the previous
+                // we would risk to getting out of the bounds of the array buffer
+                buffer[0] = buffer[currentIndex - 1];
+                int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
+                if (lastRead == -1) {
+                    finished = true;
+                    bufferLength = 1;
+                } else {
+                    bufferLength = lastRead + 1;
+                    finished = false;
+                }
+                currentIndex = 0;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }

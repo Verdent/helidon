@@ -52,7 +52,7 @@ class LocalDateConverter implements JsonConverter<LocalDate> {
         if (parser.currentByte() == '"') {
             return LocalDate.parse(parser.readString());
         }
-        throw parser.createException("Only the string format of the LocalDate is supported.");
+        throw parser.createException("Only the string format of the LocalDate is supported");
     }
 
     @Override

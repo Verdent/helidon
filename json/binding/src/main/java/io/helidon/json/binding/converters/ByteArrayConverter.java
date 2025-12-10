@@ -52,7 +52,7 @@ class ByteArrayConverter implements JsonConverter<byte[]> {
     public byte[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw parser.createException("Expected '[' to start an array.", lastByte);
+            throw parser.createException("Expected '[' to start an array", lastByte);
         }
         byte[] array = new byte[5];
         lastByte = parser.nextToken();
@@ -71,7 +71,7 @@ class ByteArrayConverter implements JsonConverter<byte[]> {
                 lastByte = parser.nextToken();
             }
             if (lastByte != ']') {
-                throw parser.createException("Expected ']'.", lastByte);
+                throw parser.createException("Expected ']'", lastByte);
             }
         }
         if (index == array.length) {

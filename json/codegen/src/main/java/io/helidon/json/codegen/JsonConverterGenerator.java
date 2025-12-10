@@ -347,7 +347,7 @@ class JsonConverterGenerator {
                 .addAnnotation(Annotation.create(Override.class))
                 .addContent(byte.class).addContentLine(" lastByte = parser.currentByte();")
                 .addContentLine("if (lastByte != '{') {")
-                .addContentLine("throw parser.createException(\"Expected '{' to start an object.\", lastByte);")
+                .addContentLine("throw parser.createException(\"Expected '{' to start an object\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
         boolean additionalSetters = false;
@@ -424,7 +424,7 @@ class JsonConverterGenerator {
         method.addContentLine("}");
         method.addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
-                .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start.\", lastByte);")
+                .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start\", lastByte);")
                 .addContentLine("}");
         if (hasProperties) {
             method.addContent(int.class).addContentLine(" hash = parser.readStringAsHash();");

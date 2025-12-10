@@ -379,7 +379,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
+                                                            + type + " is not registered");
                 }
             }
             JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
@@ -420,7 +420,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Deserializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
+                                                            + type + " is not registered");
                 }
             }
             JsonDeserializer<T> factoryDeserializer = factory.createDeserializer(type);
@@ -479,7 +479,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
+                                                            + type + " is not registered");
                 }
             }
             JsonSerializer<T> factorySerializer = factory.createSerializer(type);
@@ -520,7 +520,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "
-                                                            + type + " is not registered.");
+                                                            + type + " is not registered");
                 }
             }
             JsonSerializer<T> factorySerializer = factory.createSerializer(type);

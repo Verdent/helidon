@@ -52,7 +52,7 @@ class BooleanArrayConverter implements JsonConverter<boolean[]> {
     public boolean[] deserialize(JsonParser parser) {
         byte lastByte = parser.currentByte();
         if (lastByte != '[') {
-            throw parser.createException("Expected '[' to start an array.", lastByte);
+            throw parser.createException("Expected '[' to start an array", lastByte);
         }
         boolean[] array = new boolean[5];
         lastByte = parser.nextToken();
@@ -73,7 +73,7 @@ class BooleanArrayConverter implements JsonConverter<boolean[]> {
             lastByte = parser.nextToken();
         }
         if (lastByte != ']') {
-            throw parser.createException("Expected ']'.", lastByte);
+            throw parser.createException("Expected ']'", lastByte);
         }
         if (index == array.length) {
             return array;

@@ -51,7 +51,7 @@ class PeriodConverter implements JsonConverter<Period> {
         if (parser.currentByte() == '"') {
             return Period.parse(parser.readString());
         }
-        throw parser.createException("Only the string format of the Period is supported.");
+        throw parser.createException("Only the string format of the Period is supported");
     }
 
     @Override

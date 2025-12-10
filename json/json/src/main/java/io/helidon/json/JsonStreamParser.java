@@ -40,7 +40,7 @@ final class JsonStreamParser extends ArrayJsonParser {
             bufferLength = (read == -1 ? 0 : read);
             finished = (read == -1);
         } catch (IOException e) {
-            throw new RuntimeException("Error occurred while reading JSON to the buffer.", e);
+            throw new RuntimeException("Error occurred while reading JSON to the buffer", e);
         }
     }
 
@@ -64,7 +64,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     public byte readNextByte() {
         if (currentIndex + 1 == bufferLength) {
             if (finished) {
-                throw createException("Incomplete JSON data.");
+                throw createException("Incomplete JSON data");
             }
             readMoreData();
         }
@@ -81,7 +81,7 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     void fetchData() {
         if (finished) {
-            throw createException("There are no more data to fetch. Incomplete JSON.");
+            throw createException("There are no more data to fetch. Incomplete JSON");
         }
         readMoreData();
     }
@@ -89,9 +89,9 @@ final class JsonStreamParser extends ArrayJsonParser {
     @Override
     public int readStringAsHash() {
         if (currentByte() != '"') {
-            throw createException("This is supported only for Strings.");
+            throw createException("This is supported only for Strings");
         } else if (!hasNext()) {
-            throw createException("Incomplete JSON.");
+            throw createException("Incomplete JSON");
         }
         //Based on recommended offset basis and prime values.
         int fnv1aHash = FNV_OFFSET_BASIS;
@@ -173,7 +173,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 }
             }
             if (finished) {
-                throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method.");
+                throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
             }
             readMoreData();
         }

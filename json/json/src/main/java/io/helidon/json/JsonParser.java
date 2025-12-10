@@ -118,7 +118,7 @@ public interface JsonParser {
     static JsonParser create(InputStream inputStream, int bufferSize) {
         Objects.requireNonNull(inputStream);
         if (bufferSize <= 2) {
-            throw new IllegalArgumentException("Buffer size must be greater than 2.");
+            throw new IllegalArgumentException("Buffer size must be greater than 2");
         }
         return new JsonStreamParser(inputStream, bufferSize);
     }

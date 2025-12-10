@@ -139,7 +139,7 @@ class ArrayJsonParser implements JsonParser {
         //No loop is used.
         byte b;
         if (++currentIndex == bufferLength) {
-            throw createException("Unexpected end of the JSON found.");
+            throw createException("Unexpected end of the JSON found");
         }
         b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
@@ -147,7 +147,7 @@ class ArrayJsonParser implements JsonParser {
         }
         //If space or white character was used between tokens, we should still try to optimize
         if (++currentIndex == bufferLength) {
-            throw createException("Unexpected end of the JSON found.");
+            throw createException("Unexpected end of the JSON found");
         }
         b = buffer[currentIndex];
         if (!WHITESPACE_CHARS[b & 0xFF]) {
@@ -161,7 +161,7 @@ class ArrayJsonParser implements JsonParser {
                 return b;
             }
         }
-        throw createException("Unexpected end of the JSON found.");
+        throw createException("Unexpected end of the JSON found");
     }
 
     @Override
@@ -203,14 +203,14 @@ class ArrayJsonParser implements JsonParser {
             checkNull();
             return JsonNull.instance();
         default:
-            throw createException("Unexpected JSON value type.", currentByte());
+            throw createException("Unexpected JSON value type", currentByte());
         }
     }
 
     @Override
     public JsonObject readJsonObject() {
         if (currentByte() != '{') {
-            throw createException("Object start expected.", currentByte());
+            throw createException("Object start expected", currentByte());
         }
         byte b = nextToken();
         if (b == '}') {
@@ -222,11 +222,11 @@ class ArrayJsonParser implements JsonParser {
             if (b == '"') {
                 key = readJsonString();
             } else {
-                throw createException("Key name start expected.", b);
+                throw createException("Key name start expected", b);
             }
             b = nextToken();
             if (b != ':') {
-                throw createException("Colon expected.", b);
+                throw createException("Colon expected", b);
             }
             b = nextToken();
             switch (b) {
@@ -263,17 +263,17 @@ class ArrayJsonParser implements JsonParser {
                 pairs.add(new JsonObject.Pair(key, JsonBoolean.create(readAsBoolean())));
                 break;
             default:
-                throw createException("Unexpected json value type.", b);
+                throw createException("Unexpected json value type", b);
             }
             b = nextToken();
             if (b == '}') {
                 return JsonObject.create(pairs);
             } else if (b != ',') {
-                throw createException("Comma or object end expected.", b);
+                throw createException("Comma or object end expected", b);
             }
             b = nextToken();
         }
-        throw createException("Unexpected end of the object. Possibly incomplete JSON.");
+        throw createException("Unexpected end of the object. Possibly incomplete JSON");
     }
 
     @Override
@@ -318,17 +318,17 @@ class ArrayJsonParser implements JsonParser {
                 values.add(JsonBoolean.create(readAsBoolean()));
                 break;
             default:
-                throw createException("Invalid JSON value type.", b);
+                throw createException("Invalid JSON value type", b);
             }
             b = nextToken();
             if (b == ']') {
                 return JsonArray.create(values);
             } else if (b != ',') {
-                throw createException("Comma or array end expected.", b);
+                throw createException("Comma or array end expected", b);
             }
             b = nextToken();
         }
-        throw createException("Unexpected end of the array. Possibly incomplete JSON.");
+        throw createException("Unexpected end of the array. Possibly incomplete JSON");
     }
 
     @Override
@@ -394,7 +394,7 @@ class ArrayJsonParser implements JsonParser {
                 increaseStringBuffer();
             }
         }
-        throw createException("End of the string expected. Incomplete JSON.");
+        throw createException("End of the string expected. Incomplete JSON");
     }
 
     @Override
@@ -422,7 +422,7 @@ class ArrayJsonParser implements JsonParser {
     @Override
     public char readAsChar() {
         if (currentByte() != '\"') {
-            throw createException("Start of a string expected.", currentByte());
+            throw createException("Start of a string expected", currentByte());
         }
         ensure(1);
         byte b = this.buffer[++currentIndex];
@@ -435,7 +435,7 @@ class ArrayJsonParser implements JsonParser {
             c = decodeUtf8ToChar(b);
         }
         if (nextToken() != '\"') {
-            throw createException("End of a string expected.", currentByte());
+            throw createException("End of a string expected", currentByte());
         }
         return c;
     }
@@ -450,7 +450,7 @@ class ArrayJsonParser implements JsonParser {
                     && buffer[++currentIndex] == 'e') {
                 return true;
             }
-            throw createException("Expected value true.");
+            throw createException("Expected value true");
         } else if (b == 'f') {
             ensure(4);
             if (buffer[++currentIndex] == 'a'
@@ -459,9 +459,9 @@ class ArrayJsonParser implements JsonParser {
                     && buffer[++currentIndex] == 'e') {
                 return false;
             }
-            throw createException("Expected value false.");
+            throw createException("Expected value false");
         }
-        throw createException("Expected boolean value.", b);
+        throw createException("Expected boolean value", b);
     }
 
     @Override
@@ -599,7 +599,7 @@ class ArrayJsonParser implements JsonParser {
 
     void ensure(int amount) {
         if (currentIndex + amount >= bufferLength) {
-            throw createException("There is not enough data to be fetched. Incomplete JSON.");
+            throw createException("There is not enough data to be fetched. Incomplete JSON");
         }
     }
 
@@ -612,7 +612,7 @@ class ArrayJsonParser implements JsonParser {
                     && buffer[++currentIndex] == 'l') {
                 return true;
             }
-            throw createException("Unexpected value in JSON.");
+            throw createException("Unexpected value in JSON");
         }
         return false;
     }
@@ -620,7 +620,7 @@ class ArrayJsonParser implements JsonParser {
     @Override
     public int readStringAsHash() {
         if (currentByte() != '"') {
-            throw createException("Hash calculation is intended only for String values.");
+            throw createException("Hash calculation is intended only for String values");
         }
         //Based on recommended offset basis and prime values.
         int fnv1aHash = FNV_OFFSET_BASIS;
@@ -634,7 +634,7 @@ class ArrayJsonParser implements JsonParser {
             fnv1aHash ^= (b & 0xFF);
             fnv1aHash *= FNV_PRIME;
         }
-        throw createException("Unexpected end of string value. Probably incomplete JSON.");
+        throw createException("Unexpected end of string value. Probably incomplete JSON");
     }
 
     public JsonException createException(String message) {
@@ -685,7 +685,7 @@ class ArrayJsonParser implements JsonParser {
             currentIndex += 4;
             break;
         default:
-            throw createException("Invalid JSON value to skip.");
+            throw createException("Invalid JSON value to skip");
         }
     }
 
@@ -704,7 +704,7 @@ class ArrayJsonParser implements JsonParser {
                 isEscaped = false;
             }
         }
-        throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method.");
+        throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
     }
 
     void skipNumber() {
@@ -728,7 +728,7 @@ class ArrayJsonParser implements JsonParser {
 
     private char processEscapedSequence() {
         if (!hasNext()) {
-            throw createException("Error while processing an escaped string sequence. Incomplete JSON.");
+            throw createException("Error while processing an escaped string sequence. Incomplete JSON");
         }
         byte c = buffer[++currentIndex];
         switch (c) {
@@ -771,7 +771,7 @@ class ArrayJsonParser implements JsonParser {
             }
             return tmp;
         default:
-            throw createException("Invalid escaped value.", c);
+            throw createException("Invalid escaped value", c);
         }
     }
 
@@ -806,7 +806,7 @@ class ArrayJsonParser implements JsonParser {
                 stringBuffer[position++] = (char) codePoint;
             }
         } else {
-            throw createException("Invalid UTF-8 byte.", currentByte);
+            throw createException("Invalid UTF-8 byte", currentByte);
         }
         return position;
     }
@@ -844,14 +844,14 @@ class ArrayJsonParser implements JsonParser {
                 return (char) codePoint;
             }
         } else {
-            throw createException("Invalid UTF-8 byte.", currentByte);
+            throw createException("Invalid UTF-8 byte", currentByte);
         }
     }
 
     private byte parseByte(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         if (currentIndex + 4 < bufferLength) {
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
@@ -876,7 +876,7 @@ class ArrayJsonParser implements JsonParser {
                     return (byte) (possibleResult * 10 + digit3);
                 }
             }
-            throw createException("The number is too big for a byte value.");
+            throw createException("The number is too big for a byte value");
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
@@ -909,13 +909,13 @@ class ArrayJsonParser implements JsonParser {
                 return (byte) (possibleResult * 10 + digit3);
             }
         }
-        throw createException("The number is too big for a byte value.");
+        throw createException("The number is too big for a byte value");
     }
 
     private short parseShort(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         if (currentIndex + 6 < bufferLength) {
             int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
@@ -950,7 +950,7 @@ class ArrayJsonParser implements JsonParser {
                     return (short) (possibleResult * 10 + digit5);
                 }
             }
-            throw createException("The number is too big for a short value.");
+            throw createException("The number is too big for a short value");
         }
         boolean hasNext = hasNext();
         int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
@@ -999,7 +999,7 @@ class ArrayJsonParser implements JsonParser {
                 return (short) (possibleResult * 10 + digit5);
             }
         }
-        throw createException("The number is too big for a short value.");
+        throw createException("The number is too big for a short value");
     }
 
     private int parseInt(boolean negative) {
@@ -1008,7 +1008,7 @@ class ArrayJsonParser implements JsonParser {
         }
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         boolean hasNext = hasNext();
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
@@ -1132,13 +1132,13 @@ class ArrayJsonParser implements JsonParser {
                 return possibleResult * 10 + digit10;
             }
         }
-        throw createException("The number is too big for an int value.");
+        throw createException("The number is too big for an int value");
     }
 
     private int parseIntFast(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte() & 0xFF];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
         if (digit2 == -1) {
@@ -1232,7 +1232,7 @@ class ArrayJsonParser implements JsonParser {
                 return possibleResult * 10 + digit10;
             }
         }
-        throw createException("The number is too big for an int value.");
+        throw createException("The number is too big for an int value");
     }
 
     @SuppressWarnings("checkstyle:MethodLength")
@@ -1243,7 +1243,7 @@ class ArrayJsonParser implements JsonParser {
         boolean hasNext = hasNext();
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         int digit2 = hasNext ? WHOLE_NUMBER_PARTS[readNextByte() & 0xFF] : -1;
         if (digit2 == -1) {
@@ -1504,14 +1504,14 @@ class ArrayJsonParser implements JsonParser {
                 return possibleResult * 10 + digit18;
             }
         }
-        throw createException("The number is too big for a long value.");
+        throw createException("The number is too big for a long value");
     }
 
     @SuppressWarnings("checkstyle:MethodLength")
     private long parseLongFast(boolean negative) {
         int digit1 = WHOLE_NUMBER_PARTS[currentByte()];
         if (digit1 == -1) {
-            throw createException("Expected number.", currentByte());
+            throw createException("Expected number", currentByte());
         }
         int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
         if (digit2 == -1) {
@@ -1719,7 +1719,7 @@ class ArrayJsonParser implements JsonParser {
                 return possibleResult * 10 + digit18;
             }
         }
-        throw createException("The number is too big for a long value.");
+        throw createException("The number is too big for a long value");
     }
 
     private void skipObject() {
@@ -1732,10 +1732,10 @@ class ArrayJsonParser implements JsonParser {
                 skipStringValue();
                 b = nextToken();
             } else {
-                throw createException("Key name start expected.", b);
+                throw createException("Key name start expected", b);
             }
             if (b != ':') {
-                throw createException("Colon expected after the key.", b);
+                throw createException("Colon expected after the key", b);
             }
             nextToken();
             skip();
@@ -1745,7 +1745,7 @@ class ArrayJsonParser implements JsonParser {
         if (b == '}') {
             return;
         }
-        throw createException("Comma or the end of the object expected.", b);
+        throw createException("Comma or the end of the object expected", b);
     }
 
     private void skipArray() {
@@ -1761,13 +1761,13 @@ class ArrayJsonParser implements JsonParser {
         if (b == ']') {
             return;
         }
-        throw createException("Comma or the end of the array expected.", b);
+        throw createException("Comma or the end of the array expected", b);
     }
 
     private int translateHex(byte b) {
         int val = HEX_DIGITS[b & 0xFF];
         if (val == -1) {
-            throw createException("Invalid hex digit found.", b);
+            throw createException("Invalid hex digit found", b);
         }
         return val;
     }

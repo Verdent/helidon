@@ -52,7 +52,7 @@ class ZonedDateTimeConverter implements JsonConverter<ZonedDateTime> {
         if (parser.currentByte() == '"') {
             return ZonedDateTime.parse(parser.readString());
         }
-        throw parser.createException("Only the string format of the ZonedDateTime is supported.");
+        throw parser.createException("Only the string format of the ZonedDateTime is supported");
     }
 
     @Override

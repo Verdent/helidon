@@ -44,7 +44,7 @@ class ObjectConverter implements JsonConverter<Object> {
 
     @Override
     public Object deserialize(JsonParser parser) {
-        throw parser.createException("Deserialization into Object is not supported.");
+        throw parser.createException("Deserialization into Object is not supported");
     }
 
     @Override

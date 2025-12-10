@@ -55,7 +55,7 @@ class DateConverter implements JsonConverter<Date> {
         if (parser.currentByte() == '"') {
             return Date.from(ZonedDateTime.parse(parser.readString()).toInstant());
         }
-        throw parser.createException("Only the string format of the Date is supported.");
+        throw parser.createException("Only the string format of the Date is supported");
     }
 
     @Override

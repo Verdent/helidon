@@ -517,6 +517,12 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Array.class);
                 } else if (rawType.isEnum()) {
                     factory = (JsonBindingFactory<T>) bindingFactories.get(Enum.class);
+                } else if (List.class.isAssignableFrom(rawType)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(List.class);
+                } else if (Map.class.isAssignableFrom(rawType)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Map.class);
+                } else if (Set.class.isAssignableFrom(rawType)) {
+                    factory = (JsonBindingFactory<T>) bindingFactories.get(Set.class);
                 }
                 if (factory == null) {
                     throw new IllegalStateException("Serializer/Converter/BindingFactory for type "

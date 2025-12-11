@@ -24,9 +24,16 @@ import java.time.OffsetDateTime;
 import java.time.Period;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
+import io.helidon.common.GenericType;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.service.registry.Services;
@@ -107,6 +114,7 @@ public class DateTimeTest {
     public void testDate() {
         Date original = Date.from(Instant.parse("2023-10-15T12:30:45Z"));
         String json = HELIDON.serialize(original);
+        assertThat(json, is("\"2023-10-15T12:30:45Z[UTC]\""));
         Date deserialized = HELIDON.deserialize(json, Date.class);
         assertThat(deserialized, is(original));
     }
@@ -121,46 +129,108 @@ public class DateTimeTest {
     }
 
     @Test
-    public void testDateTimeModelSerialization() {
-        DateTimeModel model = new DateTimeModel(
-                LocalDate.of(2023, 10, 15),
-                LocalTime.of(14, 30, 45),
-                LocalDateTime.of(2023, 10, 15, 14, 30, 45),
-                OffsetDateTime.of(2023, 10, 15, 14, 30, 45, 0, ZoneOffset.ofHours(2)),
-                ZonedDateTime.of(2023, 10, 15, 14, 30, 45, 0, ZoneOffset.ofHours(2)),
-                Instant.parse("2023-10-15T12:30:45Z"),
-                Period.of(1, 2, 3),
-                Date.from(Instant.parse("2023-10-15T12:30:45Z")),
-                Calendar.getInstance()
+    public void testDateTimeBean() {
+        DateTimeBean bean = new DateTimeBean();
+        bean.setLocalDate(LocalDate.of(2023, 10, 15));
+        bean.setInstant(Instant.parse("2023-10-15T12:30:45Z"));
+        bean.setPeriod(Period.of(1, 2, 3));
+
+        String json = HELIDON.serialize(bean);
+        assertThat(json, is("{\"localDate\":\"2023-10-15\",\"instant\":\"2023-10-15T12:30:45Z\",\"period\":\"P1Y2M3D\"}"));
+        DateTimeBean deserialized = HELIDON.deserialize(json, DateTimeBean.class);
+
+        assertThat(deserialized.getLocalDate(), is(bean.getLocalDate()));
+        assertThat(deserialized.getInstant(), is(bean.getInstant()));
+        assertThat(deserialized.getPeriod(), is(bean.getPeriod()));
+    }
+
+    @Test
+    public void testDateTimeCollections() {
+        List<LocalDate> dateList = new ArrayList<>();
+        dateList.add(LocalDate.of(2023, 10, 15));
+        dateList.add(LocalDate.of(2023, 10, 16));
+        dateList.add(LocalDate.of(2023, 10, 17));
+
+        String json = HELIDON.serialize(dateList);
+        assertThat(json, is("[\"2023-10-15\",\"2023-10-16\",\"2023-10-17\"]"));
+
+        GenericType<List<LocalDate>> listType = new GenericType<>() { };
+        List<LocalDate> deserialized = HELIDON.deserialize(json, listType);
+
+        assertThat(deserialized.size(), is(3));
+        assertThat(deserialized.get(0), is(dateList.get(0)));
+        assertThat(deserialized.get(1), is(dateList.get(1)));
+        assertThat(deserialized.get(2), is(dateList.get(2)));
+    }
+
+    @Test
+    public void testDateTimeMap() {
+        Map<String, OffsetDateTime> dateTimeMap = new LinkedHashMap<>();
+        dateTimeMap.put("start", OffsetDateTime.of(2023, 10, 15, 9, 1, 1, 0, ZoneOffset.ofHours(1)));
+        dateTimeMap.put("end", OffsetDateTime.of(2023, 10, 15, 17, 0, 0, 0, ZoneOffset.ofHours(1)));
+
+        String json = HELIDON.serialize(dateTimeMap);
+        assertThat(json, is("{\"start\":\"2023-10-15T09:01:01+01:00\",\"end\":\"2023-10-15T17:00+01:00\"}"));
+
+        GenericType<Map<String, OffsetDateTime>> mapType = new GenericType<>() { };
+        Map<String, OffsetDateTime> deserialized = HELIDON.deserialize(json, mapType);
+
+        assertThat(deserialized.size(), is(2));
+        assertThat(deserialized.get("start"), is(dateTimeMap.get("start")));
+        assertThat(deserialized.get("end"), is(dateTimeMap.get("end")));
+    }
+
+    @Test
+    public void testOptionalDateTime() {
+        OptionalDateTimeModel model = new OptionalDateTimeModel(
+                Optional.of(LocalDate.of(2023, 10, 15)),
+                Optional.of(Instant.parse("2023-10-15T12:30:45Z")),
+                Optional.empty()
         );
-        model.calendar.setTime(Date.from(Instant.parse("2023-10-15T12:30:45Z")));
 
         String json = HELIDON.serialize(model);
-        DateTimeModel deserialized = HELIDON.deserialize(json, DateTimeModel.class);
+        OptionalDateTimeModel deserialized = HELIDON.deserialize(json, OptionalDateTimeModel.class);
 
-        assertThat(deserialized.localDate, is(model.localDate));
-        assertThat(deserialized.localTime, is(model.localTime));
-        assertThat(deserialized.localDateTime, is(model.localDateTime));
-        assertThat(deserialized.offsetDateTime, is(model.offsetDateTime));
-        assertThat(deserialized.zonedDateTime, is(model.zonedDateTime));
-        assertThat(deserialized.instant, is(model.instant));
-        assertThat(deserialized.period, is(model.period));
-        assertThat(deserialized.date, is(model.date));
-        assertThat(deserialized.calendar.getTime(), is(model.calendar.getTime()));
+        assertThat(deserialized.optionalLocalDate, is(model.optionalLocalDate));
+        assertThat(deserialized.optionalInstant, is(model.optionalInstant));
+        assertThat(deserialized.optionalPeriod.isEmpty(), is(true));
     }
 
     @Json.Entity
-    record DateTimeModel(
-            LocalDate localDate,
-            LocalTime localTime,
-            LocalDateTime localDateTime,
-            OffsetDateTime offsetDateTime,
-            ZonedDateTime zonedDateTime,
-            Instant instant,
-            Period period,
-            Date date,
-            Calendar calendar
-    ) {
+    static class DateTimeBean {
+        private LocalDate localDate;
+        private Instant instant;
+        private Period period;
+
+        public LocalDate getLocalDate() {
+            return localDate;
+        }
+
+        public void setLocalDate(LocalDate localDate) {
+            this.localDate = localDate;
+        }
+
+        public Instant getInstant() {
+            return instant;
+        }
+
+        public void setInstant(Instant instant) {
+            this.instant = instant;
+        }
+
+        public Period getPeriod() {
+            return period;
+        }
+
+        public void setPeriod(Period period) {
+            this.period = period;
+        }
+    }
+
+    @Json.Entity
+    record OptionalDateTimeModel(Optional<LocalDate> optionalLocalDate,
+                                 Optional<Instant> optionalInstant,
+                                 Optional<Period> optionalPeriod) {
     }
 
 }

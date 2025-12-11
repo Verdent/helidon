@@ -16,6 +16,7 @@
 
 package io.helidon.json;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -357,15 +358,11 @@ class ArrayJsonParser implements JsonParser {
         return JsonNumber.create(buffer, start, currentIndex - start + 1);
     }
 
-    long realIndex() {
-        return currentIndex - 1;
-    }
-
     @Override
     public String readString() {
         if (checkNull()) {
             return null;
-        } else if (currentByte() != '\"') {
+        } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
         int readableBytes = bufferLength - currentIndex - 1;
@@ -376,9 +373,7 @@ class ArrayJsonParser implements JsonParser {
             b = this.buffer[++currentIndex];
             if (b == '"') {
                 return new String(stringBuffer, 0, stringBuffIndex);
-            }
-            if (b == '\\' || b < 0) {
-                //Specialized character handling is likely required
+            } else if ((b ^ '\\') <= 0) {
                 //Either escaped sequence or multibyte detected
                 currentIndex--;
                 break;
@@ -844,7 +839,7 @@ class ArrayJsonParser implements JsonParser {
         return chars;
     }
 
-    private char processEscapedSequence() {
+    char processEscapedSequence() {
         if (!hasNext()) {
             throw createException("Error while processing an escaped string sequence. Incomplete JSON");
         }
@@ -893,7 +888,7 @@ class ArrayJsonParser implements JsonParser {
         }
     }
 
-    private int decodeUtf8(int position, byte currentByte) {
+    int decodeUtf8(int position, byte currentByte) {
         if ((currentByte & 0xE0) == 0xC0) {
             int c2 = readNextByte() & 0x3F;
             int codePoint = ((currentByte & 0x1F) << 6) | c2;
@@ -929,8 +924,12 @@ class ArrayJsonParser implements JsonParser {
         return position;
     }
 
-    private void increaseStringBuffer() {
-        stringBufferLength *= 2;
+    void increaseStringBuffer() {
+        increaseStringBuffer(stringBufferLength * 2);
+    }
+
+    private void increaseStringBuffer(int size) {
+        stringBufferLength = size;
         char[] newBuf = new char[stringBufferLength];
         System.arraycopy(stringBuffer, 0, newBuf, 0, stringBuffer.length);
         stringBuffer = newBuf;

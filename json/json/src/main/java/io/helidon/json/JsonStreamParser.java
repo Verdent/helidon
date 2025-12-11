@@ -19,6 +19,7 @@ package io.helidon.json;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 final class JsonStreamParser extends ArrayJsonParser {
 
@@ -89,20 +90,39 @@ final class JsonStreamParser extends ArrayJsonParser {
     @Override
     public int readStringAsHash() {
         if (currentByte() != '"') {
-            throw createException("This is supported only for Strings");
+            throw createException("Hash calculation is intended only for String values");
         } else if (!hasNext()) {
             throw createException("Incomplete JSON");
         }
         //Based on recommended offset basis and prime values.
-        int fnv1aHash = FNV_OFFSET_BASIS;
-        byte b;
+//        int fnv1aHash = FNV_OFFSET_BASIS;
+//        byte b;
+//        while (true) {
+//            b = readNextByte();
+//            if (b == '"') {
+//                return fnv1aHash;
+//            }
+//            fnv1aHash ^= (b & 0xFF);
+//            fnv1aHash *= FNV_PRIME;
+//        }
+
+
+        int i = currentIndex + 1;
         while (true) {
-            b = readNextByte();
-            if (b == '"') {
-                return fnv1aHash;
+            //Based on recommended offset basis and prime values.
+            int fnv1aHash = FNV_OFFSET_BASIS;
+            byte b;
+            while (i < bufferLength) {
+                b = buffer[i++];
+                if (b == '"') {
+                    currentIndex = i - 1;
+                    return fnv1aHash;
+                }
+                fnv1aHash ^= (b & 0xFF);
+                fnv1aHash *= FNV_PRIME;
             }
-            fnv1aHash ^= (b & 0xFF);
-            fnv1aHash *= FNV_PRIME;
+            fetchData();
+            i = currentIndex;
         }
     }
 
@@ -180,6 +200,61 @@ final class JsonStreamParser extends ArrayJsonParser {
     }
 
     @Override
+    public String readString() {
+        if (checkNull()) {
+            return null;
+        } else if (currentByte() != '"') {
+            throw createException("Expected start of string", currentByte());
+        }
+        currentIndex++;
+        int stringBuffIndex = 0;
+        byte b;
+        for (; currentIndex < this.bufferLength && stringBuffIndex < stringBufferLength; currentIndex++, stringBuffIndex++) {
+            b = this.buffer[currentIndex];
+            if (b == '"') {
+                return new String(stringBuffer, 0, stringBuffIndex);
+            } else if ((b ^ '\\') <= 0) {
+                //Either escaped sequence or multibyte detected
+                currentIndex--;
+                break;
+            }
+            stringBuffer[stringBuffIndex] = (char) b;
+        }
+
+        if (stringBuffIndex == stringBufferLength) {
+            increaseStringBuffer();
+        }
+        if (currentIndex == this.bufferLength) {
+            if (finished) {
+                throw createException("End of the string expected. Incomplete JSON");
+            }
+            readMoreData();
+        }
+
+        while (true) {
+            while (currentIndex + 1 < this.bufferLength) {
+                b = this.buffer[++currentIndex];
+                if (b == '\\') {
+                    stringBuffer[stringBuffIndex++] = processEscapedSequence();
+                } else if (b == '"') {
+                    return new String(stringBuffer, 0, stringBuffIndex);
+                } else if ((b & 0x80) == 0) {
+                    stringBuffer[stringBuffIndex++] = (char) b;
+                } else {
+                    stringBuffIndex = decodeUtf8(stringBuffIndex, b);
+                }
+                if (stringBuffIndex == stringBufferLength) {
+                    increaseStringBuffer();
+                }
+            }
+            if (finished) {
+                throw createException("End of the string expected. Incomplete JSON");
+            }
+            readMoreData();
+        }
+    }
+
+    @Override
     public byte nextToken() {
         //Optimization for faster reading data without a space
         //No loop is used.
@@ -236,10 +311,10 @@ final class JsonStreamParser extends ArrayJsonParser {
                     }
                 }
             } else {
-                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end
-                // When end is detected, they go 1 byte back to be on the right state -> end of the value
-                // if the value ends at the end of the buffer, and we would not keep the last byte from the previous
-                // we would risk to getting out of the bounds of the array buffer
+                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end.
+                // When end is detected, they go 1 byte back to be on the right state -> end of the value.
+                // If the value ends at the end of the buffer, and we would not keep the last byte from the previous
+                // we would risk to getting out of the bounds of the array buffer.
                 buffer[0] = buffer[currentIndex - 1];
                 int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
                 if (lastRead == -1) {

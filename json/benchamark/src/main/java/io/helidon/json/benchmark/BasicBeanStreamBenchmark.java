@@ -71,6 +71,11 @@ public class BasicBeanStreamBenchmark {
 
     private final ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
 
+    public static void main(String[] args) {
+        ByteArrayInputStream stream = new ByteArrayInputStream(MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(StandardCharsets.UTF_8));
+        HELIDON.deserialize(stream, 512, MyJavaBean.class);
+    }
+
     @Setup(Level.Invocation)
     public void setup() {
         stream.reset();

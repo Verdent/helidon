@@ -288,17 +288,15 @@ public interface JsonParser {
     int readStringAsHash();
 
     /**
-     * Reads a number value as a character array.
+     * Reads a value as a character array.
      * <p>
-     * This method provides low-level access to numeric values as character
-     * arrays, useful for custom number parsing or when memory efficiency
-     * is critical.
+     * Returns char array based on the type of the JSON value. String quotes are not included.
      * </p>
      *
-     * @return the number as a character array
-     * @throws JsonException if the next token is not a number or parsing fails
+     * @return character array
+     * @throws JsonException if the json value is not recognized or parsing fails
      */
-    char[] readNumberAsArray();
+    char[] readCharArray();
 
     /**
      * Reads a char value from the current position. The value has to start and end with the {@code "}.
@@ -310,7 +308,7 @@ public interface JsonParser {
      * @return the boolean value
      * @throws JsonException if the next token is not a boolean or parsing fails
      */
-    char readAsChar();
+    char readChar();
 
     /**
      * Reads a boolean value from the current position.
@@ -322,67 +320,62 @@ public interface JsonParser {
      * @return the boolean value
      * @throws JsonException if the next token is not a boolean or parsing fails
      */
-    boolean readAsBoolean();
+    boolean readBoolean();
 
     /**
      * Reads a numeric value as a byte.
      * <p>
      * This method expects the next token to be a number and converts it to a byte.
-     * Precision may be lost for large numbers.
      * </p>
      *
      * @return the byte value
      * @throws JsonException if parsing fails
      */
-    byte readAsByte();
+    byte readByte();
 
     /**
      * Reads a numeric value as a short.
      * <p>
      * This method expects the next token to be a number and converts it to a short.
-     * Precision may be lost for large numbers.
      * </p>
      *
      * @return the short value
      * @throws JsonException if parsing fails
      */
-    short readAsShort();
+    short readShort();
 
     /**
      * Reads a numeric value as an int.
      * <p>
      * This method expects the next token to be a number and converts it to an int.
-     * Precision may be lost for large numbers.
      * </p>
      *
      * @return the int value
      * @throws JsonException if parsing fails
      */
-    int readAsInt();
+    int readInt();
 
     /**
      * Reads a numeric value as a long.
      * <p>
      * This method expects the next token to be a number and converts it to a long.
-     * Precision may be lost for large numbers.
      * </p>
      *
      * @return the long value
      * @throws JsonException if parsing fails
      */
-    long readAsLong();
+    long readLong();
 
     /**
      * Reads a numeric value as a float.
      * <p>
      * This method expects the next token to be a number and converts it to a float.
-     * Precision may be lost for large numbers.
      * </p>
      *
      * @return the float value
      * @throws JsonException if parsing fails
      */
-    float readAsFloat();
+    float readFloat();
 
     /**
      * Reads a numeric value as a double.
@@ -393,7 +386,7 @@ public interface JsonParser {
      * @return the double value
      * @throws JsonException if parsing fails
      */
-    double readAsDouble();
+    double readDouble();
 
     /**
      * Checks if the current position contains a null value.

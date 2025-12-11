@@ -45,14 +45,14 @@ class PrimitiveFloatConverter implements JsonConverter<Float> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            float value = parser.readAsFloat();
+            float value = parser.readFloat();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the float value", lastByte);
             }
             return value;
         }
-        return parser.readAsFloat();
+        return parser.readFloat();
     }
 
     @Override

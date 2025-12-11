@@ -34,8 +34,9 @@ class ArrayJsonParser implements JsonParser {
     static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
 
     static final int[] WHOLE_NUMBER_PARTS = new int[256];
+    static final boolean[] VALID_NUMBER_PARTS = new boolean[256];
     static final boolean[] WHITESPACE_CHARS = new boolean[256];
-    static final int[] HEX_DIGITS = new int['f' + 1];
+    static final int[] HEX_DIGITS = new int[256];
     static final double[] POW_DOUBLE_CACHE = new double[] {
             1,
             10,
@@ -84,6 +85,16 @@ class ArrayJsonParser implements JsonParser {
         for (int i = '0'; i <= '9'; ++i) {
             WHOLE_NUMBER_PARTS[i] = i - '0';
         }
+
+        //'e', 'E', '.', '-', '+', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+        for (int i = '0'; i <= '9'; ++i) {
+            VALID_NUMBER_PARTS[i] = true;
+        }
+        VALID_NUMBER_PARTS['-'] = true;
+        VALID_NUMBER_PARTS['+'] = true;
+        VALID_NUMBER_PARTS['.'] = true;
+        VALID_NUMBER_PARTS['e'] = true;
+        VALID_NUMBER_PARTS['E'] = true;
 
         // ASCII whitespace
         WHITESPACE_CHARS[0x09] = true; // TAB
@@ -198,7 +209,7 @@ class ArrayJsonParser implements JsonParser {
             return readJsonNumber();
         case 't':
         case 'f':
-            return JsonBoolean.create(readAsBoolean());
+            return JsonBoolean.create(readBoolean());
         case 'n':
             checkNull();
             return JsonNull.instance();
@@ -260,7 +271,7 @@ class ArrayJsonParser implements JsonParser {
                 break;
             case 't':
             case 'f':
-                pairs.add(new JsonObject.Pair(key, JsonBoolean.create(readAsBoolean())));
+                pairs.add(new JsonObject.Pair(key, JsonBoolean.create(readBoolean())));
                 break;
             default:
                 throw createException("Unexpected json value type", b);
@@ -315,7 +326,7 @@ class ArrayJsonParser implements JsonParser {
                 break;
             case 't':
             case 'f':
-                values.add(JsonBoolean.create(readAsBoolean()));
+                values.add(JsonBoolean.create(readBoolean()));
                 break;
             default:
                 throw createException("Invalid JSON value type", b);
@@ -343,7 +354,7 @@ class ArrayJsonParser implements JsonParser {
     public JsonNumber readJsonNumber() {
         int start = currentIndex;
         skipNumber();
-        return JsonNumber.create(buffer, start, currentIndex - start);
+        return JsonNumber.create(buffer, start, currentIndex - start + 1);
     }
 
     long realIndex() {
@@ -398,29 +409,141 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public char[] readNumberAsArray() {
-        int i = 0;
-        stringBuffer[i++] = (char) buffer[currentIndex];
-        while (true) {
-            byte c = readNextByte();
-            switch (c) {
-            case 'e', 'E', '.', '-', '+', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-                stringBuffer[i++] = (char) c;
-                break;
-            default:
-                --currentIndex;
-                char[] numberBuffer = new char[i];
-                System.arraycopy(stringBuffer, 0, numberBuffer, 0, i);
-                return numberBuffer;
+    public char[] readCharArray() {
+        switch (currentByte()) {
+        case '"':
+            return readStringCharArray();
+        case '{':
+            throw createException("Handling object as a character array is not supported");
+        case '[':
+            throw createException("Handling array as a character array is not supported");
+        case '-':
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            return readNumberAsCharArray();
+        case 't':
+            ensure(3);
+            if (buffer[++currentIndex] == 'r'
+                    && buffer[++currentIndex] == 'u'
+                    && buffer[++currentIndex] == 'e') {
+                return new char[] {'t', 'r', 'u', 'e'};
             }
-            if (i == stringBufferLength) {
-                increaseStringBuffer();
+            throw createException("True value expect. Invalid JSON value");
+        case 'n':
+            ensure(3);
+            if (buffer[++currentIndex] == 'u'
+                    && buffer[++currentIndex] == 'l'
+                    && buffer[++currentIndex] == 'l') {
+                return new char[] {'n', 'u', 'l', 'l'};
             }
+            throw createException("Null value expect. Invalid JSON value");
+        case 'f':
+            ensure(4);
+            if (buffer[++currentIndex] == 'a'
+                    && buffer[++currentIndex] == 'l'
+                    && buffer[++currentIndex] == 's'
+                    && buffer[++currentIndex] == 'e') {
+                return new char[] {'f', 'a', 'l', 's', 'e'};
+            }
+            throw createException("False value expect. Invalid JSON value");
+        default:
+            throw createException("Invalid JSON value to skip");
         }
     }
 
+    private char[] readStringCharArray() {
+        int readableBytes = bufferLength - currentIndex - 1;
+        int firstRun = Math.min(stringBufferLength, readableBytes);
+        int stringBuffIndex = 0;
+        byte b;
+        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
+            b = this.buffer[++currentIndex];
+            if (b == '"') {
+                char[] chars = new char[stringBuffIndex];
+                System.arraycopy(stringBuffer, 0, chars, 0, stringBuffIndex);
+                return chars;
+            }
+            if (b == '\\' || b < 0) {
+                //Specialized character handling is likely required
+                //Either escaped sequence or multibyte detected
+                currentIndex--;
+                break;
+            }
+            stringBuffer[stringBuffIndex] = (char) b;
+        }
+
+        if (stringBuffIndex == stringBufferLength) {
+            increaseStringBuffer();
+        }
+
+        while (hasNext()) {
+            b = readNextByte();
+            if (b == '\\') {
+                stringBuffer[stringBuffIndex++] = processEscapedSequence();
+            } else if (b == '"') {
+                char[] chars = new char[stringBuffIndex];
+                System.arraycopy(stringBuffer, 0, chars, 0, stringBuffIndex);
+                return chars;
+            } else if ((b & 0x80) == 0) {
+                stringBuffer[stringBuffIndex++] = (char) b;
+            } else {
+                stringBuffIndex = decodeUtf8(stringBuffIndex, b);
+            }
+            if (stringBuffIndex == stringBufferLength) {
+                increaseStringBuffer();
+            }
+        }
+        throw createException("End of the string expected. Incomplete JSON");
+    }
+
+    private char[] readNumberAsCharArray() {
+        int readableBytes = bufferLength - currentIndex;
+        int firstRun = Math.min(stringBufferLength, readableBytes);
+        stringBuffer[0] = (char) currentByte();
+        int stringBuffIndex = 1;
+        byte b;
+        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
+            b = this.buffer[++currentIndex];
+            if (!VALID_NUMBER_PARTS[b]) {
+                currentIndex--;
+                char[] chars = new char[stringBuffIndex];
+                System.arraycopy(stringBuffer, 0, chars, 0, stringBuffIndex);
+                return chars;
+            }
+            stringBuffer[stringBuffIndex] = (char) b;
+        }
+        if (stringBuffIndex == stringBufferLength) {
+            increaseStringBuffer();
+        }
+
+        while (hasNext()) {
+            b = readNextByte();
+            if (!VALID_NUMBER_PARTS[b]) {
+                currentIndex--;
+                char[] chars = new char[stringBuffIndex];
+                System.arraycopy(stringBuffer, 0, chars, 0, stringBuffIndex);
+                return chars;
+            }
+            stringBuffer[stringBuffIndex++] = (char) b;
+            if (stringBuffIndex == stringBufferLength) {
+                increaseStringBuffer();
+            }
+        }
+        char[] chars = new char[stringBuffIndex];
+        System.arraycopy(stringBuffer, 0, chars, 0, stringBuffIndex);
+        return chars;
+    }
+
     @Override
-    public char readAsChar() {
+    public char readChar() {
         if (currentByte() != '\"') {
             throw createException("Start of a string expected", currentByte());
         }
@@ -441,7 +564,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public boolean readAsBoolean() {
+    public boolean readBoolean() {
         byte b = currentByte();
         if (b == 't') {
             ensure(3);
@@ -465,7 +588,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public byte readAsByte() {
+    public byte readByte() {
         if (currentByte() == '-') {
             currentIndex = currentIndex + 1;
             return (byte) -parseByte(true);
@@ -475,7 +598,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public short readAsShort() {
+    public short readShort() {
         if (currentByte() == '-') {
             currentIndex = currentIndex + 1;
             return (short) -parseShort(true);
@@ -485,7 +608,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public int readAsInt() {
+    public int readInt() {
         if (currentByte() == '-') {
             currentIndex++;
             return -parseInt(true);
@@ -495,7 +618,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public long readAsLong() {
+    public long readLong() {
         if (currentByte() == '-') {
             currentIndex++;
             return -parseLong(true);
@@ -505,9 +628,9 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public float readAsFloat() {
+    public float readFloat() {
         boolean rollback = true;
-        float result = readAsLong();
+        float result = readLong();
         byte nextByte = readNextByte();
         if (nextByte == '.') {
             int start = currentIndex;
@@ -552,9 +675,9 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
-    public double readAsDouble() {
+    public double readDouble() {
         boolean rollback = true;
-        double result = readAsLong();
+        double result = readLong();
         byte nextByte = hasNext() ? buffer[++currentIndex] : -1;
         if (nextByte == '.') {
             int start = currentIndex++;
@@ -712,18 +835,13 @@ class ArrayJsonParser implements JsonParser {
         for (int index = this.currentIndex; index < this.bufferLength; index++) {
             b = this.buffer[index];
             //we do not need to validate whether this is a valid number since we are not processing it.
-            //simply skip until you find any valid character after the number
-            switch (b) {
-            case ' ':
-            case '\n':
-            case '\t':
-            case ',':
-            case '}':
-            case ']':
+            //simply skip until you find any non-numeric bound character
+            if (!VALID_NUMBER_PARTS[b]) {
                 this.currentIndex = index - 1;
                 return;
             }
         }
+        this.currentIndex = this.bufferLength - 1;
     }
 
     private char processEscapedSequence() {

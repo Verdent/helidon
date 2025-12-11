@@ -48,14 +48,14 @@ class ByteConverter implements JsonConverter<Byte> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            byte value = parser.readAsByte();
+            byte value = parser.readByte();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the byte value", lastByte);
             }
             return value;
         }
-        return parser.readAsByte();
+        return parser.readByte();
     }
 
     @Override

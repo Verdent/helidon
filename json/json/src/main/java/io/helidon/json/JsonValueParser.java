@@ -142,47 +142,47 @@ class JsonValueParser implements JsonParser {
     }
 
     @Override
-    public char[] readNumberAsArray() {
+    public char[] readCharArray() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public char readAsChar() {
+    public char readChar() {
         return current.asString().value().charAt(0);
     }
 
     @Override
-    public boolean readAsBoolean() {
+    public boolean readBoolean() {
         return current.asBoolean().value();
     }
 
     @Override
-    public byte readAsByte() {
+    public byte readByte() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public short readAsShort() {
+    public short readShort() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public int readAsInt() {
+    public int readInt() {
         return current.asNumber().intValue();
     }
 
     @Override
-    public long readAsLong() {
+    public long readLong() {
         return current.asNumber().intValue();
     }
 
     @Override
-    public float readAsFloat() {
+    public float readFloat() {
         return (float) current.asNumber().doubleValue();
     }
 
     @Override
-    public double readAsDouble() {
+    public double readDouble() {
         return current.asNumber().doubleValue();
     }
 

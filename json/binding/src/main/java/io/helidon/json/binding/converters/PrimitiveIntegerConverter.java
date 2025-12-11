@@ -45,14 +45,14 @@ class PrimitiveIntegerConverter implements JsonConverter<Integer> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            int value = parser.readAsInt();
+            int value = parser.readInt();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the integer value", lastByte);
             }
             return value;
         }
-        return parser.readAsInt();
+        return parser.readInt();
     }
 
     @Override

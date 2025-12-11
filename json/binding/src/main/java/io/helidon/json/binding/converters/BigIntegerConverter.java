@@ -37,7 +37,7 @@ class BigIntegerConverter implements JsonConverter<BigInteger> {
         if (parser.currentByte() == '\"') {
             return new BigInteger(parser.readString());
         } else {
-            char[] numberAsArray = parser.readNumberAsArray();
+            char[] numberAsArray = parser.readCharArray();
             return new BigInteger(new String(numberAsArray));
         }
     }

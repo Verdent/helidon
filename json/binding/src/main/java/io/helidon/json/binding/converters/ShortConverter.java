@@ -48,14 +48,14 @@ class ShortConverter implements JsonConverter<Short> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            short value = parser.readAsShort();
+            short value = parser.readShort();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the short value", lastByte);
             }
             return value;
         }
-        return parser.readAsShort();
+        return parser.readShort();
     }
 
     @Override

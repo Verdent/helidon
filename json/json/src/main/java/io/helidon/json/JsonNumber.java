@@ -77,7 +77,7 @@ public final class JsonNumber extends JsonValue {
     public double doubleValue() {
         if (doubleValue == null) {
             JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
-            doubleValue = parser.readAsDouble();
+            doubleValue = parser.readDouble();
         }
         return doubleValue;
     }
@@ -90,7 +90,7 @@ public final class JsonNumber extends JsonValue {
     public int intValue() {
         if (intValue == null) {
             JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
-            intValue = parser.readAsInt();
+            intValue = parser.readInt();
         }
         return intValue;
     }
@@ -103,7 +103,7 @@ public final class JsonNumber extends JsonValue {
     public BigDecimal bigDecimalValue() {
         if (bigDecimalValue == null) {
             JsonParser parser = new ArrayJsonParser(buffer, start, start + length);
-            bigDecimalValue = new BigDecimal(parser.readNumberAsArray());
+            bigDecimalValue = new BigDecimal(parser.readCharArray());
         }
         return bigDecimalValue;
     }

@@ -20,7 +20,6 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
 import io.helidon.json.binding.JsonConverter;
 import io.helidon.service.registry.Service;
@@ -51,7 +50,7 @@ class PrimitiveBooleanConverter implements JsonConverter<Boolean> {
             switch (lastByte) {
             case 't':
             case 'f':
-                toReturn = parser.readAsBoolean();
+                toReturn = parser.readBoolean();
                 break;
             case 'n':
                 parser.checkNull();
@@ -66,7 +65,7 @@ class PrimitiveBooleanConverter implements JsonConverter<Boolean> {
             return toReturn;
         case 't':
         case 'f':
-            return parser.readAsBoolean();
+            return parser.readBoolean();
         default:
             throw parser.createException("Expected a boolean value", lastByte);
         }

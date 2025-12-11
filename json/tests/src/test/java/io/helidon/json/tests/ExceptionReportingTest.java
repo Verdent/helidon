@@ -22,7 +22,6 @@ public class ExceptionReportingTest {
     @Test
     public void testUnexpectedJsonValue() {
         assertThrows(JsonException.class, () -> HELIDON.deserialize("{\"data\":myValue}", TestData.class));
-        HELIDON.deserialize("{\"data\":myValue}", TestData.class);
     }
 
     @Test

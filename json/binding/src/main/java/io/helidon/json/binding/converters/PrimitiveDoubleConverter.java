@@ -45,14 +45,14 @@ class PrimitiveDoubleConverter implements JsonConverter<Double> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            double value = parser.readAsDouble();
+            double value = parser.readDouble();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the double value", lastByte);
             }
             return value;
         }
-        return parser.readAsDouble();
+        return parser.readDouble();
     }
 
     @Override

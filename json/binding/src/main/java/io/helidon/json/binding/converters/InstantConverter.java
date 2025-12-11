@@ -50,7 +50,7 @@ class InstantConverter implements JsonConverter<Instant> {
         if (parser.currentByte() == '"') {
             return Instant.parse(parser.readString());
         }
-        long value = parser.readAsLong();
+        long value = parser.readLong();
         return Instant.ofEpochMilli(value);
     }
 

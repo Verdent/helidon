@@ -41,7 +41,7 @@ abstract class SingleValueTest {
         String template = "125";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsByte(), is(expected));
+        assertThat(parser.readByte(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -51,7 +51,7 @@ abstract class SingleValueTest {
         String template = "12345";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsShort(), is(expected));
+        assertThat(parser.readShort(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -61,7 +61,7 @@ abstract class SingleValueTest {
         String template = "1234";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsInt(), is(expected));
+        assertThat(parser.readInt(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -71,7 +71,7 @@ abstract class SingleValueTest {
         String template = "123456789123456";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsLong(), is(expected));
+        assertThat(parser.readLong(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -81,7 +81,7 @@ abstract class SingleValueTest {
         String template = "123.456e10";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsDouble(), is(expected));
+        assertThat(parser.readDouble(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -91,7 +91,7 @@ abstract class SingleValueTest {
         String template = "123.456e10";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsFloat(), is(expected));
+        assertThat(parser.readFloat(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -101,14 +101,14 @@ abstract class SingleValueTest {
         String template = "true";
         JsonParser parser = createParser(template);
 
-        assertThat(parser.readAsBoolean(), is(expected));
+        assertThat(parser.readBoolean(), is(expected));
         assertThat(parser.hasNext(), is(false));
 
         expected = false;
         template = "false";
         parser = createParser(template);
 
-        assertThat(parser.readAsBoolean(), is(expected));
+        assertThat(parser.readBoolean(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 
@@ -118,6 +118,48 @@ abstract class SingleValueTest {
         JsonParser parser = createParser(template);
 
         assertThat(parser.checkNull(), is(true));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testParseStringCharArray() {
+        String template = "\"myStringValue\"";
+        JsonParser parser = createParser(template);
+        char[] expected = "myStringValue".toCharArray();
+
+        assertThat(parser.readCharArray(), is(expected));
+        assertThat(parser.hasNext(), is(false));
+
+        template = "\"special chars ěščřžýáíé\"";
+        parser = createParser(template);
+        expected = "special chars ěščřžýáíé".toCharArray();
+
+        assertThat(parser.readCharArray(), is(expected));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+
+    @Test
+    public void testParseNumberAsCharArray() {
+        String template = "-123";
+        JsonParser parser = createParser(template);
+        char[] expected = template.toCharArray();
+
+        assertThat(parser.readCharArray(), is(expected));
+        assertThat(parser.hasNext(), is(false));
+
+        template = "123.456";
+        parser = createParser(template);
+        expected = template.toCharArray();
+
+        assertThat(parser.readCharArray(), is(expected));
+        assertThat(parser.hasNext(), is(false));
+
+        template = "-123.456E+10";
+        parser = createParser(template);
+        expected = template.toCharArray();
+
+        assertThat(parser.readCharArray(), is(expected));
         assertThat(parser.hasNext(), is(false));
     }
 

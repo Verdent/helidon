@@ -42,7 +42,7 @@ class CharacterConverter implements JsonConverter<Character> {
 
     @Override
     public Character deserialize(JsonParser parser) {
-        return parser.readAsChar();
+        return parser.readChar();
     }
 
     @Override

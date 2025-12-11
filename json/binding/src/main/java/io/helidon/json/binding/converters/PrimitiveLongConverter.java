@@ -45,14 +45,14 @@ class PrimitiveLongConverter implements JsonConverter<Long> {
         byte lastByte = parser.currentByte();
         if (lastByte == '\"') {
             parser.nextToken();
-            long value = parser.readAsLong();
+            long value = parser.readLong();
             lastByte = parser.nextToken();
             if (lastByte != '\"') {
                 throw parser.createException("Expected '\"' to end the long value", lastByte);
             }
             return value;
         }
-        return parser.readAsLong();
+        return parser.readLong();
     }
 
     @Override

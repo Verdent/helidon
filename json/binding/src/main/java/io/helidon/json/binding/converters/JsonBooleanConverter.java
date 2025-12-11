@@ -33,7 +33,7 @@ class JsonBooleanConverter implements JsonConverter<JsonBoolean> {
 
     @Override
     public JsonBoolean deserialize(JsonParser parser) {
-        return JsonBoolean.create(parser.readAsBoolean());
+        return JsonBoolean.create(parser.readBoolean());
     }
 
     @Override

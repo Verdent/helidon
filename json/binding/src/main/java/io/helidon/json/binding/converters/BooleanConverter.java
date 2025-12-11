@@ -43,7 +43,7 @@ class BooleanConverter implements JsonConverter<Boolean> {
             switch (lastByte) {
             case 't':
             case 'f':
-                toReturn = parser.readAsBoolean();
+                toReturn = parser.readBoolean();
                 break;
             case 'n':
                 parser.checkNull();
@@ -58,7 +58,7 @@ class BooleanConverter implements JsonConverter<Boolean> {
             return toReturn;
         case 't':
         case 'f':
-            return parser.readAsBoolean();
+            return parser.readBoolean();
         default:
             throw parser.createException("Expected a boolean value", lastByte);
         }

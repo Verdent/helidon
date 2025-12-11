@@ -126,9 +126,9 @@ final class JsonStreamParser extends ArrayJsonParser {
             for (index = this.currentIndex; index < this.bufferLength; index++) {
                 b = this.buffer[index];
                 //we do not need to validate whether this is a valid number since we are not processing it.
-                //simply skip until you find any valid character after the number
-                if (b == ',' || b == '}' || b == ']' || b == ' ' || b == '\n' || b == '\t') {
-                    this.currentIndex = index;
+                //simply skip until you find any non-numeric bound character
+                if (!VALID_NUMBER_PARTS[b]) {
+                    this.currentIndex = index - 1;
                     return;
                 }
             }

@@ -16,9 +16,9 @@
 
 package io.helidon.json.tests;
 
+import io.helidon.json.JsonException;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
-import io.helidon.json.JsonException;
 import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;

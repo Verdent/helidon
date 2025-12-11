@@ -27,7 +27,6 @@ import io.helidon.common.GenericType;
 import io.helidon.common.Weight;
 import io.helidon.common.Weighted;
 import io.helidon.json.Generator;
-import io.helidon.json.JsonException;
 import io.helidon.json.JsonParser;
 import io.helidon.json.binding.JsonBindingFactory;
 import io.helidon.json.binding.JsonConverter;
@@ -97,7 +96,8 @@ class EnumBindingFactory implements JsonBindingFactory<Enum<?>> {
             int enumNameHash = parser.readStringAsHash();
             Enum<?> enumValue = enumConstants.get(enumNameHash);
             if (enumValue == null) {
-                throw parser.createException("Invalid enum name hash \"" + enumNameHash + "\". Valid names and hashes are: " + names);
+                throw parser.createException("Invalid enum name hash \"" + enumNameHash + "\". Valid names and hashes are: "
+                                                     + names);
             }
             return enumValue;
         }

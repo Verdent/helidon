@@ -42,7 +42,7 @@ public class OptionalTest {
 
         assertThat(serialized, is(expected));
 
-        Optional<Object> deserialized = JSON_BINDING.deserialize(expected, new GenericType<>(){});
+        Optional<Object> deserialized = JSON_BINDING.deserialize(expected, new GenericType<>() { });
         assertThat(deserialized, is(optional));
     }
 

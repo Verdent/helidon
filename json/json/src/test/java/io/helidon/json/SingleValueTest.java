@@ -138,7 +138,6 @@ abstract class SingleValueTest {
         assertThat(parser.hasNext(), is(false));
     }
 
-
     @Test
     public void testParseNumberAsCharArray() {
         String template = "-123";

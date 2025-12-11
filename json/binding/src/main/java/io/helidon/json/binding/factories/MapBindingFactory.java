@@ -158,7 +158,7 @@ class MapBindingFactory implements JsonBindingFactory<Map<?, ?>> {
             keySerializer = jsonBindingConfigurator.serializer(keyType);
             if (!keySerializer.isMapKeySerializer()) {
                 throw new JsonException("Unsupported key serializer: "
-                        + keySerializer.type());
+                                                + keySerializer.type());
             }
             valueSerializer = jsonBindingConfigurator.serializer(valueType);
         }

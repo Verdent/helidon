@@ -29,7 +29,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class AnnotationsTest {
-    
+
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test

@@ -17,11 +17,11 @@
 package io.helidon.json.tests;
 
 import io.helidon.common.GenericType;
+import io.helidon.json.Generator;
+import io.helidon.json.JsonParser;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.json.binding.JsonConverter;
-import io.helidon.json.Generator;
-import io.helidon.json.JsonParser;
 import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
@@ -71,7 +71,7 @@ public class CustomConverterTest {
         assertThat(jsonBinding.serialize(original), is(expected));
         assertThat(jsonBinding.deserialize(expected, String.class), is(expectedDeserialized));
     }
-    
+
     @Test
     public void testCustomSerializerOnTheField() {
         CustomFieldSerializer instance = new CustomFieldSerializer("without serializer", "with serializer");

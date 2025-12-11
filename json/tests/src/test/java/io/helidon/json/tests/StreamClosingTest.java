@@ -157,8 +157,8 @@ public class StreamClosingTest {
      * Test OutputStream that tracks whether it's been closed.
      */
     static class TestOutputStream extends OutputStream {
-        private boolean closed = false;
         private final ByteArrayOutputStream delegate = new ByteArrayOutputStream();
+        private boolean closed = false;
 
         @Override
         public void write(int b) throws IOException {
@@ -187,8 +187,8 @@ public class StreamClosingTest {
      * Test Writer that tracks whether it's been closed.
      */
     static class TestWriter extends Writer {
-        private boolean closed = false;
         private final StringWriter delegate = new StringWriter();
+        private boolean closed = false;
 
         @Override
         public void write(char[] cbuf, int off, int len) throws IOException {
@@ -226,8 +226,8 @@ public class StreamClosingTest {
      * Test InputStream that tracks whether it's been closed.
      */
     static class TestInputStream extends InputStream {
-        private boolean closed = false;
         private final ByteArrayInputStream delegate;
+        private boolean closed = false;
 
         TestInputStream(byte[] data) {
             this.delegate = new ByteArrayInputStream(data);
@@ -256,8 +256,8 @@ public class StreamClosingTest {
      * Test Reader that tracks whether it's been closed.
      */
     static class TestReader extends Reader {
-        private boolean closed = false;
         private final StringReader delegate;
+        private boolean closed = false;
 
         TestReader(String data) {
             this.delegate = new StringReader(data);

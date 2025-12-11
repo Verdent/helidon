@@ -77,5 +77,5 @@ public class DoubleTest {
     record DoubleModel(Double object, double primitive) {
 
     }
-    
+
 }

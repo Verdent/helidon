@@ -27,7 +27,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 public class ArrayTest {
-    
+
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test

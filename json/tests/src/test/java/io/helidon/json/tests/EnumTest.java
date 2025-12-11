@@ -16,16 +16,16 @@
 
 package io.helidon.json.tests;
 
+import io.helidon.json.JsonException;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
-import io.helidon.json.JsonException;
 import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class EnumTest {

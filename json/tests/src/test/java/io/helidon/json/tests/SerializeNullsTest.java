@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SerializeNullsTest {
-    
+
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
 
     @Test
@@ -57,6 +57,7 @@ public class SerializeNullsTest {
         NullableChild instance = new NullableChild();
         assertEquals("{\"field\":null}", HELIDON.serialize(instance));
     }
+
     @Test
     public void testJsonNullableFromParentOverride() {
         NonNullableChild instance = new NonNullableChild();

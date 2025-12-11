@@ -16,9 +16,9 @@
 
 package io.helidon.json.tests;
 
+import io.helidon.json.JsonException;
 import io.helidon.json.binding.Json;
 import io.helidon.json.binding.JsonBinding;
-import io.helidon.json.JsonException;
 import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
@@ -51,7 +51,7 @@ public class IgnoreRequiredTest {
         assertThat(json, is("{\"includedField\":\"included\"}"));
 
         IgnoreMethod deserialized = HELIDON.deserialize("{\"includedField\":\"test\",\"ignoredField\":\"should_be_ignored\"}",
-                                                       IgnoreMethod.class);
+                                                        IgnoreMethod.class);
         assertThat(deserialized.getIncludedField(), is("test"));
         assertThat(deserialized.getIgnoredField(), nullValue());
     }
@@ -135,7 +135,8 @@ public class IgnoreRequiredTest {
         @Json.Ignore
         private String ignoredField;
 
-        public IgnoreField() {}
+        public IgnoreField() {
+        }
 
         public IgnoreField(String included, String ignored) {
             this.includedField = included;
@@ -164,7 +165,8 @@ public class IgnoreRequiredTest {
         private String includedField;
         private String ignoredField;
 
-        public IgnoreMethod() {}
+        public IgnoreMethod() {
+        }
 
         public IgnoreMethod(String included, String ignored) {
             this.includedField = included;
@@ -196,7 +198,8 @@ public class IgnoreRequiredTest {
         public String requiredField;
         public String optionalField;
 
-        public RequiredField() {}
+        public RequiredField() {
+        }
     }
 
     @Json.Entity
@@ -204,7 +207,8 @@ public class IgnoreRequiredTest {
         private String requiredProperty;
         private String optionalProperty;
 
-        public RequiredMethod() {}
+        public RequiredMethod() {
+        }
 
         public String getOptionalProperty() {
             return optionalProperty;
@@ -242,7 +246,8 @@ public class IgnoreRequiredTest {
         @Json.Required
         public String requiredField;
 
-        public IgnoreAndRequired() {}
+        public IgnoreAndRequired() {
+        }
 
         public IgnoreAndRequired(String included, String ignored, String required) {
             this.includedField = included;

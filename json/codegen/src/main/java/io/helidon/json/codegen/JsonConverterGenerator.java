@@ -683,6 +683,7 @@ class JsonConverterGenerator {
                                  });
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     private static void createTypeDeserializer(JsonProperty jsonProperty,
                                                TypeName type,
                                                Method.Builder method,

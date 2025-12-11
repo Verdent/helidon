@@ -77,5 +77,5 @@ public class FloatTest {
     record FloatModel(Float object, float primitive) {
 
     }
-    
+
 }

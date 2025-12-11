@@ -24,6 +24,7 @@ final class JsonControlValue extends JsonValue {
     static final JsonControlValue COLON = new JsonControlValue(':');
     static final JsonControlValue COMMA = new JsonControlValue(',');
     private final byte controlChar;
+
     JsonControlValue(char controlChar) {
         this.controlChar = (byte) controlChar;
     }

@@ -339,7 +339,6 @@ class JsonConverterGenerator {
                 .filter(not(JsonProperty::propertyIgnored))
                 .filter(it -> !it.setterIgnored() || it.directFieldAccess())
                 .toList();
-        boolean hasProperties = !jsonProperties.isEmpty();
 
         method.name("deserialize")
                 .returnType(converterInfo.originalType())
@@ -350,78 +349,90 @@ class JsonConverterGenerator {
                 .addContentLine("throw parser.createException(\"Expected '{' to start an object\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
-        boolean additionalSetters = false;
+        createPreProcessingVariables(method, converterInfo, jsonProperties, hasCreator, creatorKind, creatorInfo, hasBuilder);
+        earlyReturnForEmptyObjects(method, converterInfo, jsonProperties, hasCreator, creatorKind, creatorInfo, hasBuilder);
+        propertyProcessing(classBuilder, method, converterInfo, toConfigure, jsonProperties, hasCreator, hasBuilder);
+        createFinalInstanceCreation(method, converterInfo, jsonProperties, hasCreator, creatorKind, creatorInfo, hasBuilder);
+    }
+
+    private static void createFinalInstanceCreation(Method.Builder method,
+                                                    ConvertedTypeInfo converterInfo,
+                                                    List<JsonProperty> jsonProperties,
+                                                    boolean hasCreator,
+                                                    ElementKind creatorKind,
+                                                    CreatorInfo creatorInfo,
+                                                    boolean hasBuilder) {
         jsonProperties.stream()
                 .filter(JsonProperty::required)
-                .map(JsonConverterGenerator::convertToMissingName)
-                .forEach(name -> method.addContent(boolean.class).addContentLine(" " + name + " = true;"));
+                .forEach(property -> {
+                    String name = JsonConverterGenerator.convertToMissingName(property);
+                    method.addContentLine("if (" + name + ") {")
+                            .addContent("throw parser.createException(\"Property \\\"")
+                            .addContent(property.deserializationName().orElseThrow())
+                            .addContentLine("\\\" was required to be present in the JSON, but was missing.\");")
+                            .addContentLine("}");
+                });
         if (hasCreator) {
-            for (JsonProperty jsonProperty : jsonProperties) {
-                TypeName type = jsonProperty.deserializationType().orElseThrow();
-                method.addContent(type)
-                        .addContent(" " + jsonProperty.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
-                        .addContentLine(DEFAULT_TYPE_VALUES.getOrDefault(type, DEFAULT_TYPE_VALUE).get() + ";");
-            }
-        } else if (creatorKind == ElementKind.METHOD) {
             TypeName originalType = converterInfo.originalType();
-            method.addContent(originalType).addContent(" instance = ")
-                    .addContent(originalType).addContent("." + creatorInfo.method() + "();");
-        } else if (hasBuilder) {
-            BuilderInfo builderInfo = converterInfo.builderInfo().get();
-            TypeName builder = builderInfo.builderType();
-            TypeName originalType = converterInfo.originalType();
-            method.addContent(builder).addContent(" builder = ");
-            if (builderInfo.builderMethodName().isPresent()) {
-                method.addContent(originalType).addContentLine(".builder();");
-            } else {
-                method.addContent("new ").addContent(builder).addContentLine("();");
-            }
-            for (JsonProperty jsonProperty : jsonProperties) {
-                String deserializationName = jsonProperty.deserializationName().orElseThrow();
-                if (jsonProperty.usedInBuilder()) {
-                    //This property is handled by the builder
-                    continue;
-                }
-                additionalSetters = true;
-                TypeName type = jsonProperty.deserializationType().orElseThrow();
-                method.addContent(type)
-                        .addContent(" " + deserializationName + PROPERTY_NAME_SUFFIX + " = ")
-                        .addContentLine(DEFAULT_TYPE_VALUES.getOrDefault(type, DEFAULT_TYPE_VALUE).get() + ";");
-            }
-        } else {
-            TypeName originalType = converterInfo.originalType();
-            method.addContent(originalType).addContent(" instance = new ")
-                    .addContent(originalType).addContentLine("();");
-        }
-        method.addContentLine("if (lastByte == '}') {");
-        String required = jsonProperties.stream()
-                .filter(JsonProperty::required)
-                .map(it -> it.deserializationName().orElseThrow())
-                .collect(Collectors.joining(", "));
-        if (!required.isEmpty()) {
-            method.addContentLine("throw parser.createException(\"The following properties were required to be present, "
-                                          + "but none were found: " + required + "\");");
-        } else if (hasCreator) {
-            TypeName originalType = converterInfo.originalType();
-
-            method.addContent("return ");
             if (creatorKind == ElementKind.METHOD) {
-                method.addContent(originalType).addContent("." + creatorInfo.method() + "(");
+                method.addContent(originalType).addContent(" instance = ")
+                        .addContent(originalType).addContent("." + creatorInfo.method() + "(");
             } else {
-                method.addContent("new ").addContent(originalType).addContent("(");
+                method.addContent(originalType).addContent(" instance = new ")
+                        .addContent(originalType).addContent("(");
             }
             String properties = jsonProperties.stream()
                     .filter(JsonProperty::usedInCreator)
                     .map(property -> property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX)
                     .collect(Collectors.joining(", "));
             method.addContent(properties).addContentLine(");");
+            for (JsonProperty property : jsonProperties) {
+                if (!property.usedInCreator()) {
+                    if (property.directFieldAccess()) {
+                        method.addContentLine("instance." + property.fieldName().orElseThrow() + " = "
+                                                      + property.deserializationName()
+                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
+                    } else {
+                        method.addContentLine("instance." + property.setterName().orElseThrow() + "("
+                                                      + property.deserializationName()
+                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
+                    }
+                }
+            }
         } else if (hasBuilder) {
             BuilderInfo builderInfo = converterInfo.builderInfo().get();
-            method.addContent("return builder.").addContent(builderInfo.buildMethodName()).addContentLine("();");
-        } else {
-            method.addContentLine("return instance;");
+            method.addContent(converterInfo.originalType())
+                    .addContent(" instance = builder.")
+                    .addContent(builderInfo.buildMethodName())
+                    .addContentLine("();");
+            for (JsonProperty property : jsonProperties) {
+                if (property.usedInBuilder()) {
+                    //This property is handled by the builder
+                    continue;
+                }
+                if (property.directFieldAccess()) {
+                    method.addContentLine("instance." + property.fieldName().orElseThrow() + " = "
+                                                  + property.deserializationName()
+                            .orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
+                } else {
+                    method.addContentLine("instance." + property.setterName().orElseThrow() + "("
+                                                  + property.deserializationName()
+                            .orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
+                }
+            }
         }
-        method.addContentLine("}");
+        method.addContentLine("return instance;");
+    }
+
+    private static void propertyProcessing(ClassBase.Builder<?, ?> classBuilder,
+                                           Method.Builder method,
+                                           ConvertedTypeInfo converterInfo,
+                                           Map<String, TypeToConfigure> toConfigure,
+                                           List<JsonProperty> jsonProperties,
+                                           boolean hasCreator,
+                                           boolean hasBuilder) {
+        boolean hasProperties = !jsonProperties.isEmpty();
+
         method.addContentLine("while(true) {")
                 .addContentLine("if (lastByte != '\"') {")
                 .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start\", lastByte);")
@@ -511,71 +522,94 @@ class JsonConverterGenerator {
                 .addContentLine("throw parser.createException(\"Expected ',' or '}'\", lastByte);")
                 .addContentLine("}");
         method.addContentLine("}");
-        jsonProperties.stream()
+    }
+
+    private static void earlyReturnForEmptyObjects(Method.Builder method,
+                                                   ConvertedTypeInfo converterInfo,
+                                                   List<JsonProperty> jsonProperties,
+                                                   boolean hasCreator,
+                                                   ElementKind creatorKind,
+                                                   CreatorInfo creatorInfo,
+                                                   boolean hasBuilder) {
+        method.addContentLine("if (lastByte == '}') {");
+        String required = jsonProperties.stream()
                 .filter(JsonProperty::required)
-                .forEach(property -> {
-                    String name = JsonConverterGenerator.convertToMissingName(property);
-                    method.addContentLine("if (" + name + ") {")
-                            .addContent("throw parser.createException(\"Property \\\"")
-                            .addContent(property.deserializationName().orElseThrow())
-                            .addContentLine("\\\" was required to be present in the JSON, but was missing.\");")
-                            .addContentLine("}");
-                });
-        if (hasCreator) {
+                .map(it -> it.deserializationName().orElseThrow())
+                .collect(Collectors.joining(", "));
+        if (!required.isEmpty()) {
+            method.addContentLine("throw parser.createException(\"The following properties were required to be present, "
+                                          + "but none were found: " + required + "\");");
+        } else if (hasCreator) {
             TypeName originalType = converterInfo.originalType();
+
+            method.addContent("return ");
             if (creatorKind == ElementKind.METHOD) {
-                method.addContent(originalType).addContent(" instance = ")
-                        .addContent(originalType).addContent("." + creatorInfo.method() + "(");
+                method.addContent(originalType).addContent("." + creatorInfo.method() + "(");
             } else {
-                method.addContent(originalType).addContent(" instance = new ")
-                        .addContent(originalType).addContent("(");
+                method.addContent("new ").addContent(originalType).addContent("(");
             }
             String properties = jsonProperties.stream()
                     .filter(JsonProperty::usedInCreator)
                     .map(property -> property.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX)
                     .collect(Collectors.joining(", "));
             method.addContent(properties).addContentLine(");");
-            for (JsonProperty property : jsonProperties) {
-                if (!property.usedInCreator()) {
-                    if (property.directFieldAccess()) {
-                        method.addContentLine("instance." + property.fieldName().orElseThrow() + " = "
-                                                      + property.deserializationName()
-                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
-                    } else {
-                        method.addContentLine("instance." + property.setterName().orElseThrow() + "("
-                                                      + property.deserializationName()
-                                .orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
-                    }
-                }
-            }
         } else if (hasBuilder) {
             BuilderInfo builderInfo = converterInfo.builderInfo().get();
-            if (additionalSetters) {
-                method.addContent(converterInfo.originalType())
-                        .addContent(" instance = builder.")
-                        .addContent(builderInfo.buildMethodName())
-                        .addContentLine("();");
-            } else {
-                method.addContent("return builder.").addContent(builderInfo.buildMethodName()).addContentLine("();");
-                return;
+            method.addContent("return builder.").addContent(builderInfo.buildMethodName()).addContentLine("();");
+        } else {
+            method.addContentLine("return instance;");
+        }
+        method.addContentLine("}");
+    }
+
+    private static void createPreProcessingVariables(Method.Builder method,
+                                                     ConvertedTypeInfo converterInfo,
+                                                     List<JsonProperty> jsonProperties,
+                                                     boolean hasCreator,
+                                                     ElementKind creatorKind,
+                                                     CreatorInfo creatorInfo,
+                                                     boolean hasBuilder) {
+        jsonProperties.stream()
+                .filter(JsonProperty::required)
+                .map(JsonConverterGenerator::convertToMissingName)
+                .forEach(name -> method.addContent(boolean.class).addContentLine(" " + name + " = true;"));
+        if (hasCreator) {
+            for (JsonProperty jsonProperty : jsonProperties) {
+                TypeName type = jsonProperty.deserializationType().orElseThrow();
+                method.addContent(type)
+                        .addContent(" " + jsonProperty.deserializationName().orElseThrow() + PROPERTY_NAME_SUFFIX + " = ")
+                        .addContentLine(DEFAULT_TYPE_VALUES.getOrDefault(type, DEFAULT_TYPE_VALUE).get() + ";");
             }
-            for (JsonProperty property : jsonProperties) {
-                if (property.usedInBuilder()) {
+        } else if (creatorKind == ElementKind.METHOD) {
+            TypeName originalType = converterInfo.originalType();
+            method.addContent(originalType).addContent(" instance = ")
+                    .addContent(originalType).addContent("." + creatorInfo.method() + "();");
+        } else if (hasBuilder) {
+            BuilderInfo builderInfo = converterInfo.builderInfo().get();
+            TypeName builder = builderInfo.builderType();
+            TypeName originalType = converterInfo.originalType();
+            method.addContent(builder).addContent(" builder = ");
+            if (builderInfo.builderMethodName().isPresent()) {
+                method.addContent(originalType).addContentLine(".builder();");
+            } else {
+                method.addContent("new ").addContent(builder).addContentLine("();");
+            }
+            for (JsonProperty jsonProperty : jsonProperties) {
+                String deserializationName = jsonProperty.deserializationName().orElseThrow();
+                if (jsonProperty.usedInBuilder()) {
                     //This property is handled by the builder
                     continue;
                 }
-                if (property.directFieldAccess()) {
-                    method.addContentLine("instance." + property.fieldName().orElseThrow() + " = "
-                                                  + property.deserializationName()
-                            .orElseThrow() + PROPERTY_NAME_SUFFIX + ";");
-                } else {
-                    method.addContentLine("instance." + property.setterName().orElseThrow() + "("
-                                                  + property.deserializationName()
-                            .orElseThrow() + PROPERTY_NAME_SUFFIX + ");");
-                }
+                TypeName type = jsonProperty.deserializationType().orElseThrow();
+                method.addContent(type)
+                        .addContent(" " + deserializationName + PROPERTY_NAME_SUFFIX + " = ")
+                        .addContentLine(DEFAULT_TYPE_VALUES.getOrDefault(type, DEFAULT_TYPE_VALUE).get() + ";");
             }
+        } else {
+            TypeName originalType = converterInfo.originalType();
+            method.addContent(originalType).addContent(" instance = new ")
+                    .addContent(originalType).addContentLine("();");
         }
-        method.addContentLine("return instance;");
     }
 
     private static String convertToMissingName(JsonProperty jsonProperty) {

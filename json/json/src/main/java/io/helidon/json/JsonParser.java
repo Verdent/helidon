@@ -427,7 +427,7 @@ public interface JsonParser {
     JsonException createException(String message);
 
     /**
-     * Create a JsonException with the given message and found byte.
+     * Create a JsonException with the given message and found byte information.
      *
      * @param message the exception message
      * @param c the byte that caused the exception

@@ -34,8 +34,11 @@ abstract class AbstractGenerator implements Generator {
     // stack structure tracking: true = object, false = array
     private final boolean[] structureType = new boolean[STACK_SIZE];
 
+    // first: true if this is the first item in the current object/array
     private boolean first = true;
+    // keyWritten: true if a key has been written for the current object entry (awaiting value)
     private boolean keyWritten = false;
+    // depth: current nesting level in objects/arrays
     private int depth = 0;
 
     abstract void writeByte(byte value);

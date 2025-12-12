@@ -261,6 +261,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 } else if ((b & 0x80) == 0) {
                     stringBuffer[stringBuffIndex++] = (char) b;
                 } else {
+                    // Decode UTF-8 multibyte sequence starting with this byte
                     stringBuffIndex = decodeUtf8(stringBuffIndex, b);
                 }
                 if (stringBuffIndex == stringBufferLength) {
@@ -296,32 +297,36 @@ final class JsonStreamParser extends ArrayJsonParser {
         }
     }
 
+    /**
+     * Reads more data from the input stream into the buffer, handling buffering for JSON values that span multiple reads.
+     * There are two modes: bufferingJsonValue (for values like strings or numbers) and non-buffering (for structural parsing).
+     */
     private void readMoreData() {
         try {
             if (bufferingJsonValue) {
+                // When buffering a JSON value (e.g., string or number), we need to preserve the value across reads
                 if (jsonValueStart > 0) {
-                    // There is still some free space in this current buffer to be used
+                    // Move the partial value to the beginning of the buffer to make room for more data
                     int valueLen = bufferLength - jsonValueStart;
-                    // index has to be at the very end of the value
-                    currentIndex = valueLen;
+                    currentIndex = valueLen; // Position at end of moved value
                     System.arraycopy(buffer, jsonValueStart, buffer, 0, valueLen);
-                    jsonValueStart = 0;
+                    jsonValueStart = 0; // Reset start position
                     int lastRead = inputStream.read(buffer, currentIndex, buffer.length - currentIndex);
                     if (lastRead == -1) {
                         finished = true;
-                        bufferLength = currentIndex;
+                        bufferLength = currentIndex; // Only the moved value remains
                     } else {
                         bufferLength = currentIndex + lastRead;
                         finished = false;
                     }
                 } else {
+                    // Buffer is full with the value, need to expand
                     int newCap = buffer.length + bufferSize;
                     byte[] tmp = new byte[newCap];
-                    // copy only the valid bytes we currently have
-                    System.arraycopy(buffer, 0, tmp, 0, bufferLength);
+                    System.arraycopy(buffer, 0, tmp, 0, bufferLength); // Copy existing data
                     currentIndex = bufferLength;
                     int lastRead = inputStream.read(tmp, currentIndex, newCap - currentIndex);
-                    buffer = tmp;
+                    buffer = tmp; // Replace buffer
                     if (lastRead == -1) {
                         finished = true;
                         bufferLength = currentIndex;
@@ -331,20 +336,18 @@ final class JsonStreamParser extends ArrayJsonParser {
                     }
                 }
             } else {
-                // Some parsing methods need to detect one byte after their value to see, if they are supposed to end.
-                // When end is detected, they go 1 byte back to be on the right state -> end of the value.
-                // If the value ends at the end of the buffer, and we would not keep the last byte from the previous
-                // we would risk to getting out of the bounds of the array buffer.
+                // For structural parsing, keep one byte of look-ahead to detect value boundaries
+                // Preserve the byte before currentIndex to allow backtracking
                 buffer[0] = buffer[currentIndex - 1];
-                int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
+                int lastRead = inputStream.read(buffer, 1, buffer.length - 1); // Read into buffer[1..]
                 if (lastRead == -1) {
                     finished = true;
-                    bufferLength = 1;
+                    bufferLength = 1; // Only the preserved byte
                 } else {
                     bufferLength = lastRead + 1;
                     finished = false;
                 }
-                currentIndex = 0;
+                currentIndex = 0; // Reset to beginning
             }
         } catch (IOException e) {
             throw new RuntimeException(e);

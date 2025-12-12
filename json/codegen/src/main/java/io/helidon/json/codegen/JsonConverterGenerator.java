@@ -325,6 +325,10 @@ class JsonConverterGenerator {
         method.addContentLine("generator.writeObjectEnd();");
     }
 
+    /**
+     * Generates the deserialize method that parses JSON object into the target type.
+     * Handles different creation patterns: constructors, factory methods, builders.
+     */
     private static void generateFromJsonMethod(ClassBase.Builder<?, ?> classBuilder,
                                                Method.Builder method,
                                                ConvertedTypeInfo converterInfo,

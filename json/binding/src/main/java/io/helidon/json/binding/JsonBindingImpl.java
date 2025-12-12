@@ -59,25 +59,28 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     JsonBindingImpl(JsonBindingConfig config) {
         this.config = config;
-        //Fill in serializers
+        // Initialize serializers from config
+        // Store by GenericType and by raw Type for lookup flexibility
         for (JsonSerializer<?> serializer : config.serializers()) {
             GenericType<?> type = serializer.type();
             initialSerializers.putIfAbsent(type, serializer);
-            initialSerializers.putIfAbsent(type.type(), serializer);
+            initialSerializers.putIfAbsent(type.type(), serializer); // Also store by raw Type
             if (type.isClass()) {
                 initialIdentitySerializers.putIfAbsent(type.rawType(), serializer);
             }
         }
-        //Fill in deserializers
+        // Initialize deserializers from config
+        // Similar dual storage for GenericType and raw Type
         for (JsonDeserializer<?> deserializer : config.deserializers()) {
             GenericType<?> type = deserializer.type();
             initialDeserializers.putIfAbsent(type, deserializer);
-            initialDeserializers.putIfAbsent(type.type(), deserializer);
+            initialDeserializers.putIfAbsent(type.type(), deserializer); // Also store by raw Type
             if (type.isClass()) {
                 initialIdentityDeserializers.putIfAbsent(type.rawType(), deserializer);
             }
         }
-        //Fill in binding factories
+        // Initialize binding factories from config
+        // Factories support multiple types, so register for each supported type
         for (JsonBindingFactory<?> bindingFactory : config.bindingFactories()) {
             bindingFactory.supportedTypes().forEach(type -> bindingFactories.putIfAbsent(type, bindingFactory));
         }

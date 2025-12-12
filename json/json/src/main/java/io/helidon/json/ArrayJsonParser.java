@@ -396,6 +396,7 @@ class ArrayJsonParser implements JsonParser {
             } else if ((b & 0x80) == 0) {
                 stringBuffer[stringBuffIndex++] = (char) b;
             } else {
+                // Decode UTF-8 multibyte sequence starting with this byte
                 stringBuffIndex = decodeUtf8(stringBuffIndex, b);
             }
             if (stringBuffIndex == stringBufferLength) {
@@ -543,20 +544,23 @@ class ArrayJsonParser implements JsonParser {
 
     @Override
     public float readFloat() {
+        // rollback tracks whether we might need to back up the index if no '.' or 'e' is found
         boolean rollback = true;
-        float result = readLong();
+        float result = readLong(); // Read integer part
         byte nextByte = readNextByte();
         if (nextByte == '.') {
+            rollback = false; // Found '.', so don't rollback after integer part
             int start = currentIndex;
             readNextByte();
-            long fracPart = parseLong(false);
+            long fracPart = parseLong(false); // Read fractional digits
             int fracDigits = currentIndex - start;
             if (fracDigits >= POW_FLOAT_CACHE.length) {
-                //Let Java handle POW, slower
+                // Let Java handle POW for large exponents, slower
                 result += fracPart / (float) Math.pow(10, fracDigits);
             } else {
                 result += fracPart / POW_FLOAT_CACHE[fracDigits];
             }
+            // After fractional part, check if there's more (potentially exponent)
             rollback = hasNext();
             if (rollback) {
                 nextByte = readNextByte();
@@ -576,13 +580,14 @@ class ArrayJsonParser implements JsonParser {
             if (exp != 0) {
                 exp = expNeg ? -exp : exp;
                 if (exp >= POW_FLOAT_CACHE.length || exp < 0) {
-                    //Let Java handle POW, slower
+                    // Let Java handle POW for large exponents, slower
                     result *= (float) Math.pow(10, exp);
                 } else {
                     result *= POW_FLOAT_CACHE[exp];
                 }
             }
         } else if (rollback) {
+            // No '.' or 'e' found, back up to not consume the next byte
             --currentIndex;
         }
         return result;
@@ -659,7 +664,8 @@ class ArrayJsonParser implements JsonParser {
         if (currentByte() != '"') {
             throw createException("Hash calculation is intended only for String values");
         }
-        //Based on recommended offset basis and prime values.
+        // Compute FNV-1a hash of the string content (excluding quotes) using recommended offset basis and prime values.
+        // This optimized loop scans the buffer directly without calling readNextByte() for each character.
         int fnv1aHash = FNV_OFFSET_BASIS;
         byte b;
         currentIndex++;
@@ -862,25 +868,29 @@ class ArrayJsonParser implements JsonParser {
         case 'r':
             return '\r';
         case 'u':
-            ensure(4);
+            ensure(4); // Need 4 hex digits
             char tmp = (char) (
                     (translateHex(buffer[++currentIndex]) << 12)
                             + (translateHex(buffer[++currentIndex]) << 8)
                             + (translateHex(buffer[++currentIndex]) << 4)
                             + translateHex(buffer[++currentIndex]));
+            // Handle JSON's UTF-16 surrogate pair encoding (\\uXXXX\\uYYYY for code points > U+FFFF)
             if (Character.isHighSurrogate(tmp)) {
+                // High surrogate: must be followed by a low surrogate
                 if (expectLowSurrogate) {
                     throw createException("A high surrogate must always be followed by a low surrogate");
                 } else {
-                    expectLowSurrogate = true;
+                    expectLowSurrogate = true; // Expect low surrogate next
                 }
             } else if (Character.isLowSurrogate(tmp)) {
+                // Low surrogate: must follow a high surrogate
                 if (expectLowSurrogate) {
-                    expectLowSurrogate = false;
+                    expectLowSurrogate = false; // Pair complete
                 } else {
                     throw createException("A low surrogate must always follow a high surrogate");
                 }
             } else if (expectLowSurrogate) {
+                // Expected low surrogate but got neither high nor low
                 throw createException("Low surrogate was expected to follow the high surrogate, "
                                               + "but found " + Parsers.toPrintableForm(tmp));
             }
@@ -890,37 +900,65 @@ class ArrayJsonParser implements JsonParser {
         }
     }
 
+    /**
+     * Decodes a UTF-8 encoded byte sequence into one or more UTF-16 characters (using surrogates for Unicode code points above U+FFFF).
+     * This method handles variable-length UTF-8 sequences (2, 3, or 4 bytes) as defined by RFC 3629.
+     *
+     * UTF-8 encoding uses variable byte sequences to represent Unicode code points:
+     * - 2-byte sequences (110xxxxx 10yyyyyy): represent code points U+0080 to U+07FF
+     * - 3-byte sequences (1110xxxx 10yyyyyy 10zzzzzz): represent code points U+0800 to U+FFFF
+     * - 4-byte sequences (11110www 10xxxxxx 10yyyyyy 10zzzzzz): represent code points U+10000 to U+10FFFF
+     *
+     * For code points above U+FFFF, this method converts them to UTF-16 surrogate pairs since Java's char type
+     * can only represent values up to U+FFFF. The conversion follows the standard UTF-16 encoding scheme:
+     * - Subtract 0x10000 from the code point to get a 20-bit value
+     * - High surrogate = (value >> 10) + 0xD800 (takes the upper 10 bits)
+     * - Low surrogate = (value & 0x3FF) + 0xDC00 (takes the lower 10 bits)
+     *
+     * @param position the current position in the string buffer to write the decoded characters
+     * @param currentByte the first byte of the UTF-8 sequence (must have high bit set, indicating multibyte sequence)
+     * @return the new position in the string buffer after writing the decoded characters
+     * @throws JsonException if the UTF-8 sequence is invalid, incomplete, or represents an out-of-range code point
+     */
     int decodeUtf8(int position, byte currentByte) {
         if ((currentByte & 0xE0) == 0xC0) {
-            int c2 = readNextByte() & 0x3F;
-            int codePoint = ((currentByte & 0x1F) << 6) | c2;
+            // 2-byte UTF-8 sequence: 110xxxxx 10yyyyyy -> U+0080 to U+07FF
+            int c2 = readNextByte() & 0x3F; // Second byte must be 10yyyyyy
+            int codePoint = ((currentByte & 0x1F) << 6) | c2; // Assemble code point: xxxxx yyyyyy
             stringBuffer[position++] = (char) codePoint;
         } else if ((currentByte & 0xF0) == 0xE0) {
-            ensure(2);
-            int c2 = buffer[++currentIndex] & 0x3F;
-            int c3 = buffer[++currentIndex] & 0x3F;
-            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3;
+            // 3-byte UTF-8 sequence: 1110xxxx 10yyyyyy 10zzzzzz -> U+0800 to U+FFFF
+            ensure(2); // Ensure we have at least 2 more bytes
+            int c2 = buffer[++currentIndex] & 0x3F; // Second byte: 10yyyyyy
+            int c3 = buffer[++currentIndex] & 0x3F; // Third byte: 10zzzzzz
+            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3; // Assemble: xxxx yyyyyy zzzzzz
             stringBuffer[position++] = (char) codePoint;
         } else if ((currentByte & 0xF8) == 0xF0) {
-            ensure(3);
-            int c2 = buffer[++currentIndex] & 0x3F;
-            int c3 = buffer[++currentIndex] & 0x3F;
-            int c4 = buffer[++currentIndex] & 0x3F;
-            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
+            // 4-byte UTF-8 sequence: 11110www 10xxxxxx 10yyyyyy 10zzzzzz -> U+10000 to U+10FFFF
+            ensure(3); // Ensure we have at least 3 more bytes
+            int c2 = buffer[++currentIndex] & 0x3F; // Second byte: 10xxxxxx
+            int c3 = buffer[++currentIndex] & 0x3F; // Third byte: 10yyyyyy
+            int c4 = buffer[++currentIndex] & 0x3F; // Fourth byte: 10zzzzzz
+            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4; // Assemble: www xxxxxx yyyyyy zzzzzz
             if (codePoint >= 0x10000) {
+                // Code point requires UTF-16 surrogates
                 if (codePoint >= 0x110000) {
+                    // Beyond valid Unicode range
                     throw createException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
                 }
-                codePoint -= 0x10000;
-                stringBuffer[position++] = (char) ((codePoint >> 10) + 0xD800); //High surrogate
+                // Convert to UTF-16 surrogate pair
+                codePoint -= 0x10000; // Subtract U+10000 to get 20-bit value
+                stringBuffer[position++] = (char) ((codePoint >> 10) + 0xD800); // High surrogate: U+D800 + high 10 bits
                 if (position == stringBufferLength) {
-                    increaseStringBuffer();
+                    increaseStringBuffer(); // Ensure space for low surrogate
                 }
-                stringBuffer[position++] = (char) ((codePoint & 0x3FF) + 0xDC00); //Low surrogate
+                stringBuffer[position++] = (char) ((codePoint & 0x3FF) + 0xDC00); // Low surrogate: U+DC00 + low 10 bits
             } else {
+                // Code point fits in a single char (U+0000 to U+FFFF)
                 stringBuffer[position++] = (char) codePoint;
             }
         } else {
+            // Invalid UTF-8 leading byte
             throw createException("Invalid UTF-8 byte", currentByte);
         }
         return position;
@@ -937,32 +975,53 @@ class ArrayJsonParser implements JsonParser {
         stringBuffer = newBuf;
     }
 
+    /**
+     * Decodes a UTF-8 encoded byte sequence into a single char, rejecting code points that require UTF-16 surrogates.
+     * This method handles the same UTF-8 sequences as decodeUtf8(), but is designed for contexts where only single chars
+     * are acceptable (e.g., readChar() method). If a 4-byte UTF-8 sequence would produce a code point above U+FFFF
+     * that requires surrogate pairs, it throws an exception instead of converting.
+     *
+     * The decoding process follows the same UTF-8 rules as decodeUtf8(), extracting payload bits from continuation bytes
+     * (which always start with 10xxxxxx) and assembling them with the leading byte. However, unlike decodeUtf8(),
+     * this method ensures the final code point can be represented as a single Java char (U+0000 to U+FFFF).
+     *
+     * @param currentByte the first byte of the UTF-8 sequence (must have high bit set, indicating multibyte sequence)
+     * @return the decoded char value if the code point fits in a single char
+     * @throws JsonException if the UTF-8 sequence is invalid, incomplete, or represents a code point that would require surrogates
+     */
     private char decodeUtf8ToChar(byte currentByte) {
         if ((currentByte & 0xE0) == 0xC0) {
-            int c2 = readNextByte() & 0x3F;
-            int codePoint = ((currentByte & 0x1F) << 6) | c2;
+            // 2-byte UTF-8 sequence: 110xxxxx 10yyyyyy -> U+0080 to U+07FF
+            int c2 = readNextByte() & 0x3F; // Second byte must be 10yyyyyy
+            int codePoint = ((currentByte & 0x1F) << 6) | c2; // Assemble code point: xxxxx yyyyyy
             return (char) codePoint;
         } else if ((currentByte & 0xF0) == 0xE0) {
-            ensure(2);
-            int c2 = buffer[++currentIndex] & 0x3F;
-            int c3 = buffer[++currentIndex] & 0x3F;
-            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3;
+            // 3-byte UTF-8 sequence: 1110xxxx 10yyyyyy 10zzzzzz -> U+0800 to U+FFFF
+            ensure(2); // Ensure we have at least 2 more bytes
+            int c2 = buffer[++currentIndex] & 0x3F; // Second byte: 10yyyyyy
+            int c3 = buffer[++currentIndex] & 0x3F; // Third byte: 10zzzzzz
+            int codePoint = ((currentByte & 0x0F) << 12) | (c2 << 6) | c3; // Assemble: xxxx yyyyyy zzzzzz
             return (char) codePoint;
         } else if ((currentByte & 0xF8) == 0xF0) {
-            ensure(3);
-            int c2 = buffer[++currentIndex] & 0x3F;
-            int c3 = buffer[++currentIndex] & 0x3F;
-            int c4 = buffer[++currentIndex] & 0x3F;
-            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4;
+            // 4-byte UTF-8 sequence: 11110www 10xxxxxx 10yyyyyy 10zzzzzz -> U+10000 to U+10FFFF
+            ensure(3); // Ensure we have at least 3 more bytes
+            int c2 = buffer[++currentIndex] & 0x3F; // Second byte: 10xxxxxx
+            int c3 = buffer[++currentIndex] & 0x3F; // Third byte: 10yyyyyy
+            int c4 = buffer[++currentIndex] & 0x3F; // Fourth byte: 10zzzzzz
+            int codePoint = ((currentByte & 0x07) << 18) | (c2 << 12) | (c3 << 6) | c4; // Assemble: www xxxxxx yyyyyy zzzzzz
             if (codePoint >= 0x10000) {
+                // Code point requires UTF-16 surrogates, which cannot fit in a single char
                 if (codePoint >= 0x110000) {
+                    // Beyond valid Unicode range
                     throw createException("Invalid UTF-8 code point: " + Integer.toHexString(codePoint));
                 }
                 throw createException("UTF-16 high and low surrogates cannot be represented as a single char");
             } else {
+                // Code point fits in a single char (U+0000 to U+FFFF)
                 return (char) codePoint;
             }
         } else {
+            // Invalid UTF-8 leading byte
             throw createException("Invalid UTF-8 byte", currentByte);
         }
     }
@@ -1243,6 +1302,10 @@ class ArrayJsonParser implements JsonParser {
             if (hasNext) {
                 currentIndex--;
             }
+            // Check for overflow before adding the last digit
+            // INT_SIZE_BORDER = Integer.MAX_VALUE / 10 = 214748364
+            // For positive: possibleResult < 214748364 or (== and digit10 <= 7) since 2147483647 is max
+            // For negative: -possibleResult > -214748364 or (== and digit10 <= 8) since -2147483648 is min
             if (negative) {
                 if (-possibleResult > -INT_SIZE_BORDER || (-possibleResult == -INT_SIZE_BORDER && digit10 <= 8)) {
                     return possibleResult * 10 + digit10;

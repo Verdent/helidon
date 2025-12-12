@@ -61,12 +61,16 @@ public final class JsonNumber extends JsonValue {
 
     @Override
     byte jsonStartChar() {
+        // Approximate the first character of the number string for optimization
+        // This is used by some parsers to quickly identify number values
         int val = intValue();
         if (val < 0) {
             return '-';
         }
+        // For positive numbers, calculate first digit using log10
+        // Note: this is an approximation and may not be accurate for all cases
         int digits = (int) Math.log10(val);
-        return (byte) (val / Math.pow(10, digits));
+        return (byte) ('0' + (val / (int) Math.pow(10, digits)));
     }
 
     /**

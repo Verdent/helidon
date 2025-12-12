@@ -184,14 +184,20 @@ class GeneratorOutputStream extends AbstractGenerator {
         }
     }
 
+    /**
+     * Encodes a char into JSON string format, handling control characters, escapes, and UTF-8 encoding.
+     * Follows JSON string encoding rules as per RFC 8259.
+     */
     private void encodeChar(char c) {
         if (c < 0x20) {
-            //Non-printable character
+            // Control characters (0x00-0x1F) must be escaped
             if (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') {
+                // Common control chars use short escapes
                 ensureCapacity(2);
                 buffer[index++] = SLASH;
                 buffer[index++] = (byte) c;
             } else {
+                // Other control chars use \uXXXX format
                 ensureCapacity(6);
                 buffer[index++] = SLASH;
                 buffer[index++] = 'u';
@@ -201,30 +207,34 @@ class GeneratorOutputStream extends AbstractGenerator {
                 buffer[index++] = HEX_DIGITS[c & 0xF];
             }
         } else if (c == '"' || c == '\\') {
+            // JSON special characters must be escaped
             ensureCapacity(2);
             buffer[index++] = SLASH;
             buffer[index++] = (byte) c;
         } else if (c < 0x80) {
-            //Character is an ASCII char. No multibyte handling required.
+            // ASCII character (0x20-0x7F): write as-is
             ensureCapacity(1);
             buffer[index++] = (byte) c;
         } else if (c < 0x800) {
+            // 2-byte UTF-8 sequence: 110xxxxx 10yyyyyy
             ensureCapacity(2);
-            buffer[index++] = (byte) (0b11000000 | (c >> 6));
-            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
+            buffer[index++] = (byte) (0b11000000 | (c >> 6));      // First byte: 110xxxxx
+            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));    // Second byte: 10yyyyyy
         } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
+            // Surrogates are written as \uXXXX (JSON doesn't support UTF-16 surrogates directly)
             ensureCapacity(6);
             buffer[index++] = SLASH;
             buffer[index++] = 'u';
-            buffer[index++] = HEX_DIGITS[(c >> 12) & 0xFF];
-            buffer[index++] = HEX_DIGITS[(c >> 8) & 0xFF];
-            buffer[index++] = HEX_DIGITS[(c >> 4) & 0xFF];
-            buffer[index++] = HEX_DIGITS[c & 0xFF];
+            buffer[index++] = HEX_DIGITS[(c >> 12) & 0xF];  // High nibble of high byte
+            buffer[index++] = HEX_DIGITS[(c >> 8) & 0xF];   // Low nibble of high byte
+            buffer[index++] = HEX_DIGITS[(c >> 4) & 0xF];   // High nibble of low byte
+            buffer[index++] = HEX_DIGITS[c & 0xF];          // Low nibble of low byte
         } else {
+            // 3-byte UTF-8 sequence: 1110xxxx 10yyyyyy 10zzzzzz (for BMP characters)
             ensureCapacity(3);
-            buffer[index++] = (byte) (0b11100000 | (c >> 12));
-            buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F));
-            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));
+            buffer[index++] = (byte) (0b11100000 | (c >> 12));         // First byte: 1110xxxx
+            buffer[index++] = (byte) (0b10000000 | ((c >> 6) & 0x3F)); // Second byte: 10yyyyyy
+            buffer[index++] = (byte) (0b10000000 | (c & 0x3F));        // Third byte: 10zzzzzz
         }
     }
 

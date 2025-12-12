@@ -599,52 +599,158 @@ class ArrayJsonParser implements JsonParser {
 
     @Override
     public double readDouble() {
-        double result = readLong();
-        byte nextByte = hasNext() ? buffer[++currentIndex] : -1;
-        if (nextByte == '.') {
-            if (!hasNext()) {
-                throw createException("Fractional digits expected after the '.'");
-            }
-            int start = currentIndex++;
-            long fracPart = parseLong(false);
-            int fracDigits = currentIndex - start;
-            if (fracDigits >= POW_DOUBLE_CACHE.length) {
-                //Let Java handle POW, slower
-                result += fracPart / Math.pow(10, fracDigits);
-            } else {
-                result += fracPart / POW_DOUBLE_CACHE[fracDigits];
-            }
-            // After fractional part, check if there's more (potentially exponent)
-            nextByte = hasNext() ? buffer[++currentIndex] : -1;
+        int start = currentIndex;
+        int i = start;
+
+        // Check for sign
+        boolean negative = false;
+        byte b = buffer[i];
+        if (b == '-') {
+            negative = true;
+            i++;
+        } else if (b == '+') {
+            i++;
         }
-        // Exponent part
-        if (nextByte == 'e' || nextByte == 'E') {
-            nextByte = hasNext() ? buffer[++currentIndex] : -1;
-            boolean expNeg = false;
-            if (nextByte == '+') {
-                currentIndex++;
-            } else if (nextByte == '-') {
-                expNeg = true;
-                currentIndex++;
-            } else if (nextByte == -1) {
-                throw createException("A value needs to be present after the exponent");
-            }
-            int exp = parseInt(expNeg);
-            if (exp != 0) {
-                exp = expNeg ? -exp : exp;
-                if (exp >= POW_DOUBLE_CACHE.length || exp < 0) {
-                    //Let Java handle POW, slower
-                    result *= Math.pow(10, exp);
+
+        // Check for special values
+        if (i + 3 <= bufferLength && buffer[i] == 'N' && buffer[i + 1] == 'a' && buffer[i + 2] == 'N') {
+            return Double.NaN;
+        }
+
+        if (i + 8 <= bufferLength
+                && buffer[i] == 'I'
+                && buffer[i + 1] == 'n'
+                && buffer[i + 2] == 'f'
+                && buffer[i + 3] == 'i'
+                && buffer[i + 4] == 'n'
+                && buffer[i + 5] == 'i'
+                && buffer[i + 6] == 't'
+                && buffer[i + 7] == 'y') {
+            return negative ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+        }
+
+        // Parse mantissa
+        long mantissa = 0;
+        boolean hasDecimal = false;
+        int digitsBeforeDecimal = 0;
+        int significantDigits = 0;
+        int leadingZerosAfterDecimal = 0;
+        boolean foundNonZero = false;
+        boolean hasTruncatedDigits = false;
+
+        // Parse all digits
+        while (i < bufferLength) {
+            b = buffer[i];
+            int digit = WHOLE_NUMBER_PARTS[b & 0xFF];
+            if (digit > -1) {
+                if (hasDecimal) {
+                    // After decimal point
+                    if (!foundNonZero && digit == 0) {
+                        leadingZerosAfterDecimal++;
+                    } else {
+                        foundNonZero = true;
+                        if (significantDigits < 17) {
+                            mantissa = mantissa * 10 + digit;
+                            significantDigits++;
+                        } else {
+                            hasTruncatedDigits = true;
+                        }
+                    }
                 } else {
-                    result *= POW_DOUBLE_CACHE[exp];
+                    // Before decimal point
+                    if (digit != 0 || foundNonZero) {
+                        foundNonZero = true;
+                        digitsBeforeDecimal++;
+                        if (significantDigits < 17) {
+                            mantissa = mantissa * 10 + digit;
+                            significantDigits++;
+                        } else {
+                            hasTruncatedDigits = true;
+                        }
+                    }
                 }
+                i++;
+            } else if (b == '.' && !hasDecimal) {
+                hasDecimal = true;
+                i++;
             } else {
-                throw createException("A numeric value needs to be present after the exponent");
+                currentIndex = i - 1;
+                break;
             }
-        } else if (nextByte != -1) {
-            currentIndex--;
         }
-        return result;
+
+        // Calculate the base decimal exponent
+        int decimalExponent = 0;
+        if (digitsBeforeDecimal > 0) {
+            decimalExponent = digitsBeforeDecimal - significantDigits;
+        } else if (hasDecimal && foundNonZero) {
+            decimalExponent = -(leadingZerosAfterDecimal + significantDigits);
+        }
+
+        // Parse explicit exponent
+        int explicitExp = 0;
+        if (i < bufferLength && (buffer[i] == 'e' || buffer[i] == 'E')) {
+            i++;
+            boolean expNegative = false;
+            if (i < bufferLength) {
+                if (buffer[i] == '-') {
+                    expNegative = true;
+                    i++;
+                } else if (buffer[i] == '+') {
+                    i++;
+                }
+            }
+
+            while (i < bufferLength && buffer[i] >= '0' && buffer[i] <= '9') {
+                explicitExp = explicitExp * 10 + (buffer[i] - '0');
+                i++;
+                if (explicitExp > 100000) break;
+            }
+
+            currentIndex = i - 1;
+            decimalExponent += expNegative ? -explicitExp : explicitExp;
+        }
+        if (currentIndex == start) {
+            currentIndex = i;
+        }
+
+        // Handle zero
+        if (mantissa == 0) {
+            return negative ? -0.0 : 0.0;
+        }
+
+        // DECISION POINT: Should we delegate to Java?
+        // Delegate if:
+        // 1. We truncated digits (rounding is complex)
+        // 2. Exponent is very large or very small (overflow/underflow edge cases)
+        // 3. The number is in the tricky range near max/min double values
+
+        boolean shouldDelegate = false;
+
+        if (hasTruncatedDigits) {
+            // We lost precision - need exact rounding
+            shouldDelegate = true;
+        } else if (decimalExponent > 22 || decimalExponent < -22) {
+            // Large exponents can have precision issues
+            shouldDelegate = true;
+        }
+
+        if (shouldDelegate) {
+            // Delegate to Java for exact result
+            return Double.parseDouble(new String(buffer, start, i));
+        }
+
+        // FAST PATH: Handle common cases ourselves
+        double result = mantissa;
+
+        // Apply exponent using lookup table
+        if (decimalExponent > 0) {
+            result *= POW_DOUBLE_CACHE[decimalExponent];
+        } else if (decimalExponent < 0) {
+            result /= POW_DOUBLE_CACHE[-decimalExponent];
+        }
+
+        return negative ? -result : result;
     }
 
     void ensure(int amount) {

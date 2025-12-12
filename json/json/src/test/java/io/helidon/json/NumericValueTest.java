@@ -327,18 +327,6 @@ abstract class NumericValueTest {
         assertThat(parser.hasNext(), is(false));
     }
 
-    public static void main(String[] args) {
-        double v = deserializeDouble("0.123456789012345678901234567890123456789".getBytes(StandardCharsets.UTF_8), 0);
-        System.out.println(v);
-        System.out.println(Double.parseDouble("0.123456789012345678901234567890123456789"));
-    }
-
-    public static void main(String[] args) {
-        double v = deserializeDouble("0.12345678901234567890123456789e15".getBytes(StandardCharsets.UTF_8), 0);
-        System.out.println(v);
-        System.out.println(Double.parseDouble("0.12345678901234567890123456789e15"));
-    }
-
     // Edge cases and error conditions
     @Test
     public void testParseIntLeadingZeros() {

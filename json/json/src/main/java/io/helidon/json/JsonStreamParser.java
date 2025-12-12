@@ -24,14 +24,14 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     private static final int DEFAULT_BUFFER_SIZE = 512;
 
-    private final int bufferSize;
+    private final int configuredBufferSize;
     private final InputStream inputStream;
     private boolean finished;
     private boolean bufferingJsonValue;
     private int jsonValueStart;
 
     JsonStreamParser(InputStream inputStream, int bufferSize) {
-        this.bufferSize = bufferSize;
+        this.configuredBufferSize = bufferSize;
         this.inputStream = inputStream;
         currentIndex = 0;
         buffer = new byte[bufferSize];
@@ -217,45 +217,35 @@ final class JsonStreamParser extends ArrayJsonParser {
                 return new String(stringBuffer, 0, stringBuffIndex);
             } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
                 //Either escaped sequence or multibyte detected
-                currentIndex = index - 2;
+                currentIndex = --index;
                 break;
             }
             stringBuffer[stringBuffIndex] = (char) b;
         }
 
+        if (stringBuffIndex == firstRun) {
+            currentIndex = index;
+        }
+
         if (stringBuffIndex == stringBufferLength) {
             increaseStringBuffer();
         }
-//        currentIndex++;
-//        int stringBuffIndex = 0;
-//        byte b;
-//        for (; currentIndex < this.bufferLength && stringBuffIndex < stringBufferLength; currentIndex++, stringBuffIndex++) {
-//            b = this.buffer[currentIndex];
-//            if (b == '"') {
-//                return new String(stringBuffer, 0, stringBuffIndex);
-//            } else if ((b ^ '\\') < 1) {
-//                //Either escaped sequence or multibyte detected
-//                currentIndex--;
-//                break;
-//            }
-//            stringBuffer[stringBuffIndex] = (char) b;
-//        }
-//
-//        if (stringBuffIndex == stringBufferLength) {
-//            increaseStringBuffer();
-//        }
+
         if (currentIndex == this.bufferLength) {
             if (finished) {
                 throw createException("End of the string expected. Incomplete JSON");
             }
             readMoreData();
+            currentIndex++;
         }
 
         while (true) {
-            while (currentIndex + 1 < this.bufferLength) {
-                b = this.buffer[++currentIndex];
+            for (; currentIndex < bufferLength; currentIndex++) {
+                b = buffer[currentIndex];
                 if (b == '\\') {
                     stringBuffer[stringBuffIndex++] = processEscapedSequence();
+                } else if (expectLowSurrogate) {
+                    throw createException("Low surrogate must follow the high surrogate.", b);
                 } else if (b == '"') {
                     return new String(stringBuffer, 0, stringBuffIndex);
                 } else if ((b & 0x80) == 0) {
@@ -272,6 +262,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 throw createException("End of the string expected. Incomplete JSON");
             }
             readMoreData();
+            currentIndex++;
         }
     }
 
@@ -321,7 +312,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                     }
                 } else {
                     // Buffer is full with the value, need to expand
-                    int newCap = buffer.length + bufferSize;
+                    int newCap = buffer.length + configuredBufferSize;
                     byte[] tmp = new byte[newCap];
                     System.arraycopy(buffer, 0, tmp, 0, bufferLength); // Copy existing data
                     currentIndex = bufferLength;
@@ -335,11 +326,11 @@ final class JsonStreamParser extends ArrayJsonParser {
                         finished = false;
                     }
                 }
-            } else {
+            } else if (currentIndex == bufferLength) {
                 // For structural parsing, keep one byte of look-ahead to detect value boundaries
                 // Preserve the byte before currentIndex to allow backtracking
                 buffer[0] = buffer[currentIndex - 1];
-                int lastRead = inputStream.read(buffer, 1, buffer.length - 1); // Read into buffer[1..]
+                int lastRead = inputStream.read(buffer, 1, buffer.length - 1);
                 if (lastRead == -1) {
                     finished = true;
                     bufferLength = 1; // Only the preserved byte
@@ -348,6 +339,19 @@ final class JsonStreamParser extends ArrayJsonParser {
                     finished = false;
                 }
                 currentIndex = 0; // Reset to beginning
+            } else {
+                // Previous buffer not fully drained. We are ensuring more data to be available
+                int kept = bufferLength - currentIndex;
+                System.arraycopy(buffer, currentIndex, buffer, 0, kept);
+                int lastRead = inputStream.read(buffer, kept, buffer.length - kept);
+                if (lastRead == -1) {
+                    finished = true;
+                    bufferLength = kept;
+                } else {
+                    bufferLength = lastRead + kept;
+                    finished = false;
+                }
+                currentIndex = 0;
             }
         } catch (IOException e) {
             throw new RuntimeException(e);

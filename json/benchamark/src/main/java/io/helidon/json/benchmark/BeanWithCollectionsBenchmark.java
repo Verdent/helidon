@@ -57,8 +57,8 @@ public class BeanWithCollectionsBenchmark {
     }
 
     public static void main(String[] args) {
-//        ClassWithList deserialize = JsonBinding.deserialize(TEMPLATE, ClassWithList.class);
-//        System.out.println();
+        ClassWithList deserialize = JsonBinding.create().deserialize(TEMPLATE, ClassWithList.class);
+        System.out.println(deserialize);
     }
     
     @Benchmark

@@ -19,7 +19,6 @@ package io.helidon.json;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 
 final class JsonStreamParser extends ArrayJsonParser {
 
@@ -165,7 +164,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     public JsonString readJsonString() {
         bufferingJsonValue = true;
         jsonValueStart = currentIndex;
-        skipStringValue();
+        skipString();
         int length = currentIndex - jsonValueStart;
         byte[] stringBytes = new byte[length];
         System.arraycopy(buffer, jsonValueStart, stringBytes, 0, length);
@@ -174,7 +173,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     }
 
     @Override
-    void skipStringValue() {
+    void skipString() {
         if (currentByte() == '"') {
             jsonValueStart = ++this.currentIndex;
         }
@@ -206,16 +205,19 @@ final class JsonStreamParser extends ArrayJsonParser {
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
-        currentIndex++;
-        int stringBuffIndex = 0;
+        int index = ++currentIndex;
+        int readableBytes = bufferLength - currentIndex;
+        int firstRun = Math.min(stringBufferLength, readableBytes);
         byte b;
-        for (; currentIndex < this.bufferLength && stringBuffIndex < stringBufferLength; currentIndex++, stringBuffIndex++) {
-            b = this.buffer[currentIndex];
+        int stringBuffIndex = 0;
+        for (;stringBuffIndex < firstRun; stringBuffIndex++) {
+            b = this.buffer[index++];
             if (b == '"') {
+                currentIndex = --index;
                 return new String(stringBuffer, 0, stringBuffIndex);
-            } else if ((b ^ '\\') <= 0) {
+            } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
                 //Either escaped sequence or multibyte detected
-                currentIndex--;
+                currentIndex = --index;
                 break;
             }
             stringBuffer[stringBuffIndex] = (char) b;
@@ -224,6 +226,24 @@ final class JsonStreamParser extends ArrayJsonParser {
         if (stringBuffIndex == stringBufferLength) {
             increaseStringBuffer();
         }
+//        currentIndex++;
+//        int stringBuffIndex = 0;
+//        byte b;
+//        for (; currentIndex < this.bufferLength && stringBuffIndex < stringBufferLength; currentIndex++, stringBuffIndex++) {
+//            b = this.buffer[currentIndex];
+//            if (b == '"') {
+//                return new String(stringBuffer, 0, stringBuffIndex);
+//            } else if ((b ^ '\\') < 1) {
+//                //Either escaped sequence or multibyte detected
+//                currentIndex--;
+//                break;
+//            }
+//            stringBuffer[stringBuffIndex] = (char) b;
+//        }
+//
+//        if (stringBuffIndex == stringBufferLength) {
+//            increaseStringBuffer();
+//        }
         if (currentIndex == this.bufferLength) {
             if (finished) {
                 throw createException("End of the string expected. Incomplete JSON");

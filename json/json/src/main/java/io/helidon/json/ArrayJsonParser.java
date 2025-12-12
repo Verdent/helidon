@@ -346,7 +346,7 @@ class ArrayJsonParser implements JsonParser {
     @Override
     public JsonString readJsonString() {
         int start = currentIndex + 1;
-        skipStringValue();
+        skipString();
         int length = currentIndex - start;
         return JsonString.create(buffer, start, length);
     }
@@ -365,17 +365,19 @@ class ArrayJsonParser implements JsonParser {
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
-        int readableBytes = bufferLength - currentIndex - 1;
+        int index = ++currentIndex;
+        int readableBytes = bufferLength - currentIndex;
         int firstRun = Math.min(stringBufferLength, readableBytes);
-        int stringBuffIndex = 0;
         byte b;
-        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = this.buffer[++currentIndex];
+        int stringBuffIndex = 0;
+        for (;stringBuffIndex < firstRun; stringBuffIndex++) {
+            b = this.buffer[index++];
             if (b == '"') {
+                currentIndex = --index;
                 return new String(stringBuffer, 0, stringBuffIndex);
-            } else if ((b ^ '\\') <= 0) {
+            } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
                 //Either escaped sequence or multibyte detected
-                currentIndex--;
+                currentIndex = --index;
                 break;
             }
             stringBuffer[stringBuffIndex] = (char) b;
@@ -689,7 +691,7 @@ class ArrayJsonParser implements JsonParser {
     public void skip() {
         switch (currentByte()) {
         case '"':
-            skipStringValue();
+            skipString();
             break;
         case '{':
             skipObject();
@@ -724,7 +726,7 @@ class ArrayJsonParser implements JsonParser {
         }
     }
 
-    void skipStringValue() {
+    void skipString() {
         boolean isEscaped = false;
         for (int index = this.currentIndex + 1; index < this.bufferLength; index++) {
             byte b = this.buffer[index];
@@ -1846,7 +1848,7 @@ class ArrayJsonParser implements JsonParser {
         }
         do {
             if (b == '"') {
-                skipStringValue();
+                skipString();
                 b = nextToken();
             } else {
                 throw createException("Key name start expected", b);

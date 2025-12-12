@@ -382,15 +382,20 @@ class ArrayJsonParser implements JsonParser {
             }
             stringBuffer[stringBuffIndex] = (char) b;
         }
+        if (stringBuffIndex == firstRun) {
+            currentIndex = index;
+        }
 
         if (stringBuffIndex == stringBufferLength) {
             increaseStringBuffer();
         }
 
-        while (hasNext()) {
-            b = readNextByte();
+        for (; currentIndex < bufferLength; currentIndex++) {
+            b = buffer[currentIndex];
             if (b == '\\') {
                 stringBuffer[stringBuffIndex++] = processEscapedSequence();
+            } else if (expectLowSurrogate) {
+                throw createException("Low surrogate must follow the high surrogate.", b);
             } else if (b == '"') {
                 return new String(stringBuffer, 0, stringBuffIndex);
             } else if ((b & 0x80) == 0) {
@@ -851,12 +856,15 @@ class ArrayJsonParser implements JsonParser {
         if (!hasNext()) {
             throw createException("Error while processing an escaped string sequence. Incomplete JSON");
         }
-        byte c = buffer[++currentIndex];
-        switch (c) {
+        byte b = buffer[++currentIndex];
+        if (expectLowSurrogate && b != 'u') {
+            throw createException("Low surrogate must follow the high surrogate.", b);
+        }
+        switch (b) {
         case '\\':
         case '"':
         case '/':
-            return (char) c;
+            return (char) b;
         case 'b':
             return '\b';
         case 't':
@@ -896,7 +904,7 @@ class ArrayJsonParser implements JsonParser {
             }
             return tmp;
         default:
-            throw createException("Invalid escaped value", c);
+            throw createException("Invalid escaped value", b);
         }
     }
 

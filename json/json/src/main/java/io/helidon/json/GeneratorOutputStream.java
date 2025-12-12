@@ -197,7 +197,7 @@ class GeneratorOutputStream extends AbstractGenerator {
                 buffer[index++] = SLASH;
                 buffer[index++] = (byte) c;
             } else {
-                // Other control chars use \uXXXX format
+                // Other control chars use \\uXXXX format
                 ensureCapacity(6);
                 buffer[index++] = SLASH;
                 buffer[index++] = 'u';
@@ -221,7 +221,7 @@ class GeneratorOutputStream extends AbstractGenerator {
             buffer[index++] = (byte) (0b11000000 | (c >> 6));      // First byte: 110xxxxx
             buffer[index++] = (byte) (0b10000000 | (c & 0x3F));    // Second byte: 10yyyyyy
         } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
-            // Surrogates are written as \uXXXX (JSON doesn't support UTF-16 surrogates directly)
+            // Surrogates are written as \\uXXXX (JSON doesn't support UTF-16 surrogates directly)
             ensureCapacity(6);
             buffer[index++] = SLASH;
             buffer[index++] = 'u';

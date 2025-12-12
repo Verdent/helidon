@@ -217,7 +217,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 return new String(stringBuffer, 0, stringBuffIndex);
             } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
                 //Either escaped sequence or multibyte detected
-                currentIndex = --index;
+                currentIndex = index - 2;
                 break;
             }
             stringBuffer[stringBuffIndex] = (char) b;

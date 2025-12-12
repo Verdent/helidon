@@ -549,14 +549,13 @@ class ArrayJsonParser implements JsonParser {
 
     @Override
     public float readFloat() {
-        // rollback tracks whether we might need to back up the index if no '.' or 'e' is found
-        boolean rollback = true;
         float result = readLong(); // Read integer part
-        byte nextByte = readNextByte();
+        byte nextByte = hasNext() ? buffer[++currentIndex] : -1;
         if (nextByte == '.') {
-            rollback = false; // Found '.', so don't rollback after integer part
-            int start = currentIndex;
-            readNextByte();
+            if (!hasNext()) {
+                throw createException("Fractional digits expected after the '.'");
+            }
+            int start = currentIndex++;
             long fracPart = parseLong(false); // Read fractional digits
             int fracDigits = currentIndex - start;
             if (fracDigits >= POW_FLOAT_CACHE.length) {
@@ -566,20 +565,19 @@ class ArrayJsonParser implements JsonParser {
                 result += fracPart / POW_FLOAT_CACHE[fracDigits];
             }
             // After fractional part, check if there's more (potentially exponent)
-            rollback = hasNext();
-            if (rollback) {
-                nextByte = readNextByte();
-            }
+            nextByte = hasNext() ? buffer[++currentIndex] : -1;
         }
         // Exponent part
         if (nextByte == 'e' || nextByte == 'E') {
-            nextByte = readNextByte();
+            nextByte = hasNext() ? buffer[++currentIndex] : -1;
             boolean expNeg = false;
             if (nextByte == '+') {
-                readNextByte();
+                currentIndex++;
             } else if (nextByte == '-') {
                 expNeg = true;
-                readNextByte();
+                currentIndex++;
+            } else if (nextByte == -1) {
+                throw createException("A value needs to be present after the exponent");
             }
             int exp = parseInt(expNeg);
             if (exp != 0) {
@@ -590,20 +588,23 @@ class ArrayJsonParser implements JsonParser {
                 } else {
                     result *= POW_FLOAT_CACHE[exp];
                 }
+            } else {
+                throw createException("A numeric value needs to be present after the exponent");
             }
-        } else if (rollback) {
-            // No '.' or 'e' found, back up to not consume the next byte
-            --currentIndex;
+        } else if (nextByte != -1) {
+            currentIndex--;
         }
         return result;
     }
 
     @Override
     public double readDouble() {
-        boolean rollback = true;
         double result = readLong();
         byte nextByte = hasNext() ? buffer[++currentIndex] : -1;
         if (nextByte == '.') {
+            if (!hasNext()) {
+                throw createException("Fractional digits expected after the '.'");
+            }
             int start = currentIndex++;
             long fracPart = parseLong(false);
             int fracDigits = currentIndex - start;
@@ -613,20 +614,20 @@ class ArrayJsonParser implements JsonParser {
             } else {
                 result += fracPart / POW_DOUBLE_CACHE[fracDigits];
             }
-            rollback = hasNext();
-            if (rollback) {
-                nextByte = buffer[++currentIndex];
-            }
+            // After fractional part, check if there's more (potentially exponent)
+            nextByte = hasNext() ? buffer[++currentIndex] : -1;
         }
         // Exponent part
         if (nextByte == 'e' || nextByte == 'E') {
-            nextByte = readNextByte();
+            nextByte = hasNext() ? buffer[++currentIndex] : -1;
             boolean expNeg = false;
             if (nextByte == '+') {
-                readNextByte();
+                currentIndex++;
             } else if (nextByte == '-') {
                 expNeg = true;
-                readNextByte();
+                currentIndex++;
+            } else if (nextByte == -1) {
+                throw createException("A value needs to be present after the exponent");
             }
             int exp = parseInt(expNeg);
             if (exp != 0) {
@@ -637,16 +638,18 @@ class ArrayJsonParser implements JsonParser {
                 } else {
                     result *= POW_DOUBLE_CACHE[exp];
                 }
+            } else {
+                throw createException("A numeric value needs to be present after the exponent");
             }
-        } else if (rollback) {
-            --currentIndex;
+        } else if (nextByte != -1) {
+            currentIndex--;
         }
         return result;
     }
 
     void ensure(int amount) {
         if (currentIndex + amount >= bufferLength) {
-            throw createException("There is not enough data to be fetched. Incomplete JSON");
+            throw createException("There is not enough data to be read. Incomplete JSON");
         }
     }
 
@@ -695,7 +698,7 @@ class ArrayJsonParser implements JsonParser {
                                          + "Message: " + message + "\n"
                                          + "Data index: " + dataIndex + "\n"
                                          + "Data: \n"
-                                         + bufferData.debugDataHex());
+                                         + bufferData.debugDataHex(false));
     }
 
     @Override
@@ -1139,7 +1142,7 @@ class ArrayJsonParser implements JsonParser {
             throw createException("The number is too big for a short value");
         }
         boolean hasNext = hasNext();
-        int digit2 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        int digit2 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
         if (digit2 == -1) {
             if (hasNext) {
                 currentIndex--;
@@ -1147,7 +1150,7 @@ class ArrayJsonParser implements JsonParser {
             return (short) digit1;
         }
         hasNext = hasNext();
-        int digit3 = WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF];
+        int digit3 = hasNext ? WHOLE_NUMBER_PARTS[buffer[++currentIndex] & 0xFF] : -1;
         if (digit3 == -1) {
             if (hasNext) {
                 currentIndex--;

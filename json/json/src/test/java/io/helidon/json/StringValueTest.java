@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * Tests for ArrayJsonParser string handling functionality.
  * Covers basic strings, escaped characters, Unicode, UTF-8 multibyte sequences, and edge cases.
  */
-abstract class ArrayJsonParserStringTest {
+abstract class StringValueTest {
 
     // Basic ASCII string tests
     @Test
@@ -450,7 +450,7 @@ abstract class ArrayJsonParserStringTest {
 
     abstract JsonParser createParser(String template);
 
-    static class JsonStreamParserStringTest extends ArrayJsonParserStringTest {
+    static class JsonStreamParserStringTest extends StringValueTest {
 
         @Override
         JsonParser createParser(String template) {
@@ -460,7 +460,7 @@ abstract class ArrayJsonParserStringTest {
 
     }
 
-    static class JsonParserStringTest extends ArrayJsonParserStringTest {
+    static class JsonParserStringTest extends StringValueTest {
 
         @Override
         JsonParser createParser(String template) {

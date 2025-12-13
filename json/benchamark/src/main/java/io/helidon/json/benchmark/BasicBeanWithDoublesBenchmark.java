@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import io.helidon.json.binding.JsonBinding;
 import io.helidon.service.registry.Services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
 import com.jsoniter.JsonIterator;
@@ -70,14 +71,14 @@ public class BasicBeanWithDoublesBenchmark {
         bh.consume(JsonIterator.deserialize(JSON_WITH_DOUBLES, BeanWithDoubles.class));
     }
 
-//    @Benchmark
-//    public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {
-//        bh.consume(JACKSON_BLACKBIRD.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-//    }
-//
-//    @Benchmark
-//    public void jackson(Blackhole bh) throws JsonProcessingException {
-//        bh.consume(BASIC_JACKSON.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
-//    }
+    @Benchmark
+    public void jacksonBlackbird(Blackhole bh) throws JsonProcessingException {
+        bh.consume(JACKSON_BLACKBIRD.readValue(JSON_WITH_DOUBLES, BeanWithDoubles.class));
+    }
+
+    @Benchmark
+    public void jackson(Blackhole bh) throws JsonProcessingException {
+        bh.consume(BASIC_JACKSON.readValue(JSON_WITH_DOUBLES, BeanWithDoubles.class));
+    }
 
 }

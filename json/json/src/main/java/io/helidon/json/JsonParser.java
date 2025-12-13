@@ -41,7 +41,7 @@ public interface JsonParser {
      */
     static JsonParser create(String json) {
         Objects.requireNonNull(json);
-        return new ArrayJsonParser(json.getBytes(StandardCharsets.UTF_8));
+        return create(json.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -56,6 +56,9 @@ public interface JsonParser {
      */
     static JsonParser create(byte[] json) {
         Objects.requireNonNull(json);
+        if (json.length == 0) {
+            throw new JsonException("Empty byte array provided");
+        }
         return new ArrayJsonParser(json);
     }
 

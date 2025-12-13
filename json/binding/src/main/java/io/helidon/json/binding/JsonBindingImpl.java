@@ -41,6 +41,17 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     private static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
     private static final char[] NULL_CHARS = "null".toCharArray();
+    private static final boolean[] WHITESPACE_CHARS = new boolean[256];
+
+    static {
+        // ASCII whitespace
+        WHITESPACE_CHARS[0x09] = true; // TAB
+        WHITESPACE_CHARS[0x0A] = true; // LF
+        WHITESPACE_CHARS[0x0B] = true; // VT
+        WHITESPACE_CHARS[0x0C] = true; // FF
+        WHITESPACE_CHARS[0x0D] = true; // CR
+        WHITESPACE_CHARS[0x20] = true; // SPACE
+    }
 
     private final JsonBindingConfig config;
     private final Map<Class<?>, JsonSerializer<?>> initialIdentitySerializers = new IdentityHashMap<>();
@@ -277,6 +288,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> T deserialize(byte[] bytes, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
         JsonParser parser = JsonParser.create(bytes);
+        if (WHITESPACE_CHARS[parser.currentByte() & 0xff]) {
+            parser.nextToken();
+        }
         return Deserializers.deserialize(parser, deserializer);
     }
 
@@ -284,6 +298,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> T deserialize(byte[] bytes, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
         JsonParser parser = JsonParser.create(bytes);
+        if (WHITESPACE_CHARS[parser.currentByte() & 0xff]) {
+            parser.nextToken();
+        }
         return Deserializers.deserialize(parser, deserializer);
     }
 
@@ -306,6 +323,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> T deserialize(InputStream inputStream, int bufferSize, Class<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
         JsonParser parser = JsonParser.create(inputStream, bufferSize);
+        if (WHITESPACE_CHARS[parser.currentByte() & 0xff]) {
+            parser.nextToken();
+        }
         return Deserializers.deserialize(parser, deserializer);
     }
 
@@ -318,6 +338,9 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     public <T> T deserialize(InputStream inputStream, int bufferSize, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
         JsonParser parser = JsonParser.create(inputStream);
+        if (WHITESPACE_CHARS[parser.currentByte() & 0xff]) {
+            parser.nextToken();
+        }
         return Deserializers.deserialize(parser, deserializer);
     }
 

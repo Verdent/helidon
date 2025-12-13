@@ -80,6 +80,38 @@ abstract class JsonValueParsingTest {
         assertThat(jsonValue.asObject().containsKey("missing"), is(false));
     }
 
+    @Test
+    public void testJsonBooleanValueParsingTrue() {
+        String json = "true";
+        JsonParser parser = createParser(json);
+        JsonValue jsonValue = parser.readJsonValue();
+
+        assertThat(jsonValue.type(), is(JsonValueType.BOOLEAN));
+        assertThat(jsonValue.asBoolean().value(), is(true));
+    }
+
+    @Test
+    public void testJsonBooleanValueParsingFalse() {
+        String json = "false";
+        JsonParser parser = createParser(json);
+        JsonValue jsonValue = parser.readJsonValue();
+
+        assertThat(jsonValue.type(), is(JsonValueType.BOOLEAN));
+        assertThat(jsonValue.asBoolean().value(), is(false));
+    }
+
+    @Test
+    public void testJsonObjectWithBooleanParsing() {
+        String json = "{\"flag\":true,\"enabled\":false}";
+        JsonParser parser = JsonParser.create(json);
+        JsonValue jsonValue = parser.readJsonValue();
+
+        assertThat(jsonValue.type(), is(JsonValueType.OBJECT));
+        assertThat(jsonValue.asObject().booleanValue("flag").orElseThrow(), is(true));
+        assertThat(jsonValue.asObject().booleanValue("enabled").orElseThrow(), is(false));
+        assertThat(jsonValue.asObject().containsKey("missing"), is(false));
+    }
+
     abstract JsonParser createParser(String template);
 
     static class JsonStreamParserJsonValueTest extends JsonValueParsingTest {

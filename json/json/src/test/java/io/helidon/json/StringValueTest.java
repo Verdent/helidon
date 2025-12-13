@@ -448,6 +448,69 @@ abstract class StringValueTest {
         assertThrows(JsonException.class, parser::readChar);
     }
 
+    // Additional corner cases
+    @Test
+    public void testStringWithAllWhitespace() {
+        String json = "\"\\n\\t\\r \"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("\n\t\r "));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testStringWithOnlyEscapedCharacters() {
+        String json = "\"\\n\\t\\r\\f\\b\\\\\\\"\"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("\n\t\r\f\b\\\""));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testStringWithEscapedNull() {
+        String json = "\"\\u0000\"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("\u0000"));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testStringWithMaximumUnicodeCodePoint() {
+        // U+10FFFF - maximum valid Unicode code point
+        String json = "\"\\uDBFF\\uDFFF\"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("\uDBFF\uDFFF"));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testStringWithMixedSurrogatesAndRegular() {
+        // Mix of surrogate pairs and regular characters
+        String json = "\"A\\uD83D\\uDE00B\\uD83D\\uDE01C\"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("A😀B😁C"));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @Test
+    public void testStringWithConsecutiveEscapedSequences() {
+        String json = "\"\\\\\\n\\\\\\t\\\\\\\"\"";
+        JsonParser parser = createParser(json);
+        String result = parser.readString();
+
+        assertThat(result, is("\\\n\\\t\\\""));
+        assertThat(parser.hasNext(), is(false));
+    }
+
     abstract JsonParser createParser(String template);
 
     static class JsonStreamParserStringTest extends StringValueTest {

@@ -63,9 +63,9 @@ public class BasicBeanBenchmark {
     }
 
     public static void main(String[] args) {
-        Double deserialize1 = JsonIterator.deserialize("0.123456789012345678901234567890123456789", double.class);
+        boolean deserialize1 = JsonIterator.deserialize("    \nfalse\n", boolean.class);
         System.out.println(deserialize1);
-        Double deserialize = HELIDON.deserialize("0.123456789012345678901234567890123456789", double.class);
+        boolean deserialize = HELIDON.deserialize("    \nfalse\n", boolean.class);
         System.out.println(deserialize);
     }
 

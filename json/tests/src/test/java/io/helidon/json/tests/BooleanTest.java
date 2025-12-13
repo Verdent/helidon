@@ -89,6 +89,61 @@ public class BooleanTest {
         assertThat(HELIDON.deserialize(arrayJson, Boolean[].class), is(referenceTypes));
     }
 
+    @Test
+    public void testBooleanWithLeadingWhitespace() {
+        String jsonWithWhitespace = "  true";
+        Boolean result = HELIDON.deserialize(jsonWithWhitespace, Boolean.class);
+        assertThat(result, is(true));
+
+        jsonWithWhitespace = "  false";
+        result = HELIDON.deserialize(jsonWithWhitespace, Boolean.class);
+        assertThat(result, is(false));
+    }
+
+    @Test
+    public void testBooleanWithTrailingWhitespace() {
+        String jsonWithWhitespace = "true  ";
+        Boolean result = HELIDON.deserialize(jsonWithWhitespace, Boolean.class);
+        assertThat(result, is(true));
+
+        jsonWithWhitespace = "false  ";
+        result = HELIDON.deserialize(jsonWithWhitespace, Boolean.class);
+        assertThat(result, is(false));
+    }
+
+    @Test
+    public void testBooleanWithTabs() {
+        String jsonWithTabs = "\ttrue\t";
+        Boolean result = HELIDON.deserialize(jsonWithTabs, Boolean.class);
+        assertThat(result, is(true));
+
+        jsonWithTabs = "\tfalse\t";
+        result = HELIDON.deserialize(jsonWithTabs, Boolean.class);
+        assertThat(result, is(false));
+    }
+
+    @Test
+    public void testBooleanWithNewlines() {
+        String jsonWithNewlines = "\ntrue\n";
+        Boolean result = HELIDON.deserialize(jsonWithNewlines, Boolean.class);
+        assertThat(result, is(true));
+
+        jsonWithNewlines = "\nfalse\n";
+        result = HELIDON.deserialize(jsonWithNewlines, Boolean.class);
+        assertThat(result, is(false));
+    }
+
+    @Test
+    public void testBooleanWithMixedWhitespace() {
+        String jsonWithMixedWhitespace = " \t\n true \t\n ";
+        Boolean result = HELIDON.deserialize(jsonWithMixedWhitespace, Boolean.class);
+        assertThat(result, is(true));
+
+        jsonWithMixedWhitespace = " \t\n false \t\n ";
+        result = HELIDON.deserialize(jsonWithMixedWhitespace, Boolean.class);
+        assertThat(result, is(false));
+    }
+
     @Json.Entity
     public static class BooleanModel {
         public Boolean field1;

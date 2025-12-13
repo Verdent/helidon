@@ -94,17 +94,16 @@ final class JsonStreamParser extends ArrayJsonParser {
             throw createException("Incomplete JSON");
         }
         //Based on recommended offset basis and prime values.
-//        int fnv1aHash = FNV_OFFSET_BASIS;
-//        byte b;
-//        while (true) {
-//            b = readNextByte();
-//            if (b == '"') {
-//                return fnv1aHash;
-//            }
-//            fnv1aHash ^= (b & 0xFF);
-//            fnv1aHash *= FNV_PRIME;
-//        }
-
+        //        int fnv1aHash = FNV_OFFSET_BASIS;
+        //        byte b;
+        //        while (true) {
+        //            b = readNextByte();
+        //            if (b == '"') {
+        //                return fnv1aHash;
+        //            }
+        //            fnv1aHash ^= (b & 0xFF);
+        //            fnv1aHash *= FNV_PRIME;
+        //        }
 
         int i = currentIndex + 1;
         while (true) {
@@ -199,6 +198,198 @@ final class JsonStreamParser extends ArrayJsonParser {
     }
 
     @Override
+    public double readDouble() {
+        bufferingJsonValue = true;
+        jsonValueStart = currentIndex;
+
+        // Check for sign
+        boolean negative = false;
+        byte b = buffer[currentIndex];
+        if (b == '-') {
+            negative = true;
+            currentIndex++;
+        } else if (b == '+') {
+            currentIndex++;
+        }
+        if (currentIndex >= bufferLength) {
+            fetchData();
+            if (currentIndex >= bufferLength) {
+                throw createException("Empty number");
+            }
+        }
+        // Check for special values (NaN, Infinity)
+        b = buffer[currentIndex];
+        if (b == 'N') {
+            if (expectedNext('a') && expectedNext('N')) {
+                currentIndex += 2;
+                bufferingJsonValue = false;
+                return Double.NaN;
+            }
+            throw createException("Invalid double number");
+        } else if (b == 'I' || b == 'i') {
+            if (expectedNext('n')
+                    && expectedNext('f')
+                    && expectedNext('i')
+                    && expectedNext('n')
+                    && expectedNext('i')
+                    && expectedNext('t')
+                    && expectedNext('y')) {
+                currentIndex += 7;
+                bufferingJsonValue = false;
+                return negative ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+            }
+            throw createException("Invalid double number");
+        } else if (b < '0' || b > '9') {
+            throw createException("Invalid double number");
+        }
+
+        // Parse mantissa
+        long mantissa = 0;
+        int digitsBeforeDecimal = 0;
+        int significantDigits = 0;
+        int leadingZerosAfterDecimal = 0;
+        boolean hasDecimal = false;
+        boolean foundNonZero = false;
+        boolean delegateToJava = false;
+
+        // Parse all digits
+        while (currentIndex < bufferLength) {
+            b = buffer[currentIndex];
+            int digit = WHOLE_NUMBER_PARTS[b & 0xFF];
+            if (digit > -1) {
+                if (hasDecimal) {
+                    // After decimal point
+                    if (!foundNonZero && digit == 0) {
+                        leadingZerosAfterDecimal++;
+                    } else {
+                        foundNonZero = true;
+                        if (significantDigits < 17) {
+                            mantissa = mantissa * 10 + digit;
+                            significantDigits++;
+                        } else {
+                            delegateToJava = true;
+                            break;
+                        }
+                    }
+                } else {
+                    // Before decimal point
+                    if (digit != 0 || foundNonZero) {
+                        foundNonZero = true;
+                        digitsBeforeDecimal++;
+                        if (significantDigits < 17) {
+                            mantissa = mantissa * 10 + digit;
+                            significantDigits++;
+                        } else {
+                            delegateToJava = true;
+                            break;
+                        }
+                    }
+                }
+                currentIndex++;
+                if (currentIndex == bufferLength) {
+                    fetchData();
+                }
+            } else if (b == '.') {
+                if (hasDecimal) {
+                    throw createException("Multiple decimal separators detected");
+                }
+                hasDecimal = true;
+                currentIndex++;
+                if (currentIndex == bufferLength) {
+                    fetchData();
+                }
+            } else {
+                break;
+            }
+        }
+        if (delegateToJava) {
+            skipNumber();
+            bufferingJsonValue = false;
+            return Double.parseDouble(new String(buffer, jsonValueStart, currentIndex - jsonValueStart));
+        }
+
+        // Calculate the base decimal exponent
+        int decimalExponent = 0;
+        if (digitsBeforeDecimal > 0) {
+            // 123.456 -> mantissa=123456, digitsBeforeDecimal=3, significantDigits=6 -> Base exponent -3
+            decimalExponent = digitsBeforeDecimal - significantDigits;
+        } else if (hasDecimal && foundNonZero) {
+            // 0.00123 -> mantissa=123, leadingZerosAfterDecimal=2, significantDigits=3 -> Base exponent -5
+            decimalExponent = -(leadingZerosAfterDecimal + significantDigits);
+        }
+
+        // Parse explicit exponent
+        int explicitExp = 0;
+        b = buffer[currentIndex];
+        if (b == 'e' || b == 'E') {
+            boolean expNegative = false;
+            if (hasNext()) {
+                b = buffer[++currentIndex];
+                if (b == '-') {
+                    expNegative = true;
+                    currentIndex++;
+                } else if (b == '+') {
+                    currentIndex++;
+                }
+            } else {
+                throw createException("Missing exponent value");
+            }
+            if (currentIndex == bufferLength) {
+                fetchData();
+            }
+
+            int digit = -1;
+            while ((currentIndex < bufferLength) && (digit = WHOLE_NUMBER_PARTS[buffer[currentIndex] & 0xFF]) > -1) {
+                explicitExp = explicitExp * 10 + digit;
+                if (explicitExp > 1000) {
+                    break;
+                }
+                currentIndex++;
+                if (currentIndex == bufferLength && !finished) {
+                    fetchData();
+                }
+            }
+            if (digit == -1) {
+                b = buffer[currentIndex];
+                if (b == 'e' || b == 'E' || b == '.') {
+                    throw createException("Duplicit exponent or decimal point detected");
+                }
+            }
+            decimalExponent += expNegative ? -explicitExp : explicitExp;
+        }
+
+        // Handle zero
+        if (mantissa == 0) {
+            bufferingJsonValue = false;
+            return negative ? -0.0 : 0.0;
+        }
+
+        if (decimalExponent >= POW10_DOUBLE_CACHE_SIZE || decimalExponent <= -POW10_DOUBLE_CACHE_SIZE) {
+            skipNumber();
+            bufferingJsonValue = false;
+            // Delegate to Java for exact result
+            return Double.parseDouble(new String(buffer, jsonValueStart, currentIndex - jsonValueStart + 1));
+        }
+
+        // FAST PATH: Handle common cases ourselves
+        double result = mantissa;
+
+        // Apply exponent using lookup table
+        if (decimalExponent > 0) {
+            result *= POW10_DOUBLE_CACHE[decimalExponent];
+        } else if (decimalExponent < 0) {
+            result /= POW10_DOUBLE_CACHE[-decimalExponent];
+        }
+
+        bufferingJsonValue = false;
+        return negative ? -result : result;
+    }
+
+    private boolean expectedNext(char c) {
+        return hasNext() && buffer[++currentIndex] == c;
+    }
+
+    @Override
     public String readString() {
         if (checkNull()) {
             return null;
@@ -210,7 +401,7 @@ final class JsonStreamParser extends ArrayJsonParser {
         int firstRun = Math.min(stringBufferLength, readableBytes);
         byte b;
         int stringBuffIndex = 0;
-        for (;stringBuffIndex < firstRun; stringBuffIndex++) {
+        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
             b = this.buffer[index++];
             if (b == '"') {
                 currentIndex = --index;
@@ -311,18 +502,16 @@ final class JsonStreamParser extends ArrayJsonParser {
                         finished = false;
                     }
                 } else {
-                    // Buffer is full with the value, need to expand
+                    // Buffer is full of the value, need to expand
                     int newCap = buffer.length + configuredBufferSize;
                     byte[] tmp = new byte[newCap];
                     System.arraycopy(buffer, 0, tmp, 0, bufferLength); // Copy existing data
-                    currentIndex = bufferLength;
-                    int lastRead = inputStream.read(tmp, currentIndex, newCap - currentIndex);
+                    int lastRead = inputStream.read(tmp, bufferLength, configuredBufferSize);
                     buffer = tmp; // Replace buffer
                     if (lastRead == -1) {
                         finished = true;
-                        bufferLength = currentIndex;
                     } else {
-                        bufferLength = currentIndex + lastRead;
+                        bufferLength = bufferLength + lastRead;
                         finished = false;
                     }
                 }
@@ -340,7 +529,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 }
                 currentIndex = 0; // Reset to beginning
             } else {
-                // Previous buffer not fully drained. We are ensuring more data to be available
+                // Previous buffer not fully drained. We are trying to read more data, if available
                 int kept = bufferLength - currentIndex;
                 System.arraycopy(buffer, currentIndex, buffer, 0, kept);
                 int lastRead = inputStream.read(buffer, kept, buffer.length - kept);

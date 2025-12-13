@@ -87,7 +87,7 @@ abstract class JsonValueParsingTest {
         @Override
         JsonParser createParser(String template) {
             ByteArrayInputStream stream = new ByteArrayInputStream(template.getBytes(StandardCharsets.UTF_8));
-            return JsonParser.create(stream, 15);
+            return JsonParser.create(stream, 6);
         }
 
     }

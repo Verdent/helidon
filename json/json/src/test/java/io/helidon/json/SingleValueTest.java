@@ -169,7 +169,7 @@ abstract class SingleValueTest {
         @Override
         JsonParser createParser(String template) {
             ByteArrayInputStream stream = new ByteArrayInputStream(template.getBytes(StandardCharsets.UTF_8));
-            return JsonParser.create(stream, 8);
+            return JsonParser.create(stream, 6);
         }
 
     }

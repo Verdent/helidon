@@ -7,6 +7,8 @@ import io.helidon.service.registry.Services;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ExceptionReportingTest {
@@ -31,8 +33,8 @@ public class ExceptionReportingTest {
         assertThrows(JsonException.class, () -> HELIDON.deserialize(testValue, short.class));
         assertThrows(JsonException.class, () -> HELIDON.deserialize(testValue, int.class));
         assertThrows(JsonException.class, () -> HELIDON.deserialize(testValue, long.class));
-        assertThrows(JsonException.class, () -> HELIDON.deserialize(testValue, float.class));
-        assertThrows(JsonException.class, () -> HELIDON.deserialize(testValue, double.class));
+        assertThat(HELIDON.deserialize(testValue, float.class), is(Float.parseFloat(testValue)));
+        assertThat(HELIDON.deserialize(testValue, double.class), is(Double.parseDouble(testValue)));
     }
 
     @Json.Entity

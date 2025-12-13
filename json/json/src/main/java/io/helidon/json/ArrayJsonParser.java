@@ -41,14 +41,14 @@ class ArrayJsonParser implements JsonParser {
     /**
      * Cached POW10 for double fast path calculations.
      */
-    private static final double[] POW10_DOUBLE_CACHE = {
+    static final double[] POW10_DOUBLE_CACHE = {
             1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0,
             100000000.0, 1000000000.0, 10000000000.0, 100000000000.0,
             1000000000000.0, 10000000000000.0, 100000000000000.0,
             1000000000000000.0, 10000000000000000.0, 100000000000000000.0,
             1000000000000000000.0, 10000000000000000000.0, 1.0e20, 1.0e21, 1.0e22
     };
-    private static final int POW10_DOUBLE_CACHE_SIZE = POW10_DOUBLE_CACHE.length;
+    static final int POW10_DOUBLE_CACHE_SIZE = POW10_DOUBLE_CACHE.length;
     /**
      * Cached POW10 for float fast path calculations.
      */
@@ -535,181 +535,7 @@ class ArrayJsonParser implements JsonParser {
 
     @Override
     public float readFloat() {
-        int start = currentIndex;
-        int i = start;
-
-        // Check for sign
-        boolean negative = false;
-        byte b = buffer[i];
-        if (b == '-') {
-            negative = true;
-            i++;
-        } else if (b == '+') {
-            i++;
-        }
-
-        if (i >= bufferLength) {
-            currentIndex = --i;
-            throw createException("Empty or invalid number");
-        }
-
-        // Check for special values (NaN, Infinity)
-        b = buffer[i];
-        if (b == 'N') {
-            if (i + 2 <= bufferLength && buffer[i + 1] == 'a' && buffer[i + 2] == 'N') {
-                currentIndex = i + 2;
-                return Float.NaN;
-            }
-            throw createException("Invalid float number");
-        } else if (b == 'I' || b == 'i') {
-            if (i + 7 <= bufferLength
-                    && buffer[i + 1] == 'n'
-                    && buffer[i + 2] == 'f'
-                    && buffer[i + 3] == 'i'
-                    && buffer[i + 4] == 'n'
-                    && buffer[i + 5] == 'i'
-                    && buffer[i + 6] == 't'
-                    && buffer[i + 7] == 'y') {
-                currentIndex = i + 7;
-                return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
-            }
-            throw createException("Invalid float number");
-        } else if (b < '0' || b > '9') {
-            throw createException("Invalid float number");
-        }
-
-        // Parse mantissa
-        long mantissa = 0;
-        int digitsBeforeDecimal = 0;
-        int significantDigits = 0;
-        int leadingZerosAfterDecimal = 0;
-        boolean hasDecimal = false;
-        boolean foundNonZero = false;
-        boolean delegateToJava = false;
-
-        // Parse all digits
-        while (i < bufferLength) {
-            b = buffer[i];
-            int digit = WHOLE_NUMBER_PARTS[b & 0xFF];
-            if (digit > -1) {
-                if (hasDecimal) {
-                    // After decimal point
-                    if (!foundNonZero && digit == 0) {
-                        leadingZerosAfterDecimal++;
-                    } else {
-                        foundNonZero = true;
-                        if (significantDigits < 8) {
-                            mantissa = mantissa * 10 + digit;
-                            significantDigits++;
-                        } else {
-                            delegateToJava = true;
-                            break;
-                        }
-                    }
-                } else {
-                    // Before decimal point
-                    if (digit != 0 || foundNonZero) {
-                        foundNonZero = true;
-                        digitsBeforeDecimal++;
-                        if (significantDigits < 8) {
-                            mantissa = mantissa * 10 + digit;
-                            significantDigits++;
-                        } else {
-                            delegateToJava = true;
-                            break;
-                        }
-                    }
-                }
-                i++;
-            } else if (b == '.') {
-                if (hasDecimal) {
-                    currentIndex = i;
-                    throw createException("Multiple decimal separators detected");
-                }
-                hasDecimal = true;
-                i++;
-            } else {
-                currentIndex = i - 1;
-                break;
-            }
-        }
-        if (delegateToJava) {
-            currentIndex = i;
-            skipNumber();
-            return Float.parseFloat(new String(buffer, start, currentIndex - start));
-        }
-
-        // Calculate the base decimal exponent
-        int decimalExponent = 0;
-        if (digitsBeforeDecimal > 0) {
-            // 123.456 -> mantissa=123456, digitsBeforeDecimal=3, significantDigits=6 -> Base exponent -3
-            decimalExponent = digitsBeforeDecimal - significantDigits;
-        } else if (hasDecimal && foundNonZero) {
-            // 0.00123 -> mantissa=123, leadingZerosAfterDecimal=2, significantDigits=3 -> Base exponent -5
-            decimalExponent = -(leadingZerosAfterDecimal + significantDigits);
-        }
-
-        // Parse explicit exponent
-        int explicitExp = 0;
-        b = i < bufferLength ? buffer[i] : -1;
-        if (b == 'e' || b == 'E') {
-            i++;
-            boolean expNegative = false;
-            if (i < bufferLength) {
-                if (buffer[i] == '-') {
-                    expNegative = true;
-                    i++;
-                } else if (buffer[i] == '+') {
-                    i++;
-                }
-            } else {
-                currentIndex = i - 1;
-                throw createException("Missing exponent value");
-            }
-
-            int digit = -1;
-            while (i < bufferLength && (digit = WHOLE_NUMBER_PARTS[buffer[i] & 0xFF]) > -1) {
-                explicitExp = explicitExp * 10 + digit;
-                if (explicitExp > 1000) {
-                    break;
-                }
-                i++;
-            }
-            currentIndex = i - 1;
-            if (digit == -1) {
-                b = buffer[i];
-                if (b == 'e' || b == 'E' || b == '.') {
-                    throw createException("Duplicit exponent or decimal point detected");
-                }
-            }
-            decimalExponent += expNegative ? -explicitExp : explicitExp;
-        }
-        if (currentIndex == start) {
-            currentIndex = i;
-        }
-
-        // Handle zero
-        if (mantissa == 0) {
-            return negative ? -0.0F : 0.0F;
-        }
-
-        if (decimalExponent >= POW10_FLOAT_CACHE_SIZE || decimalExponent <= -POW10_FLOAT_CACHE_SIZE) {
-            skipNumber();
-            // Delegate to Java for exact result
-            return Float.parseFloat(new String(buffer, start, currentIndex - start + 1));
-        }
-
-        // FAST PATH: Handle common cases ourselves
-        float result = mantissa;
-
-        // Apply exponent using lookup table
-        if (decimalExponent > 0) {
-            result *= POW10_FLOAT_CACHE[decimalExponent];
-        } else if (decimalExponent < 0) {
-            result /= POW10_FLOAT_CACHE[-decimalExponent];
-        }
-
-        return negative ? -result : result;
+        return (float) readDouble();
     }
 
     @Override
@@ -809,7 +635,7 @@ class ArrayJsonParser implements JsonParser {
         if (delegateToJava) {
             currentIndex = i;
             skipNumber();
-            return Double.parseDouble(new String(buffer, start, currentIndex - start));
+            return Double.parseDouble(new String(buffer, start, currentIndex - start + 1));
         }
 
         // Calculate the base decimal exponent

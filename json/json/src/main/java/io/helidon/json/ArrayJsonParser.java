@@ -810,14 +810,14 @@ class ArrayJsonParser implements JsonParser {
             byte b = this.buffer[index];
             if (b == '\\') {
                 isEscaped = !isEscaped;
+                continue;
             } else if (b == '"') {
                 if (!isEscaped) {
                     this.currentIndex = index;
                     return;
                 }
-            } else {
-                isEscaped = false;
             }
+            isEscaped = false;
         }
         throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
     }
@@ -2031,7 +2031,20 @@ class ArrayJsonParser implements JsonParser {
         if (b == '}') {
             return;
         }
-        do {
+        if (b == '"') {
+            skipString();
+            b = nextToken();
+        } else {
+            throw createException("Key name start expected", b);
+        }
+        if (b != ':') {
+            throw createException("Colon expected after the key", b);
+        }
+        nextToken();
+        skip();
+        b = nextToken();
+        while (b == ',') {
+            b = nextToken();
             if (b == '"') {
                 skipString();
                 b = nextToken();
@@ -2044,7 +2057,7 @@ class ArrayJsonParser implements JsonParser {
             nextToken();
             skip();
             b = nextToken();
-        } while (b == ',');
+        }
 
         if (b == '}') {
             return;
@@ -2057,10 +2070,13 @@ class ArrayJsonParser implements JsonParser {
         if (b == ']') {
             return;
         }
-        do {
+        skip(); // Skip the first array value
+        b = nextToken();
+        while (b == ',') {
+            nextToken();
             skip();
             b = nextToken();
-        } while (b == ',');
+        }
 
         if (b == ']') {
             return;

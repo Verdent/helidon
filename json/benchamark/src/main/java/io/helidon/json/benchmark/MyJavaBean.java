@@ -19,12 +19,14 @@ package io.helidon.json.benchmark;
 import io.helidon.json.binding.Json;
 
 import com.fasterxml.jackson.annotation.JsonClassDescription;
+import com.dslplatform.json.CompiledJson;
 
 /**
  * TODO javadoc
  */
 @Json.Entity
 @JsonClassDescription
+@CompiledJson
 public class MyJavaBean {
 
     private String fieldOne;

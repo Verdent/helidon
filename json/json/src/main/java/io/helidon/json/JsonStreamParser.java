@@ -151,6 +151,7 @@ final class JsonStreamParser extends ArrayJsonParser {
                 }
             }
             if (!finished) {
+                currentIndex = index;
                 readMoreData();
             } else {
                 this.currentIndex = index;
@@ -161,8 +162,11 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     @Override
     public JsonString readJsonString() {
+        if (currentByte() != '"') {
+            throw createException("Reading JsonString values is allowed only for a string JSON values", currentByte());
+        }
         bufferingJsonValue = true;
-        jsonValueStart = currentIndex;
+        jsonValueStart = ++currentIndex;
         skipString();
         int length = currentIndex - jsonValueStart;
         byte[] stringBytes = new byte[length];
@@ -173,13 +177,11 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     @Override
     void skipString() {
-        if (currentByte() == '"') {
-            jsonValueStart = ++this.currentIndex;
-        }
         boolean isEscaped = false;
         byte b;
         while (true) {
-            for (int index = this.currentIndex; index < this.bufferLength; index++) {
+            int index;
+            for (index = this.currentIndex + 1; index < this.bufferLength; index++) {
                 b = this.buffer[index];
                 if (b == '\\') {
                     isEscaped = !isEscaped;
@@ -193,6 +195,7 @@ final class JsonStreamParser extends ArrayJsonParser {
             if (finished) {
                 throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
             }
+            currentIndex = index - 1;
             readMoreData();
         }
     }

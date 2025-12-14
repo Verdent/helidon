@@ -24,6 +24,9 @@ import io.helidon.service.registry.Services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
+import com.google.gson.Gson;
+import com.alibaba.fastjson2.JSON;
+import com.dslplatform.json.DslJson;
 import com.jsoniter.JsonIterator;
 import com.jsoniter.output.JsonStreamPool;
 import com.jsoniter.spi.DecodingMode;
@@ -56,6 +59,8 @@ public class BasicBeanBenchmark {
     private static final JsonBinding HELIDON = Services.get(JsonBinding.class);
     private static final ObjectMapper BASIC_JACKSON = new ObjectMapper();
     private static final ObjectMapper JACKSON_BLACKBIRD = new ObjectMapper().registerModule(new BlackbirdModule());
+    private static final Gson GSON = new Gson();
+    private static final DslJson<Object> DSL_JSON = new DslJson<>();
 
     static {
         //To enable field name processing as hashes
@@ -63,9 +68,10 @@ public class BasicBeanBenchmark {
     }
 
     public static void main(String[] args) {
-        boolean deserialize1 = JsonIterator.deserialize("    \nfalse\n", boolean.class);
-        System.out.println(deserialize1);
-        boolean deserialize = HELIDON.deserialize("    \nfalse\n", boolean.class);
+//        MyJavaBean myJavaBean = JSON.parseObject(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
+//        System.out.println(myJavaBean);
+
+        MyJavaBean deserialize = HELIDON.deserialize(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class);
         System.out.println(deserialize);
     }
 
@@ -87,6 +93,21 @@ public class BasicBeanBenchmark {
     @Benchmark
     public void jackson(Blackhole bh) throws JsonProcessingException {
         bh.consume(BASIC_JACKSON.readValue(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+    }
+
+    @Benchmark
+    public void gson(Blackhole bh) {
+        bh.consume(GSON.fromJson(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
+    }
+
+    @Benchmark
+    public void dslJson(Blackhole bh) throws java.io.IOException {
+        bh.consume(DSL_JSON.deserialize(MyJavaBean.class, MY_JAVA_BEAN_WITH_OTHER_BEAN.getBytes(), MY_JAVA_BEAN_WITH_OTHER_BEAN.length()));
+    }
+
+    @Benchmark
+    public void fastjson2(Blackhole bh) {
+        bh.consume(JSON.parseObject(MY_JAVA_BEAN_WITH_OTHER_BEAN, MyJavaBean.class));
     }
 
 }

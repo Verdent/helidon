@@ -30,6 +30,14 @@
 
     <properties>
         <dependency-plugin-check-dependencies.skip>true</dependency-plugin-check-dependencies.skip>
+        <helidon.services.skip>true</helidon.services.skip>
+        <javadoc.skip>true</javadoc.skip>
+        <checkstyle.skip>true</checkstyle.skip>
+        <spotbugs.skip>true</spotbugs.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.sources.skip>true</maven.sources.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <dependency-plugin-check-dependencies.skip>true</dependency-plugin-check-dependencies.skip>
     </properties>
 
     <dependencies>
@@ -82,6 +90,21 @@
             <groupId>org.javassist</groupId>
             <artifactId>javassist</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.dslplatform</groupId>
+            <artifactId>dsl-json</artifactId>
+            <version>2.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+            <version>2.0.60</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -106,6 +129,11 @@
                             <artifactId>helidon-codegen-helidon-copyright</artifactId>
                             <version>${helidon.version}</version>
                         </path>
+                        <path>
+                            <groupId>com.dslplatform</groupId>
+                            <artifactId>dsl-json</artifactId>
+                            <version>2.0.2</version>
+                        </path>
                     </annotationProcessorPaths>
                 </configuration>
                 <dependencies>
@@ -123,6 +151,11 @@
                         <groupId>org.openjdk.jmh</groupId>
                         <artifactId>jmh-generator-annprocess</artifactId>
                         <version>${version.lib.jmh}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>com.dslplatform</groupId>
+                        <artifactId>dsl-json</artifactId>
+                        <version>2.0.2</version>
                     </dependency>
                 </dependencies>
             </plugin>

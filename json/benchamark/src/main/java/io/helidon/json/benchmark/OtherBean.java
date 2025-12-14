@@ -17,8 +17,10 @@
 package io.helidon.json.benchmark;
 
 import io.helidon.json.binding.Json;
+import com.dslplatform.json.CompiledJson;
 
 @Json.Entity
+@CompiledJson
 public class OtherBean {
 
     private String otherString;

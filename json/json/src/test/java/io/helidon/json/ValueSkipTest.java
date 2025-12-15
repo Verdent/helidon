@@ -190,7 +190,8 @@ abstract class ValueSkipTest {
 
     @Test
     public void testSkipComplexObject() {
-        String json = "{\"string\": \"hello\", \"number\": 123, \"boolean\": true, \"null\": null, \"array\": [1, 2, 3]} followed content";
+        String json = "{\"string\": \"hello\", \"number\": 123, \"boolean\": true, \"null\": null, \"array\": [1, 2, 3]} "
+                + "followed content";
         JsonParser parser = createParser(json);
         parser.skip();
 
@@ -244,8 +245,9 @@ abstract class ValueSkipTest {
 
     // Complex nested structures
     @Test
-    public void testSkipVeryNestedStructure() {
-        String json = "{\"data\": {\"items\": [{\"id\": 1, \"values\": [10, 20, {\"nested\": {\"deep\": \"value\"}}]}, {\"id\": 2}]}} followed content";
+    public void testSkipComplexNestedStructure() {
+        String json = "{\"data\": {\"items\": [{\"id\": 1, \"values\": [10, 20, {\"nested\": {\"deep\": \"value\"}}]}, {\"id\":"
+                + " 2}]}} followed content";
         JsonParser parser = createParser(json);
         parser.skip();
 

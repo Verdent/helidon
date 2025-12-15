@@ -166,7 +166,7 @@ final class JsonStreamParser extends ArrayJsonParser {
             throw createException("Reading JsonString values is allowed only for a string JSON values", currentByte());
         }
         bufferingJsonValue = true;
-        jsonValueStart = ++currentIndex;
+        jsonValueStart = currentIndex + 1;
         skipString();
         int length = currentIndex - jsonValueStart;
         byte[] stringBytes = new byte[length];
@@ -192,10 +192,10 @@ final class JsonStreamParser extends ArrayJsonParser {
                     isEscaped = false;
                 }
             }
+            currentIndex = index;
             if (finished) {
                 throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
             }
-            currentIndex = index - 1;
             readMoreData();
         }
     }
@@ -494,15 +494,15 @@ final class JsonStreamParser extends ArrayJsonParser {
                 if (jsonValueStart > 0) {
                     // Move the partial value to the beginning of the buffer to make room for more data
                     int valueLen = bufferLength - jsonValueStart;
-                    currentIndex = valueLen; // Position at end of moved value
                     System.arraycopy(buffer, jsonValueStart, buffer, 0, valueLen);
+                    currentIndex = valueLen - 1; // Position at end of moved value
                     jsonValueStart = 0; // Reset start position
-                    int lastRead = inputStream.read(buffer, currentIndex, buffer.length - currentIndex);
+                    int lastRead = inputStream.read(buffer, valueLen, buffer.length - valueLen);
                     if (lastRead == -1) {
                         finished = true;
-                        bufferLength = currentIndex; // Only the moved value remains
+                        bufferLength = valueLen; // Only the moved value remains
                     } else {
-                        bufferLength = currentIndex + lastRead;
+                        bufferLength = valueLen + lastRead;
                         finished = false;
                     }
                 } else {

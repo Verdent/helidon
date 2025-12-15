@@ -444,7 +444,7 @@ class ArrayJsonParser implements JsonParser {
             }
             throw createException("False value expect. Invalid JSON value");
         default:
-            throw createException("Invalid JSON value to skip");
+            throw createException("Invalid JSON value to skip", currentByte());
         }
     }
 
@@ -804,7 +804,7 @@ class ArrayJsonParser implements JsonParser {
             //NOOP
             break;
         default:
-            throw createException("Invalid JSON value to skip");
+            throw createException("Invalid JSON value to skip", currentByte());
         }
     }
 

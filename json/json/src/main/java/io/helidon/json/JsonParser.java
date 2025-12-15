@@ -301,8 +301,8 @@ public interface JsonParser {
      * the string content as a Java char value. It has to be one character.
      * </p>
      *
-     * @return the boolean value
-     * @throws JsonException if the next token is not a boolean or parsing fails
+     * @return the char value
+     * @throws JsonException if the next token is not a string or parsing fails
      */
     char readChar();
 

@@ -539,6 +539,7 @@ class ArrayJsonParser implements JsonParser {
     }
 
     @Override
+    @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
         int start = currentIndex;
         int i = start;

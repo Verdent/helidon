@@ -201,6 +201,7 @@ final class JsonStreamParser extends ArrayJsonParser {
     }
 
     @Override
+    @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
         bufferingJsonValue = true;
         jsonValueStart = currentIndex;

@@ -313,7 +313,7 @@ public final class JsonObject extends JsonValue {
      * @param defaultValue the value to return if the key is not present
      * @return the JsonArray value associated with the key, or the default value
      */
-    public JsonArray objectValue(String key, JsonArray defaultValue) {
+    public JsonArray arrayValue(String key, JsonArray defaultValue) {
         ensureResolvedKeys();
         JsonValue jsonValue = content.get(key);
         if (jsonValue == null) {

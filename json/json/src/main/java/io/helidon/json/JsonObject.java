@@ -36,14 +36,18 @@ public final class JsonObject extends JsonValue {
 
     private List<Pair> pairs;
     private LinkedHashMap<String, JsonValue> content;
+    private boolean resolved;
 
     private JsonObject(List<Pair> pairs) {
         this.pairs = pairs;
+        this.content = new LinkedHashMap<>();
+        this.resolved = false;
     }
 
     private JsonObject(LinkedHashMap<String, JsonValue> content) {
         this.content = content;
         this.pairs = new ArrayList<>();
+        this.resolved = true;
     }
 
     /**
@@ -288,6 +292,37 @@ public final class JsonObject extends JsonValue {
     }
 
     /**
+     * Return the JsonArray value associated with the specified key as an Optional.
+     *
+     * @param key the key to look up
+     * @return an Optional containing the JsonArray value, or empty if the key is not present
+     */
+    public Optional<JsonArray> arrayValue(String key) {
+        ensureResolvedKeys();
+        JsonValue jsonValue = content.get(key);
+        if (jsonValue == null) {
+            return Optional.empty();
+        }
+        return Optional.of(jsonValue.asArray());
+    }
+
+    /**
+     * Return the JsonArray value associated with the specified key, or the default value if the key is not present.
+     *
+     * @param key the key to look up
+     * @param defaultValue the value to return if the key is not present
+     * @return the JsonArray value associated with the key, or the default value
+     */
+    public JsonArray objectValue(String key, JsonArray defaultValue) {
+        ensureResolvedKeys();
+        JsonValue jsonValue = content.get(key);
+        if (jsonValue == null) {
+            return defaultValue;
+        }
+        return jsonValue.asArray();
+    }
+
+    /**
      * Return a set of all keys in this object as JsonString instances.
      *
      * @return a set of JsonString keys
@@ -336,7 +371,7 @@ public final class JsonObject extends JsonValue {
     }
 
     private void ensureResolvedKeys() {
-        if (content == null) {
+        if (!resolved) {
             this.content = new LinkedHashMap<>(pairs.size());
             for (Pair pair : pairs) {
                 content.put(pair.key.resolveValue(), pair.value);

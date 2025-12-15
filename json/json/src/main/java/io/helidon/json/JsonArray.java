@@ -47,6 +47,16 @@ public final class JsonArray extends JsonValue {
     }
 
     /**
+     * Create a JsonArray from an array of JsonValue instances.
+     *
+     * @param jsonValues the array of JSON values
+     * @return a new JsonArray
+     */
+    public static JsonArray create(JsonValue... jsonValues) {
+        return new JsonArray(List.of(jsonValues));
+    }
+
+    /**
      * Create a JsonArray from a list of strings.
      *
      * @param values the list of string values

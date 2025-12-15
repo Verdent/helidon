@@ -38,7 +38,7 @@ abstract class ValueSkipTest {
         JsonParser parser = createParser(json);
         parser.skip();
 
-        // Parser should be positioned at the space after the string
+        // Parser should be positioned at the end of the string (closing quote)
         assertThat(parser.currentByte(), is((byte) '"'));
         assertThat(parser.hasNext(), is(true));
     }

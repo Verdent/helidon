@@ -27,11 +27,17 @@ class JsonValueParser implements JsonParser {
 
     JsonValueParser(JsonValue jsonValue) {
         this.current = jsonValue;
+        values[0] = JsonNoopValue.INSTANCE;
     }
 
     @Override
     public boolean hasNext() {
-        return index < 0;
+        if (current != null) {
+            if (current.type() == JsonValueType.OBJECT || current.type() == JsonValueType.ARRAY) {
+                return true;
+            }
+        }
+        return index - 1 >= 0;
     }
 
     @Override
@@ -49,7 +55,7 @@ class JsonValueParser implements JsonParser {
                     //We are having some values before this one. index need to be raised to prevet overwriting.
                     index++;
                 }
-                values[index++] = JsonControlValue.RBRACE;
+                values[index++] = JsonControlValue.OBJECT_END;
                 for (JsonString key : keys) {
                     values[index + --size] = key;
                     values[index + --size] = JsonControlValue.COLON;
@@ -69,7 +75,7 @@ class JsonValueParser implements JsonParser {
                     //We are having some values before this one. index need to be raised to prevet overwriting.
                     index++;
                 }
-                values[++index] = JsonControlValue.RBRACKET;
+                values[++index] = JsonControlValue.ARRAY_END;
                 for (JsonValue value : array.values()) {
                     values[index + --size] = value;
                     if (size > 0) {
@@ -82,9 +88,12 @@ class JsonValueParser implements JsonParser {
         if (index >= 0) {
             current = values[index];
             values[index--] = null;
+            if (current == null) {
+                throw new JsonException("No more JSON Values available");
+            }
             return current.jsonStartChar();
         }
-        throw new UnsupportedOperationException("No more JSON Values available");
+        throw new JsonException("No more JSON Values available");
     }
 
     void ensureCapacity(int capacity) {
@@ -193,7 +202,44 @@ class JsonValueParser implements JsonParser {
 
     @Override
     public void skip() {
-        current = null;
+        if (current.type() == JsonValueType.OBJECT) {
+            for (int i = index; i > -1; i--) {
+                JsonValue value = values[i];
+                values[i] = null;
+                if (value == JsonNoopValue.INSTANCE) {
+                    //This can happen when the very first value in the parser is the object and we skip it.
+                    index = i;
+                    current = JsonControlValue.OBJECT_END;
+                    return;
+                } else if (value == JsonControlValue.OBJECT_END) {
+                    index = i;
+                    current = value;
+                    return;
+                }
+            }
+            throw new JsonException("Invalid state while skipping JsonValue object.");
+        } else if (current.type() == JsonValueType.ARRAY) {
+            for (int i = index; i > -1; i--) {
+                JsonValue value = values[i];
+                values[i] = null;
+                if (value == JsonNoopValue.INSTANCE) {
+                    //This can happen when the very first value in the parser is the array and we skip it.
+                    index = i;
+                    current = JsonControlValue.ARRAY_END;
+                    return;
+                } else if (value == JsonControlValue.ARRAY_END) {
+                    index = i;
+                    current = value;
+                    return;
+                }
+            }
+            throw new JsonException("Invalid state while skipping JsonValue array.");
+        } else if (index == 0) {
+            index = -1;
+            current = JsonNoopValue.INSTANCE;
+        } else {
+            nextToken();
+        }
     }
 
     @Override

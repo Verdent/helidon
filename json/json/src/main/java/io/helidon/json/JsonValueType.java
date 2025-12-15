@@ -44,10 +44,6 @@ public enum JsonValueType {
     /**
      * Null value type.
      */
-    NULL,
-    /**
-     * Control value type.
-     */
-    CONTROL
+    NULL
 
 }

@@ -16,11 +16,14 @@
 
 package io.helidon.json;
 
+/**
+ * This object is never returned anywhere and servers as parser token placeholder.
+ */
 final class JsonControlValue extends JsonValue {
 
     // Reuse common control tokens to reduce allocations during JsonValueParser traversal
-    static final JsonControlValue RBRACE = new JsonControlValue('}');
-    static final JsonControlValue RBRACKET = new JsonControlValue(']');
+    static final JsonControlValue OBJECT_END = new JsonControlValue('}');
+    static final JsonControlValue ARRAY_END = new JsonControlValue(']');
     static final JsonControlValue COLON = new JsonControlValue(':');
     static final JsonControlValue COMMA = new JsonControlValue(',');
     private final byte controlChar;
@@ -31,12 +34,13 @@ final class JsonControlValue extends JsonValue {
 
     @Override
     public JsonValueType type() {
-        return JsonValueType.CONTROL;
+        //Intentional to avoid adding unwanted values to the enum
+        return null;
     }
 
     @Override
     public void toJson(Generator generator) {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("This is a parser token placeholder value. Serialization is not supported.");
     }
 
     @Override

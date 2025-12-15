@@ -758,8 +758,8 @@ class ArrayJsonParser implements JsonParser {
         int dataIndex = currentIndex - start;
         BufferData bufferData = BufferData.create(buffer, start, length);
 
-        return new JsonException("Error at JSON index: " + currentIndex + "\n"
-                                         + "Message: " + message + "\n"
+        return new JsonException(message + "\n"
+                                         + "Error at JSON index: " + currentIndex + "\n"
                                          + "Data index: " + dataIndex + "\n"
                                          + "Data: \n"
                                          + bufferData.debugDataHex(false));
@@ -798,6 +798,10 @@ class ArrayJsonParser implements JsonParser {
         case 'f':
             ensure(4);
             currentIndex += 4;
+            break;
+        case ',':
+        case ':':
+            //NOOP
             break;
         default:
             throw createException("Invalid JSON value to skip");

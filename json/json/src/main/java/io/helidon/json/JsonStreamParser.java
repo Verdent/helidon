@@ -129,7 +129,7 @@ final class JsonStreamParser extends ArrayJsonParser {
         bufferingJsonValue = true;
         jsonValueStart = currentIndex;
         skipNumber();
-        int length = currentIndex - jsonValueStart;
+        int length = currentIndex - jsonValueStart + 1;
         byte[] numberBytes = new byte[length];
         System.arraycopy(buffer, jsonValueStart, numberBytes, 0, length);
         bufferingJsonValue = false;
@@ -484,7 +484,8 @@ final class JsonStreamParser extends ArrayJsonParser {
 
     /**
      * Reads more data from the input stream into the buffer, handling buffering for JSON values that span multiple reads.
-     * There are two modes: bufferingJsonValue (for values like strings or numbers) and non-buffering (for structural parsing).
+     * There are two modes: bufferingJsonValue (for {@link io.helidon.json.JsonValue} related types)
+     * and non-buffering (for structural parsing).
      */
     private void readMoreData() {
         try {

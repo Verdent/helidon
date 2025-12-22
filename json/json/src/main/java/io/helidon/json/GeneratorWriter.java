@@ -17,6 +17,7 @@
 package io.helidon.json;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 
 class GeneratorWriter extends AbstractGenerator {
@@ -36,7 +37,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             writer.write(value);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write byte value", e);
         }
     }
 
@@ -45,7 +46,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             writer.write(Long.toString(value));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write long value.", e);
         }
     }
 
@@ -54,7 +55,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             writer.write(Float.toString(value));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write float value.", e);
         }
     }
 
@@ -63,7 +64,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             writer.write(Double.toString(value));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write double value.", e);
         }
     }
 
@@ -74,7 +75,7 @@ class GeneratorWriter extends AbstractGenerator {
             writer.write(value);
             writer.write('\"');
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write String value.", e);
         }
     }
 
@@ -85,7 +86,7 @@ class GeneratorWriter extends AbstractGenerator {
             writer.write(value);
             writer.write('\"');
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write char value.", e);
         }
     }
 
@@ -98,7 +99,7 @@ class GeneratorWriter extends AbstractGenerator {
                 writer.write(FALSE);
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write boolean value.", e);
         }
     }
 
@@ -107,7 +108,7 @@ class GeneratorWriter extends AbstractGenerator {
         try {
             writer.write(NULL);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to write null value.", e);
         }
     }
 

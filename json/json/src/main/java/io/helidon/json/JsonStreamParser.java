@@ -18,6 +18,7 @@ package io.helidon.json;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,7 +70,7 @@ final class JsonStreamParser implements JsonParser {
             bufferLength = (read == -1 ? 0 : read);
             finished = (read == -1);
         } catch (IOException e) {
-            throw new RuntimeException("Error occurred while reading JSON to the buffer", e);
+            throw new UncheckedIOException("Error occurred while reading JSON to the buffer", e);
         }
     }
 
@@ -2151,7 +2152,7 @@ final class JsonStreamParser implements JsonParser {
                 currentIndex = 0;
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Failed to read more data", e);
         }
     }
 

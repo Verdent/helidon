@@ -94,6 +94,26 @@ public final class Bytes {
      * Horizontal tabulator byte.
      */
     public static final byte TAB_BYTE = (byte) '\t';
+    /**
+     * {@code [} byte.
+     */
+    public static final byte SQUARE_BRACKET_OPEN_BYTE = (byte) '[';
+    /**
+     * {@code ]} byte.
+     */
+    public static final byte SQUARE_BRACKET_CLOSE_BYTE = (byte) ']';
+    /**
+     * {@code \} byte.
+     */
+    public static final byte BACKSLASH_BYTE = (byte) '\\';
+    /**
+     * {@code 0} byte.
+     */
+    public static final byte ZERO_DIGIT_BYTE = (byte) '0';
+    /**
+     * {@code -} byte.
+     */
+    public static final byte MINUS_SIGN_BYTE = (byte) '-';
 
     private static final boolean BYTE_ORDER_LE = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
 

@@ -16,20 +16,11 @@
 
 package io.helidon.json;
 
+import io.helidon.common.buffers.Bytes;
+
 abstract class AbstractGenerator implements Generator {
 
     static final int STACK_SIZE = 64;
-
-    static final byte QUOTES = '"';
-    static final byte COMMA = ',';
-    static final byte COLON = ':';
-    static final byte ARRAY_START = '[';
-    static final byte ARRAY_END = ']';
-    static final byte OBJECT_START = '{';
-    static final byte OBJECT_END = '}';
-    static final byte SLASH = '\\';
-    static final byte ZERO = '0';
-    static final byte MINUS = '-';
 
     // stack structure tracking: true = object, false = array
     private final boolean[] structureType = new boolean[STACK_SIZE];
@@ -65,7 +56,7 @@ abstract class AbstractGenerator implements Generator {
                 keyWritten = false;
             } else {
                 ensureCapacity(1);
-                writeByte(COMMA);
+                writeByte(Bytes.COMMA_BYTE);
             }
         } else if (first) {
             first = false;
@@ -80,126 +71,63 @@ abstract class AbstractGenerator implements Generator {
 
     @Override
     public Generator writeKey(String key) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         keyWritten = true;
         return this;
     }
 
     @Override
     public Generator write(String key, String value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeString(value);
         return this;
     }
 
     @Override
     public Generator write(String key, int value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeLong(value);
         return this;
     }
 
     @Override
     public Generator write(String key, long value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeLong(value);
         return this;
     }
 
     @Override
     public Generator write(String key, float value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeFloat(value);
         return this;
     }
 
     @Override
     public Generator write(String key, double value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeDouble(value);
         return this;
     }
 
     @Override
     public Generator write(String key, boolean value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeBoolean(value);
         return this;
     }
 
     @Override
     public Generator write(String key, char value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Value without key is supported only as a root or in the array");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeChar(value);
         return this;
     }
 
     @Override
     public Generator write(String key, JsonValue value) {
-        if (depth == 0 || !structureType[depth - 1]) {
-            throw new JsonException("Key can be written only into the object");
-        } else if (keyWritten) {
-            throw new JsonException("Cannot write key twice");
-        }
-        beforeWrite();
-        writeString(key);
-        writeByte(COLON);
+        checkAndWriteKey(key);
         writeJsonValue(value);
         return this;
     }
@@ -322,14 +250,14 @@ abstract class AbstractGenerator implements Generator {
             keyWritten = false;
         }
         pushStructureType(false);
-        writeByte(ARRAY_START);
+        writeByte(Bytes.SQUARE_BRACKET_OPEN_BYTE);
         return this;
     }
 
     @Override
     public Generator writeArrayEnd() {
         popStackType();
-        writeByte(ARRAY_END);
+        writeByte(Bytes.SQUARE_BRACKET_CLOSE_BYTE);
         first = false;
         return this;
     }
@@ -341,7 +269,7 @@ abstract class AbstractGenerator implements Generator {
         } else {
             keyWritten = false;
         }
-        writeByte(OBJECT_START);
+        writeByte(Bytes.BRACE_OPEN_BYTE);
         pushStructureType(true);
         return this;
     }
@@ -349,13 +277,24 @@ abstract class AbstractGenerator implements Generator {
     @Override
     public Generator writeObjectEnd() {
         popStackType();
-        writeByte(OBJECT_END);
+        writeByte(Bytes.BRACE_CLOSE_BYTE);
         first = false;
         return this;
     }
 
     void writeJsonValue(JsonValue value) {
         value.toJson(this);
+    }
+
+    private void checkAndWriteKey(String key) {
+        if (depth == 0 || !structureType[depth - 1]) {
+            throw new JsonException("Key can be written only into the object");
+        } else if (keyWritten) {
+            throw new JsonException("Cannot write key twice");
+        }
+        beforeWrite();
+        writeString(key);
+        writeByte(Bytes.COLON_BYTE);
     }
 
     private void pushStructureType(boolean isObject) {

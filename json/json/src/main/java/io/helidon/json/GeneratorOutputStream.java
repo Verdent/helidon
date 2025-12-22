@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
+import io.helidon.common.buffers.Bytes;
+
 class GeneratorOutputStream extends AbstractGenerator {
 
     private static final byte[] HEX_DIGITS = "0123456789ABCDEF".getBytes(StandardCharsets.US_ASCII);
@@ -44,22 +46,22 @@ class GeneratorOutputStream extends AbstractGenerator {
     @Override
     void writeString(String value) {
         ensureCapacity(1);
-        buffer[index++] = QUOTES;
+        buffer[index++] = Bytes.DOUBLE_QUOTE_BYTE;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             encodeChar(c);
         }
         ensureCapacity(1);
-        buffer[index++] = QUOTES;
+        buffer[index++] = Bytes.DOUBLE_QUOTE_BYTE;
     }
 
     @Override
     void writeChar(char value) {
         ensureCapacity(1);
-        buffer[index++] = QUOTES;
+        buffer[index++] = Bytes.DOUBLE_QUOTE_BYTE;
         encodeChar(value);
         ensureCapacity(1);
-        buffer[index++] = QUOTES;
+        buffer[index++] = Bytes.DOUBLE_QUOTE_BYTE;
     }
 
     @Override
@@ -71,14 +73,14 @@ class GeneratorOutputStream extends AbstractGenerator {
     @Override
     void writeLong(long value) {
         if (value == 0) {
-            writeByte(ZERO);
+            writeByte(Bytes.ZERO_DIGIT_BYTE);
         }
         long toProcess = value;
         int digits = 0;
         boolean negative = value < 0;
         if (negative) {
             ensureCapacity(1);
-            buffer[index++] = MINUS;
+            buffer[index++] = Bytes.MINUS_SIGN_BYTE;
             toProcess = -toProcess;
         }
         while (toProcess > 0) {
@@ -194,12 +196,12 @@ class GeneratorOutputStream extends AbstractGenerator {
             if (c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f') {
                 // Common control chars use short escapes
                 ensureCapacity(2);
-                buffer[index++] = SLASH;
+                buffer[index++] = Bytes.BACKSLASH_BYTE;
                 buffer[index++] = (byte) c;
             } else {
                 // Other control chars use \\uXXXX format
                 ensureCapacity(6);
-                buffer[index++] = SLASH;
+                buffer[index++] = Bytes.BACKSLASH_BYTE;
                 buffer[index++] = 'u';
                 buffer[index++] = '0';
                 buffer[index++] = '0';
@@ -209,7 +211,7 @@ class GeneratorOutputStream extends AbstractGenerator {
         } else if (c == '"' || c == '\\') {
             // JSON special characters must be escaped
             ensureCapacity(2);
-            buffer[index++] = SLASH;
+            buffer[index++] = Bytes.BACKSLASH_BYTE;
             buffer[index++] = (byte) c;
         } else if (c < 0x80) {
             // ASCII character (0x20-0x7F): write as-is
@@ -223,7 +225,7 @@ class GeneratorOutputStream extends AbstractGenerator {
         } else if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c)) {
             // Surrogates are written as \\uXXXX (JSON doesn't support UTF-16 surrogates directly)
             ensureCapacity(6);
-            buffer[index++] = SLASH;
+            buffer[index++] = Bytes.BACKSLASH_BYTE;
             buffer[index++] = 'u';
             buffer[index++] = HEX_DIGITS[(c >> 12) & 0xF];  // High nibble of high byte
             buffer[index++] = HEX_DIGITS[(c >> 8) & 0xF];   // Low nibble of high byte

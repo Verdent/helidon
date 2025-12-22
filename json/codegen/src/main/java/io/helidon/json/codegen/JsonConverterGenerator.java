@@ -56,6 +56,7 @@ import static io.helidon.common.types.TypeNames.PRIMITIVE_LONG;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_SHORT;
 import static io.helidon.common.types.TypeNames.PRIMITIVE_VOID;
 import static io.helidon.json.codegen.ConvertedTypeInfo.needsResolving;
+import static io.helidon.json.codegen.JsonTypes.BYTES;
 import static java.util.function.Predicate.not;
 
 class JsonConverterGenerator {
@@ -397,7 +398,9 @@ class JsonConverterGenerator {
                 .addParameter(param -> param.name("parser").type(JsonTypes.JSON_PARSER))
                 .addAnnotation(Annotation.create(Override.class))
                 .addContent(byte.class).addContentLine(" lastByte = parser.currentByte();")
-                .addContentLine("if (lastByte != '{') {")
+                .addContent("if (lastByte != ")
+                .addContent(BYTES)
+                .addContentLine(".BRACE_OPEN_BYTE) {")
                 .addContentLine("throw parser.createException(\"Expected '{' to start an object\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
@@ -501,7 +504,9 @@ class JsonConverterGenerator {
         boolean hasProperties = !jsonProperties.isEmpty();
 
         method.addContentLine("while(true) {")
-                .addContentLine("if (lastByte != '\"') {")
+                .addContent("if (lastByte != ")
+                .addContent(BYTES)
+                .addContentLine(".DOUBLE_QUOTE_BYTE) {")
                 .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start\", lastByte);")
                 .addContentLine("}");
         if (hasProperties) {
@@ -510,7 +515,9 @@ class JsonConverterGenerator {
             method.addContentLine("parser.skip();");
         }
         method.addContentLine("lastByte = parser.nextToken();")
-                .addContentLine("if (lastByte != ':') {")
+                .addContent("if (lastByte != ")
+                .addContent(BYTES)
+                .addContentLine(".COLON_BYTE) {")
                 .addContentLine("throw parser.createException(\"Expected ':' to separate key and value\", lastByte);")
                 .addContentLine("}")
                 .addContentLine("parser.nextToken();");
@@ -578,11 +585,15 @@ class JsonConverterGenerator {
             method.addContentLine("parser.skip();");
         }
         method.addContentLine("lastByte = parser.nextToken();")
-                .addContentLine("if (lastByte == ',') {")
+                .addContent("if (lastByte == ")
+                .addContent(BYTES)
+                .addContentLine(".COMMA_BYTE) {")
                 .addContentLine("lastByte = parser.nextToken();")
                 .addContentLine("continue;")
                 .decreaseContentPadding()
-                .addContentLine("} else if (lastByte == '}') {")
+                .addContent("} else if (lastByte == ")
+                .addContent(BYTES)
+                .addContentLine(".BRACE_CLOSE_BYTE) {")
                 .addContentLine("break;")
                 .decreaseContentPadding()
                 .addContentLine("} else {")
@@ -598,7 +609,9 @@ class JsonConverterGenerator {
                                                    ElementKind creatorKind,
                                                    CreatorInfo creatorInfo,
                                                    boolean hasBuilder) {
-        method.addContentLine("if (lastByte == '}') {");
+        method.addContent("if (lastByte == ")
+                .addContent(BYTES)
+                .addContentLine(".BRACE_CLOSE_BYTE) {");
         String required = jsonProperties.stream()
                 .filter(JsonProperty::required)
                 .map(it -> it.deserializationName().orElseThrow())

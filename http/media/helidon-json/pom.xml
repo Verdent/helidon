@@ -37,6 +37,10 @@
             <artifactId>helidon-common</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common-buffers</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.json</groupId>
             <artifactId>helidon-json-binding</artifactId>
         </dependency>
@@ -193,6 +197,7 @@
                                 <dependency>io.helidon.common:helidon-common-types::</dependency>
                                 <dependency>io.helidon.service:helidon-service-registry::</dependency>
                                 <dependency>io.helidon.json:helidon-json::</dependency>
+                                <dependency>io.helidon.common:helidon-common-buffers::</dependency>
                             </ignoredNonTestScopedDependencies>
                         </configuration>
                     </execution>

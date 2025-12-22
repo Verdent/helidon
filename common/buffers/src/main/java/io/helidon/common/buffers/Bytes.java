@@ -75,6 +75,22 @@ public final class Bytes {
      */
     public static final byte PERCENT_BYTE = (byte) '%';
     /**
+     * {@code ,} byte.
+     */
+    public static final byte COMMA_BYTE = (byte) ',';
+    /**
+     * &#123; byte.
+     */
+    public static final byte BRACE_OPEN_BYTE = (byte) '{';
+    /**
+     * &#125; byte.
+     */
+    public static final byte BRACE_CLOSE_BYTE = (byte) '}';
+    /**
+     * {@code "} byte.
+     */
+    public static final byte DOUBLE_QUOTE_BYTE = (byte) '"';
+    /**
      * Horizontal tabulator byte.
      */
     public static final byte TAB_BYTE = (byte) '\t';

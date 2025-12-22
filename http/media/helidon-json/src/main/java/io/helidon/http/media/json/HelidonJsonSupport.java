@@ -47,7 +47,7 @@ import static io.helidon.http.HeaderValues.CONTENT_TYPE_JSON;
 @RuntimeType.PrototypedBy(HelidonJsonSupportConfig.class)
 public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<HelidonJsonSupportConfig> {
 
-    static final String HELIDON_JSON_DEFAULT_NAME = "helidon-json";
+    static final String HELIDON_JSON_TYPE = "json";
 
     private final String name;
     private final HelidonJsonSupportConfig supportConfig;
@@ -72,7 +72,7 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
      * @return a new MediaSupport instance
      */
     public static MediaSupport create(Config config) {
-        return create(config, HELIDON_JSON_DEFAULT_NAME);
+        return create(config, HELIDON_JSON_TYPE);
     }
 
     /**
@@ -125,7 +125,7 @@ public class HelidonJsonSupport implements MediaSupport, RuntimeType.Api<Helidon
 
     @Override
     public String type() {
-        return HELIDON_JSON_DEFAULT_NAME;
+        return HELIDON_JSON_TYPE;
     }
 
     @Override

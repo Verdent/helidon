@@ -39,7 +39,7 @@ public class HelidonJsonMediaSupportProvider implements MediaSupportProvider, We
 
     @Override
     public String configKey() {
-        return HelidonJsonSupport.HELIDON_JSON_DEFAULT_NAME;
+        return HelidonJsonSupport.HELIDON_JSON_TYPE;
     }
 
     @Override

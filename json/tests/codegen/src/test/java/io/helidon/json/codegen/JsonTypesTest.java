@@ -45,7 +45,7 @@ import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
-class TypesTest {
+class JsonTypesTest {
 
     @Test
     void testTypes() {
@@ -98,7 +98,6 @@ class TypesTest {
         checkField(toCheck, checked, fields, "JSON_GENERATOR", Generator.class);
         checkField(toCheck, checked, fields, "JSON_PARSER", JsonParser.class);
 
-        checkField(toCheck, checked, fields, "GENERIC_TYPE", GenericType.class);
         checkField(toCheck, checked, fields, "BUILDER_TYPE", Builder.class);
 
         checkField(toCheck, checked, fields, "SERVICE_REGISTRY_PER_LOOKUP", Service.PerLookup.class);

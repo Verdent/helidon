@@ -968,7 +968,7 @@ final class JsonStreamParser implements JsonParser {
         if (!WHITESPACE_CHARS[b & 0xFF]) {
             return b;
         }
-        //We dont know how many spaces, new lines etc is there present, lets start looping
+        //We don't know how many spaces, new lines etc is there present, lets start looping
         while (true) {
             b = readNextByte();
             if (!WHITESPACE_CHARS[b & 0xFF]) {

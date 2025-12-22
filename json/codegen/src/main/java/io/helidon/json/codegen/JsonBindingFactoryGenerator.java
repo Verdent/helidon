@@ -39,7 +39,7 @@ class JsonBindingFactoryGenerator {
 
     static void generateBindingFactory(ClassBase.Builder<?, ?> classBuilder, TypeInfo annotatedType, CodegenContext ctx) {
         ConvertedTypeInfo convertedTypeInfo = ConvertedTypeInfo.create(annotatedType, ctx);
-        classBuilder.addAnnotation(b -> b.type(Types.SERVICE_REGISTRY_PER_LOOKUP))
+        classBuilder.addAnnotation(b -> b.type(JsonTypes.SERVICE_REGISTRY_PER_LOOKUP))
                 .addAnnotation(Annotation.builder()
                                        .type(TypeNames.WEIGHT)
                                        .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)
@@ -48,7 +48,7 @@ class JsonBindingFactoryGenerator {
                                  .add("Json binding factory for {@link " + annotatedType.typeName().fqName() + "}.")
                                  .build())
                 .addInterface(TypeName.builder()
-                                      .from(Types.JSON_BINDING_FACTORY)
+                                      .from(JsonTypes.JSON_BINDING_FACTORY)
                                       .addTypeArgument(convertedTypeInfo.wildcardsGenerics())
                                       .build());
 
@@ -80,7 +80,7 @@ class JsonBindingFactoryGenerator {
 
     private static void addCreateDeserializerMethodGenerics(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
         TypeName classType = TypeName.builder()
-                .from(Types.GENERIC_TYPE)
+                .from(TypeNames.GENERIC_TYPE)
                 .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.wildcardsGenerics()))
                 .build();
         addCreateDeserializerMethod(method, convertedTypeInfo, classType, true);
@@ -93,7 +93,7 @@ class JsonBindingFactoryGenerator {
         method.name("createDeserializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
-                                                            .from(Types.JSON_DESERIALIZER_TYPE)
+                                                            .from(JsonTypes.JSON_DESERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.wildcardsGenerics())
                                                             .build()))
                 .addParameter(builder -> builder.type(parameter).name("type"))
@@ -112,7 +112,7 @@ class JsonBindingFactoryGenerator {
 
     private static void addCreateSerializerMethodGenerics(Method.Builder method, ConvertedTypeInfo convertedTypeInfo) {
         TypeName classType = TypeName.builder()
-                .from(Types.GENERIC_TYPE)
+                .from(TypeNames.GENERIC_TYPE)
                 .addTypeArgument(it -> it.from(TypeArgument.create("?")).addUpperBound(convertedTypeInfo.wildcardsGenerics()))
                 .build();
         addCreateSerializerMethod(method, convertedTypeInfo, classType, true);
@@ -125,7 +125,7 @@ class JsonBindingFactoryGenerator {
         method.name("createSerializer")
                 .addAnnotation(Annotation.create(Override.class))
                 .returnType(builder -> builder.type(TypeName.builder()
-                                                            .from(Types.JSON_SERIALIZER_TYPE)
+                                                            .from(JsonTypes.JSON_SERIALIZER_TYPE)
                                                             .addTypeArgument(convertedTypeInfo.wildcardsGenerics())
                                                             .build()))
                 .addParameter(builder -> builder.type(parameter).name("type"))

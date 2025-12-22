@@ -18,7 +18,7 @@ package io.helidon.json.codegen;
 
 import io.helidon.common.types.TypeName;
 
-final class Types {
+final class JsonTypes {
 
     //Annotations
     static final TypeName JSON_ENTITY = TypeName.create("io.helidon.json.binding.Json.Entity");
@@ -43,14 +43,14 @@ final class Types {
     static final TypeName JSON_SERIALIZERS = TypeName.create("io.helidon.json.binding.Serializers");
 
     static final TypeName JSON_GENERATOR = TypeName.create("io.helidon.json.Generator");
+    static final TypeName BYTES = TypeName.create("io.helidon.common.buffers.Bytes");
     static final TypeName JSON_PARSER = TypeName.create("io.helidon.json.JsonParser");
 
-    static final TypeName GENERIC_TYPE = TypeName.create("io.helidon.common.GenericType");
     static final TypeName BUILDER_TYPE = TypeName.create("io.helidon.common.Builder");
 
     static final TypeName SERVICE_REGISTRY_PER_LOOKUP = TypeName.create("io.helidon.service.registry.Service.PerLookup");
 
-    private Types() {
+    private JsonTypes() {
     }
 
 }

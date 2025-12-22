@@ -29,6 +29,7 @@ import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.CodegenException;
 import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.codegen.classmodel.TypeArgument;
+import io.helidon.common.AccessorStyle;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
 import io.helidon.common.types.ElementKind;
@@ -72,20 +73,20 @@ record ConvertedTypeInfo(TypeName converterType,
         String replacedDot = classNameWithEnclosingNames.replace(".", "_");
         String nameBase = typeInfo.typeName().fqName().replace(classNameWithEnclosingNames, replacedDot);
         TypeName converterTypeName = TypeName.create(nameBase + "_GeneratedConverter");
-        String recordAccessors = typeInfo.annotation(Types.JSON_ENTITY)
-                .stringValue("accessorStyle")
-                .orElse("AUTO");
-        if (typeInfo.kind() == ElementKind.RECORD && recordAccessors.equals("AUTO")) {
-            recordAccessors = "RECORD";
+        AccessorStyle recordAccessors = typeInfo.annotation(JsonTypes.JSON_ENTITY)
+                .enumValue("accessorStyle", AccessorStyle.class)
+                .orElse(AccessorStyle.AUTO);
+        if (typeInfo.kind() == ElementKind.RECORD && recordAccessors.equals(AccessorStyle.AUTO)) {
+            recordAccessors = AccessorStyle.RECORD;
         }
-        boolean nullable = obtainClassAnnotationFromHierarchy(Types.JSON_SERIALIZE_NULLS, typeInfo)
-                .flatMap(annotation -> annotation.booleanValue("value"))
+        boolean nullable = obtainClassAnnotationFromHierarchy(JsonTypes.JSON_SERIALIZE_NULLS, typeInfo)
+                .flatMap(Annotation::booleanValue)
                 .orElse(CodegenOptions.CODEGEN_JSON_NULL.value(ctx.options()));
-        boolean failOnUnknown = obtainClassAnnotationFromHierarchy(Types.JSON_FAIL_ON_UNKNOWN, typeInfo)
-                .flatMap(annotation -> annotation.booleanValue("value"))
+        boolean failOnUnknown = obtainClassAnnotationFromHierarchy(JsonTypes.JSON_FAIL_ON_UNKNOWN, typeInfo)
+                .flatMap(Annotation::booleanValue)
                 .orElse(CodegenOptions.CODEGEN_JSON_UNKNOWN.value(ctx.options()));
-        String orderStrategy = obtainClassAnnotationFromHierarchy(Types.JSON_PROPERTY_ORDER, typeInfo)
-                .flatMap(annotation -> annotation.stringValue("value"))
+        String orderStrategy = obtainClassAnnotationFromHierarchy(JsonTypes.JSON_PROPERTY_ORDER, typeInfo)
+                .flatMap(Annotation::stringValue)
                 .orElse(CodegenOptions.CODEGEN_JSON_ORDER.value(ctx.options()));
         Map<String, JsonProperty.Builder> properties = new LinkedHashMap<>();
         Map<String, Map<String, TypeName>> resolvedGenerics = new LinkedHashMap<>();
@@ -93,7 +94,7 @@ record ConvertedTypeInfo(TypeName converterType,
         discoverAllPossibleGenerics(typeInfo, resolvedGenerics, Map.of());
         discoverFields(properties, typeInfo, nullable, resolvedGenerics);
         discoverGetAndSetMethods(properties, typeInfo, recordAccessors, resolvedGenerics);
-        Optional<Annotation> builderAnnotation = typeInfo.findAnnotation(Types.JSON_BUILDER_INFO);
+        Optional<Annotation> builderAnnotation = typeInfo.findAnnotation(JsonTypes.JSON_BUILDER_INFO);
         Optional<BuilderInfo> builderInfo = builderAnnotation.flatMap(Annotation::stringValue)
                 .map(TypeName::create)
                 .flatMap(ctx::typeInfo)
@@ -228,9 +229,9 @@ record ConvertedTypeInfo(TypeName converterType,
                     .setterName(methodName)
                     .deserializationNameIfNotSet(propertyName)
                     .deserializationType(resolveGenerics(parameter.typeName(), builderTypeInfo, resolvedGenerics))
-                    .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
+                    .deserializationName(obtainStringFromAnnotation(parameter, JsonTypes.JSON_PROPERTY))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, JsonTypes.JSON_CONVERTER))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, JsonTypes.JSON_DESERIALIZER));
 
             builderProperties.add(propertyName);
         }
@@ -262,7 +263,7 @@ record ConvertedTypeInfo(TypeName converterType,
                 .filter(not(ConvertedTypeInfo::isIgnored))
                 .filter(ElementInfoPredicates::hasNoArgs)
                 .filter(it -> ctx.typeInfo(it.typeName())
-                        .map(info -> info.findInHierarchy(Types.BUILDER_TYPE).isPresent())
+                        .map(info -> info.findInHierarchy(JsonTypes.BUILDER_TYPE).isPresent())
                         .orElse(false))
                 .findFirst();
     }
@@ -294,15 +295,15 @@ record ConvertedTypeInfo(TypeName converterType,
                                               && !field.elementModifiers().contains(Modifier.FINAL))
                     .nullable(nullable);
 
-            obtainStringFromAnnotation(field, Types.JSON_PROPERTY)
+            obtainStringFromAnnotation(field, JsonTypes.JSON_PROPERTY)
                     .ifPresent(value -> builder.serializationName(value).deserializationName(value));
-            obtainTypeNameFromAnnotation(field, Types.JSON_CONVERTER)
+            obtainTypeNameFromAnnotation(field, JsonTypes.JSON_CONVERTER)
                     .ifPresent(value -> builder.serializer(value).deserializer(value));
-            obtainTypeNameFromAnnotation(field, Types.JSON_SERIALIZER).ifPresent(builder::serializer);
-            obtainTypeNameFromAnnotation(field, Types.JSON_DESERIALIZER).ifPresent(builder::deserializer);
-            obtainBooleanFromAnnotation(field, Types.JSON_IGNORE).ifPresent(builder::fieldIgnored);
-            field.findAnnotation(Types.JSON_REQUIRED).ifPresent(annotation -> builder.required(true));
-            obtainBooleanFromAnnotation(field, Types.JSON_SERIALIZE_NULLS).ifPresent(builder::nullable);
+            obtainTypeNameFromAnnotation(field, JsonTypes.JSON_SERIALIZER).ifPresent(builder::serializer);
+            obtainTypeNameFromAnnotation(field, JsonTypes.JSON_DESERIALIZER).ifPresent(builder::deserializer);
+            obtainBooleanFromAnnotation(field, JsonTypes.JSON_IGNORE).ifPresent(builder::fieldIgnored);
+            field.findAnnotation(JsonTypes.JSON_REQUIRED).ifPresent(annotation -> builder.required(true));
+            obtainBooleanFromAnnotation(field, JsonTypes.JSON_SERIALIZE_NULLS).ifPresent(builder::nullable);
             if (field.elementModifiers().contains(Modifier.TRANSIENT)) {
                 builder.fieldIgnored(true);
             }
@@ -310,11 +311,11 @@ record ConvertedTypeInfo(TypeName converterType,
         }
     }
 
-    private static String discoverGetAndSetMethods(Map<String, JsonProperty.Builder> properties,
+    private static AccessorStyle discoverGetAndSetMethods(Map<String, JsonProperty.Builder> properties,
                                                    TypeInfo typeInfo,
-                                                   String accessorStyle,
+                                                   AccessorStyle accessorStyle,
                                                    Map<String, Map<String, TypeName>> resolvedGenerics) {
-        String detectedAccessorStyle = typeInfo.superTypeInfo()
+        AccessorStyle detectedAccessorStyle = typeInfo.superTypeInfo()
                 .map(superType -> discoverGetAndSetMethods(properties, superType, accessorStyle, resolvedGenerics))
                 .orElse(accessorStyle);
 
@@ -323,22 +324,22 @@ record ConvertedTypeInfo(TypeName converterType,
         }
 
         List<TypedElementInfo> methods = List.of();
-        if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("BEAN")) {
-            methods = obtainAllAccessors(typeInfo, "BEAN");
+        if (detectedAccessorStyle.equals(AccessorStyle.AUTO) || detectedAccessorStyle.equals(AccessorStyle.BEAN)) {
+            methods = obtainAllAccessors(typeInfo, AccessorStyle.BEAN);
         }
         if (methods.isEmpty()) {
-            if (detectedAccessorStyle.equals("AUTO") || detectedAccessorStyle.equals("RECORD")) {
-                methods = obtainAllAccessors(typeInfo, "RECORD");
-                detectedAccessorStyle = "RECORD";
+            if (detectedAccessorStyle.equals(AccessorStyle.AUTO) || detectedAccessorStyle.equals(AccessorStyle.RECORD)) {
+                methods = obtainAllAccessors(typeInfo, AccessorStyle.RECORD);
+                detectedAccessorStyle = AccessorStyle.RECORD;
             }
         } else {
-            detectedAccessorStyle = "BEAN";
+            detectedAccessorStyle = AccessorStyle.BEAN;
         }
 
         for (TypedElementInfo method : methods) {
             String methodName = method.elementName();
             if (isGetter(method, detectedAccessorStyle)) {
-                String prefix = detectedAccessorStyle.equals("RECORD")
+                String prefix = detectedAccessorStyle == AccessorStyle.RECORD
                         ? ""
                         : (method.typeName().equals(PRIMITIVE_BOOLEAN) ? "is" : "get");
                 String propertyName = methodToFieldName(prefix, methodName);
@@ -346,29 +347,29 @@ record ConvertedTypeInfo(TypeName converterType,
                         .getterName(methodName)
                         .serializationNameIfNotSet(propertyName)
                         .serializationType(resolveGenerics(method.typeName(), typeInfo, resolvedGenerics))
-                        .serializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
-                        .serializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
-                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::getterIgnored);
-                obtainBooleanFromAnnotation(method, Types.JSON_SERIALIZE_NULLS).ifPresent(property::nullable);
-                method.findAnnotation(Types.JSON_REQUIRED).ifPresent(annotation -> property.required(true));
+                        .serializationName(obtainStringFromAnnotation(method, JsonTypes.JSON_PROPERTY))
+                        .serializer(obtainTypeNameFromAnnotation(method, JsonTypes.JSON_CONVERTER));
+                obtainBooleanFromAnnotation(method, JsonTypes.JSON_IGNORE).ifPresent(property::getterIgnored);
+                obtainBooleanFromAnnotation(method, JsonTypes.JSON_SERIALIZE_NULLS).ifPresent(property::nullable);
+                method.findAnnotation(JsonTypes.JSON_REQUIRED).ifPresent(annotation -> property.required(true));
             } else if (typeInfo.kind() != ElementKind.RECORD && isSetter(method, detectedAccessorStyle)) {
-                String prefix = detectedAccessorStyle.equals("RECORD") ? "" : "set"; //setter style getters in regular classes
+                String prefix = detectedAccessorStyle == AccessorStyle.RECORD ? "" : "set"; //setter style getters in regular classes
                 String propertyName = methodToFieldName(prefix, methodName);
                 TypeName parameterType = method.parameterArguments().getFirst().typeName();
                 JsonProperty.Builder property = properties.computeIfAbsent(propertyName, name -> JsonProperty.builder())
                         .setterName(methodName)
                         .deserializationNameIfNotSet(propertyName)
                         .deserializationType(resolveGenerics(parameterType, typeInfo, resolvedGenerics))
-                        .deserializationName(obtainStringFromAnnotation(method, Types.JSON_PROPERTY))
-                        .deserializer(obtainTypeNameFromAnnotation(method, Types.JSON_CONVERTER));
-                obtainBooleanFromAnnotation(method, Types.JSON_IGNORE).ifPresent(property::setterIgnored);
+                        .deserializationName(obtainStringFromAnnotation(method, JsonTypes.JSON_PROPERTY))
+                        .deserializer(obtainTypeNameFromAnnotation(method, JsonTypes.JSON_CONVERTER));
+                obtainBooleanFromAnnotation(method, JsonTypes.JSON_IGNORE).ifPresent(property::setterIgnored);
             }
             //Not valid getter or setter
         }
         return detectedAccessorStyle;
     }
 
-    private static List<TypedElementInfo> obtainAllAccessors(TypeInfo typeInfo, String accessorStyle) {
+    private static List<TypedElementInfo> obtainAllAccessors(TypeInfo typeInfo, AccessorStyle accessorStyle) {
         return typeInfo.elementInfo()
                 .stream()
                 .filter(ElementInfoPredicates::isMethod)
@@ -384,7 +385,7 @@ record ConvertedTypeInfo(TypeName converterType,
                                                Map<String, Map<String, TypeName>> resolvedGenerics) {
         List<TypedElementInfo> creators = typeInfo.elementInfo()
                 .stream()
-                .filter(info -> info.hasAnnotation(Types.JSON_CREATOR))
+                .filter(info -> info.hasAnnotation(JsonTypes.JSON_CREATOR))
                 .toList();
         if (creators.isEmpty()) {
             if (typeInfo.kind() == ElementKind.RECORD) {
@@ -396,7 +397,7 @@ record ConvertedTypeInfo(TypeName converterType,
                 if (creators.size() > 1) {
                     throw new CodegenException("Only one record constructor is allowed. "
                                                        + "If multiple is needed, one has to be annotated with "
-                                                       + Types.JSON_CREATOR, typeInfo);
+                                                       + JsonTypes.JSON_CREATOR, typeInfo);
                 }
             } else {
                 return new CreatorInfo(null, "", List.of());
@@ -420,9 +421,9 @@ record ConvertedTypeInfo(TypeName converterType,
                     .usedInCreator(true)
                     .deserializationName(parameterName)
                     .deserializationType(resolveGenerics(parameter.typeName(), typeInfo, resolvedGenerics))
-                    .deserializationName(obtainStringFromAnnotation(parameter, Types.JSON_PROPERTY))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_CONVERTER))
-                    .deserializer(obtainTypeNameFromAnnotation(parameter, Types.JSON_DESERIALIZER));
+                    .deserializationName(obtainStringFromAnnotation(parameter, JsonTypes.JSON_PROPERTY))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, JsonTypes.JSON_CONVERTER))
+                    .deserializer(obtainTypeNameFromAnnotation(parameter, JsonTypes.JSON_DESERIALIZER));
         }
         return new CreatorInfo(creatorKind, creatorMethod, parameterNames);
     }
@@ -445,8 +446,8 @@ record ConvertedTypeInfo(TypeName converterType,
         return elementTypeName;
     }
 
-    private static boolean isGetter(TypedElementInfo typedElementInfo, String accessorStyle) {
-        if (accessorStyle.equals("RECORD")) {
+    private static boolean isGetter(TypedElementInfo typedElementInfo, AccessorStyle accessorStyle) {
+        if (accessorStyle == AccessorStyle.RECORD) {
             return typedElementInfo.parameterArguments().isEmpty()
                     && !typedElementInfo.typeName().equals(PRIMITIVE_VOID);
         }
@@ -464,8 +465,8 @@ record ConvertedTypeInfo(TypeName converterType,
                 && !typedElementInfo.typeName().equals(PRIMITIVE_VOID);
     }
 
-    private static boolean isSetter(TypedElementInfo typedElementInfo, String accessorStyle) {
-        if (accessorStyle.equals("RECORD")) {
+    private static boolean isSetter(TypedElementInfo typedElementInfo, AccessorStyle accessorStyle) {
+        if (accessorStyle == AccessorStyle.RECORD) {
             return typedElementInfo.parameterArguments().size() == 1
                     && typedElementInfo.typeName().equals(PRIMITIVE_VOID);
         }

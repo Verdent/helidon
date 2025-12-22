@@ -39,7 +39,7 @@ class JsonCodegen implements CodegenExtension {
 
     @Override
     public void process(RoundContext roundContext) {
-        Collection<TypeInfo> typeInfos = roundContext.annotatedTypes(Types.JSON_ENTITY);
+        Collection<TypeInfo> typeInfos = roundContext.annotatedTypes(JsonTypes.JSON_ENTITY);
         for (TypeInfo typeInfo : typeInfos) {
             try {
                 process(typeInfo, roundContext);
@@ -59,7 +59,7 @@ class JsonCodegen implements CodegenExtension {
             generatedType = convertedTypeInfo.converterType();
             builder = ClassModel.builder()
                     .type(generatedType)
-                    .addAnnotation(b -> b.type(Types.SERVICE_REGISTRY_PER_LOOKUP))
+                    .addAnnotation(b -> b.type(JsonTypes.SERVICE_REGISTRY_PER_LOOKUP))
                     .addAnnotation(Annotation.builder()
                                            .type(TypeNames.WEIGHT)
                                            .addParameter("value", Weighted.DEFAULT_WEIGHT - 5)

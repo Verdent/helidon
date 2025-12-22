@@ -48,6 +48,6 @@ public class JsonCodegenProvider implements CodegenExtensionProvider {
 
     @Override
     public Set<TypeName> supportedAnnotations() {
-        return Set.of(Types.JSON_ENTITY);
+        return Set.of(JsonTypes.JSON_ENTITY);
     }
 }

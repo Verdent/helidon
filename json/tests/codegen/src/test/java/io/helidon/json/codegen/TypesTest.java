@@ -50,7 +50,7 @@ class TypesTest {
     @Test
     void testTypes() {
         // it is really important to test ALL constants on the class, so let's use reflection
-        Field[] declaredFields = Types.class.getDeclaredFields();
+        Field[] declaredFields = JsonTypes.class.getDeclaredFields();
 
         Set<String> toCheck = new HashSet<>();
         Set<String> checked = new HashSet<>();

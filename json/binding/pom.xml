@@ -28,10 +28,6 @@
     <name>Helidon JSON Binding</name>
     <artifactId>helidon-json-binding</artifactId>
 
-    <properties>
-        <spotbugs.exclude>etc/spotbugs/exclude.xml</spotbugs.exclude>
-    </properties>
-
     <dependencies>
         <dependency>
             <groupId>io.helidon.json</groupId>

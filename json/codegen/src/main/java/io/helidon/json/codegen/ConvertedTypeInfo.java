@@ -137,14 +137,13 @@ record ConvertedTypeInfo(TypeName converterType,
                                                     Map<String, TypeName> childGenerics) {
         Map<String, TypeName> typeGenerics = new HashMap<>();
         TypeName typeName = typeInfo.typeName();
-        for (int i = 0; i < typeName.typeParameters().size(); i++) {
-            String parameterName = typeName.typeParameters().get(i);
+        for (int i = 0; i < typeName.typeArguments().size(); i++) {
             TypeName typeValue = typeName.typeArguments().get(i);
             if (typeValue.generic()) {
                 //We will try to resolve it from the child actual parameters
                 typeValue = childGenerics.getOrDefault(typeValue.toString(), typeValue);
             }
-            typeGenerics.put(parameterName, typeValue);
+            typeGenerics.put(typeValue.className(), typeValue);
         }
         resolvedGenerics.put(typeName.fqName(), typeGenerics);
 
@@ -498,26 +497,17 @@ record ConvertedTypeInfo(TypeName converterType,
 
     private static Optional<String> obtainStringFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.stringValue());
+                .flatMap(Annotation::stringValue);
     }
 
     private static Optional<TypeName> obtainTypeNameFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.typeValue());
+                .flatMap(Annotation::typeValue);
     }
 
     private static Optional<Boolean> obtainBooleanFromAnnotation(TypedElementInfo elementInfo, TypeName annotationType) {
         return elementInfo.findAnnotation(annotationType)
-                .flatMap(annotation -> annotation.booleanValue());
-    }
-
-    private static Optional<FormatInfo> processFormat(TypedElementInfo elementInfo, TypeName annotationType) {
-        return elementInfo.findAnnotation(annotationType)
-                .map(annotation -> {
-                    Optional<String> format = annotation.stringValue();
-                    Optional<String> locale = annotation.stringValue("locale");
-                    return new FormatInfo(format, locale);
-                });
+                .flatMap(Annotation::booleanValue);
     }
 
     private static Map<String, JsonProperty> finalizeJsonProperties(Map<String, JsonProperty.Builder> properties) {

@@ -25,6 +25,7 @@ import java.util.Set;
 
 import io.helidon.common.Builder;
 import io.helidon.common.GenericType;
+import io.helidon.common.buffers.Bytes;
 import io.helidon.common.types.TypeName;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonParser;
@@ -37,6 +38,7 @@ import io.helidon.json.binding.JsonSerializer;
 import io.helidon.json.binding.Serializers;
 import io.helidon.service.registry.Service;
 
+import org.hamcrest.collection.IsEmptyCollection;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -99,11 +101,14 @@ class JsonTypesTest {
         checkField(toCheck, checked, fields, "JSON_PARSER", JsonParser.class);
 
         checkField(toCheck, checked, fields, "BUILDER_TYPE", Builder.class);
+        checkField(toCheck, checked, fields, "BYTES", Bytes.class);
 
         checkField(toCheck, checked, fields, "SERVICE_REGISTRY_PER_LOOKUP", Service.PerLookup.class);
 
         // Ensure all fields have been checked
-        assertThat("All TypeName constants must be tested", toCheck.isEmpty(), is(true));
+        assertThat("If the collection is not empty, please add appropriate checkField line to this test",
+                   toCheck,
+                   IsEmptyCollection.empty());
     }
 
     private void checkField(Set<String> namesToCheck,

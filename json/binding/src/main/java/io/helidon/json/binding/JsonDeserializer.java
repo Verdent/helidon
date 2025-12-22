@@ -16,7 +16,6 @@
 
 package io.helidon.json.binding;
 
-import io.helidon.common.GenericType;
 import io.helidon.json.JsonParser;
 
 /**
@@ -24,7 +23,7 @@ import io.helidon.json.JsonParser;
  *
  * @param <T> the type this deserializer produces
  */
-public interface JsonDeserializer<T> {
+public interface JsonDeserializer<T> extends JsonComponent<T> {
 
     /**
      * Deserializes JSON data from the parser into an object of type T.
@@ -47,21 +46,6 @@ public interface JsonDeserializer<T> {
      */
     default T deserializeNull() {
         return null;
-    }
-
-    /**
-     * Return the type this deserializer handles.
-     *
-     * @return the GenericType representing the type T
-     */
-    GenericType<T> type();
-
-    /**
-     * Configures this deserializer with the provided configurator.
-     *
-     * @param jsonBindingConfigurator the configurator to use for setup
-     */
-    default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
     }
 
 }

@@ -22,6 +22,9 @@ import io.helidon.json.JsonParser;
  * Utility class for deserialization operations.
  */
 public final class Deserializers {
+    /*
+     * This type is used from generated code
+     */
 
     private Deserializers() {
     }

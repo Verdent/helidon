@@ -22,6 +22,9 @@ import io.helidon.json.Generator;
  * Utility class for serialization operations.
  */
 public final class Serializers {
+    /*
+     * This type is used from generated code
+     */
 
     private Serializers() {
     }

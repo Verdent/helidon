@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
@@ -103,56 +104,23 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public String serialize(Object obj) {
-        if (obj == null) {
-            return "null";
-        }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj);
         return outputStream.toString(StandardCharsets.UTF_8);
     }
 
     @Override
     public <T> String serialize(T obj, Class<? super T> type) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            if (obj == null) {
-                converter.serializeNull(generator);
-            } else {
-                converter.serialize(generator, obj, false);
-            }
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj, type);
         return outputStream.toString(StandardCharsets.UTF_8);
     }
 
     @Override
     public <T> String serialize(T obj, GenericType<? super T> type) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            if (obj == null) {
-                converter.serializeNull(generator);
-            } else {
-                converter.serialize(generator, obj, false);
-            }
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj, type);
         return outputStream.toString(StandardCharsets.UTF_8);
     }
 
@@ -160,128 +128,56 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @SuppressWarnings("unchecked")
     public void serialize(OutputStream outputStream, Object obj) {
         if (obj == null) {
-            try {
-                outputStream.write(NULL_BYTES);
-                outputStream.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(outputStream);
+            return;
         }
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj, (JsonSerializer<Object>) serializer(obj.getClass()));
     }
 
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, Class<? super T> type) {
         if (obj == null) {
-            try {
-                outputStream.write(NULL_BYTES);
-                outputStream.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(outputStream);
+            return;
         }
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj, serializer(type));
     }
 
     @Override
     public <T> void serialize(OutputStream outputStream, T obj, GenericType<? super T> type) {
         if (obj == null) {
-            try {
-                outputStream.write(NULL_BYTES);
-                outputStream.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(outputStream);
+            return;
         }
-        try (Generator generator = Generator.create(outputStream)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(outputStream, obj, serializer(type));
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public void serialize(Writer writer, Object obj) {
         if (obj == null) {
-            try {
-                writer.write(NULL_CHARS);
-                writer.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(writer);
+            return;
         }
-        try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<Object> converter = (JsonSerializer<Object>) serializer(obj.getClass());
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(writer, obj, (JsonSerializer<Object>) serializer(obj.getClass()));
     }
 
     @Override
     public <T> void serialize(Writer writer, T obj, Class<? super T> type) {
         if (obj == null) {
-            try {
-                writer.write(NULL_CHARS);
-                writer.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(writer);
+            return;
         }
-        try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(writer, obj, serializer(type));
     }
 
     @Override
     public <T> void serialize(Writer writer, T obj, GenericType<? super T> type) {
         if (obj == null) {
-            try {
-                writer.write(NULL_CHARS);
-                writer.flush();
-                return;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writeNull(writer);
+            return;
         }
-        try (Generator generator = Generator.create(writer)) {
-            JsonSerializer<? super T> converter = serializer(type);
-            converter.serialize(generator, obj, false);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        serialize(writer, obj, serializer(type));
     }
 
     @Override
@@ -565,6 +461,45 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
             return factorySerializer;
         } finally {
             serializerLock.writeLock().unlock();
+        }
+    }
+
+    private <T> void serialize(Writer writer, T obj, JsonSerializer<T> serializer) {
+        try (Generator generator = Generator.create(writer)) {
+            serializer.serialize(generator, obj, false);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new JsonBindingException("Failed to serialize an object to writer", e);
+        }
+    }
+
+    private <T> void serialize(OutputStream stream, T obj, JsonSerializer<T> serializer) {
+        try (Generator generator = Generator.create(stream)) {
+            serializer.serialize(generator, obj, false);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new JsonBindingException("Failed to serialize an object to stream", e);
+        }
+    }
+
+
+    private void writeNull(OutputStream outputStream) {
+        try {
+            outputStream.write(NULL_BYTES);
+            outputStream.flush();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write null bytes to JSON output stream.", e);
+        }
+    }
+
+    private void writeNull(Writer writer) {
+        try {
+            writer.write(NULL_CHARS);
+            writer.flush();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write null chars to JSON writer.", e);
         }
     }
 }

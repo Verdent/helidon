@@ -34,7 +34,6 @@ import io.helidon.json.JsonValue;
  * formats including strings, streams, readers, writers, and byte arrays.
  * </p>
  */
-@RuntimeType.PrototypedBy(JsonBindingConfig.class)
 public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
 
     /**
@@ -61,14 +60,13 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
      * @param config the configuration to use
      * @return a new JsonBinding instance
      */
-    @SuppressWarnings("SuspiciousMethodCalls")
     static JsonBinding create(JsonBindingConfig config) {
         JsonBindingImpl jsonBinding = new JsonBindingImpl(config);
         for (JsonSerializer<?> serializer : config.serializers()) {
             serializer.configure(jsonBinding);
         }
         for (JsonDeserializer<?> deserializer : config.deserializers()) {
-            if (config.serializers().contains(deserializer)) {
+            if ((deserializer instanceof JsonSerializer<?> serializer) && config.serializers().contains(serializer)) {
                 continue;
             }
             deserializer.configure(jsonBinding);
@@ -90,7 +88,7 @@ public interface JsonBinding extends RuntimeType.Api<JsonBindingConfig> {
     /**
      * Serializes an object to a JSON string.
      *
-     * @param obj the object to serialize
+     * @param obj the object to serialize, this parameter may be {@code null}
      * @return the JSON string representation
      */
     String serialize(Object obj);

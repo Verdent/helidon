@@ -16,26 +16,28 @@
 
 package io.helidon.json.binding;
 
-import java.util.function.Supplier;
+import io.helidon.json.JsonException;
 
-import io.helidon.common.Weight;
-import io.helidon.common.Weighted;
-import io.helidon.service.registry.Service;
-
-@Service.Singleton
-@Weight(Weighted.DEFAULT_WEIGHT - 20)
-class JsonBindingProvider implements Supplier<JsonBinding> {
-
-    private final Supplier<JsonBindingConfig> bindingConfig;
-
-    @Service.Inject
-    JsonBindingProvider(Supplier<JsonBindingConfig> bindingConfig) {
-        this.bindingConfig = bindingConfig;
+/**
+ * Exception thrown during JSON binding operations.
+ */
+public class JsonBindingException extends JsonException {
+    /**
+     * Construct a new exception with the specified detail message.
+     *
+     * @param message the detail message
+     */
+    public JsonBindingException(String message) {
+        super(message);
     }
 
-    @Override
-    public JsonBinding get() {
-        return JsonBinding.create(bindingConfig.get());
+    /**
+     * Construct a new exception with the specified detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause   the cause
+     */
+    public JsonBindingException(String message, Exception cause) {
+        super(message, cause);
     }
-
 }

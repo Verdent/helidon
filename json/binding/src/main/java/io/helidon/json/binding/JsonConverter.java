@@ -23,8 +23,4 @@ package io.helidon.json.binding;
  */
 public interface JsonConverter<T> extends JsonDeserializer<T>, JsonSerializer<T> {
 
-    @Override
-    default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
-    }
-
 }

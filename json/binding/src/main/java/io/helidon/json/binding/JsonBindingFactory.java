@@ -26,6 +26,9 @@ import io.helidon.common.GenericType;
  * @param <T> the base type this factory handles
  */
 public interface JsonBindingFactory<T> {
+    /*
+     * This type is used from generated code
+     */
 
     /**
      * Create a deserializer for the specified class type.

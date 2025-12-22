@@ -16,7 +16,6 @@
 
 package io.helidon.json.binding;
 
-import io.helidon.common.GenericType;
 import io.helidon.json.Generator;
 import io.helidon.json.JsonException;
 
@@ -31,7 +30,7 @@ import io.helidon.json.JsonException;
  *
  * @param <T> the type this serializer handles
  */
-public interface JsonSerializer<T> {
+public interface JsonSerializer<T> extends JsonComponent<T> {
 
     /**
      * Serializes the given instance to JSON using the provided generator.
@@ -53,26 +52,6 @@ public interface JsonSerializer<T> {
      */
     default void serializeNull(Generator generator) {
         generator.writeNull();
-    }
-
-    /**
-     * Return the type this serializer handles.
-     *
-     * @return the GenericType representing the type T
-     */
-    GenericType<T> type();
-
-    /**
-     * Configures this serializer with the provided configurator.
-     * <p>
-     * This method allows the serializer to register itself or perform
-     * any necessary setup during the JSON binding configuration process.
-     * The default implementation does nothing.
-     * </p>
-     *
-     * @param jsonBindingConfigurator the configurator to use for setup
-     */
-    default void configure(JsonBindingConfigurator jsonBindingConfigurator) {
     }
 
     /**

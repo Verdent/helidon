@@ -24,6 +24,9 @@ import io.helidon.common.GenericType;
  * Interface for configuring JSON binding components.
  */
 public interface JsonBindingConfigurator {
+    /*
+     * This type is used from generated code
+     */
 
     /**
      * Return a deserializer for the specified type.

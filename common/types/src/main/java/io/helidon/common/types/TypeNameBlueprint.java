@@ -153,7 +153,6 @@ interface TypeNameBlueprint extends Annotated {
      */
     @Option.Singular
     @Option.Redundant
-    @Deprecated(forRemoval = true, since = "4.2.0")
     List<String> typeParameters();
 
     /**

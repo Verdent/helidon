@@ -137,13 +137,14 @@ record ConvertedTypeInfo(TypeName converterType,
                                                     Map<String, TypeName> childGenerics) {
         Map<String, TypeName> typeGenerics = new HashMap<>();
         TypeName typeName = typeInfo.typeName();
-        for (int i = 0; i < typeName.typeArguments().size(); i++) {
+        for (int i = 0; i < typeName.typeParameters().size(); i++) {
+            String parameterName = typeName.typeParameters().get(i);
             TypeName typeValue = typeName.typeArguments().get(i);
             if (typeValue.generic()) {
                 //We will try to resolve it from the child actual parameters
                 typeValue = childGenerics.getOrDefault(typeValue.toString(), typeValue);
             }
-            typeGenerics.put(typeValue.className(), typeValue);
+            typeGenerics.put(parameterName, typeValue);
         }
         resolvedGenerics.put(typeName.fqName(), typeGenerics);
 

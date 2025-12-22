@@ -549,7 +549,11 @@ public class ServiceDescriptorCodegen {
         classModel.staticInitializer(contentBuilder -> {
             contentBuilder.addContent("var typeSetsMap = new ")
                     .addContent(HashMap.class)
-                    .addContentLine("();");
+                    .addContent("<")
+                    .addContent(TypeNames.RESOLVED_TYPE_NAME)
+                    .addContent(", ")
+                    .addContent(SET_OF_RESOLVED_TYPES)
+                    .addContentLine(">();");
 
             for (var entry : typeSetMap.entrySet()) {
                 String keyConstant = resolvedTypeConstant(fieldHandler, entry.getKey());

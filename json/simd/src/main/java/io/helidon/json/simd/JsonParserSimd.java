@@ -33,6 +33,8 @@ final class JsonParserSimd extends JsonParserBase {
     private static final int TAPE_PAGE_SIZE = 1 << TAPE_PAGE_SHIFT;
     private static final int TAPE_PAGE_MASK = TAPE_PAGE_SIZE - 1;
 
+    // Stage 1 carries only the state that can cross a chunk boundary: whether the last chunk ended
+    // inside a string, whether a backslash run continues, and whether the next byte may begin a scalar.
     private static final int STATE_IN_STRING = 1;
     private static final int STATE_ODD_BACKSLASH_RUN = 1 << 1;
     private static final int STATE_PSEUDO_STRUCTURAL_PREDECESSOR = 1 << 2;
@@ -87,6 +89,9 @@ final class JsonParserSimd extends JsonParserBase {
     private final byte[] buffer;
     private final int start;
     private final int length;
+    // The tape stores absolute byte offsets of "interesting" input positions:
+    // structurals ({ } [ ] , :), opening quotes, and scalar starts. nextToken() walks this tape
+    // instead of rescanning the raw byte stream.
     private final int[] flatTape;
     private final int[][] tapePages;
     private final int tapeLength;
@@ -117,6 +122,8 @@ final class JsonParserSimd extends JsonParserBase {
         this.start = start;
         this.length = length;
         this.limit = start + length;
+        // Stage 1 is eager: we scan the whole input once up front and build a compact tape of token
+        // positions. That makes stage 2 navigation cheap and keeps the hot token loop branch-light.
         TapeBuilder tapeBuilder = new TapeBuilder(estimateTapeCapacity(length));
         byte[] tailBuffer = null;
         int state = INITIAL_STATE;
@@ -142,6 +149,8 @@ final class JsonParserSimd extends JsonParserBase {
         this.endsWithOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
         this.endsAfterPseudoStructuralPredecessor = hasState(state, STATE_PSEUDO_STRUCTURAL_PREDECESSOR);
         this.currentIndex = start;
+        // currentTapeIndex points at the tape entry for currentIndex. If the first tape entry is not the
+        // first byte in the slice, we start "before" the tape and advance with nextToken().
         this.currentTapeIndex = tapeLength > 0 && tapeAt(0) == 0 ? 0 : -1;
     }
 
@@ -204,6 +213,8 @@ final class JsonParserSimd extends JsonParserBase {
     public byte nextToken() {
         int nextTapeIndex = currentTapeIndex + 1;
         int currentOffset = currentIndex - start;
+        // skip() may leave currentIndex between tape entries, so we advance until we find the next
+        // structural/scalar-start offset strictly after the current raw position.
         while (nextTapeIndex < tapeLength && tapeAt(nextTapeIndex) <= currentOffset) {
             nextTapeIndex++;
         }
@@ -725,6 +736,8 @@ final class JsonParserSimd extends JsonParserBase {
             return state;
         }
 
+        // Stage 1 works on one SIMD-width chunk at a time. The output is a bitmask of tape entries
+        // inside this chunk, later expanded into absolute offsets by TapeBuilder.
         long validMask = maskForLength(length);
         ByteVector chunk;
         if (length == CHUNK_SIZE) {
@@ -741,12 +754,16 @@ final class JsonParserSimd extends JsonParserBase {
         boolean prevOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
         if (quotes == 0 && backslashes == 0) {
             if (prevInString) {
+                // Fast path: if the whole chunk is inside a string and contains no quotes/backslashes,
+                // there are no tape entries to emit. Only the carry state can change.
                 boolean nextPseudoStructuralPredecessor = isWhitespaceByte(input[offset + length - 1]);
                 return packState(true, false, nextPseudoStructuralPredecessor);
             }
 
             VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
             if (!prevInString && !prevOddBackslashRun) {
+                // Fast path for regular non-string content: classify whitespace/structurals directly
+                // from the low nibble lookup table and derive scalar starts from predecessor bytes.
                 long structurals = chunk.or((byte) 0x20).eq(STRUCTURAL_TABLE.rearrange(lowNibble)).toLong() & validMask;
                 long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
                 long pseudoStructuralPredecessors = structurals | whitespaces;
@@ -768,6 +785,8 @@ final class JsonParserSimd extends JsonParserBase {
             escaped = prevOddBackslashRun ? 1L : 0L;
             endsOddBackslashRun = false;
         } else {
+            // Quotes only matter if they are not escaped. This loop resolves backslash runs into a mask
+            // of bytes whose meaning is escaped by the previous odd-length run of backslashes.
             escaped = 0;
             boolean carryOdd = prevOddBackslashRun;
             if (carryOdd && (backslashes & 1L) == 0) {
@@ -812,6 +831,8 @@ final class JsonParserSimd extends JsonParserBase {
         long unescapedQuotes = quotes & ~escaped;
 
         long prevInStringMask = prevInString ? -1L : 0L;
+        // prefixXor turns quote positions into "inside string" ranges. Everything masked by
+        // stringRanges must be ignored for structural detection.
         long stringRanges = (prefixXor(unescapedQuotes) ^ prevInStringMask) & validMask;
         VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
         long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
@@ -837,10 +858,6 @@ final class JsonParserSimd extends JsonParserBase {
         boolean nextInString = prevInString ^ ((Long.bitCount(unescapedQuotes) & 1) != 0);
         boolean nextPseudoStructuralPredecessor = hasBit(pseudoStructuralPredecessors, length - 1);
         return packState(nextInString, endsOddBackslashRun, nextPseudoStructuralPredecessor);
-    }
-
-    private UnsupportedOperationException unsupported() {
-        return new UnsupportedOperationException("SIMD parser stage 2 is not implemented yet");
     }
 
     private byte readNextByte() {
@@ -2065,6 +2082,8 @@ final class JsonParserSimd extends JsonParserBase {
     }
 
     private static final class TapeBuilder {
+        // Small inputs keep a single contiguous tape array. Large inputs switch to fixed-size pages so
+        // tape growth does not repeatedly copy increasingly large int[] buffers during stage 1.
         private int[] flatTape;
         private int[][] pages;
         private int[] currentPage;
@@ -2085,6 +2104,8 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         private void appendMask(int baseOffset, long mask) {
+            // The stage-1 mask marks byte positions within the current chunk. We expand set bits into
+            // absolute input offsets while preserving source order.
             if (flatTape != null) {
                 appendFlat(baseOffset, mask);
                 return;

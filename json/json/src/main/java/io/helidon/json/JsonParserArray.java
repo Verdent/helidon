@@ -678,12 +678,31 @@ class JsonParserArray extends JsonParserBase {
     }
 
     void skipNumber() {
-        byte b;
-        for (int index = this.currentIndex; index < this.bufferLength; index++) {
+        int index = this.currentIndex;
+        for (; index < this.bufferLength; index++) {
+            int digit = this.buffer[index] - '0';
+            if (digit < 0 || digit > 9) {
+                break;
+            }
+        }
+        if (index >= this.bufferLength) {
+            this.currentIndex = this.bufferLength - 1;
+            return;
+        }
+
+        byte b = this.buffer[index];
+        if (b != '.' && b != 'e' && b != 'E' && b != '+' && b != '-') {
+            this.currentIndex = index - 1;
+            return;
+        }
+
+        for (index++; index < this.bufferLength; index++) {
             b = this.buffer[index];
-            //we do not need to validate whether this is a valid number since we are not processing it.
-            //simply skip until you find any non-numeric bound character
-            if (!VALID_NUMBER_PARTS[b]) {
+            int digit = b - '0';
+            if (digit >= 0 && digit <= 9) {
+                continue;
+            }
+            if (b != '.' && b != 'e' && b != 'E' && b != '+' && b != '-') {
                 this.currentIndex = index - 1;
                 return;
             }

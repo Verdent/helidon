@@ -10,9 +10,10 @@ import java.util.Objects;
 import io.helidon.common.buffers.BufferData;
 import io.helidon.json.JsonException;
 import io.helidon.json.JsonNumber;
-import io.helidon.json.Parsers;
 import io.helidon.json.JsonParserBase;
 import io.helidon.json.JsonString;
+import io.helidon.json.Parsers;
+
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.VectorShuffle;
 

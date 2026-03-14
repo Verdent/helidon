@@ -721,7 +721,38 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         long backslashes = chunk.eq((byte) '\\').toLong() & validMask;
+        long quotes = chunk.eq((byte) '"').toLong() & validMask;
+        boolean prevInString = hasState(state, STATE_IN_STRING);
         boolean prevOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
+        if (quotes == 0 && backslashes == 0) {
+            if (prevInString) {
+                boolean nextPseudoStructuralPredecessor = isWhitespaceByte(input[offset + length - 1]);
+                return packStage1Result(tapeLength, packState(true, false, nextPseudoStructuralPredecessor));
+            }
+
+            VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
+            long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
+            if (!prevInString && !prevOddBackslashRun) {
+                long structurals = chunk.or((byte) 0x20).eq(STRUCTURAL_TABLE.rearrange(lowNibble)).toLong() & validMask;
+                long pseudoStructuralPredecessors = structurals | whitespaces;
+                boolean nextPseudoStructuralPredecessor = hasBit(pseudoStructuralPredecessors, length - 1);
+                long shiftedPredecessors = (pseudoStructuralPredecessors << 1)
+                        | (hasState(state, STATE_PSEUDO_STRUCTURAL_PREDECESSOR) ? 1L : 0L);
+                long scalarStarts = shiftedPredecessors
+                        & ~whitespaces
+                        & ~structurals
+                        & validMask;
+
+                long remaining = structurals | scalarStarts;
+                while (remaining != 0) {
+                    int bitIndex = Long.numberOfTrailingZeros(remaining);
+                    tape[tapeLength++] = baseOffset + bitIndex;
+                    remaining &= remaining - 1;
+                }
+
+                return packStage1Result(tapeLength, packState(false, false, nextPseudoStructuralPredecessor));
+            }
+        }
         long escaped;
         boolean endsOddBackslashRun;
         if (backslashes == 0) {
@@ -769,13 +800,10 @@ final class JsonParserSimd extends JsonParserBase {
         }
         escaped &= validMask;
 
-        long quotes = chunk.eq((byte) '"').toLong() & validMask;
         long unescapedQuotes = quotes & ~escaped;
 
-        boolean prevInString = hasState(state, STATE_IN_STRING);
         long prevInStringMask = prevInString ? -1L : 0L;
         long stringRanges = (prefixXor(unescapedQuotes) ^ prevInStringMask) & validMask;
-
         VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
         long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
         long structurals = chunk.or((byte) 0x20).eq(STRUCTURAL_TABLE.rearrange(lowNibble)).toLong() & validMask;
@@ -1981,6 +2009,10 @@ final class JsonParserSimd extends JsonParserBase {
 
     private static boolean hasBit(long mask, int index) {
         return index >= 0 && ((mask >>> index) & 1L) != 0;
+    }
+
+    private static boolean isWhitespaceByte(byte b) {
+        return b == ' ' || b == '\t' || b == '\n' || b == '\r';
     }
 
     private static long prefixXor(long bitmask) {

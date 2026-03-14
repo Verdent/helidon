@@ -16,12 +16,12 @@ import io.helidon.json.Parsers;
 
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.VectorShuffle;
-
-import static jdk.incubator.vector.ByteVector.SPECIES_512;
+import jdk.incubator.vector.VectorSpecies;
 
 final class JsonParserSimd extends JsonParserBase {
 
-    static final int CHUNK_SIZE = SPECIES_512.vectorByteSize();
+    private static final VectorSpecies<Byte> SPECIES = ByteVector.SPECIES_PREFERRED;
+    static final int CHUNK_SIZE = SPECIES.vectorByteSize();
     private static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     private static final int FNV_PRIME = 0x01000193;
     private static final byte BYTE_SIZE_BORDER = Byte.MAX_VALUE / 10;
@@ -29,6 +29,9 @@ final class JsonParserSimd extends JsonParserBase {
     private static final int INT_SIZE_BORDER = Integer.MAX_VALUE / 10;
     private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
     private static final int DOT_MARK = -2;
+    private static final int TAPE_PAGE_SHIFT = 13;
+    private static final int TAPE_PAGE_SIZE = 1 << TAPE_PAGE_SHIFT;
+    private static final int TAPE_PAGE_MASK = TAPE_PAGE_SIZE - 1;
 
     private static final int STATE_IN_STRING = 1;
     private static final int STATE_ODD_BACKSLASH_RUN = 1 << 1;
@@ -50,6 +53,9 @@ final class JsonParserSimd extends JsonParserBase {
     private static final int POW10_DOUBLE_CACHE_SIZE = POW10_DOUBLE_CACHE.length;
 
     static {
+        if (CHUNK_SIZE > Long.SIZE) {
+            throw new ExceptionInInitializerError("Unsupported byte vector size: " + CHUNK_SIZE);
+        }
         byte x = (byte) 0x80;
 
         byte[] ws = new byte[] {
@@ -62,8 +68,8 @@ final class JsonParserSimd extends JsonParserBase {
                 x, x, ':', '{', ',', '}', x, x
         };
 
-        WHITESPACE_TABLE = ByteVector.fromArray(SPECIES_512, tile(ws), 0);
-        STRUCTURAL_TABLE = ByteVector.fromArray(SPECIES_512, tile(st), 0);
+        WHITESPACE_TABLE = ByteVector.fromArray(SPECIES, tile(ws), 0);
+        STRUCTURAL_TABLE = ByteVector.fromArray(SPECIES, tile(st), 0);
 
         Arrays.fill(WHOLE_NUMBER_PARTS, -1);
         for (int i = '0'; i <= '9'; ++i) {
@@ -81,7 +87,7 @@ final class JsonParserSimd extends JsonParserBase {
     private final byte[] buffer;
     private final int start;
     private final int length;
-    private final int[] tape;
+    private final int[][] tapePages;
     private final int tapeLength;
     private final boolean endsInsideString;
     private final boolean endsWithOddBackslashRun;
@@ -96,6 +102,7 @@ final class JsonParserSimd extends JsonParserBase {
     private int stringBufferLength = 64;
     private char[] stringBuffer = new char[stringBufferLength];
     private boolean expectLowSurrogate;
+    private int[] materializedTape;
 
     JsonParserSimd(byte[] buffer) {
         this(buffer, 0, buffer.length);
@@ -109,19 +116,45 @@ final class JsonParserSimd extends JsonParserBase {
         this.start = start;
         this.length = length;
         this.limit = start + length;
-        StructuralTape structuralTape = buildTape(buffer, start, length, INITIAL_STATE);
-        this.tape = structuralTape.tape();
-        this.tapeLength = structuralTape.tapeLength();
-        int nextState = structuralTape.nextState();
-        this.endsInsideString = hasState(nextState, STATE_IN_STRING);
-        this.endsWithOddBackslashRun = hasState(nextState, STATE_ODD_BACKSLASH_RUN);
-        this.endsAfterPseudoStructuralPredecessor = hasState(nextState, STATE_PSEUDO_STRUCTURAL_PREDECESSOR);
+        TapeBuilder tapeBuilder = new TapeBuilder(estimateTapeCapacity(length));
+        byte[] tailBuffer = null;
+        int state = INITIAL_STATE;
+        int processed = 0;
+        while (processed < length) {
+            int chunkLength = Math.min(CHUNK_SIZE, length - processed);
+            if (chunkLength < CHUNK_SIZE && tailBuffer == null) {
+                tailBuffer = new byte[CHUNK_SIZE];
+            }
+            state = stage1ChunkAndAppend(tapeBuilder,
+                                         buffer,
+                                         start + processed,
+                                         chunkLength,
+                                         state,
+                                         tailBuffer,
+                                         processed);
+            processed += chunkLength;
+        }
+        this.tapePages = tapeBuilder.pages();
+        this.tapeLength = tapeBuilder.length();
+        this.endsInsideString = hasState(state, STATE_IN_STRING);
+        this.endsWithOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
+        this.endsAfterPseudoStructuralPredecessor = hasState(state, STATE_PSEUDO_STRUCTURAL_PREDECESSOR);
         this.currentIndex = start;
-        this.currentTapeIndex = tapeLength > 0 && tape[0] == 0 ? 0 : -1;
+        this.currentTapeIndex = tapeLength > 0 && tapeAt(0) == 0 ? 0 : -1;
     }
 
     int[] tape() {
-        return tape;
+        if (materializedTape == null) {
+            materializedTape = new int[tapeLength];
+            int offset = 0;
+            for (int pageIndex = 0; pageIndex < tapePages.length; pageIndex++) {
+                int[] page = tapePages[pageIndex];
+                int copyLength = Math.min(TAPE_PAGE_SIZE, tapeLength - offset);
+                System.arraycopy(page, 0, materializedTape, offset, copyLength);
+                offset += copyLength;
+            }
+        }
+        return materializedTape;
     }
 
     int tapeLength() {
@@ -161,14 +194,14 @@ final class JsonParserSimd extends JsonParserBase {
     public byte nextToken() {
         int nextTapeIndex = currentTapeIndex + 1;
         int currentOffset = currentIndex - start;
-        while (nextTapeIndex < tapeLength && tape[nextTapeIndex] <= currentOffset) {
+        while (nextTapeIndex < tapeLength && tapeAt(nextTapeIndex) <= currentOffset) {
             nextTapeIndex++;
         }
         if (nextTapeIndex >= tapeLength) {
             throw createException("Unexpected end of the JSON found");
         }
         currentTapeIndex = nextTapeIndex;
-        currentIndex = start + tape[nextTapeIndex];
+        currentIndex = start + tapeAt(nextTapeIndex);
         return buffer[currentIndex];
     }
 
@@ -663,42 +696,13 @@ final class JsonParserSimd extends JsonParserBase {
                                          + bufferData.debugDataHex(false));
     }
 
-    private static StructuralTape buildTape(byte[] input, int start, int length, int initialState) {
-        Objects.requireNonNull(input, "input");
-        Objects.checkFromIndexSize(start, length, input.length);
-
-        if (length == 0) {
-            return new StructuralTape(new int[0], 0, initialState);
-        }
-
-        int[] tape = new int[length];
-        byte[] tailBuffer = null;
-        int state = initialState;
-        int chunkCount = (length + CHUNK_SIZE - 1) / CHUNK_SIZE;
-        int tapeLength = 0;
-
-        for (int chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
-            int offset = start + chunkIndex * CHUNK_SIZE;
-            int chunkLength = Math.min(CHUNK_SIZE, start + length - offset);
-            if (chunkLength < CHUNK_SIZE && tailBuffer == null) {
-                tailBuffer = new byte[CHUNK_SIZE];
-            }
-            long result = stage1ChunkAndAppend(tape, tapeLength, input, offset, chunkLength, state, tailBuffer, offset - start);
-            tapeLength = unpackTapeLength(result);
-            state = unpackState(result);
-        }
-
-        return new StructuralTape(tape, tapeLength, state);
-    }
-
-    private static long stage1ChunkAndAppend(int[] tape,
-                                             int tapeLength,
-                                             byte[] input,
-                                             int offset,
-                                             int length,
-                                             int state,
-                                             byte[] tailBuffer,
-                                             int baseOffset) {
+    private static int stage1ChunkAndAppend(TapeBuilder tapeBuilder,
+                                            byte[] input,
+                                            int offset,
+                                            int length,
+                                            int state,
+                                            byte[] tailBuffer,
+                                            int baseOffset) {
         Objects.requireNonNull(input, "input");
         Objects.checkFromIndexSize(offset, length, input.length);
 
@@ -707,17 +711,17 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         if (length == 0) {
-            return packStage1Result(tapeLength, state);
+            return state;
         }
 
         long validMask = maskForLength(length);
         ByteVector chunk;
         if (length == CHUNK_SIZE) {
-            chunk = ByteVector.fromArray(SPECIES_512, input, offset);
+            chunk = ByteVector.fromArray(SPECIES, input, offset);
         } else {
             System.arraycopy(TAIL_PADDING, 0, tailBuffer, 0, CHUNK_SIZE);
             System.arraycopy(input, offset, tailBuffer, 0, length);
-            chunk = ByteVector.fromArray(SPECIES_512, tailBuffer, 0);
+            chunk = ByteVector.fromArray(SPECIES, tailBuffer, 0);
         }
 
         long backslashes = chunk.eq((byte) '\\').toLong() & validMask;
@@ -727,13 +731,13 @@ final class JsonParserSimd extends JsonParserBase {
         if (quotes == 0 && backslashes == 0) {
             if (prevInString) {
                 boolean nextPseudoStructuralPredecessor = isWhitespaceByte(input[offset + length - 1]);
-                return packStage1Result(tapeLength, packState(true, false, nextPseudoStructuralPredecessor));
+                return packState(true, false, nextPseudoStructuralPredecessor);
             }
 
             VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
-            long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
             if (!prevInString && !prevOddBackslashRun) {
                 long structurals = chunk.or((byte) 0x20).eq(STRUCTURAL_TABLE.rearrange(lowNibble)).toLong() & validMask;
+                long whitespaces = chunk.eq(WHITESPACE_TABLE.rearrange(lowNibble)).toLong() & validMask;
                 long pseudoStructuralPredecessors = structurals | whitespaces;
                 boolean nextPseudoStructuralPredecessor = hasBit(pseudoStructuralPredecessors, length - 1);
                 long shiftedPredecessors = (pseudoStructuralPredecessors << 1)
@@ -743,14 +747,8 @@ final class JsonParserSimd extends JsonParserBase {
                         & ~structurals
                         & validMask;
 
-                long remaining = structurals | scalarStarts;
-                while (remaining != 0) {
-                    int bitIndex = Long.numberOfTrailingZeros(remaining);
-                    tape[tapeLength++] = baseOffset + bitIndex;
-                    remaining &= remaining - 1;
-                }
-
-                return packStage1Result(tapeLength, packState(false, false, nextPseudoStructuralPredecessor));
+                tapeBuilder.appendMask(baseOffset, structurals | scalarStarts);
+                return packState(false, false, nextPseudoStructuralPredecessor);
             }
         }
         long escaped;
@@ -823,17 +821,11 @@ final class JsonParserSimd extends JsonParserBase {
                 & validMask;
 
         long finalStructurals = structuralsOutsideStrings | openingQuotes | scalarStarts;
-        long remaining = finalStructurals;
-        while (remaining != 0) {
-            int bitIndex = Long.numberOfTrailingZeros(remaining);
-            tape[tapeLength++] = baseOffset + bitIndex;
-            remaining &= remaining - 1;
-        }
+        tapeBuilder.appendMask(baseOffset, finalStructurals);
 
         boolean nextInString = prevInString ^ ((Long.bitCount(unescapedQuotes) & 1) != 0);
         boolean nextPseudoStructuralPredecessor = hasBit(pseudoStructuralPredecessors, length - 1);
-        int nextState = packState(nextInString, endsOddBackslashRun, nextPseudoStructuralPredecessor);
-        return packStage1Result(tapeLength, nextState);
+        return packState(nextInString, endsOddBackslashRun, nextPseudoStructuralPredecessor);
     }
 
     private UnsupportedOperationException unsupported() {
@@ -1989,8 +1981,8 @@ final class JsonParserSimd extends JsonParserBase {
     }
 
     private static byte[] tile(byte[] src16) {
-        int copies = SPECIES_512.vectorByteSize() / 16;
-        byte[] dst = new byte[SPECIES_512.vectorByteSize()];
+        int copies = CHUNK_SIZE / 16;
+        byte[] dst = new byte[CHUNK_SIZE];
         for (int i = 0; i < copies; i++) {
             System.arraycopy(src16, 0, dst, i * 16, 16);
         }
@@ -2013,6 +2005,15 @@ final class JsonParserSimd extends JsonParserBase {
 
     private static boolean isWhitespaceByte(byte b) {
         return b == ' ' || b == '\t' || b == '\n' || b == '\r';
+    }
+
+    private static int estimateTapeCapacity(int length) {
+        return Math.max(16, (length + 2) / 3);
+    }
+
+    private int tapeAt(int index) {
+        int[] page = tapePages[index >>> TAPE_PAGE_SHIFT];
+        return page[index & TAPE_PAGE_MASK];
     }
 
     private static long prefixXor(long bitmask) {
@@ -2043,20 +2044,56 @@ final class JsonParserSimd extends JsonParserBase {
         return state;
     }
 
-    private static long packStage1Result(int tapeLength, int state) {
-        return (((long) tapeLength) << 32) | (state & 0xFFFF_FFFFL);
-    }
+    private static final class TapeBuilder {
+        private int[][] pages;
+        private int[] currentPage;
+        private int pageCount;
+        private int length;
 
-    private static int unpackTapeLength(long result) {
-        return (int) (result >>> 32);
-    }
+        private TapeBuilder(int initialCapacity) {
+            int initialPages = Math.max(1, (Math.max(16, initialCapacity) + TAPE_PAGE_MASK) >>> TAPE_PAGE_SHIFT);
+            this.pages = new int[initialPages][];
+            this.currentPage = new int[TAPE_PAGE_SIZE];
+            this.pages[0] = currentPage;
+            this.pageCount = 1;
+        }
 
-    private static int unpackState(long result) {
-        return (int) result;
-    }
+        private void appendMask(int baseOffset, long mask) {
+            long remaining = mask;
+            int[] page = currentPage;
+            int pageOffset = length & TAPE_PAGE_MASK;
+            while (remaining != 0) {
+                if (pageOffset == TAPE_PAGE_SIZE) {
+                    page = nextPage();
+                    pageOffset = 0;
+                }
+                int bitIndex = Long.numberOfTrailingZeros(remaining);
+                page[pageOffset++] = baseOffset + bitIndex;
+                length++;
+                remaining &= remaining - 1;
+            }
+            currentPage = page;
+        }
 
-    private record StructuralTape(int[] tape,
-                                  int tapeLength,
-                                  int nextState) {
+        private int[] nextPage() {
+            if (pageCount == pages.length) {
+                int newCapacity = pages.length + (pages.length >> 1) + 1;
+                pages = Arrays.copyOf(pages, newCapacity);
+            }
+            int[] page = new int[TAPE_PAGE_SIZE];
+            pages[pageCount++] = page;
+            return page;
+        }
+
+        private int[][] pages() {
+            if (pageCount == pages.length) {
+                return pages;
+            }
+            return Arrays.copyOf(pages, pageCount);
+        }
+
+        private int length() {
+            return length;
+        }
     }
 }

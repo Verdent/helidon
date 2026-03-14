@@ -699,7 +699,7 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         if (length == 0) {
-            return new Stage1Result(0, 0, 0, 0, 0, 0, 0, 0, state);
+            return new Stage1Result(0, state);
         }
 
         long validMask = maskForLength(length);
@@ -712,7 +712,8 @@ final class JsonParserSimd extends JsonParserBase {
             chunk = ByteVector.fromArray(SPECIES_512, tailBuffer, 0);
         }
 
-        EscapeInfo escapeInfo = computeEscapedPositions(input, offset, length, state.prevOddBackslashRun());
+        long backslashes = chunk.eq((byte) '\\').toLong() & validMask;
+        EscapeInfo escapeInfo = computeEscapedPositions(length, backslashes, state.prevOddBackslashRun());
         long escaped = escapeInfo.escaped() & validMask;
 
         long quotes = chunk.eq((byte) '"').toLong() & validMask;
@@ -750,17 +751,7 @@ final class JsonParserSimd extends JsonParserBase {
                 nextPseudoStructuralPredecessor
         );
 
-        return new Stage1Result(
-                finalStructurals,
-                openingQuotes,
-                scalarStarts,
-                structuralsOutsideStrings,
-                whitespaces,
-                unescapedQuotes,
-                escaped,
-                stringRanges,
-                nextState
-        );
+        return new Stage1Result(finalStructurals, nextState);
     }
 
     private UnsupportedOperationException unsupported() {
@@ -778,8 +769,23 @@ final class JsonParserSimd extends JsonParserBase {
     }
 
     private void skipString() {
+        int index = currentIndex + 1;
+        for (; index < limit; index++) {
+            byte b = buffer[index];
+            if (b == '"') {
+                currentIndex = index;
+                return;
+            }
+            if (b == '\\') {
+                break;
+            }
+        }
+        if (index >= limit) {
+            throw createException("Unexpected end of string. Incomplete JSON or incorrect use of the skip method");
+        }
+
         boolean escaped = false;
-        for (int index = currentIndex + 1; index < limit; index++) {
+        for (; index < limit; index++) {
             byte b = buffer[index];
             if (b == '\\') {
                 escaped = !escaped;
@@ -1933,22 +1939,53 @@ final class JsonParserSimd extends JsonParserBase {
         return tapeLength;
     }
 
-    private static EscapeInfo computeEscapedPositions(byte[] input, int offset, int length, boolean prevOddBackslashRun) {
-        int runLength = prevOddBackslashRun ? 1 : 0;
-        long escaped = 0;
-
-        for (int i = 0; i < length; i++) {
-            if (input[offset + i] == '\\') {
-                runLength++;
-                continue;
-            }
-            if ((runLength & 1) != 0) {
-                escaped |= 1L << i;
-            }
-            runLength = 0;
+    private static EscapeInfo computeEscapedPositions(int length,
+                                                      long backslashes,
+                                                      boolean prevOddBackslashRun) {
+        if (backslashes == 0) {
+            return prevOddBackslashRun ? new EscapeInfo(1L, false) : new EscapeInfo(0, false);
         }
 
-        return new EscapeInfo(escaped, (runLength & 1) != 0);
+        long escaped = 0;
+        boolean carryOdd = prevOddBackslashRun;
+
+        if (carryOdd && (backslashes & 1L) == 0) {
+            escaped = 1L;
+            carryOdd = false;
+        }
+
+        long remaining = backslashes;
+        boolean endsOddBackslashRun = false;
+        while (remaining != 0) {
+            int start = Long.numberOfTrailingZeros(remaining);
+            long shifted = remaining >>> start;
+            int runLength = Long.numberOfTrailingZeros(~shifted);
+            if (runLength == 64) {
+                runLength = Long.SIZE - start;
+            }
+
+            boolean oddRun = (runLength & 1) != 0;
+            if (carryOdd && start == 0) {
+                oddRun = !oddRun;
+                carryOdd = false;
+            }
+
+            int escapedIndex = start + runLength;
+            if (oddRun) {
+                if (escapedIndex < length) {
+                    escaped |= 1L << escapedIndex;
+                } else {
+                    endsOddBackslashRun = true;
+                }
+            }
+
+            long runMask = runLength == Long.SIZE
+                    ? -1L
+                    : ((1L << runLength) - 1L) << start;
+            remaining &= ~runMask;
+        }
+
+        return new EscapeInfo(escaped, endsOddBackslashRun);
     }
 
     private static long prefixXor(long bitmask) {
@@ -1971,15 +2008,7 @@ final class JsonParserSimd extends JsonParserBase {
                                   Stage1State nextState) {
     }
 
-    private record Stage1Result(long structurals,
-                                long openingQuotes,
-                                long scalarStarts,
-                                long structuralsOutsideStrings,
-                                long whitespaces,
-                                long unescapedQuotes,
-                                long escaped,
-                                long stringRanges,
-                                Stage1State nextState) {
+    private record Stage1Result(long structurals, Stage1State nextState) {
     }
 
     private record EscapeInfo(long escaped, boolean endsOddBackslashRun) {

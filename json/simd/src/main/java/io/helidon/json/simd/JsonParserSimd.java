@@ -251,34 +251,24 @@ final class JsonParserSimd extends JsonParserBase {
                 currentIndex = i;
                 return new String(buffer, plainStart, i - plainStart, StandardCharsets.UTF_8);
             }
-            if (b == '\\' || b < 0) {
-                break;
+            if ((b ^ '\\') < 1) {
+                int stringBufferIndex = i - plainStart;
+                ensureStringBufferCapacity(stringBufferIndex + 1);
+                for (int j = 0; j < stringBufferIndex; j++) {
+                    stringBuffer[j] = (char) buffer[plainStart + j];
+                }
+                currentIndex = i;
+                if (stringBufferIndex == stringBufferLength) {
+                    increaseStringBuffer();
+                }
+                return finishStringSlowPath(stringBufferIndex);
             }
         }
-        int index = ++currentIndex;
-        int readableBytes = limit - currentIndex;
-        int firstRun = Math.min(stringBufferLength, readableBytes);
+        throw createException("End of the string expected. Incomplete JSON");
+    }
+
+    private String finishStringSlowPath(int stringBufferIndex) {
         byte b;
-        int stringBufferIndex = 0;
-        for (; stringBufferIndex < firstRun; stringBufferIndex++) {
-            b = buffer[index++];
-            if (b == '"') {
-                currentIndex = --index;
-                return new String(stringBuffer, 0, stringBufferIndex);
-            } else if ((b ^ '\\') < 1) {
-                currentIndex = --index;
-                break;
-            }
-            stringBuffer[stringBufferIndex] = (char) b;
-        }
-        if (stringBufferIndex == firstRun) {
-            currentIndex = index;
-        }
-
-        if (stringBufferIndex == stringBufferLength) {
-            increaseStringBuffer();
-        }
-
         for (; currentIndex < limit; currentIndex++) {
             b = buffer[currentIndex];
             if (b == '\\') {
@@ -1025,6 +1015,12 @@ final class JsonParserSimd extends JsonParserBase {
 
     private void increaseStringBuffer() {
         increaseStringBuffer(stringBufferLength * 2);
+    }
+
+    private void ensureStringBufferCapacity(int requiredSize) {
+        if (requiredSize > stringBufferLength) {
+            increaseStringBuffer(Math.max(requiredSize, stringBufferLength * 2));
+        }
     }
 
     private void increaseStringBuffer(int size) {

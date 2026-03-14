@@ -170,31 +170,31 @@ class JsonParserArray extends JsonParserBase {
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
-        int index = ++currentIndex;
-        int readableBytes = bufferLength - currentIndex;
-        int firstRun = Math.min(stringBufferLength, readableBytes);
-        byte b;
-        int stringBuffIndex = 0;
-        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = this.buffer[index++];
+        int plainStart = currentIndex + 1;
+        for (int i = plainStart; i < bufferLength; i++) {
+            byte b = buffer[i];
             if (b == '"') {
-                currentIndex = --index;
-                return new String(stringBuffer, 0, stringBuffIndex);
-            } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
-                //Either escaped sequence or multibyte detected
-                currentIndex = --index;
-                break;
+                currentIndex = i;
+                return new String(buffer, plainStart, i - plainStart, StandardCharsets.UTF_8);
             }
-            stringBuffer[stringBuffIndex] = (char) b;
+            if ((b ^ '\\') < 1) {
+                int stringBuffIndex = i - plainStart;
+                ensureStringBufferCapacity(stringBuffIndex + 1);
+                for (int j = 0; j < stringBuffIndex; j++) {
+                    stringBuffer[j] = (char) buffer[plainStart + j];
+                }
+                currentIndex = i;
+                if (stringBuffIndex == stringBufferLength) {
+                    increaseStringBuffer();
+                }
+                return finishStringSlowPath(stringBuffIndex);
+            }
         }
-        if (stringBuffIndex == firstRun) {
-            currentIndex = index;
-        }
+        throw createException("End of the string expected. Incomplete JSON");
+    }
 
-        if (stringBuffIndex == stringBufferLength) {
-            increaseStringBuffer();
-        }
-
+    private String finishStringSlowPath(int stringBuffIndex) {
+        byte b;
         for (; currentIndex < bufferLength; currentIndex++) {
             b = buffer[currentIndex];
             if (b == '\\') {
@@ -833,6 +833,12 @@ class JsonParserArray extends JsonParserBase {
 
     void increaseStringBuffer() {
         increaseStringBuffer(stringBufferLength * 2);
+    }
+
+    private void ensureStringBufferCapacity(int requiredSize) {
+        if (requiredSize > stringBufferLength) {
+            increaseStringBuffer(Math.max(requiredSize, stringBufferLength * 2));
+        }
     }
 
     private char[] readNumberAsCharArray() {

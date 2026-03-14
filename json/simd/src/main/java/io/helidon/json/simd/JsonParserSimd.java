@@ -87,6 +87,7 @@ final class JsonParserSimd extends JsonParserBase {
     private final byte[] buffer;
     private final int start;
     private final int length;
+    private final int[] flatTape;
     private final int[][] tapePages;
     private final int tapeLength;
     private final boolean endsInsideString;
@@ -134,6 +135,7 @@ final class JsonParserSimd extends JsonParserBase {
                                          processed);
             processed += chunkLength;
         }
+        this.flatTape = tapeBuilder.flatTape();
         this.tapePages = tapeBuilder.pages();
         this.tapeLength = tapeBuilder.length();
         this.endsInsideString = hasState(state, STATE_IN_STRING);
@@ -145,13 +147,21 @@ final class JsonParserSimd extends JsonParserBase {
 
     int[] tape() {
         if (materializedTape == null) {
-            materializedTape = new int[tapeLength];
-            int offset = 0;
-            for (int pageIndex = 0; pageIndex < tapePages.length; pageIndex++) {
-                int[] page = tapePages[pageIndex];
-                int copyLength = Math.min(TAPE_PAGE_SIZE, tapeLength - offset);
-                System.arraycopy(page, 0, materializedTape, offset, copyLength);
-                offset += copyLength;
+            if (flatTape != null) {
+                if (flatTape.length == tapeLength) {
+                    materializedTape = flatTape;
+                } else {
+                    materializedTape = Arrays.copyOf(flatTape, tapeLength);
+                }
+            } else {
+                materializedTape = new int[tapeLength];
+                int offset = 0;
+                for (int pageIndex = 0; pageIndex < tapePages.length; pageIndex++) {
+                    int[] page = tapePages[pageIndex];
+                    int copyLength = Math.min(TAPE_PAGE_SIZE, tapeLength - offset);
+                    System.arraycopy(page, 0, materializedTape, offset, copyLength);
+                    offset += copyLength;
+                }
             }
         }
         return materializedTape;
@@ -233,6 +243,17 @@ final class JsonParserSimd extends JsonParserBase {
             return null;
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
+        }
+        int plainStart = currentIndex + 1;
+        for (int i = plainStart; i < limit; i++) {
+            byte b = buffer[i];
+            if (b == '"') {
+                currentIndex = i;
+                return new String(buffer, plainStart, i - plainStart, StandardCharsets.UTF_8);
+            }
+            if (b == '\\' || b < 0) {
+                break;
+            }
         }
         int index = ++currentIndex;
         int readableBytes = limit - currentIndex;
@@ -2012,6 +2033,9 @@ final class JsonParserSimd extends JsonParserBase {
     }
 
     private int tapeAt(int index) {
+        if (flatTape != null) {
+            return flatTape[index];
+        }
         int[] page = tapePages[index >>> TAPE_PAGE_SHIFT];
         return page[index & TAPE_PAGE_MASK];
     }
@@ -2045,20 +2069,30 @@ final class JsonParserSimd extends JsonParserBase {
     }
 
     private static final class TapeBuilder {
+        private int[] flatTape;
         private int[][] pages;
         private int[] currentPage;
         private int pageCount;
         private int length;
 
         private TapeBuilder(int initialCapacity) {
-            int initialPages = Math.max(1, (Math.max(16, initialCapacity) + TAPE_PAGE_MASK) >>> TAPE_PAGE_SHIFT);
-            this.pages = new int[initialPages][];
-            this.currentPage = new int[TAPE_PAGE_SIZE];
-            this.pages[0] = currentPage;
-            this.pageCount = 1;
+            int capacity = Math.max(16, initialCapacity);
+            if (capacity <= TAPE_PAGE_SIZE) {
+                this.flatTape = new int[capacity];
+            } else {
+                int initialPages = Math.max(1, (capacity + TAPE_PAGE_MASK) >>> TAPE_PAGE_SHIFT);
+                this.pages = new int[initialPages][];
+                this.currentPage = new int[TAPE_PAGE_SIZE];
+                this.pages[0] = currentPage;
+                this.pageCount = 1;
+            }
         }
 
         private void appendMask(int baseOffset, long mask) {
+            if (flatTape != null) {
+                appendFlat(baseOffset, mask);
+                return;
+            }
             long remaining = mask;
             int[] page = currentPage;
             int pageOffset = length & TAPE_PAGE_MASK;
@@ -2075,6 +2109,27 @@ final class JsonParserSimd extends JsonParserBase {
             currentPage = page;
         }
 
+        private void appendFlat(int baseOffset, long mask) {
+            ensureFlatCapacity(length + Long.bitCount(mask));
+            long remaining = mask;
+            while (remaining != 0) {
+                int bitIndex = Long.numberOfTrailingZeros(remaining);
+                flatTape[length++] = baseOffset + bitIndex;
+                remaining &= remaining - 1;
+            }
+        }
+
+        private void ensureFlatCapacity(int required) {
+            if (required <= flatTape.length) {
+                return;
+            }
+            int newCapacity = flatTape.length + (flatTape.length >> 1) + 1;
+            if (newCapacity < required) {
+                newCapacity = required;
+            }
+            flatTape = Arrays.copyOf(flatTape, newCapacity);
+        }
+
         private int[] nextPage() {
             if (pageCount == pages.length) {
                 int newCapacity = pages.length + (pages.length >> 1) + 1;
@@ -2086,10 +2141,17 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         private int[][] pages() {
+            if (flatTape != null) {
+                return null;
+            }
             if (pageCount == pages.length) {
                 return pages;
             }
             return Arrays.copyOf(pages, pageCount);
+        }
+
+        private int[] flatTape() {
+            return flatTape;
         }
 
         private int length() {

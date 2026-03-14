@@ -76,7 +76,7 @@ public final class JsonNumber extends JsonValue {
         return new JsonNumber(doubleValue);
     }
 
-    static JsonNumber create(byte[] buffer, int start, int length) {
+    public static JsonNumber create(byte[] buffer, int start, int length) {
         return new JsonNumber(buffer, start, length);
     }
 

@@ -30,7 +30,10 @@ final class JsonParserSimd extends JsonParserBase {
     private static final long LONG_SIZE_BORDER = Long.MAX_VALUE / 10;
     private static final int DOT_MARK = -2;
 
-    static final Stage1State INITIAL_STATE = new Stage1State(false, false, true);
+    private static final int STATE_IN_STRING = 1;
+    private static final int STATE_ODD_BACKSLASH_RUN = 1 << 1;
+    private static final int STATE_PSEUDO_STRUCTURAL_PREDECESSOR = 1 << 2;
+    static final int INITIAL_STATE = STATE_PSEUDO_STRUCTURAL_PREDECESSOR;
 
     private static final ByteVector WHITESPACE_TABLE;
     private static final ByteVector STRUCTURAL_TABLE;
@@ -109,10 +112,10 @@ final class JsonParserSimd extends JsonParserBase {
         StructuralTape structuralTape = buildTape(buffer, start, length, INITIAL_STATE);
         this.tape = structuralTape.tape();
         this.tapeLength = structuralTape.tapeLength();
-        Stage1State nextState = structuralTape.nextState();
-        this.endsInsideString = nextState.prevInString();
-        this.endsWithOddBackslashRun = nextState.prevOddBackslashRun();
-        this.endsAfterPseudoStructuralPredecessor = nextState.prevPseudoStructuralPredecessor();
+        int nextState = structuralTape.nextState();
+        this.endsInsideString = hasState(nextState, STATE_IN_STRING);
+        this.endsWithOddBackslashRun = hasState(nextState, STATE_ODD_BACKSLASH_RUN);
+        this.endsAfterPseudoStructuralPredecessor = hasState(nextState, STATE_PSEUDO_STRUCTURAL_PREDECESSOR);
         this.currentIndex = start;
         this.currentTapeIndex = tapeLength > 0 && tape[0] == 0 ? 0 : -1;
     }
@@ -660,9 +663,8 @@ final class JsonParserSimd extends JsonParserBase {
                                          + bufferData.debugDataHex(false));
     }
 
-    private static StructuralTape buildTape(byte[] input, int start, int length, Stage1State initialState) {
+    private static StructuralTape buildTape(byte[] input, int start, int length, int initialState) {
         Objects.requireNonNull(input, "input");
-        Objects.requireNonNull(initialState, "initialState");
         Objects.checkFromIndexSize(start, length, input.length);
 
         if (length == 0) {
@@ -671,7 +673,7 @@ final class JsonParserSimd extends JsonParserBase {
 
         int[] tape = new int[length];
         byte[] tailBuffer = null;
-        Stage1State state = initialState;
+        int state = initialState;
         int chunkCount = (length + CHUNK_SIZE - 1) / CHUNK_SIZE;
         int tapeLength = 0;
 
@@ -681,17 +683,23 @@ final class JsonParserSimd extends JsonParserBase {
             if (chunkLength < CHUNK_SIZE && tailBuffer == null) {
                 tailBuffer = new byte[CHUNK_SIZE];
             }
-            Stage1Result result = stage1Chunk(input, offset, chunkLength, state, tailBuffer);
-            tapeLength = appendIndexes(tape, tapeLength, result.structurals(), offset - start);
-            state = result.nextState();
+            long result = stage1ChunkAndAppend(tape, tapeLength, input, offset, chunkLength, state, tailBuffer, offset - start);
+            tapeLength = unpackTapeLength(result);
+            state = unpackState(result);
         }
 
         return new StructuralTape(tape, tapeLength, state);
     }
 
-    private static Stage1Result stage1Chunk(byte[] input, int offset, int length, Stage1State state, byte[] tailBuffer) {
+    private static long stage1ChunkAndAppend(int[] tape,
+                                             int tapeLength,
+                                             byte[] input,
+                                             int offset,
+                                             int length,
+                                             int state,
+                                             byte[] tailBuffer,
+                                             int baseOffset) {
         Objects.requireNonNull(input, "input");
-        Objects.requireNonNull(state, "state");
         Objects.checkFromIndexSize(offset, length, input.length);
 
         if (length < 0 || length > CHUNK_SIZE) {
@@ -699,7 +707,7 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         if (length == 0) {
-            return new Stage1Result(0, state);
+            return packStage1Result(tapeLength, state);
         }
 
         long validMask = maskForLength(length);
@@ -713,13 +721,59 @@ final class JsonParserSimd extends JsonParserBase {
         }
 
         long backslashes = chunk.eq((byte) '\\').toLong() & validMask;
-        EscapeInfo escapeInfo = computeEscapedPositions(length, backslashes, state.prevOddBackslashRun());
-        long escaped = escapeInfo.escaped() & validMask;
+        boolean prevOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
+        long escaped;
+        boolean endsOddBackslashRun;
+        if (backslashes == 0) {
+            escaped = prevOddBackslashRun ? 1L : 0L;
+            endsOddBackslashRun = false;
+        } else {
+            escaped = 0;
+            boolean carryOdd = prevOddBackslashRun;
+            if (carryOdd && (backslashes & 1L) == 0) {
+                escaped = 1L;
+                carryOdd = false;
+            }
+
+            long remaining = backslashes;
+            boolean oddBackslashRunAtEnd = false;
+            while (remaining != 0) {
+                int runStart = Long.numberOfTrailingZeros(remaining);
+                long shifted = remaining >>> runStart;
+                int runLength = Long.numberOfTrailingZeros(~shifted);
+                if (runLength == Long.SIZE) {
+                    runLength = Long.SIZE - runStart;
+                }
+
+                boolean oddRun = (runLength & 1) != 0;
+                if (carryOdd && runStart == 0) {
+                    oddRun = !oddRun;
+                    carryOdd = false;
+                }
+
+                int escapedIndex = runStart + runLength;
+                if (oddRun) {
+                    if (escapedIndex < length) {
+                        escaped |= 1L << escapedIndex;
+                    } else {
+                        oddBackslashRunAtEnd = true;
+                    }
+                }
+
+                long runMask = runLength == Long.SIZE
+                        ? -1L
+                        : ((1L << runLength) - 1L) << runStart;
+                remaining &= ~runMask;
+            }
+            endsOddBackslashRun = oddBackslashRunAtEnd;
+        }
+        escaped &= validMask;
 
         long quotes = chunk.eq((byte) '"').toLong() & validMask;
         long unescapedQuotes = quotes & ~escaped;
 
-        long prevInStringMask = state.prevInString() ? -1L : 0L;
+        boolean prevInString = hasState(state, STATE_IN_STRING);
+        long prevInStringMask = prevInString ? -1L : 0L;
         long stringRanges = (prefixXor(unescapedQuotes) ^ prevInStringMask) & validMask;
 
         VectorShuffle<Byte> lowNibble = chunk.and((byte) 0x0F).toShuffle();
@@ -732,7 +786,7 @@ final class JsonParserSimd extends JsonParserBase {
 
         long pseudoStructuralPredecessors = structuralsOutsideStrings | whitespaces | endingQuotes;
         long shiftedPredecessors = (pseudoStructuralPredecessors << 1)
-                | (state.prevPseudoStructuralPredecessor() ? 1L : 0L);
+                | (hasState(state, STATE_PSEUDO_STRUCTURAL_PREDECESSOR) ? 1L : 0L);
         long scalarStarts = shiftedPredecessors
                 & ~whitespaces
                 & ~stringRanges
@@ -741,17 +795,17 @@ final class JsonParserSimd extends JsonParserBase {
                 & validMask;
 
         long finalStructurals = structuralsOutsideStrings | openingQuotes | scalarStarts;
+        long remaining = finalStructurals;
+        while (remaining != 0) {
+            int bitIndex = Long.numberOfTrailingZeros(remaining);
+            tape[tapeLength++] = baseOffset + bitIndex;
+            remaining &= remaining - 1;
+        }
 
-        boolean nextInString = state.prevInString() ^ ((Long.bitCount(unescapedQuotes) & 1) != 0);
+        boolean nextInString = prevInString ^ ((Long.bitCount(unescapedQuotes) & 1) != 0);
         boolean nextPseudoStructuralPredecessor = hasBit(pseudoStructuralPredecessors, length - 1);
-
-        Stage1State nextState = new Stage1State(
-                nextInString,
-                escapeInfo.endsOddBackslashRun(),
-                nextPseudoStructuralPredecessor
-        );
-
-        return new Stage1Result(finalStructurals, nextState);
+        int nextState = packState(nextInString, endsOddBackslashRun, nextPseudoStructuralPredecessor);
+        return packStage1Result(tapeLength, nextState);
     }
 
     private UnsupportedOperationException unsupported() {
@@ -1929,65 +1983,6 @@ final class JsonParserSimd extends JsonParserBase {
         return index >= 0 && ((mask >>> index) & 1L) != 0;
     }
 
-    private static int appendIndexes(int[] tape, int tapeLength, long structurals, int baseOffset) {
-        long remaining = structurals;
-        while (remaining != 0) {
-            int bitIndex = Long.numberOfTrailingZeros(remaining);
-            tape[tapeLength++] = baseOffset + bitIndex;
-            remaining &= remaining - 1;
-        }
-        return tapeLength;
-    }
-
-    private static EscapeInfo computeEscapedPositions(int length,
-                                                      long backslashes,
-                                                      boolean prevOddBackslashRun) {
-        if (backslashes == 0) {
-            return prevOddBackslashRun ? new EscapeInfo(1L, false) : new EscapeInfo(0, false);
-        }
-
-        long escaped = 0;
-        boolean carryOdd = prevOddBackslashRun;
-
-        if (carryOdd && (backslashes & 1L) == 0) {
-            escaped = 1L;
-            carryOdd = false;
-        }
-
-        long remaining = backslashes;
-        boolean endsOddBackslashRun = false;
-        while (remaining != 0) {
-            int start = Long.numberOfTrailingZeros(remaining);
-            long shifted = remaining >>> start;
-            int runLength = Long.numberOfTrailingZeros(~shifted);
-            if (runLength == 64) {
-                runLength = Long.SIZE - start;
-            }
-
-            boolean oddRun = (runLength & 1) != 0;
-            if (carryOdd && start == 0) {
-                oddRun = !oddRun;
-                carryOdd = false;
-            }
-
-            int escapedIndex = start + runLength;
-            if (oddRun) {
-                if (escapedIndex < length) {
-                    escaped |= 1L << escapedIndex;
-                } else {
-                    endsOddBackslashRun = true;
-                }
-            }
-
-            long runMask = runLength == Long.SIZE
-                    ? -1L
-                    : ((1L << runLength) - 1L) << start;
-            remaining &= ~runMask;
-        }
-
-        return new EscapeInfo(escaped, endsOddBackslashRun);
-    }
-
     private static long prefixXor(long bitmask) {
         bitmask ^= bitmask << 1;
         bitmask ^= bitmask << 2;
@@ -1998,19 +1993,38 @@ final class JsonParserSimd extends JsonParserBase {
         return bitmask;
     }
 
-    private record Stage1State(boolean prevInString,
-                               boolean prevOddBackslashRun,
-                               boolean prevPseudoStructuralPredecessor) {
+    private static boolean hasState(int state, int flag) {
+        return (state & flag) != 0;
+    }
+
+    private static int packState(boolean inString, boolean oddBackslashRun, boolean pseudoStructuralPredecessor) {
+        int state = 0;
+        if (inString) {
+            state |= STATE_IN_STRING;
+        }
+        if (oddBackslashRun) {
+            state |= STATE_ODD_BACKSLASH_RUN;
+        }
+        if (pseudoStructuralPredecessor) {
+            state |= STATE_PSEUDO_STRUCTURAL_PREDECESSOR;
+        }
+        return state;
+    }
+
+    private static long packStage1Result(int tapeLength, int state) {
+        return (((long) tapeLength) << 32) | (state & 0xFFFF_FFFFL);
+    }
+
+    private static int unpackTapeLength(long result) {
+        return (int) (result >>> 32);
+    }
+
+    private static int unpackState(long result) {
+        return (int) result;
     }
 
     private record StructuralTape(int[] tape,
                                   int tapeLength,
-                                  Stage1State nextState) {
-    }
-
-    private record Stage1Result(long structurals, Stage1State nextState) {
-    }
-
-    private record EscapeInfo(long escaped, boolean endsOddBackslashRun) {
+                                  int nextState) {
     }
 }

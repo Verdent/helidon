@@ -18,6 +18,9 @@ import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.VectorShuffle;
 import jdk.incubator.vector.VectorSpecies;
 
+import static jdk.incubator.vector.ByteVector.SPECIES_512;
+import static jdk.incubator.vector.ByteVector.SPECIES_PREFERRED;
+
 final class JsonParserSimd extends JsonParserBase {
 
     private static final VectorSpecies<Byte> SPECIES = ByteVector.SPECIES_PREFERRED;
@@ -40,7 +43,36 @@ final class JsonParserSimd extends JsonParserBase {
     private static final int STATE_PSEUDO_STRUCTURAL_PREDECESSOR = 1 << 2;
     static final int INITIAL_STATE = STATE_PSEUDO_STRUCTURAL_PREDECESSOR;
 
+    private static final long EVEN_BITS_MASK = 0x5555555555555555L;
+    private static final long ODD_BITS_MASK = ~EVEN_BITS_MASK;
+
+    // ---------------------------------------------------------------------------
+    // Whitespace table — indexed by low nibble of the input byte.
+    // Each slot holds the ACTUAL whitespace char that has that low nibble,
+    // or a dummy value that can never match a real byte at that slot.
+    //
+    // '\t' = 0x09  → slot 9
+    // '\n' = 0x0A  → slot A
+    // '\r' = 0x0D  → slot D
+    // ' '  = 0x20  → slot 0
+    //
+    // Dummy = 100 (0x64). A byte with low nibble N would need to equal 0x64
+    // to false-positive, but 0x64 has low nibble 4, not matching its own slot.
+    // ---------------------------------------------------------------------------
     private static final ByteVector WHITESPACE_TABLE;
+
+    // ---------------------------------------------------------------------------
+    // Structural character table — indexed by low nibble of (byte | 0x20).
+    // OR-ing with 0x20 collapses bracket pairs:
+    //   '[' (0x5B) | 0x20 = 0x7B = '{'
+    //   ']' (0x5D) | 0x20 = 0x7D = '}'
+    // So one table entry covers both '[' and '{', and both ']' and '}'.
+    //
+    // After OR: '{' = 0x7B → low nibble B
+    //           '}' = 0x7D → low nibble D
+    //           ':' = 0x3A → low nibble A
+    //           ',' = 0x2C → low nibble C
+    // ---------------------------------------------------------------------------
     private static final ByteVector STRUCTURAL_TABLE;
     private static final byte[] TAIL_PADDING = new byte[CHUNK_SIZE];
     private static final int[] WHOLE_NUMBER_PARTS = new int[256];
@@ -55,23 +87,20 @@ final class JsonParserSimd extends JsonParserBase {
     private static final int POW10_DOUBLE_CACHE_SIZE = POW10_DOUBLE_CACHE.length;
 
     static {
-        if (CHUNK_SIZE > Long.SIZE) {
-            throw new ExceptionInInitializerError("Unsupported byte vector size: " + CHUNK_SIZE);
-        }
-        byte x = (byte) 0x80;
+        byte x = (byte) 0x80; // dummy — cannot match any real byte at the wrong slot
 
         byte[] ws = new byte[] {
-                ' ', x, x, x, x, x, x, x,
-                x, '\t', '\n', x, x, '\r', x, x
+                ' ', x, x, x, x, x, x, x,          // 0-7
+                x, '\t', '\n', x, x, '\r', x, x    // 8-F
         };
 
         byte[] st = new byte[] {
-                x, x, x, x, x, x, x, x,
-                x, x, ':', '{', ',', '}', x, x
+                x, x, x, x, x, x, x, x,           // 0-7
+                x, x, ':', '{', ',', '}', x, x    // 8-F
         };
 
-        WHITESPACE_TABLE = ByteVector.fromArray(SPECIES, tile(ws), 0);
-        STRUCTURAL_TABLE = ByteVector.fromArray(SPECIES, tile(st), 0);
+        WHITESPACE_TABLE  = ByteVector.fromArray(SPECIES_512, tile(ws), 0);
+        STRUCTURAL_TABLE  = ByteVector.fromArray(SPECIES_512, tile(st), 0);
 
         Arrays.fill(WHOLE_NUMBER_PARTS, -1);
         for (int i = '0'; i <= '9'; ++i) {
@@ -92,12 +121,8 @@ final class JsonParserSimd extends JsonParserBase {
     // The tape stores absolute byte offsets of "interesting" input positions:
     // structurals ({ } [ ] , :), opening quotes, and scalar starts. nextToken() walks this tape
     // instead of rescanning the raw byte stream.
-    private final int[] flatTape;
-    private final int[][] tapePages;
-    private final int tapeLength;
-    private final boolean endsInsideString;
-    private final boolean endsWithOddBackslashRun;
-    private final boolean endsAfterPseudoStructuralPredecessor;
+    private final int[] tape;
+    private int tapeLength;
     private final int limit;
 
     private int currentIndex;
@@ -108,7 +133,6 @@ final class JsonParserSimd extends JsonParserBase {
     private int stringBufferLength = 64;
     private char[] stringBuffer = new char[stringBufferLength];
     private boolean expectLowSurrogate;
-    private int[] materializedTape;
 
     JsonParserSimd(byte[] buffer) {
         this(buffer, 0, buffer.length);
@@ -122,86 +146,57 @@ final class JsonParserSimd extends JsonParserBase {
         this.start = start;
         this.length = length;
         this.limit = start + length;
-        // Stage 1 is eager: we scan the whole input once up front and build a compact tape of token
-        // positions. That makes stage 2 navigation cheap and keeps the hot token loop branch-light.
-        TapeBuilder tapeBuilder = new TapeBuilder(estimateTapeCapacity(length));
-        byte[] tailBuffer = null;
-        int state = INITIAL_STATE;
-        int processed = 0;
-        while (processed < length) {
-            int chunkLength = Math.min(CHUNK_SIZE, length - processed);
-            if (chunkLength < CHUNK_SIZE && tailBuffer == null) {
-                tailBuffer = new byte[CHUNK_SIZE];
-            }
-            state = stage1ChunkAndAppend(tapeBuilder,
-                                         buffer,
-                                         start + processed,
-                                         chunkLength,
-                                         state,
-                                         tailBuffer,
-                                         processed);
-            processed += chunkLength;
-        }
-        this.flatTape = tapeBuilder.flatTape();
-        this.tapePages = tapeBuilder.pages();
-        this.tapeLength = tapeBuilder.length();
-        this.endsInsideString = hasState(state, STATE_IN_STRING);
-        this.endsWithOddBackslashRun = hasState(state, STATE_ODD_BACKSLASH_RUN);
-        this.endsAfterPseudoStructuralPredecessor = hasState(state, STATE_PSEUDO_STRUCTURAL_PREDECESSOR);
+//        // Stage 1 is eager: we scan the whole input once up front and build a compact tape of token
+//        // positions. That makes stage 2 navigation cheap and keeps the hot token loop branch-light.
+//        TapeBuilder tapeBuilder = new TapeBuilder(estimateTapeCapacity(length));
+//        byte[] tailBuffer = null;
+//        int state = INITIAL_STATE;
+//        int processed = 0;
+//        while (processed < length) {
+//            int chunkLength = Math.min(CHUNK_SIZE, length - processed);
+//            if (chunkLength < CHUNK_SIZE && tailBuffer == null) {
+//                tailBuffer = new byte[CHUNK_SIZE];
+//            }
+//            state = stage1ChunkAndAppend(tapeBuilder,
+//                                         buffer,
+//                                         start + processed,
+//                                         chunkLength,
+//                                         state,
+//                                         tailBuffer,
+//                                         processed);
+//            processed += chunkLength;
+//        }
+//        this.tape = tapeBuilder.flatTape();
+//        this.tapeLength = tapeBuilder.length();
+        this.tape = createTape(buffer, start, length);
+        this.tapeLength = tape.length;
         this.currentIndex = start;
         // currentTapeIndex points at the tape entry for currentIndex. If the first tape entry is not the
         // first byte in the slice, we start "before" the tape and advance with nextToken().
-        this.currentTapeIndex = tapeLength > 0 && tapeAt(0) == 0 ? 0 : -1;
+        this.currentTapeIndex = tapeLength > 0 && tape[0] == 0 ? 0 : -1;
     }
 
-    int[] tape() {
-        if (materializedTape == null) {
-            if (flatTape != null) {
-                if (flatTape.length == tapeLength) {
-                    materializedTape = flatTape;
-                } else {
-                    materializedTape = Arrays.copyOf(flatTape, tapeLength);
-                }
-            } else {
-                materializedTape = new int[tapeLength];
-                int offset = 0;
-                for (int pageIndex = 0; pageIndex < tapePages.length; pageIndex++) {
-                    int[] page = tapePages[pageIndex];
-                    int copyLength = Math.min(TAPE_PAGE_SIZE, tapeLength - offset);
-                    System.arraycopy(page, 0, materializedTape, offset, copyLength);
-                    offset += copyLength;
-                }
+    private int[] createTape(byte[] buffer, int start, int length) {
+        int largestMultipleOfTheVector = SPECIES.loopBound(length);
+        int inString = 0;
+        for (int arrayOffset = start; arrayOffset < largestMultipleOfTheVector; arrayOffset += CHUNK_SIZE) {
+            ByteVector chunk = ByteVector.fromArray(SPECIES, buffer, arrayOffset);
+            long identifiedBackslashes = chunk.eq((byte) '\\').toLong();
+            if (identifiedBackslashes != 0) {
+                //Backslashes identified
+                //identify backslash characters not preceded by backslashes
+                long backslashStarts = identifiedBackslashes & ~(identifiedBackslashes << 1); //S
+                // detect end of a odd - length sequence of backslashes starting on an even offset
+                // detail : ES gets all ’starts ’ that begin on even offsets
+                long evenOffsetBackslashes = backslashStarts & EVEN_BITS_MASK; //ES
+                // add B to ES , yielding carries on backslash sequences with even starts
+                long backslash = identifiedBackslashes + evenOffsetBackslashes; //EC
             }
         }
-        return materializedTape;
-    }
 
-    int tapeLength() {
-        return tapeLength;
-    }
 
-    boolean endsInsideString() {
-        return endsInsideString;
-    }
 
-    boolean endsWithOddBackslashRun() {
-        return endsWithOddBackslashRun;
-    }
-
-    boolean endsAfterPseudoStructuralPredecessor() {
-        return endsAfterPseudoStructuralPredecessor;
-    }
-
-    byte[] buffer() {
-        return buffer;
-    }
-
-    int start() {
-        return start;
-    }
-
-    int length() {
-        return length;
+        return null;
     }
 
     @Override
@@ -215,14 +210,14 @@ final class JsonParserSimd extends JsonParserBase {
         int currentOffset = currentIndex - start;
         // skip() may leave currentIndex between tape entries, so we advance until we find the next
         // structural/scalar-start offset strictly after the current raw position.
-        while (nextTapeIndex < tapeLength && tapeAt(nextTapeIndex) <= currentOffset) {
+        while (nextTapeIndex < tapeLength && tape[nextTapeIndex] <= currentOffset) {
             nextTapeIndex++;
         }
         if (nextTapeIndex >= tapeLength) {
             throw createException("Unexpected end of the JSON found");
         }
         currentTapeIndex = nextTapeIndex;
-        currentIndex = start + tapeAt(nextTapeIndex);
+        currentIndex = start + tape[nextTapeIndex];
         return buffer[currentIndex];
     }
 
@@ -2043,14 +2038,6 @@ final class JsonParserSimd extends JsonParserBase {
 
     private static int estimateTapeCapacity(int length) {
         return Math.max(16, (length + 2) / 3);
-    }
-
-    private int tapeAt(int index) {
-        if (flatTape != null) {
-            return flatTape[index];
-        }
-        int[] page = tapePages[index >>> TAPE_PAGE_SHIFT];
-        return page[index & TAPE_PAGE_MASK];
     }
 
     private static long prefixXor(long bitmask) {

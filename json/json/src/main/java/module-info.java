@@ -31,6 +31,7 @@ module io.helidon.json {
 
     requires io.helidon.common;
     requires io.helidon.common.buffers;
+    requires jdk.incubator.vector;
 
     exports io.helidon.json;
 

@@ -1,4 +1,4 @@
-package io.helidon.json.simd;
+package io.helidon.json;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -8,11 +8,6 @@ import java.util.Base64;
 import java.util.Objects;
 
 import io.helidon.common.buffers.BufferData;
-import io.helidon.json.JsonException;
-import io.helidon.json.JsonNumber;
-import io.helidon.json.JsonParserBase;
-import io.helidon.json.JsonString;
-import io.helidon.json.Parsers;
 
 final class JsonParserSimd extends JsonParserBase {
 

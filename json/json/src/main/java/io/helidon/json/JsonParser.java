@@ -63,7 +63,7 @@ public interface JsonParser {
         if (json.length == 0) {
             throw new JsonException("Empty byte array provided");
         }
-        return new JsonParserArray(json);
+        return new JsonParserSimd(json);
     }
 
     /**

@@ -19,7 +19,10 @@ package io.helidon.declarative.tests.grpc;
 import java.util.Locale;
 
 import io.helidon.grpc.api.RpcServer;
+import io.helidon.metrics.api.Metrics;
 import io.helidon.service.registry.Service;
+import io.helidon.tracing.Span;
+import io.helidon.tracing.Tracing;
 
 import com.google.protobuf.Descriptors;
 import io.grpc.stub.StreamObserver;
@@ -35,6 +38,9 @@ class StringServiceEndpoint {
     }
 
     @RpcServer.Unary("Upper")
+    @Metrics.Counted(value = "grpc-upper-count", absoluteName = true)
+    @Tracing.Traced(value = "grpc.upper", tags = @Tracing.Tag(key = "transport", value = "grpc"),
+                    kind = Span.Kind.SERVER)
     void upper(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
         observer.onNext(Strings.StringMessage.newBuilder()
                                 .setText(request.getText().toUpperCase(Locale.ROOT))

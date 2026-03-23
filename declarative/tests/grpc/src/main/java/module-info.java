@@ -26,6 +26,8 @@ module io.helidon.declarative.tests.grpc {
     requires io.helidon.service.registry;
     requires io.helidon.tracing;
     requires io.helidon.webclient.grpc;
+    requires io.helidon.webserver.cors;
+    requires io.helidon.webserver.observe;
     requires io.helidon.webserver;
     requires io.helidon.webserver.grpc;
     requires static jsr305;

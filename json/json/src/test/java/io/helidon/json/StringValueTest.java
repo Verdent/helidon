@@ -75,6 +75,26 @@ class StringValueTest {
         assertThat(parser.hasNext(), is(false));
     }
 
+    @ParameterizedTest
+    @EnumSource(ParserMethod.class)
+    public void testReadStringAsHashEscapedContent(ParserMethod parserMethod) {
+        String expected = "He said \"hello\"";
+        JsonParser parser = parserMethod.createParser("\"He said \\\"hello\\\"\"");
+
+        assertThat(parser.readStringAsHash(), is(JsonParserArray.fnv1aHashUtf8(expected)));
+        assertThat(parser.hasNext(), is(false));
+    }
+
+    @ParameterizedTest
+    @EnumSource(ParserMethod.class)
+    public void testReadStringAsHashAcrossBufferBoundary(ParserMethod parserMethod) {
+        String expected = "město";
+        JsonParser parser = parserMethod.createParser("\"" + expected + "\"", 6);
+
+        assertThat(parser.readStringAsHash(), is(JsonParserArray.fnv1aHashUtf8(expected)));
+        assertThat(parser.hasNext(), is(false));
+    }
+
     // Escaped character tests
     @ParameterizedTest
     @EnumSource(ParserMethod.class)

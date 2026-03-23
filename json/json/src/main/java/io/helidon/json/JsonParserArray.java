@@ -554,24 +554,36 @@ class JsonParserArray extends JsonParserBase {
 
     @Override
     public int readStringAsHash() {
-        int b = buffer[currentIndex] & 0xFF;
-        if (b != '"') {
+        if (buffer[currentIndex] != '"') {
             throw createException("Hash calculation is intended only for String values");
         }
-        // Compute FNV-1a hash of the string content (excluding quotes) using recommended offset basis and prime values.
-        // This optimized loop scans the buffer directly without calling readNextByte() for each character.
+        int start = currentIndex;
+        int index = currentIndex + 1;
         int fnv1aHash = FNV_OFFSET_BASIS;
-        currentIndex++;
-        for (int i = currentIndex; i < bufferLength; i++) {
-            b = buffer[i] & 0xFF;
+        while (index < bufferLength) {
+            byte b = buffer[index];
             if (b == '"') {
-                currentIndex = i;
+                currentIndex = index;
                 return fnv1aHash;
             }
-            fnv1aHash ^= b;
+            if (b == '\\') {
+                currentIndex = start;
+                return fnv1aHashUtf8(readString());
+            }
+            fnv1aHash ^= (b & 0xFF);
             fnv1aHash *= FNV_PRIME;
+            index++;
         }
         throw createException("Unexpected end of string value. Probably incomplete JSON");
+    }
+
+    static int fnv1aHashUtf8(String value) {
+        int fnvHash = FNV_OFFSET_BASIS;
+        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+            fnvHash ^= (b & 0xFF);
+            fnvHash *= FNV_PRIME;
+        }
+        return fnvHash;
     }
 
     @Override

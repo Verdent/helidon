@@ -438,29 +438,34 @@ final class JsonParserStream extends JsonParserBase {
 
     @Override
     public int readStringAsHash() {
-        int b = buffer[currentIndex] & 0xFF;
-        if (b != '"') {
+        if (buffer[currentIndex] != '"') {
             throw createException("Hash calculation is intended only for String values");
         } else if (!hasNext()) {
             throw createException("Incomplete JSON");
         }
 
+        int start = currentIndex;
         int i = currentIndex + 1;
-        while (true) {
-            //Based on recommended offset basis and prime values.
-            int fnv1aHash = FNV_OFFSET_BASIS;
-            while (i < bufferLength) {
-                b = buffer[i++] & 0xFF;
-                if (b == '"') {
-                    currentIndex = i - 1;
-                    return fnv1aHash;
-                }
-                fnv1aHash ^= b;
-                fnv1aHash *= FNV_PRIME;
+        int fnv1aHash = FNV_OFFSET_BASIS;
+        while (i < bufferLength) {
+            byte b = buffer[i];
+            if (b == '"') {
+                currentIndex = i;
+                return fnv1aHash;
             }
-            fetchData();
-            i = currentIndex;
+            if (b == '\\' || b < 0) {
+                currentIndex = start;
+                return JsonParserArray.fnv1aHashUtf8(readString());
+            }
+            fnv1aHash ^= b;
+            fnv1aHash *= FNV_PRIME;
+            i++;
         }
+        if (finished) {
+            throw createException("Unexpected end of string value. Probably incomplete JSON");
+        }
+        currentIndex = start;
+        return JsonParserArray.fnv1aHashUtf8(readString());
     }
 
     @Override

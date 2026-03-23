@@ -162,13 +162,7 @@ class JsonValueParser implements JsonParser {
 
     @Override
     public int readStringAsHash() {
-        String key = current.asString().value();
-        int fnvHash = JsonParserArray.FNV_OFFSET_BASIS;
-        for (byte b : key.getBytes(StandardCharsets.UTF_8)) {
-            fnvHash ^= (b & 0xFF);
-            fnvHash *= JsonParserArray.FNV_PRIME;
-        }
-        return fnvHash;
+        return JsonParserArray.fnv1aHashUtf8(current.asString().value());
     }
 
     @Override

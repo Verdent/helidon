@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package grpc.declarative;
+
+option java_package = "io.helidon.declarative.tests.grpc";
+
+service StringService {
+  rpc Upper (StringMessage) returns (StringMessage);
+}
+
+message StringMessage {
+  string text = 1;
+}

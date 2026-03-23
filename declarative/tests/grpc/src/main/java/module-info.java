@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,20 @@
  * limitations under the License.
  */
 
-/**
- * Helidon WebServer Testing JUnit 5 Support for gRPC.
- */
-module io.helidon.webserver.testing.junit5.grpc {
-
-    requires io.helidon.common.tls;
-    requires io.helidon.webclient.grpc;
+module io.helidon.declarative.tests.grpc {
+    requires com.google.common;
+    requires com.google.protobuf;
+    requires io.grpc.protobuf;
+    requires io.grpc.stub;
+    requires io.helidon.config.yaml;
+    requires io.helidon.grpc.api;
+    requires io.helidon.logging.common;
+    requires io.helidon.metrics.api;
+    requires io.helidon.service.registry;
+    requires io.helidon.tracing;
+    requires io.helidon.webserver;
     requires io.helidon.webserver.grpc;
+    requires static jsr305;
 
-    requires transitive io.helidon.webserver.testing.junit5;
-
-    exports io.helidon.webserver.testing.junit5.grpc;
-
-    provides io.helidon.webserver.testing.junit5.spi.ServerJunitExtension
-            with io.helidon.webserver.testing.junit5.grpc.GrpcServerExtension;
-
+    exports io.helidon.declarative.tests.grpc;
 }

@@ -29,6 +29,8 @@ import io.helidon.common.features.api.HelidonFlavor;
 module io.helidon.webserver.grpc {
 
     requires io.helidon.builder.api;
+    requires io.helidon.common.types;
+    requires io.helidon.service.registry;
     requires io.helidon.webserver.http2;
     requires io.helidon.tracing;
     requires io.helidon.common.config;

@@ -44,6 +44,8 @@ module io.helidon.declarative.codegen {
     exports io.helidon.declarative.codegen.tracing;
     // CORS (cross-origin-resource-sharing)
     exports io.helidon.declarative.codegen.cors;
+    // gRPC declarative server
+    exports io.helidon.declarative.codegen.grpc.server;
 
     uses io.helidon.declarative.codegen.http.webserver.spi.HttpParameterCodegenProvider;
 
@@ -57,7 +59,8 @@ module io.helidon.declarative.codegen {
                     io.helidon.declarative.codegen.tracing.TracingExtensionProvider,
                     io.helidon.declarative.codegen.websocket.server.WebSocketServerExtensionProvider,
                     io.helidon.declarative.codegen.websocket.client.WebSocketClientExtensionProvider,
-                    io.helidon.declarative.codegen.cors.CorsExtensionProvider;
+                    io.helidon.declarative.codegen.cors.CorsExtensionProvider,
+                    io.helidon.declarative.codegen.grpc.server.RpcServerExtensionProvider;
 
     provides io.helidon.codegen.spi.AnnotationMapperProvider
             with io.helidon.declarative.codegen.http.restclient.RestClientAnnotationMapperProvider;

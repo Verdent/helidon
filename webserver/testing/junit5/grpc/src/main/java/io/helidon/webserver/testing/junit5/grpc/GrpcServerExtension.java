@@ -18,6 +18,7 @@ package io.helidon.webserver.testing.junit5.grpc;
 
 import java.util.Optional;
 
+import io.helidon.common.tls.Tls;
 import io.helidon.webclient.grpc.GrpcClient;
 import io.helidon.webserver.ListenerConfig;
 import io.helidon.webserver.Router;
@@ -36,6 +37,9 @@ import org.junit.jupiter.api.extension.ParameterResolutionException;
  * artifacts, such as {@link io.helidon.webclient.grpc.GrpcClient} in Helidon integration tests.
  */
 public class GrpcServerExtension implements ServerJunitExtension {
+    private static final Tls NO_TLS = Tls.builder()
+            .enabled(false)
+            .build();
 
     @Override
     public Optional<ParamHandler<?>> setUpRouteParamHandler(Class<?> type) {
@@ -60,6 +64,7 @@ public class GrpcServerExtension implements ServerJunitExtension {
 
         if (GrpcClient.class.equals(parameterType)) {
             return GrpcClient.builder()
+                    .tls(NO_TLS)
                     .baseUri("http://localhost:" + server.port(socketName))
                     .build();
         }

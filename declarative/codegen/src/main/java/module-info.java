@@ -46,6 +46,8 @@ module io.helidon.declarative.codegen {
     exports io.helidon.declarative.codegen.cors;
     // gRPC declarative server
     exports io.helidon.declarative.codegen.grpc.server;
+    // gRPC declarative client
+    exports io.helidon.declarative.codegen.grpc.client;
 
     uses io.helidon.declarative.codegen.http.webserver.spi.HttpParameterCodegenProvider;
 
@@ -60,8 +62,10 @@ module io.helidon.declarative.codegen {
                     io.helidon.declarative.codegen.websocket.server.WebSocketServerExtensionProvider,
                     io.helidon.declarative.codegen.websocket.client.WebSocketClientExtensionProvider,
                     io.helidon.declarative.codegen.cors.CorsExtensionProvider,
-                    io.helidon.declarative.codegen.grpc.server.RpcServerExtensionProvider;
+                    io.helidon.declarative.codegen.grpc.server.RpcServerExtensionProvider,
+                    io.helidon.declarative.codegen.grpc.client.RpcClientExtensionProvider;
 
     provides io.helidon.codegen.spi.AnnotationMapperProvider
-            with io.helidon.declarative.codegen.http.restclient.RestClientAnnotationMapperProvider;
+            with io.helidon.declarative.codegen.http.restclient.RestClientAnnotationMapperProvider,
+                    io.helidon.declarative.codegen.grpc.client.RpcClientAnnotationMapperProvider;
 }

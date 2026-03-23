@@ -14,21 +14,7 @@
  * limitations under the License.
  */
 
-module io.helidon.declarative.tests.grpc {
-    requires com.google.common;
-    requires com.google.protobuf;
-    requires io.grpc.protobuf;
-    requires io.grpc.stub;
-    requires io.helidon.config.yaml;
-    requires io.helidon.grpc.api;
-    requires io.helidon.logging.common;
-    requires io.helidon.metrics.api;
-    requires io.helidon.service.registry;
-    requires io.helidon.tracing;
-    requires io.helidon.webclient.grpc;
-    requires io.helidon.webserver;
-    requires io.helidon.webserver.grpc;
-    requires static jsr305;
-
-    exports io.helidon.declarative.tests.grpc;
-}
+/**
+ * Code generation support for declarative gRPC clients.
+ */
+package io.helidon.declarative.codegen.grpc.client;

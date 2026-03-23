@@ -97,6 +97,17 @@ class StringValueTest {
 
     @ParameterizedTest
     @EnumSource(ParserMethod.class)
+    public void testReadStringAsHashShortAsciiKeyWithTrailingData(ParserMethod parserMethod) {
+        String expected = "abcdefghijklmno";
+        JsonParser parser = parserMethod.createParser("\"" + expected + "\":0}");
+
+        assertThat(parser.readStringAsHash(), is(JsonParserArray.fnv1aHashUtf8(expected)));
+        assertThat(parser.hasNext(), is(true));
+        assertThat(parser.nextToken(), is((byte) ':'));
+    }
+
+    @ParameterizedTest
+    @EnumSource(ParserMethod.class)
     public void testReadStringAsHashUnicodeEscape(ParserMethod parserMethod) {
         String expected = "město";
         JsonParser parser = parserMethod.createParser("\"\\u006d\\u011bsto\"");

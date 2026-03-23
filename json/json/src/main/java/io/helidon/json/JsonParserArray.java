@@ -560,6 +560,173 @@ class JsonParserArray extends JsonParserBase {
         }
         int index = currentIndex + 1;
         int fnv1aHash = FNV_OFFSET_BASIS;
+        // JSON object keys are typically short ASCII names, so handle the first 16 bytes without loop overhead.
+        if (index + 15 < bufferLength) {
+            byte b = buffer[index];
+            if (b == '"') {
+                currentIndex = index;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 1];
+            if (b == '"') {
+                currentIndex = index + 1;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 1, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 2];
+            if (b == '"') {
+                currentIndex = index + 2;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 2, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 3];
+            if (b == '"') {
+                currentIndex = index + 3;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 3, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 4];
+            if (b == '"') {
+                currentIndex = index + 4;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 4, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 5];
+            if (b == '"') {
+                currentIndex = index + 5;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 5, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 6];
+            if (b == '"') {
+                currentIndex = index + 6;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 6, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 7];
+            if (b == '"') {
+                currentIndex = index + 7;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 7, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 8];
+            if (b == '"') {
+                currentIndex = index + 8;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 8, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 9];
+            if (b == '"') {
+                currentIndex = index + 9;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 9, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 10];
+            if (b == '"') {
+                currentIndex = index + 10;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 10, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 11];
+            if (b == '"') {
+                currentIndex = index + 11;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 11, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 12];
+            if (b == '"') {
+                currentIndex = index + 12;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 12, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 13];
+            if (b == '"') {
+                currentIndex = index + 13;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 13, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 14];
+            if (b == '"') {
+                currentIndex = index + 14;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 14, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+
+            b = buffer[index + 15];
+            if (b == '"') {
+                currentIndex = index + 15;
+                return fnv1aHash;
+            }
+            if (b == '\\' || b < 0) {
+                return continueStringAsHash(index + 15, fnv1aHash);
+            }
+            fnv1aHash = updateFnv1aHash(fnv1aHash, b & 0xFF);
+            index += 16;
+        }
+        return continueStringAsHash(index, fnv1aHash);
+    }
+
+    private int continueStringAsHash(int index, int fnv1aHash) {
         while (index < bufferLength) {
             byte b = buffer[index];
             if (b == '"') {

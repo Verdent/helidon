@@ -17,6 +17,17 @@
 server:
   port: 8080
   host: 0.0.0.0
+  sockets:
+    - name: "grpc-config"
+      port: 0
 
 string-service.client:
   uri: "http://localhost:${test.server.port}"
+
+configured-string-service:
+  server:
+    listener: "grpc-config"
+  grpc:
+    service-name: "grpc.declarative.StringService"
+  client:
+    name: "configured-string-service"

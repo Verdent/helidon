@@ -46,7 +46,7 @@ import io.helidon.service.codegen.spi.RegistryCodegenExtension;
 
 import static io.helidon.declarative.codegen.DeclarativeTypes.CONFIG;
 import static io.helidon.declarative.codegen.DeclarativeTypes.SINGLETON_ANNOTATION;
-import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_ANNOTATION_NAMED;
+import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_REGISTRY;
 import static java.util.function.Predicate.not;
 
 class RpcClientExtension implements RegistryCodegenExtension {
@@ -138,10 +138,7 @@ class RpcClientExtension implements RegistryCodegenExtension {
                         .type(CONFIG));
 
         if (endpoint.clientName().isPresent()) {
-            constructor.addParameter(registryClient -> registryClient
-                    .name("registryClient")
-                    .type(registryClientType())
-                    .addAnnotation(Annotation.create(SERVICE_ANNOTATION_NAMED, endpoint.clientName().get())));
+            constructor.addParameter(SERVICE_REGISTRY, "registry");
         }
 
         DelcarativeConfigSupport.assignResolveExpression(constructor,
@@ -149,11 +146,67 @@ class RpcClientExtension implements RegistryCodegenExtension {
                                                          "uri",
                                                          endpoint.uri());
 
+        DelcarativeConfigSupport.assignResolveExpression(constructor,
+                                                         "config",
+                                                         "serviceName",
+                                                         endpoint.serviceName());
+
+        constructor.addContentLine("if (serviceName.isBlank()) {")
+                .increaseContentPadding()
+                .addContent("serviceName = ")
+                .addContentLiteral(endpoint.type().className())
+                .addContentLine(";")
+                .decreaseContentPadding()
+                .addContentLine("}");
+
         if (endpoint.clientName().isPresent()) {
-            constructor.addContentLine("var maybeClient = registryClient.get();")
+            DelcarativeConfigSupport.assignResolveExpression(constructor,
+                                                             "config",
+                                                             "clientName",
+                                                             endpoint.clientName().get());
+
+            constructor.addContentLine("if (!clientName.isBlank()) {")
+                    .increaseContentPadding()
+                    .addContent("var maybeClient = registry.firstNamed(")
+                    .addContent(RpcClientTypes.GRPC_CLIENT)
+                    .addContentLine(".class, clientName);")
                     .addContentLine("if (maybeClient.isPresent()) {")
                     .increaseContentPadding()
                     .addContentLine("this.client = maybeClient.get();")
+                    .decreaseContentPadding()
+                    .addContentLine("} else {")
+                    .increaseContentPadding()
+                    .addContent("var supplierLookup = ")
+                    .addContent(RpcClientTypes.LOOKUP)
+                    .addContentLine(".builder()")
+                    .increaseContentPadding()
+                    .increaseContentPadding()
+                    .addContentLine(".named(clientName)")
+                    .addContent(".addContract(")
+                    .addContent(RpcClientTypes.GRPC_CLIENT)
+                    .addContentLine(".class)")
+                    .addContent(".addFactoryType(")
+                    .addContent(RpcClientTypes.FACTORY_TYPE)
+                    .addContentLine(".SUPPLIER)")
+                    .addContentLine(".build();")
+                    .decreaseContentPadding()
+                    .decreaseContentPadding()
+                    .addContentLine("var maybeClientSupplier = registry.first(supplierLookup);")
+                    .addContentLine("if (maybeClientSupplier.isPresent()) {")
+                    .increaseContentPadding()
+                    .addContent("this.client = ((")
+                    .addContent(TypeNames.SUPPLIER)
+                    .addContent("<")
+                    .addContent(RpcClientTypes.GRPC_CLIENT)
+                    .addContentLine(">) maybeClientSupplier.get()).get();")
+                    .decreaseContentPadding()
+                    .addContentLine("} else {")
+                    .increaseContentPadding()
+                    .update(it -> assignCreatedClient(it, endpoint))
+                    .decreaseContentPadding()
+                    .addContentLine("}")
+                    .decreaseContentPadding()
+                    .addContentLine("}")
                     .decreaseContentPadding()
                     .addContentLine("} else {")
                     .increaseContentPadding()
@@ -169,12 +222,10 @@ class RpcClientExtension implements RegistryCodegenExtension {
                 .addContentLine(".builder()")
                 .increaseContentPadding()
                 .increaseContentPadding()
-                .addContent(".serviceName(")
-                .addContentLiteral(endpoint.serviceName())
-                .addContentLine(")");
+                .addContentLine(".serviceName(serviceName)");
 
         for (GrpcMethod method : endpoint.methods()) {
-            addMethod(constructor, endpoint.serviceName(), method);
+            addMethod(constructor, method);
         }
 
         constructor.addContentLine(".build();")
@@ -211,7 +262,7 @@ class RpcClientExtension implements RegistryCodegenExtension {
                 .addContentLine("}");
     }
 
-    private void addMethod(Constructor.Builder constructor, String serviceName, GrpcMethod method) {
+    private void addMethod(Constructor.Builder constructor, GrpcMethod method) {
         constructor.addContent(".putMethod(")
                 .addContentLiteral(method.grpcMethodName())
                 .addContentLine(",")
@@ -220,9 +271,7 @@ class RpcClientExtension implements RegistryCodegenExtension {
                 .addContent(RpcClientTypes.GRPC_CLIENT_METHOD_DESCRIPTOR)
                 .addContent(".")
                 .addContent(method.type().descriptorMethodName())
-                .addContent("(")
-                .addContentLiteral(serviceName)
-                .addContent(", ")
+                .addContent("(serviceName, ")
                 .addContentLiteral(method.grpcMethodName())
                 .addContentLine(")")
                 .addContent(".requestType(")
@@ -498,19 +547,6 @@ class RpcClientExtension implements RegistryCodegenExtension {
     private boolean voidType(TypeName typeName) {
         return TypeNames.PRIMITIVE_VOID.equals(typeName) || TypeNames.BOXED_VOID.equals(typeName);
     }
-
-    private TypeName registryClientType() {
-        TypeName optionalGrpcClient = TypeName.builder()
-                .from(TypeNames.OPTIONAL)
-                .addTypeArgument(RpcClientTypes.GRPC_CLIENT)
-                .build();
-
-        return TypeName.builder()
-                .from(TypeNames.SUPPLIER)
-                .addTypeArgument(optionalGrpcClient)
-                .build();
-    }
-
     private record Endpoint(TypeName type,
                             String uri,
                             Optional<String> clientName,

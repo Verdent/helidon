@@ -47,6 +47,8 @@ public final class RpcServer {
      * Service name exposed through gRPC routing.
      * <p>
      * If not defined, the endpoint class simple name is used.
+     * The value can use declarative configuration expressions such as
+     * {@code ${string-service.grpc.service-name:grpc.declarative.StringService}}.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -63,6 +65,9 @@ public final class RpcServer {
 
     /**
      * Listener socket assigned to this endpoint.
+     * <p>
+     * The value can use declarative configuration expressions such as
+     * {@code ${string-service.server.listener:@default}}.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)

@@ -37,12 +37,14 @@ import io.helidon.common.types.TypeInfo;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 import io.helidon.common.types.TypedElementInfo;
+import io.helidon.declarative.codegen.DelcarativeConfigSupport;
 import io.helidon.service.codegen.RegistryCodegenContext;
 import io.helidon.service.codegen.RegistryRoundContext;
 import io.helidon.service.codegen.ServiceCodegenTypes;
 import io.helidon.service.codegen.spi.RegistryCodegenExtension;
 
 import static io.helidon.codegen.CodegenUtil.toConstantName;
+import static io.helidon.declarative.codegen.DeclarativeTypes.CONFIG;
 import static io.helidon.declarative.codegen.DeclarativeTypes.SINGLETON_ANNOTATION;
 import static java.util.function.Predicate.not;
 
@@ -101,6 +103,14 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .type(RpcServerTypes.GRPC_SERVICE_DESCRIPTOR)
                 .name("descriptor"));
 
+        if (endpoint.listener().isPresent()) {
+            classModel.addField(field -> field
+                    .accessModifier(AccessModifier.PRIVATE)
+                    .isFinal(true)
+                    .type(TypeNames.STRING)
+                    .name("socket"));
+        }
+
         classModel.addConstructor(constructor(endpoint,
                                               endpointType,
                                               descriptorType));
@@ -135,9 +145,40 @@ class RpcServerExtension implements RegistryCodegenExtension {
         Constructor.Builder constructor = Constructor.builder();
         constructor.accessModifier(AccessModifier.PACKAGE_PRIVATE)
                 .addAnnotation(Annotation.create(ServiceCodegenTypes.SERVICE_ANNOTATION_INJECT))
+                .addParameter(CONFIG, "config")
                 .addParameter(endpointType, "endpoint")
-                .addParameter(RpcServerTypes.GRPC_ENTRY_POINTS, "entryPoints")
-                .addContent("var serviceDescriptor = ")
+                .addParameter(RpcServerTypes.GRPC_ENTRY_POINTS, "entryPoints");
+
+        DelcarativeConfigSupport.assignResolveExpression(constructor,
+                                                         "config",
+                                                         "serviceName",
+                                                         endpoint.serviceName());
+
+        constructor.addContentLine("if (serviceName.isBlank()) {")
+                .increaseContentPadding()
+                .addContent("serviceName = ")
+                .addContentLiteral(endpointType.className())
+                .addContentLine(";")
+                .decreaseContentPadding()
+                .addContentLine("}");
+
+        if (endpoint.listener().isPresent()) {
+            DelcarativeConfigSupport.assignResolveExpression(constructor,
+                                                             "config",
+                                                             "socket",
+                                                             endpoint.listener().get());
+
+            constructor.addContentLine("if (socket.isBlank()) {")
+                    .increaseContentPadding()
+                    .addContent("socket = ")
+                    .addContent(RpcServerTypes.WEB_SERVER)
+                    .addContentLine(".DEFAULT_SOCKET_NAME;")
+                    .decreaseContentPadding()
+                    .addContentLine("}")
+                    .addContentLine("this.socket = socket;");
+        }
+
+        constructor.addContent("var serviceDescriptor = ")
                 .addContent(descriptorType)
                 .addContentLine(".INSTANCE;")
                 .addContent("var annotations = ")
@@ -153,13 +194,26 @@ class RpcServerExtension implements RegistryCodegenExtension {
         }
         constructor.addContent(endpoint.protoMethod().name())
                 .addContentLine("();")
+                .addContentLine("if (proto != null) {")
+                .increaseContentPadding()
+                .addContentLine("var packageName = proto.getPackage();")
+                .addContentLine("if (!packageName.isBlank()) {")
+                .increaseContentPadding()
+                .addContentLine("var servicePrefix = packageName + \".\";")
+                .addContentLine("if (serviceName.startsWith(servicePrefix)) {")
+                .increaseContentPadding()
+                .addContentLine("serviceName = serviceName.substring(servicePrefix.length());")
+                .decreaseContentPadding()
+                .addContentLine("}")
+                .decreaseContentPadding()
+                .addContentLine("}")
+                .decreaseContentPadding()
+                .addContentLine("}")
                 .addContent("this.descriptor = ")
                 .addContent(RpcServerTypes.GRPC_SERVICE_DESCRIPTOR)
                 .addContent(".builder(")
                 .addContent(endpointType)
-                .addContent(".class, ")
-                .addContentLiteral(endpoint.serviceName())
-                .addContentLine(")")
+                .addContentLine(".class, serviceName)")
                 .increaseContentPadding()
                 .increaseContentPadding()
                 .addContentLine(".proto(proto)");
@@ -212,16 +266,16 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .accessModifier(AccessModifier.PUBLIC)
                 .returnType(TypeNames.STRING)
                 .name("socket")
-                .addContent("return ")
-                .addContentLiteral(listener.get())
-                .addContentLine(";"));
+                .addContentLine("return socket;"));
 
         classModel.addMethod(socketRequired -> socketRequired
                 .addAnnotation(Annotations.OVERRIDE)
                 .accessModifier(AccessModifier.PUBLIC)
                 .returnType(TypeNames.PRIMITIVE_BOOLEAN)
                 .name("socketRequired")
-                .addContentLine("return true;"));
+                .addContent("return !socket.equals(")
+                .addContent(RpcServerTypes.WEB_SERVER)
+                .addContentLine(".DEFAULT_SOCKET_NAME);"));
     }
 
     private Endpoint toEndpoint(TypeInfo typeInfo) {

@@ -52,6 +52,9 @@ public final class RpcClient {
         /**
          * Name of a named {@code GrpcClient} instance from the service registry to use.
          * <p>
+         * The value can use declarative configuration expressions such as
+         * {@code ${string-service.client.name:string-service}}.
+         * <p>
          * If the named client is not available, a new client is created from the configured URI.
          *
          * @return registry client name
@@ -74,6 +77,9 @@ public final class RpcClient {
      * For protobuf services with a package, this should be the canonical fully qualified
      * gRPC service name, such as {@code example.hello.Greeter} or the generated
      * {@code *Grpc.SERVICE_NAME} constant.
+     * <p>
+     * The value can use declarative configuration expressions such as
+     * {@code ${string-service.grpc.service-name:grpc.declarative.StringService}}.
      * <p>
      * If not defined, the annotated interface simple name is used, which only matches
      * services whose gRPC service name is also unqualified.

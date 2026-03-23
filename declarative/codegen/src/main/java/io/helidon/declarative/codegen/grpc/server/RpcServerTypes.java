@@ -34,6 +34,7 @@ final class RpcServerTypes {
     static final TypeName GRPC_ROUTE_REGISTRATION = TypeName.create("io.helidon.webserver.grpc.GrpcRouteRegistration");
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webserver.grpc.GrpcServiceDescriptor");
     static final TypeName GRPC_ENTRY_POINTS = TypeName.create("io.helidon.webserver.grpc.GrpcEntryPoint.EntryPoints");
+    static final TypeName WEB_SERVER = TypeName.create("io.helidon.webserver.WebServer");
     static final TypeName GRPC_UNARY_METHOD = TypeName.create("io.grpc.stub.ServerCalls.UnaryMethod");
     static final TypeName GRPC_SERVER_STREAMING_METHOD =
             TypeName.create("io.grpc.stub.ServerCalls.ServerStreamingMethod");

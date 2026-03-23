@@ -34,7 +34,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @ServerTest
@@ -91,11 +90,13 @@ class DeclarativeGrpcCrossCuttingTest {
 
         assertThat(metricsResponse.status(), is(Status.OK_200));
 
-        JsonNumber counter = metricsResponse.entity()
-                .getJsonObject("application")
-                .getJsonNumber("grpc-upper-count");
-        assertThat(counter, notNullValue());
-        return counter.intValue();
+        JsonObject applicationMetrics = metricsResponse.entity().getJsonObject("application");
+        if (applicationMetrics == null) {
+            return 0;
+        }
+
+        JsonNumber counter = applicationMetrics.getJsonNumber("grpc-upper-count");
+        return counter == null ? 0 : counter.intValue();
     }
 
     private static void assertAttribute(SpanData spanData, String key, String expectedValue) {

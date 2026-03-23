@@ -137,6 +137,9 @@ class HelidonServerJunitExtension extends JunitExtensionBase
             }
 
             testConfigSource.set("test.server.port", String.valueOf(server.port()));
+            builder.sockets().keySet().forEach(socketName ->
+                    testConfigSource.set("test.server.socket." + socketName + ".port",
+                                         String.valueOf(server.port(socketName))));
         });
     }
 

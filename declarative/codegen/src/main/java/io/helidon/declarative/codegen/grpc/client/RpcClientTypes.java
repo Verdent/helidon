@@ -31,6 +31,8 @@ final class RpcClientTypes {
     static final TypeName ANNOTATION_BIDIRECTIONAL =
             TypeName.create("io.helidon.grpc.api.RpcClient.Bidirectional");
 
+    static final TypeName FACTORY_TYPE = TypeName.create("io.helidon.service.registry.FactoryType");
+    static final TypeName LOOKUP = TypeName.create("io.helidon.service.registry.Lookup");
     static final TypeName GRPC_CLIENT = TypeName.create("io.helidon.webclient.grpc.GrpcClient");
     static final TypeName GRPC_SERVICE_CLIENT = TypeName.create("io.helidon.webclient.grpc.GrpcServiceClient");
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webclient.grpc.GrpcServiceDescriptor");

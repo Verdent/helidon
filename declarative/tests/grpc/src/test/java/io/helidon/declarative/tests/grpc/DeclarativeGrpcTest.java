@@ -16,6 +16,10 @@
 
 package io.helidon.declarative.tests.grpc;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 import io.helidon.webclient.grpc.GrpcClient;
 import io.helidon.webclient.grpc.GrpcClientMethodDescriptor;
 import io.helidon.webclient.grpc.GrpcServiceDescriptor;
@@ -38,6 +42,21 @@ class DeclarativeGrpcTest {
                                .requestType(Strings.StringMessage.class)
                                .responseType(Strings.StringMessage.class)
                                .build())
+            .putMethod("Split",
+                       GrpcClientMethodDescriptor.serverStreaming(StringServiceGrpc.SERVICE_NAME, "Split")
+                               .requestType(Strings.StringMessage.class)
+                               .responseType(Strings.StringMessage.class)
+                               .build())
+            .putMethod("Join",
+                       GrpcClientMethodDescriptor.clientStreaming(StringServiceGrpc.SERVICE_NAME, "Join")
+                               .requestType(Strings.StringMessage.class)
+                               .responseType(Strings.StringMessage.class)
+                               .build())
+            .putMethod("Echo",
+                       GrpcClientMethodDescriptor.bidirectional(StringServiceGrpc.SERVICE_NAME, "Echo")
+                               .requestType(Strings.StringMessage.class)
+                               .responseType(Strings.StringMessage.class)
+                               .build())
             .build();
 
     private final GrpcClient client;
@@ -54,10 +73,52 @@ class DeclarativeGrpcTest {
     @Test
     void testUnaryRoute() {
         Strings.StringMessage response = client.serviceClient(SERVICE_DESCRIPTOR)
-                .unary("Upper", Strings.StringMessage.newBuilder().setText("hello").build());
+                .unary("Upper", message("hello"));
 
         assertThat(response.getText(), is("HELLO"));
         assertThat(SomeEntryPointInterceptor.executions(),
                    hasItem(startsWith(StringServiceEndpoint.class.getName() + ".upper(")));
+    }
+
+    @Test
+    void testServerStreamingRoute() {
+        Iterator<Strings.StringMessage> response = client.serviceClient(SERVICE_DESCRIPTOR)
+                .serverStream("Split", message("hello world"));
+
+        assertThat(toTexts(response), is(List.of("hello", "world")));
+        assertThat(SomeEntryPointInterceptor.executions(),
+                   hasItem(startsWith(StringServiceEndpoint.class.getName() + ".split(")));
+    }
+
+    @Test
+    void testClientStreamingRoute() {
+        Strings.StringMessage response = client.serviceClient(SERVICE_DESCRIPTOR)
+                .clientStream("Join", List.of(message("hello"), message("world")).iterator());
+
+        assertThat(response.getText(), is("hello world"));
+        assertThat(SomeEntryPointInterceptor.executions(),
+                   hasItem(startsWith(StringServiceEndpoint.class.getName() + ".join(")));
+    }
+
+    @Test
+    void testBidirectionalRoute() {
+        Iterator<Strings.StringMessage> response = client.serviceClient(SERVICE_DESCRIPTOR)
+                .bidi("Echo", List.of(message("hello"), message("world")).iterator());
+
+        assertThat(toTexts(response), is(List.of("hello", "world")));
+        assertThat(SomeEntryPointInterceptor.executions(),
+                   hasItem(startsWith(StringServiceEndpoint.class.getName() + ".echo(")));
+    }
+
+    private static Strings.StringMessage message(String text) {
+        return Strings.StringMessage.newBuilder()
+                .setText(text)
+                .build();
+    }
+
+    private static List<String> toTexts(Iterator<Strings.StringMessage> messages) {
+        List<String> result = new ArrayList<>();
+        messages.forEachRemaining(message -> result.add(message.getText()));
+        return result;
     }
 }

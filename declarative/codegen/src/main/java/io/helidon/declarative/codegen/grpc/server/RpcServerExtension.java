@@ -164,34 +164,42 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .increaseContentPadding()
                 .addContentLine(".proto(proto)");
 
-        for (UnaryMethod unaryMethod : endpoint.unaryMethods()) {
-            constructor.addContentLine(".unary(")
-                    .increaseContentPadding()
-                    .increaseContentPadding()
-                    .addContentLiteral(unaryMethod.grpcMethodName())
-                    .addContentLine(",")
-                    .addContent("entryPoints.unary(serviceDescriptor, annotations, ")
-                    .addContent(descriptorType)
-                    .addContent(".")
-                    .addContent(unaryMethod.descriptorConstant())
-                    .addContent(", endpoint::")
-                    .addContent(unaryMethod.javaMethodName())
-                    .addContentLine("),")
-                    .addContent("it -> it.requestType(")
-                    .addContent(unaryMethod.requestType())
-                    .addContent(".class)")
-                    .addContent(".responseType(")
-                    .addContent(unaryMethod.responseType())
-                    .addContent(".class)")
-                    .addContentLine(")");
-            constructor.decreaseContentPadding()
-                    .decreaseContentPadding();
+        for (GrpcMethod method : endpoint.methods()) {
+            addMethod(constructor, descriptorType, method);
         }
 
         constructor.addContentLine(".build();")
                 .decreaseContentPadding()
                 .decreaseContentPadding();
         return constructor;
+    }
+
+    private void addMethod(Constructor.Builder constructor, TypeName descriptorType, GrpcMethod method) {
+        constructor.addContent(".")
+                .addContent(method.type().registrationMethodName())
+                .addContentLine("(")
+                .increaseContentPadding()
+                .increaseContentPadding()
+                .addContentLiteral(method.grpcMethodName())
+                .addContentLine(",")
+                .addContent("entryPoints.")
+                .addContent(method.type().registrationMethodName())
+                .addContent("(serviceDescriptor, annotations, ")
+                .addContent(descriptorType)
+                .addContent(".")
+                .addContent(method.descriptorConstant())
+                .addContent(", endpoint::")
+                .addContent(method.javaMethodName())
+                .addContentLine("),")
+                .addContent("it -> it.requestType(")
+                .addContent(method.requestType())
+                .addContent(".class)")
+                .addContent(".responseType(")
+                .addContent(method.responseType())
+                .addContent(".class)")
+                .addContentLine(")");
+        constructor.decreaseContentPadding()
+                .decreaseContentPadding();
     }
 
     private static void addSocketMethods(ClassModel.Builder classModel, Optional<String> listener) {
@@ -230,7 +238,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
 
         ProtoMethod protoMethod = protoMethod(typeInfo);
 
-        List<UnaryMethod> unaryMethods = new ArrayList<>();
+        List<GrpcMethod> grpcMethods = new ArrayList<>();
         for (TypedElementInfo element : typeInfo.elementInfo()) {
             if (!ElementInfoPredicates.isMethod(element)
                     || ElementInfoPredicates.isPrivate(element)
@@ -244,24 +252,16 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 continue;
             }
 
-            if (methodAnnotation.type() != MethodType.UNARY) {
-                throw new CodegenException("Declarative gRPC endpoint " + typeInfo.typeName().fqName()
-                                                   + " uses method " + element.signature().text()
-                                                   + " annotated with " + methodAnnotation.type().description()
-                                                   + ", but only unary methods are supported in the initial declarative slice",
-                                           element.originatingElementValue());
-            }
-
-            unaryMethods.add(unaryMethod(typeInfo, element, methodAnnotation.annotation()));
+            grpcMethods.add(grpcMethod(typeInfo, element, methodAnnotation));
         }
 
-        if (unaryMethods.isEmpty()) {
+        if (grpcMethods.isEmpty()) {
             throw new CodegenException("Declarative gRPC endpoint " + typeInfo.typeName().fqName()
                                                + " does not declare any supported gRPC methods",
                                        typeInfo.originatingElementValue());
         }
 
-        return new Endpoint(typeInfo, serviceName, listener, protoMethod, List.copyOf(unaryMethods));
+        return new Endpoint(typeInfo, serviceName, listener, protoMethod, List.copyOf(grpcMethods));
     }
 
     private ProtoMethod protoMethod(TypeInfo typeInfo) {
@@ -341,16 +341,34 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .map(annotation -> new MethodAnnotation(annotation, methodType));
     }
 
-    private UnaryMethod unaryMethod(TypeInfo typeInfo, TypedElementInfo method, Annotation annotation) {
+    private GrpcMethod grpcMethod(TypeInfo typeInfo, TypedElementInfo method, MethodAnnotation methodAnnotation) {
+        MethodType methodType = methodAnnotation.type();
+        MethodSignature signature = switch (methodType) {
+            case UNARY, SERVER_STREAMING -> requestResponseSignature(typeInfo, method, methodType);
+            case CLIENT_STREAMING, BIDIRECTIONAL -> streamingSignature(typeInfo, method, methodType);
+        };
+
+        return new GrpcMethod(methodType,
+                              method.elementName(),
+                              grpcMethodName(method, methodAnnotation.annotation()),
+                              descriptorConstant(typeInfo, method),
+                              signature.requestType(),
+                              signature.responseType());
+    }
+
+    private MethodSignature requestResponseSignature(TypeInfo typeInfo,
+                                                     TypedElementInfo method,
+                                                     MethodType methodType) {
+        String errorPrefix = methodType.errorPrefix();
         if (!method.typeName().equals(TypeNames.PRIMITIVE_VOID)) {
-            throw new CodegenException("Unary declarative gRPC method must return void: "
+            throw new CodegenException(errorPrefix + " declarative gRPC method must return void: "
                                                + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                        method.originatingElementValue());
         }
 
         List<TypedElementInfo> params = method.parameterArguments();
         if (params.size() != 2) {
-            throw new CodegenException("Unary declarative gRPC method must declare exactly two parameters "
+            throw new CodegenException(errorPrefix + " declarative gRPC method must declare exactly two parameters "
                                                + "(request, StreamObserver): "
                                                + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                        method.originatingElementValue());
@@ -358,44 +376,85 @@ class RpcServerExtension implements RegistryCodegenExtension {
 
         TypedElementInfo request = params.getFirst();
         TypedElementInfo observer = params.get(1);
+        TypeName responseType = streamObserverType(typeInfo, method, observer.typeName(), "second parameter", errorPrefix);
 
-        if (!observer.typeName().fqName().equals(RpcServerTypes.STREAM_OBSERVER.fqName())
-                || observer.typeName().typeArguments().size() != 1) {
-            throw new CodegenException("Unary declarative gRPC method must use "
-                                               + RpcServerTypes.STREAM_OBSERVER.fqName()
-                                               + " as the second parameter: "
+        return new MethodSignature(request.typeName(), responseType);
+    }
+
+    private MethodSignature streamingSignature(TypeInfo typeInfo,
+                                               TypedElementInfo method,
+                                               MethodType methodType) {
+        String errorPrefix = methodType.errorPrefix();
+        List<TypedElementInfo> params = method.parameterArguments();
+        if (params.size() != 1) {
+            throw new CodegenException(errorPrefix + " declarative gRPC method must declare exactly one parameter "
+                                               + "(response StreamObserver): "
                                                + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                        method.originatingElementValue());
         }
 
-        String grpcMethodName = annotation.stringValue()
+        TypeName responseType = streamObserverType(typeInfo,
+                                                   method,
+                                                   params.getFirst().typeName(),
+                                                   "first and only parameter",
+                                                   errorPrefix);
+        TypeName requestType = streamObserverType(typeInfo,
+                                                  method,
+                                                  method.typeName(),
+                                                  "return type",
+                                                  errorPrefix);
+
+        return new MethodSignature(requestType, responseType);
+    }
+
+    private TypeName streamObserverType(TypeInfo typeInfo,
+                                        TypedElementInfo method,
+                                        TypeName typeName,
+                                        String element,
+                                        String errorPrefix) {
+        if (!typeName.fqName().equals(RpcServerTypes.STREAM_OBSERVER.fqName())
+                || typeName.typeArguments().size() != 1) {
+            throw new CodegenException(errorPrefix + " declarative gRPC method must use "
+                                               + RpcServerTypes.STREAM_OBSERVER.fqName()
+                                               + " as the " + element + ": "
+                                               + typeInfo.typeName().fqName() + "." + method.signature().text(),
+                                       method.originatingElementValue());
+        }
+
+        return typeName.typeArguments().getFirst();
+    }
+
+    private static String grpcMethodName(TypedElementInfo method, Annotation annotation) {
+        return annotation.stringValue()
                 .filter(not(String::isBlank))
                 .orElse(method.elementName());
-        String uniqueName = ctx.uniqueName(typeInfo, method);
-        String descriptorConstant = "METHOD_" + toConstantName(uniqueName);
+    }
 
-        return new UnaryMethod(method.elementName(),
-                               grpcMethodName,
-                               descriptorConstant,
-                               request.typeName(),
-                               observer.typeName().typeArguments().getFirst());
+    private String descriptorConstant(TypeInfo typeInfo, TypedElementInfo method) {
+        String uniqueName = ctx.uniqueName(typeInfo, method);
+        return "METHOD_" + toConstantName(uniqueName);
     }
 
     private record Endpoint(TypeInfo type,
                             String serviceName,
                             Optional<String> listener,
                             ProtoMethod protoMethod,
-                            List<UnaryMethod> unaryMethods) {
+                            List<GrpcMethod> methods) {
     }
 
     private record ProtoMethod(String name, boolean isStatic) {
     }
 
-    private record UnaryMethod(String javaMethodName,
-                               String grpcMethodName,
-                               String descriptorConstant,
-                               TypeName requestType,
-                               TypeName responseType) {
+    private record GrpcMethod(MethodType type,
+                              String javaMethodName,
+                              String grpcMethodName,
+                              String descriptorConstant,
+                              TypeName requestType,
+                              TypeName responseType) {
+    }
+
+    private record MethodSignature(TypeName requestType,
+                                   TypeName responseType) {
     }
 
     private record MethodAnnotation(Annotation annotation, MethodType type) {
@@ -415,6 +474,19 @@ class RpcServerExtension implements RegistryCodegenExtension {
 
         String description() {
             return description;
+        }
+
+        String errorPrefix() {
+            return Character.toUpperCase(description.charAt(0)) + description.substring(1);
+        }
+
+        String registrationMethodName() {
+            return switch (this) {
+                case UNARY -> "unary";
+                case SERVER_STREAMING -> "serverStreaming";
+                case CLIENT_STREAMING -> "clientStreaming";
+                case BIDIRECTIONAL -> "bidirectional";
+            };
         }
     }
 }

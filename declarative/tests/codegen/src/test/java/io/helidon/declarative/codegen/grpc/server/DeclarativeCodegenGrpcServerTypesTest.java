@@ -74,6 +74,9 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);
         checkField(toCheck, checked, fields, "GRPC_ENTRY_POINTS", GrpcEntryPoint.EntryPoints.class);
         checkField(toCheck, checked, fields, "GRPC_UNARY_METHOD", ServerCalls.UnaryMethod.class);
+        checkField(toCheck, checked, fields, "GRPC_SERVER_STREAMING_METHOD", ServerCalls.ServerStreamingMethod.class);
+        checkField(toCheck, checked, fields, "GRPC_CLIENT_STREAMING_METHOD", ServerCalls.ClientStreamingMethod.class);
+        checkField(toCheck, checked, fields, "GRPC_BIDI_STREAMING_METHOD", ServerCalls.BidiStreamingMethod.class);
         checkField(toCheck,
                    checked,
                    fields,

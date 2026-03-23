@@ -35,6 +35,12 @@ final class RpcServerTypes {
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webserver.grpc.GrpcServiceDescriptor");
     static final TypeName GRPC_ENTRY_POINTS = TypeName.create("io.helidon.webserver.grpc.GrpcEntryPoint.EntryPoints");
     static final TypeName GRPC_UNARY_METHOD = TypeName.create("io.grpc.stub.ServerCalls.UnaryMethod");
+    static final TypeName GRPC_SERVER_STREAMING_METHOD =
+            TypeName.create("io.grpc.stub.ServerCalls.ServerStreamingMethod");
+    static final TypeName GRPC_CLIENT_STREAMING_METHOD =
+            TypeName.create("io.grpc.stub.ServerCalls.ClientStreamingMethod");
+    static final TypeName GRPC_BIDI_STREAMING_METHOD =
+            TypeName.create("io.grpc.stub.ServerCalls.BidiStreamingMethod");
     static final TypeName STREAM_OBSERVER = TypeName.create("io.grpc.stub.StreamObserver");
     static final TypeName PROTO_FILE_DESCRIPTOR = TypeName.create("com.google.protobuf.Descriptors.FileDescriptor");
 

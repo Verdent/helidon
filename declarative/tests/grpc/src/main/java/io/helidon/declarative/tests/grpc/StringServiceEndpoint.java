@@ -41,4 +41,72 @@ class StringServiceEndpoint {
                                 .build());
         observer.onCompleted();
     }
+
+    @RpcServer.ServerStreaming("Split")
+    void split(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
+        if (request.getText().isBlank()) {
+            observer.onCompleted();
+            return;
+        }
+
+        for (String part : request.getText().split(" ")) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            observer.onNext(message(part));
+        }
+        observer.onCompleted();
+    }
+
+    @RpcServer.ClientStreaming("Join")
+    StreamObserver<Strings.StringMessage> join(StreamObserver<Strings.StringMessage> observer) {
+        return new StreamObserver<>() {
+            private final StringBuilder text = new StringBuilder();
+
+            @Override
+            public void onNext(Strings.StringMessage value) {
+                if (text.length() > 0) {
+                    text.append(' ');
+                }
+                text.append(value.getText());
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                observer.onError(t);
+            }
+
+            @Override
+            public void onCompleted() {
+                observer.onNext(message(text.toString()));
+                observer.onCompleted();
+            }
+        };
+    }
+
+    @RpcServer.Bidirectional("Echo")
+    StreamObserver<Strings.StringMessage> echo(StreamObserver<Strings.StringMessage> observer) {
+        return new StreamObserver<>() {
+            @Override
+            public void onNext(Strings.StringMessage value) {
+                observer.onNext(value);
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                observer.onError(t);
+            }
+
+            @Override
+            public void onCompleted() {
+                observer.onCompleted();
+            }
+        };
+    }
+
+    private static Strings.StringMessage message(String text) {
+        return Strings.StringMessage.newBuilder()
+                .setText(text)
+                .build();
+    }
 }

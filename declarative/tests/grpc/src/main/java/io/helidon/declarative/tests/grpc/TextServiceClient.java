@@ -20,18 +20,18 @@ import java.util.Iterator;
 
 import io.helidon.grpc.api.RpcClient;
 
-@RpcClient.Endpoint("${string-service.client.uri:http://localhost:8080}")
-@RpcClient.ServiceName(StringServiceGrpc.SERVICE_NAME)
-interface StringServiceClient {
+@RpcClient.Endpoint("${text-service.client.uri:http://localhost:8080}")
+@RpcClient.ServiceName(TextServiceGrpc.SERVICE_NAME)
+interface TextServiceClient {
     @RpcClient.Unary("Upper")
-    Strings.StringMessage upper(Strings.StringMessage request);
+    TextMessages.TextMessage upper(TextMessages.TextMessage request);
 
     @RpcClient.ServerStreaming("Split")
-    Iterator<Strings.StringMessage> split(Strings.StringMessage request);
+    Iterator<TextMessages.TextMessage> split(TextMessages.TextMessage request);
 
     @RpcClient.ClientStreaming("Join")
-    Strings.StringMessage join(Iterator<Strings.StringMessage> request);
+    TextMessages.TextMessage join(Iterator<TextMessages.TextMessage> request);
 
     @RpcClient.Bidirectional("Echo")
-    Iterator<Strings.StringMessage> echo(Iterator<Strings.StringMessage> request);
+    Iterator<TextMessages.TextMessage> echo(Iterator<TextMessages.TextMessage> request);
 }

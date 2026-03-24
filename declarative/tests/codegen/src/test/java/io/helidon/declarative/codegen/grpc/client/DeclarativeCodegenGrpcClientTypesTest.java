@@ -26,6 +26,8 @@ import java.util.Set;
 
 import io.helidon.common.types.TypeName;
 import io.helidon.grpc.api.RpcClient;
+import io.helidon.service.registry.FactoryType;
+import io.helidon.service.registry.Lookup;
 import io.helidon.webclient.grpc.GrpcClient;
 import io.helidon.webclient.grpc.GrpcClientMethodDescriptor;
 import io.helidon.webclient.grpc.GrpcServiceClient;
@@ -70,6 +72,8 @@ class DeclarativeCodegenGrpcClientTypesTest {
         checkField(toCheck, checked, fields, "ANNOTATION_SERVER_STREAMING", RpcClient.ServerStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_CLIENT_STREAMING", RpcClient.ClientStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_BIDIRECTIONAL", RpcClient.Bidirectional.class);
+        checkField(toCheck, checked, fields, "FACTORY_TYPE", FactoryType.class);
+        checkField(toCheck, checked, fields, "LOOKUP", Lookup.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT", GrpcClient.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_CLIENT", GrpcServiceClient.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);

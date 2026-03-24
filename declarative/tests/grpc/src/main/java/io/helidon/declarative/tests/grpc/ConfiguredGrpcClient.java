@@ -26,9 +26,9 @@ import io.helidon.webclient.grpc.GrpcClient;
 @Service.Singleton
 @Service.Named(ConfiguredGrpcClient.CLIENT_NAME)
 class ConfiguredGrpcClient implements Supplier<GrpcClient> {
-    static final String CLIENT_NAME = "configured-string-service";
+    static final String CLIENT_NAME = "configured-text-service";
     private static final String URI_EXPRESSION =
-            "http://localhost:${test.server.socket." + ConfiguredStringServiceEndpoint.SOCKET_NAME + ".port}";
+            "http://localhost:${test.server.socket." + ConfiguredTextServiceEndpoint.SOCKET_NAME + ".port}";
 
     private final Config config;
     private volatile GrpcClient client;

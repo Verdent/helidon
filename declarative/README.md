@@ -246,6 +246,89 @@ requests.
 
 The implementation uses constants wherever possible (header names, header values, media types etc.).
 
+## gRPC
+
+Defines class-based gRPC server endpoints and interface-based typed gRPC clients.
+
+### Declaration
+
+Server endpoint annotations:
+
+- `@RpcServer.Endpoint` - required annotation on a concrete class representing the endpoint
+- `@RpcServer.Listener` - optional listener or socket selection
+- `@RpcServer.ServiceName` - optional service name override
+- `@RpcServer.Proto` - required method returning `com.google.protobuf.Descriptors.FileDescriptor`
+
+Server method shapes:
+
+- `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
+- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
+- `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+- `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+
+Client annotations:
+
+- `@RpcClient.Endpoint` - required annotation on an interface representing the remote client
+- `@RpcClient.ServiceName` - optional remote service name override
+
+Client method shapes:
+
+- `@RpcClient.Unary` - `ResponseT method(RequestT request)`
+- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)`
+- `@RpcClient.ClientStreaming` - `ResponseT method(Iterator<RequestT> request)`
+- `@RpcClient.Bidirectional` - `Iterator<ResponseT> method(Iterator<RequestT> request)`
+
+To inject a declarative gRPC client, inject the annotated interface using the `@RpcClient.Client` qualifier:
+
+```java
+@Service.Inject
+MyService(@RpcClient.Client GreeterClient greeterClient) {
+}
+```
+
+### Configuration
+
+String annotation values can use declarative configuration expressions, including defaults:
+
+- `@RpcServer.Listener("${example.server.listener:@default}")`
+- `@RpcServer.ServiceName("${example.grpc.service-name:example.Greeter}")`
+- `@RpcClient.Endpoint("${example.client.uri:http://localhost:8080}")`
+- `@RpcClient.Endpoint(value = "${example.client.uri:http://localhost:8080}", clientName = "${example.client.name:}")`
+- `@RpcClient.ServiceName("${example.grpc.service-name:example.Greeter}")`
+
+If `clientName` resolves to a named `GrpcClient` in the service registry, the generated client uses that instance.
+If no named client is available, the generated client falls back to creating a client from the resolved URI.
+
+### Example
+
+```java
+@RpcServer.Endpoint
+@RpcServer.ServiceName("example.Greeter")
+class GreeterEndpoint {
+    @RpcServer.Proto
+    Descriptors.FileDescriptor proto() {
+        return Greeter.getDescriptor();
+    }
+
+    @RpcServer.Unary("SayHello")
+    void sayHello(HelloRequest request, StreamObserver<HelloReply> observer) {
+        observer.onNext(HelloReply.newBuilder()
+                                .setMessage("Hello " + request.getName())
+                                .build());
+        observer.onCompleted();
+    }
+}
+
+@RpcClient.Endpoint("${greeter.uri:http://localhost:8080}")
+@RpcClient.ServiceName("example.Greeter")
+interface GreeterClient {
+    @RpcClient.Unary("SayHello")
+    HelloReply sayHello(HelloRequest request);
+}
+```
+
+A small end-to-end declarative gRPC example lives in [tests/grpc](tests/grpc/README.md).
+
 ## Scheduling
 
 Annotated method(s) of a service will be invoked with the schedule defined by the annotation.

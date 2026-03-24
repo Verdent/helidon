@@ -25,25 +25,25 @@ import com.google.protobuf.Descriptors;
 import io.grpc.stub.StreamObserver;
 
 @RpcServer.Endpoint
-@RpcServer.Listener(ConfiguredStringServiceEndpoint.LISTENER_EXPRESSION)
-@RpcServer.ServiceName(ConfiguredStringServiceEndpoint.SERVICE_NAME_EXPRESSION)
+@RpcServer.Listener(ConfiguredTextServiceEndpoint.LISTENER_EXPRESSION)
+@RpcServer.ServiceName(ConfiguredTextServiceEndpoint.SERVICE_NAME_EXPRESSION)
 @Service.Singleton
-class ConfiguredStringServiceEndpoint {
+class ConfiguredTextServiceEndpoint {
     static final String SOCKET_NAME = "grpc-config";
-    static final String CONFIGURED_SERVICE_NAME = StringServiceGrpc.SERVICE_NAME;
-    static final String DEFAULT_SERVICE_NAME = "grpc.declarative.DefaultConfiguredStringService";
-    static final String LISTENER_EXPRESSION = "${configured-string-service.server.listener:@default}";
+    static final String CONFIGURED_SERVICE_NAME = TextServiceGrpc.SERVICE_NAME;
+    static final String DEFAULT_SERVICE_NAME = "grpc.declarative.DefaultConfiguredTextService";
+    static final String LISTENER_EXPRESSION = "${configured-text-service.server.listener:@default}";
     static final String SERVICE_NAME_EXPRESSION =
-            "${configured-string-service.grpc.service-name:" + DEFAULT_SERVICE_NAME + "}";
+            "${configured-text-service.grpc.service-name:" + DEFAULT_SERVICE_NAME + "}";
 
     @RpcServer.Proto
     Descriptors.FileDescriptor proto() {
-        return Strings.getDescriptor();
+        return TextMessages.getDescriptor();
     }
 
     @RpcServer.Unary("Upper")
-    void upper(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
-        observer.onNext(Strings.StringMessage.newBuilder()
+    void upper(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
+        observer.onNext(TextMessages.TextMessage.newBuilder()
                                 .setText("CONFIGURED:" + request.getText().toUpperCase(Locale.ROOT))
                                 .build());
         observer.onCompleted();

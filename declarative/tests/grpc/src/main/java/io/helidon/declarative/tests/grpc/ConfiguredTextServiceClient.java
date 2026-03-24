@@ -18,17 +18,17 @@ package io.helidon.declarative.tests.grpc;
 
 import io.helidon.grpc.api.RpcClient;
 
-@RpcClient.Endpoint(value = ConfiguredStringServiceClient.INVALID_URI,
-                    clientName = ConfiguredStringServiceClient.CLIENT_NAME_EXPRESSION)
-@RpcClient.ServiceName(ConfiguredStringServiceClient.SERVICE_NAME_EXPRESSION)
-interface ConfiguredStringServiceClient {
+@RpcClient.Endpoint(value = ConfiguredTextServiceClient.INVALID_URI,
+                    clientName = ConfiguredTextServiceClient.CLIENT_NAME_EXPRESSION)
+@RpcClient.ServiceName(ConfiguredTextServiceClient.SERVICE_NAME_EXPRESSION)
+interface ConfiguredTextServiceClient {
     String INVALID_URI = "http://localhost:1";
     String DEFAULT_CLIENT_NAME = "missing-configured-client";
     String CLIENT_NAME_EXPRESSION =
-            "${configured-string-service.client.name:" + DEFAULT_CLIENT_NAME + "}";
+            "${configured-text-service.client.name:" + DEFAULT_CLIENT_NAME + "}";
     String SERVICE_NAME_EXPRESSION =
-            "${configured-string-service.grpc.service-name:" + ConfiguredStringServiceEndpoint.DEFAULT_SERVICE_NAME + "}";
+            "${configured-text-service.grpc.service-name:" + ConfiguredTextServiceEndpoint.DEFAULT_SERVICE_NAME + "}";
 
     @RpcClient.Unary("Upper")
-    Strings.StringMessage upper(Strings.StringMessage request);
+    TextMessages.TextMessage upper(TextMessages.TextMessage request);
 }

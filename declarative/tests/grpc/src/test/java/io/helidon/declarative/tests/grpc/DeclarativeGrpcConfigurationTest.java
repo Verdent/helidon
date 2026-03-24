@@ -35,18 +35,18 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @ServerTest
 class DeclarativeGrpcConfigurationTest {
     private static final GrpcServiceDescriptor SERVICE_DESCRIPTOR = GrpcServiceDescriptor.builder()
-            .serviceName(ConfiguredStringServiceEndpoint.CONFIGURED_SERVICE_NAME)
+            .serviceName(ConfiguredTextServiceEndpoint.CONFIGURED_SERVICE_NAME)
             .putMethod("Upper",
-                       GrpcClientMethodDescriptor.unary(ConfiguredStringServiceEndpoint.CONFIGURED_SERVICE_NAME, "Upper")
-                               .requestType(Strings.StringMessage.class)
-                               .responseType(Strings.StringMessage.class)
+                       GrpcClientMethodDescriptor.unary(ConfiguredTextServiceEndpoint.CONFIGURED_SERVICE_NAME, "Upper")
+                               .requestType(TextMessages.TextMessage.class)
+                               .responseType(TextMessages.TextMessage.class)
                                .build())
             .build();
 
     private final GrpcClient configuredSocketClient;
     private final ServiceRegistry registry;
 
-    DeclarativeGrpcConfigurationTest(@Socket(ConfiguredStringServiceEndpoint.SOCKET_NAME) GrpcClient configuredSocketClient,
+    DeclarativeGrpcConfigurationTest(@Socket(ConfiguredTextServiceEndpoint.SOCKET_NAME) GrpcClient configuredSocketClient,
                                      ServiceRegistry registry) {
         this.configuredSocketClient = configuredSocketClient;
         this.registry = registry;
@@ -56,32 +56,32 @@ class DeclarativeGrpcConfigurationTest {
     void testConfiguredServerRegistration() {
         GrpcRouteRegistration registration = registry.all(GrpcRouteRegistration.class)
                 .stream()
-                .filter(it -> it.socket().equals(ConfiguredStringServiceEndpoint.SOCKET_NAME))
+                .filter(it -> it.socket().equals(ConfiguredTextServiceEndpoint.SOCKET_NAME))
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(registration.socket(), is(ConfiguredStringServiceEndpoint.SOCKET_NAME));
+        assertThat(registration.socket(), is(ConfiguredTextServiceEndpoint.SOCKET_NAME));
         assertThat(registration.socketRequired(), is(true));
-        assertThat(registration.descriptor().fullName(), is(ConfiguredStringServiceEndpoint.CONFIGURED_SERVICE_NAME));
+        assertThat(registration.descriptor().fullName(), is(ConfiguredTextServiceEndpoint.CONFIGURED_SERVICE_NAME));
     }
 
     @Test
     void testConfiguredNamedClientSelection() {
-        Strings.StringMessage directResponse = configuredSocketClient.serviceClient(SERVICE_DESCRIPTOR)
+        TextMessages.TextMessage directResponse = configuredSocketClient.serviceClient(SERVICE_DESCRIPTOR)
                 .unary("Upper", message("hello"));
         assertThat(directResponse.getText(), is("CONFIGURED:HELLO"));
 
-        ConfiguredStringServiceClient typedClient = registry.get(Lookup.builder()
-                .addContract(ConfiguredStringServiceClient.class)
+        ConfiguredTextServiceClient typedClient = registry.get(Lookup.builder()
+                .addContract(ConfiguredTextServiceClient.class)
                 .addQualifier(Qualifier.create(RpcClient.Client.class))
                 .build());
 
-        Strings.StringMessage typedResponse = typedClient.upper(message("hello"));
+        TextMessages.TextMessage typedResponse = typedClient.upper(message("hello"));
         assertThat(typedResponse.getText(), is("CONFIGURED:HELLO"));
     }
 
-    private static Strings.StringMessage message(String text) {
-        return Strings.StringMessage.newBuilder()
+    private static TextMessages.TextMessage message(String text) {
+        return TextMessages.TextMessage.newBuilder()
                 .setText(text)
                 .build();
     }

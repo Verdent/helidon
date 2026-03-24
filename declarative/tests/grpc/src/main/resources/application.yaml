@@ -21,13 +21,13 @@ server:
     - name: "grpc-config"
       port: 0
 
-string-service.client:
+text-service.client:
   uri: "http://localhost:${test.server.port}"
 
-configured-string-service:
+configured-text-service:
   server:
     listener: "grpc-config"
   grpc:
-    service-name: "grpc.declarative.StringService"
+    service-name: "grpc.declarative.TextService"
   client:
-    name: "configured-string-service"
+    name: "configured-text-service"

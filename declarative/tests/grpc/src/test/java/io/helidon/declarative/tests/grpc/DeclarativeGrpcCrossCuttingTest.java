@@ -57,10 +57,10 @@ class DeclarativeGrpcCrossCuttingTest {
 
     @Test
     void testMetricsAndTracingOnGrpcEntryPoint() {
-        StringServiceClient typedClient = typedClient();
+        TextServiceClient typedClient = typedClient();
         int initialCounter = counterValue();
 
-        Strings.StringMessage response = typedClient.upper(message("hello"));
+        TextMessages.TextMessage response = typedClient.upper(message("hello"));
         assertThat(response.getText(), is("HELLO"));
 
         SpanData tracedMethod = exporter.spanNamed("grpc.upper");
@@ -70,15 +70,15 @@ class DeclarativeGrpcCrossCuttingTest {
         assertThat(counterValue(), is(initialCounter + 1));
     }
 
-    private StringServiceClient typedClient() {
+    private TextServiceClient typedClient() {
         return registry.get(Lookup.builder()
-                                    .addContract(StringServiceClient.class)
+                                    .addContract(TextServiceClient.class)
                                     .addQualifier(Qualifier.create(RpcClient.Client.class))
                                     .build());
     }
 
-    private static Strings.StringMessage message(String text) {
-        return Strings.StringMessage.newBuilder()
+    private static TextMessages.TextMessage message(String text) {
+        return TextMessages.TextMessage.newBuilder()
                 .setText(text)
                 .build();
     }

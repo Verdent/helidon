@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package grpc.declarative;
+
+option java_package = "io.helidon.declarative.tests.grpc";
+option java_outer_classname = "TextMessages";
+
+service TextService {
+  rpc Upper (TextMessage) returns (TextMessage);
+  rpc Split (TextMessage) returns (stream TextMessage);
+  rpc Join (stream TextMessage) returns (TextMessage);
+  rpc Echo (stream TextMessage) returns (stream TextMessage);
+}
+
+message TextMessage {
+  string text = 1;
+}

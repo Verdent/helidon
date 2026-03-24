@@ -29,27 +29,27 @@ import io.grpc.stub.StreamObserver;
 
 @RpcServer.Endpoint
 @RpcServer.Listener("@default")
-@RpcServer.ServiceName("StringService")
+@RpcServer.ServiceName("TextService")
 @Service.Singleton
-class StringServiceEndpoint {
+class TextServiceEndpoint {
     @RpcServer.Proto
     Descriptors.FileDescriptor proto() {
-        return Strings.getDescriptor();
+        return TextMessages.getDescriptor();
     }
 
     @RpcServer.Unary("Upper")
     @Metrics.Counted(value = "grpc-upper-count", absoluteName = true)
     @Tracing.Traced(value = "grpc.upper", tags = @Tracing.Tag(key = "transport", value = "grpc"),
                     kind = Span.Kind.SERVER)
-    void upper(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
-        observer.onNext(Strings.StringMessage.newBuilder()
+    void upper(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
+        observer.onNext(TextMessages.TextMessage.newBuilder()
                                 .setText(request.getText().toUpperCase(Locale.ROOT))
                                 .build());
         observer.onCompleted();
     }
 
     @RpcServer.ServerStreaming("Split")
-    void split(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
+    void split(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
         if (request.getText().isBlank()) {
             observer.onCompleted();
             return;
@@ -65,12 +65,12 @@ class StringServiceEndpoint {
     }
 
     @RpcServer.ClientStreaming("Join")
-    StreamObserver<Strings.StringMessage> join(StreamObserver<Strings.StringMessage> observer) {
+    StreamObserver<TextMessages.TextMessage> join(StreamObserver<TextMessages.TextMessage> observer) {
         return new StreamObserver<>() {
             private final StringBuilder text = new StringBuilder();
 
             @Override
-            public void onNext(Strings.StringMessage value) {
+            public void onNext(TextMessages.TextMessage value) {
                 if (text.length() > 0) {
                     text.append(' ');
                 }
@@ -91,10 +91,10 @@ class StringServiceEndpoint {
     }
 
     @RpcServer.Bidirectional("Echo")
-    StreamObserver<Strings.StringMessage> echo(StreamObserver<Strings.StringMessage> observer) {
+    StreamObserver<TextMessages.TextMessage> echo(StreamObserver<TextMessages.TextMessage> observer) {
         return new StreamObserver<>() {
             @Override
-            public void onNext(Strings.StringMessage value) {
+            public void onNext(TextMessages.TextMessage value) {
                 observer.onNext(value);
             }
 
@@ -110,8 +110,8 @@ class StringServiceEndpoint {
         };
     }
 
-    private static Strings.StringMessage message(String text) {
-        return Strings.StringMessage.newBuilder()
+    private static TextMessages.TextMessage message(String text) {
+        return TextMessages.TextMessage.newBuilder()
                 .setText(text)
                 .build();
     }

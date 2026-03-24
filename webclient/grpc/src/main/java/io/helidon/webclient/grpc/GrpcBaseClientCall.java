@@ -37,6 +37,7 @@ import io.helidon.http.Header;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.Headers;
 import io.helidon.http.WritableHeaders;
 import io.helidon.http.http2.Http2FrameData;
 import io.helidon.http.http2.Http2Headers;
@@ -67,8 +68,11 @@ import io.helidon.webclient.http2.StreamTimeoutException;
 
 import io.grpc.CallOptions;
 import io.grpc.ClientCall;
+import io.grpc.Decompressor;
+import io.grpc.DecompressorRegistry;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+import io.grpc.Status;
 
 import static io.helidon.metrics.api.Meter.Scope.VENDOR;
 import static java.lang.System.Logger.Level.DEBUG;
@@ -82,9 +86,13 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
     private static final System.Logger LOGGER = System.getLogger(GrpcBaseClientCall.class.getName());
 
     protected static final Metadata EMPTY_METADATA = new Metadata();
-    protected static final Header GRPC_ACCEPT_ENCODING = HeaderValues.create(HeaderNames.ACCEPT_ENCODING, "gzip");
+    protected static final Header GRPC_ACCEPT_ENCODING =
+            HeaderValues.create(HeaderNames.create("grpc-accept-encoding"), "gzip");
     protected static final Header GRPC_CONTENT_TYPE = HeaderValues.create(HeaderNames.CONTENT_TYPE, "application/grpc");
+    protected static final HeaderName GRPC_ENCODING_NAME = HeaderNames.createFromLowercase("grpc-encoding");
     protected static final HeaderName STATUS_NAME = HeaderNames.createFromLowercase("grpc-status");
+    protected static final HeaderName MESSAGE_NAME = HeaderNames.createFromLowercase("grpc-message");
+    private static final DecompressorRegistry DECOMPRESSOR_REGISTRY = DecompressorRegistry.getDefaultInstance();
 
     protected static final BufferData PING_FRAME = BufferData.create("PING");
     protected static final BufferData EMPTY_BUFFER_DATA = BufferData.empty();
@@ -96,7 +104,8 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
                                    DistributionSummary sentMessageSize,
                                    DistributionSummary recvMessageSize) { }
 
-    private static final LazyValue<Map<String, MethodMetrics>> METHOD_METRICS = LazyValue.create(ConcurrentHashMap::new);
+    private static final LazyValue<Map<String, MethodMetrics>> METHOD_METRICS =
+            LazyValue.create(ConcurrentHashMap::new);
 
     private final GrpcClientImpl grpcClient;
     private final GrpcChannel grpcChannel;
@@ -118,11 +127,15 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
     private volatile HelidonSocket socket;
     private volatile MethodMetrics methodMetrics;
     private volatile long startMillis;
+    private volatile Decompressor responseDecompressor;
+    private BufferData unreadGrpcFrame;
 
     private AtomicLong bytesSent;
     private AtomicLong bytesRcvd;
 
-    GrpcBaseClientCall(GrpcChannel grpcChannel, MethodDescriptor<ReqT, ResT> methodDescriptor, CallOptions callOptions) {
+    GrpcBaseClientCall(GrpcChannel grpcChannel,
+                       MethodDescriptor<ReqT, ResT> methodDescriptor,
+                       CallOptions callOptions) {
         this.grpcClient = (GrpcClientImpl) grpcChannel.grpcClient();
         this.grpcConfig = grpcClient.clientConfig();
         this.grpcChannel = grpcChannel;
@@ -194,7 +207,9 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
         startStreamingThreads();
 
         // send HEADERS frame
-        WritableHeaders<?> headers = setupHeaders(metadata, clientUri.authority(), methodDescriptor.getFullMethodName());
+        WritableHeaders<?> headers = setupHeaders(metadata,
+                                                  clientUri.authority(),
+                                                  methodDescriptor.getFullMethodName());
         clientStream.writeHeaders(Http2Headers.create(headers), false);
     }
 
@@ -207,6 +222,7 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
         headers.set(Http2Headers.SCHEME_NAME, "http");
         headers.set(GRPC_CONTENT_TYPE);
         headers.set(GRPC_ACCEPT_ENCODING);
+        headers.set(HeaderValues.TE_TRAILERS);
         return headers;
     }
 
@@ -218,50 +234,77 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
      * @return data for gRPC frame or {@code null}
      */
     protected BufferData readGrpcFrame() {
-        // attempt to read HTTP/2 frame
-        Http2FrameData frameData;
-        try {
-            frameData = clientStream.readOne(pollWaitTime());
-        } catch (StreamTimeoutException e) {
-            handleStreamTimeout(e);
-            return null;
-        }
-        if (frameData == null) {
-            return null;
+        BufferData bufferData = unreadGrpcFrame;
+        unreadGrpcFrame = null;
+
+        while (bufferData == null || bufferData.available() < DATA_PREFIX_LENGTH) {
+            Http2FrameData frameData = nextDataFrame();
+            if (frameData == null) {
+                unreadGrpcFrame = bufferData;
+                return null;
+            }
+            bufferData = appendBufferData(bufferData, frameData.data());
         }
 
-        // read more HTTP/2 frames if long gRPC frame
-        BufferData bufferData = frameData.data();
-        bufferData.read();                                      // skip compression
-        long grpcLength = bufferData.readUnsignedInt32();       // length prefixed
-        grpcLength -= bufferData.available();
+        int compressionFlag = bufferData.read();
+        int grpcLength = Math.toIntExact(bufferData.readUnsignedInt32());
 
-        if (grpcLength > 0) {
-            // collect frames in composite buffer
-            CompositeBufferData compositeBuffer = BufferData.createComposite(bufferData);
-            do {
-                try {
-                    frameData = clientStream.readOne(pollWaitTime());
-                } catch (StreamTimeoutException e) {
-                    handleStreamTimeout(e);
-                    continue;
+        while (bufferData.available() < grpcLength) {
+            Http2FrameData frameData = nextDataFrame();
+            if (frameData == null) {
+                if (clientStream.trailers().isDone() || !clientStream.hasEntity()) {
+                    throw new IllegalStateException("Incomplete gRPC frame received before stream completion");
                 }
-                if (frameData == null) {
-                    continue;
-                }
-
-                bufferData = frameData.data();
-                compositeBuffer.add(bufferData);
-                grpcLength -= bufferData.available();
-            } while (grpcLength > 0);
-
-            // switch to composite buffer
-            bufferData = compositeBuffer;
+                unreadGrpcFrame = BufferData.create(DATA_PREFIX_LENGTH + bufferData.available());
+                unreadGrpcFrame.write(compressionFlag);
+                unreadGrpcFrame.writeUnsignedInt32(grpcLength);
+                unreadGrpcFrame.write(bufferData);
+                unreadGrpcFrame.rewind();
+                return null;
+            }
+            bufferData = appendBufferData(bufferData, frameData.data());
         }
 
-        // rewind and return
-        bufferData.rewind();
-        return bufferData;
+        BufferData grpcFrame = BufferData.create(DATA_PREFIX_LENGTH + grpcLength);
+        grpcFrame.write(compressionFlag);
+        grpcFrame.writeUnsignedInt32(grpcLength);
+        grpcFrame.write(bufferData, grpcLength);
+        grpcFrame.rewind();
+
+        unreadGrpcFrame = bufferData.available() > 0 ? bufferData : null;
+        return grpcFrame;
+    }
+
+    private Http2FrameData nextDataFrame() {
+        while (true) {
+            Http2FrameData frameData;
+            try {
+                frameData = clientStream.readOne(pollWaitTime());
+            } catch (StreamTimeoutException e) {
+                handleStreamTimeout(e);
+                return null;
+            }
+            if (frameData != null) {
+                return frameData;
+            }
+            if (clientStream.trailers().isDone() || !clientStream.hasEntity()) {
+                return null;
+            }
+        }
+    }
+
+    private BufferData appendBufferData(BufferData current, BufferData next) {
+        if (current == null || current.available() == 0) {
+            return next;
+        }
+        if (next.available() == 0) {
+            return current;
+        }
+        if (current instanceof CompositeBufferData composite) {
+            composite.add(next);
+            return composite;
+        }
+        return BufferData.createComposite(current).add(next);
     }
 
     /**
@@ -322,15 +365,105 @@ abstract class GrpcBaseClientCall<ReqT, ResT> extends ClientCall<ReqT, ResT> {
                 && clientStream.streamState() != Http2StreamState.CLOSED;
     }
 
+    protected Metadata metadata(Http2Headers headers) {
+        return GrpcHeadersUtil.toMetadata(headers);
+    }
+
+    protected Metadata metadata(Headers headers) {
+        return GrpcHeadersUtil.toMetadata(headers);
+    }
+
+    protected static Status status(Http2Headers headers) {
+        return status(headers.httpHeaders());
+    }
+
+    protected static Status status(Headers headers) {
+        Status status = headers.contains(STATUS_NAME)
+                ? Status.fromCodeValue(headers.get(STATUS_NAME).getInt())
+                : Status.OK;
+        if (headers.contains(MESSAGE_NAME)) {
+            status = status.withDescription(GrpcHeadersUtil.decodeMessage(headers.get(MESSAGE_NAME).get()));
+        }
+        return status;
+    }
+
+    static Status finalStatus(Headers headers) {
+        if (headers.contains(STATUS_NAME)) {
+            return status(headers);
+        }
+        return synthesizedStatus(headers);
+    }
+
     protected ResT toResponse(BufferData bufferData) {
-        bufferData.read();                  // compression
+        int compression = bufferData.read();
         bufferData.readUnsignedInt32();     // length prefixed
-        return responseMarshaller.parse(new InputStream() {
+        InputStream inputStream = new InputStream() {
             @Override
             public int read() {
                 return bufferData.available() > 0 ? bufferData.read() : -1;
             }
-        });
+        };
+        if (compression == 1) {
+            Decompressor decompressor = responseDecompressor;
+            if (decompressor == null) {
+                throw Status.INTERNAL.withDescription("Compressed response without a supported grpc-encoding")
+                        .asRuntimeException();
+            }
+            try {
+                inputStream = decompressor.decompress(inputStream);
+            } catch (IOException e) {
+                throw Status.INTERNAL.withDescription("Failed to decompress gRPC response")
+                        .withCause(e)
+                        .asRuntimeException();
+            }
+        }
+        return responseMarshaller.parse(inputStream);
+    }
+
+    protected void initResponseCompression(Headers headers) {
+        if (!headers.contains(GRPC_ENCODING_NAME)) {
+            responseDecompressor = null;
+            return;
+        }
+
+        String encoding = headers.get(GRPC_ENCODING_NAME).get();
+        if ("identity".equalsIgnoreCase(encoding)) {
+            responseDecompressor = null;
+            return;
+        }
+
+        Decompressor decompressor = DECOMPRESSOR_REGISTRY.lookupDecompressor(encoding);
+        if (decompressor == null) {
+            throw Status.INTERNAL.withDescription("Unsupported grpc-encoding: " + encoding).asRuntimeException();
+        }
+        responseDecompressor = decompressor;
+    }
+
+    private static Status synthesizedStatus(Headers headers) {
+        int httpStatus = headers.contains(Http2Headers.STATUS_NAME)
+                ? headers.get(Http2Headers.STATUS_NAME).getInt()
+                : 200;
+        Status status = switch (httpStatus) {
+            case 400 -> Status.INTERNAL;
+            case 401 -> Status.UNAUTHENTICATED;
+            case 403 -> Status.PERMISSION_DENIED;
+            case 404 -> Status.UNIMPLEMENTED;
+            case 429, 502, 503, 504 -> Status.UNAVAILABLE;
+            default -> Status.UNKNOWN;
+        };
+
+        if (headers.contains(HeaderNames.CONTENT_TYPE)) {
+            String contentType = headers.get(HeaderNames.CONTENT_TYPE).get();
+            if (!isGrpcContentType(contentType)) {
+                return status.withDescription("invalid content-type: " + contentType);
+            }
+        }
+
+        return status.withDescription("missing grpc-status; inferred from HTTP status code " + httpStatus);
+    }
+
+    private static boolean isGrpcContentType(String contentType) {
+        return contentType.regionMatches(true, 0, "application/grpc", 0, "application/grpc".length());
     }
 
     protected byte[] serializeMessage(ReqT message) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Oracle and/or its affiliates.
+ * Copyright (c) 2025, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,16 +29,22 @@ import static org.hamcrest.Matchers.greaterThan;
 class GrpcBaseClientCallTest {
 
     @Test
-    void testHeadersAndMetadata() {
+    void testSetupHeadersIncludeGrpcTransportRequirements() {
+        // Spec note: PROTOCOL-HTTP2 requires gRPC requests to use POST with the
+        // method path, content-type application/grpc, TE: trailers, and the
+        // grpc-accept-encoding negotiation header when compression is supported.
         Metadata metadata = new Metadata();
         Metadata.Key<String> key = Metadata.Key.of("cookie", Metadata.ASCII_STRING_MARSHALLER);
         metadata.put(key, "sugar");
         WritableHeaders<?> headers = GrpcBaseClientCall.setupHeaders(metadata, "localhost", "foo");
-        assertThat(headers.size(), greaterThan(2));
+        assertThat(headers.size(), greaterThan(4));
         assertThat(headers.get(Http2Headers.AUTHORITY_NAME).get(), is("localhost"));
         assertThat(headers.get(Http2Headers.METHOD_NAME).get(), is("POST"));
         assertThat(headers.get(Http2Headers.PATH_NAME).get(), is("/foo"));
         assertThat(headers.get(Http2Headers.SCHEME_NAME).get(), is("http"));
         assertThat(headers.get(HeaderNames.COOKIE).get(), is("sugar"));
+        assertThat(headers.get(HeaderNames.CONTENT_TYPE).get(), is("application/grpc"));
+        assertThat(headers.get(HeaderNames.TE).get(), is("trailers"));
+        assertThat(headers.get(HeaderNames.create("grpc-accept-encoding")).get(), is("gzip"));
     }
 }

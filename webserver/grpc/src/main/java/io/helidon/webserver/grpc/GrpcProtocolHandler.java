@@ -310,10 +310,12 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                     return;
                 }
             } else if (httpHeaders.contains(GRPC_ACCEPT_ENCODING)) {
-                Header acceptEncoding = httpHeaders.get(GRPC_ACCEPT_ENCODING);
-
                 // check for matching encoding
-                for (String encoding : acceptEncoding.allValues()) {
+                for (String item : httpHeaders.values(GRPC_ACCEPT_ENCODING)) {
+                    String encoding = item.trim();
+                    if (encoding.isEmpty()) {
+                        continue;
+                    }
                     compressor = COMPRESSOR_REGISTRY.lookupCompressor(encoding);
                     if (compressor != null) {
                         decompressor = DECOMPRESSOR_REGISTRY.lookupDecompressor(encoding);
@@ -383,6 +385,10 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
             @Override
             public void sendHeaders(Metadata headers) {
+                if (headersSent) {
+                    return;
+                }
+
                 // prepare response headers
                 WritableHeaders<?> writable = WritableHeaders.create();
                 GrpcHeadersUtil.updateHeaders(writable, headers);
@@ -461,7 +467,7 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                 writable.set(HeaderValues.create(GrpcStatus.STATUS_NAME, statusValue));
                 String description = status.getDescription();
                 if (description != null) {
-                    writable.set(HeaderValues.create(GrpcStatus.MESSAGE_NAME, description));
+                    writable.set(HeaderValues.create(GrpcStatus.MESSAGE_NAME, GrpcHeadersUtil.encodeMessage(description)));
                 }
 
                 // write headers frame with trailers and EOS
@@ -477,7 +483,7 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                         current -> nextStreamState(current, Http2StreamState.HALF_CLOSED_LOCAL));
 
                 // inform listener of completion
-                if (!callCancelled) {
+                if (!callCancelled && listener != null) {
                     listener.onComplete();
                 }
 
@@ -563,16 +569,25 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
         @Override
         public int read() {
+            if (bufferData.available() == 0) {
+                return -1;
+            }
             return bufferData.read();
         }
 
         @Override
         public int read(byte[] b) {
-            return bufferData.read(b);
+            return read(b, 0, b.length);
         }
 
         @Override
         public int read(byte[] b, int off, int len) {
+            if (len == 0) {
+                return 0;
+            }
+            if (bufferData.available() == 0) {
+                return -1;
+            }
             return bufferData.read(b, off, len);
         }
 

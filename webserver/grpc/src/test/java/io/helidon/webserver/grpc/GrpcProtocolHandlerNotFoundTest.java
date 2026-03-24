@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,9 @@ class GrpcProtocolHandlerNotFoundTest {
     private boolean validateHeaders;
 
     @Test
-    void testNotFoundHeaders() {
+    void testMissingGrpcRouteReturnsOkWithUnimplementedStatus() {
+        // Spec note: unknown gRPC methods and services are reported via
+        // grpc-status UNIMPLEMENTED while the HTTP status remains 200.
         Http2StreamWriter writer = new Http2StreamWriter() {
             @Override
             public void write(Http2FrameData frame) {
@@ -48,7 +50,10 @@ class GrpcProtocolHandlerNotFoundTest {
 
             @Override
             public int writeHeaders(Http2Headers headers, int streamId, Http2Flag.HeaderFlags flags, FlowControl.Outbound flowControl) {
-                validateHeaders = (headers.status() == Status.NOT_FOUND_404);
+                validateHeaders = headers.status() == Status.OK_200
+                        && headers.httpHeaders().contains(GrpcStatus.STATUS_NAME)
+                        && headers.httpHeaders().get(GrpcStatus.STATUS_NAME).getInt()
+                        == io.grpc.Status.Code.UNIMPLEMENTED.value();
                 try {
                     headers.validateResponse();
                 } catch (Exception e) {

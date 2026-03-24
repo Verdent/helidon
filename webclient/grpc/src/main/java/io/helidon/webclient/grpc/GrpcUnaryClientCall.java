@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, 2025 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,12 @@ package io.helidon.webclient.grpc;
 import java.time.Duration;
 
 import io.helidon.common.buffers.BufferData;
-import io.helidon.http.Header;
 import io.helidon.http.Headers;
 import io.helidon.http.http2.Http2Headers;
+import io.helidon.webclient.http2.StreamTimeoutException;
 
 import io.grpc.CallOptions;
+import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 
@@ -55,39 +56,43 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
     public void request(int numMessages) {
         socket().log(LOGGER, DEBUG, "request called %d", numMessages);
         if (numMessages < 1) {
-            close(Status.INVALID_ARGUMENT);
+            close(Status.INVALID_ARGUMENT, EMPTY_METADATA);
         }
     }
 
     @Override
     public void cancel(String message, Throwable cause) {
         socket().log(LOGGER, DEBUG, "cancel called %s", message);
-        close(Status.CANCELLED);
+        close(Status.CANCELLED, EMPTY_METADATA);
     }
 
     @Override
     public void halfClose() {
         socket().log(LOGGER, DEBUG, "halfClose called");
-        if (responseReceived) {
-            if (responseHeaders != null) {
-                Headers headers = responseHeaders.httpHeaders();
-                if (headers.contains(STATUS_NAME)) {
-                    Header status = headers.get(STATUS_NAME);
-                    close(Status.fromCodeValue(status.getInt()));
-                    return;
-                }
+        Metadata trailers = EMPTY_METADATA;
+        Status status = Status.OK;
+
+        if (clientStream().trailers().isDone()) {
+            Headers headers = clientStream().trailers().join();
+            trailers = metadata(headers);
+            status = finalStatus(headers);
+        } else if (responseHeaders != null) {
+            if (responseHeaders.httpHeaders().contains(STATUS_NAME)) {
+                trailers = metadata(responseHeaders);
             }
-            close(Status.OK);
-        } else {
-            close(Status.UNKNOWN);
+            status = responseReceived ? finalStatus(responseHeaders.httpHeaders()) : Status.UNKNOWN;
+        } else if (!responseReceived) {
+            status = Status.UNKNOWN;
         }
+
+        close(status, trailers);
     }
 
     @Override
     public void sendMessage(ReqT message) {
         // should only be called once
         if (requestSent) {
-            close(Status.FAILED_PRECONDITION);
+            close(Status.FAILED_PRECONDITION, EMPTY_METADATA);
             return;
         }
 
@@ -106,7 +111,16 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
         }
 
         // read response headers, or trailers if an error occurred
-        responseHeaders = clientStream().readHeaders();
+        try {
+            responseHeaders = clientStream().readHeaders();
+        } catch (StreamTimeoutException e) {
+            close(Status.DEADLINE_EXCEEDED, EMPTY_METADATA);
+            return;
+        }
+        initResponseCompression(responseHeaders.httpHeaders());
+        if (!responseHeaders.httpHeaders().contains(STATUS_NAME)) {
+            responseListener().onHeaders(metadata(responseHeaders));
+        }
 
         while (isRemoteOpen()) {
             // trailers or eos received?
@@ -137,10 +151,10 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
         // no-op
     }
 
-    private void close(Status status) {
+    private void close(Status status, Metadata trailers) {
         if (!closeCalled) {
             socket().log(LOGGER, DEBUG, "closing client call");
-            responseListener().onClose(status, EMPTY_METADATA);
+            responseListener().onClose(status, trailers);
             clientStream().cancel();
             connection().close();
 

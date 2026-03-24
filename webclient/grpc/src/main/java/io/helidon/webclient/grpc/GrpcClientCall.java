@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, 2025 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,12 +26,12 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import io.helidon.common.buffers.BufferData;
-import io.helidon.http.Header;
 import io.helidon.http.Headers;
 import io.helidon.http.http2.Http2Headers;
 import io.helidon.webclient.http2.StreamTimeoutException;
 
 import io.grpc.CallOptions;
+import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 
@@ -170,13 +170,18 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
 
                 // read response headers
                 Status status = Status.OK;
+                Metadata trailers = EMPTY_METADATA;
                 boolean headersRead = false;
+                Http2Headers responseHeaders = null;
                 do {
                     try {
-                        Http2Headers headers = clientStream().readHeaders();
-                        if (headers.httpHeaders().contains(STATUS_NAME)) {
-                            Header grpcStatus = headers.httpHeaders().get(STATUS_NAME);
-                            status = Status.fromCodeValue(grpcStatus.getInt());
+                        responseHeaders = clientStream().readHeaders();
+                        initResponseCompression(responseHeaders.httpHeaders());
+                        if (responseHeaders.httpHeaders().contains(STATUS_NAME)) {
+                            status = finalStatus(responseHeaders.httpHeaders());
+                            trailers = metadata(responseHeaders);
+                        } else {
+                            responseListener().onHeaders(metadata(responseHeaders));
                         }
                         headersRead = true;
                     } catch (StreamTimeoutException e) {
@@ -225,12 +230,13 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
 
                 // report onClose call with final status
                 if (clientStream().trailers().isDone()) {
-                    Headers trailers = clientStream().trailers().get();
-                    if (trailers.contains(STATUS_NAME)) {
-                        status = Status.fromCodeValue(trailers.get(STATUS_NAME).getInt());
-                    }
+                    Headers responseTrailers = clientStream().trailers().join();
+                    trailers = metadata(responseTrailers);
+                    status = finalStatus(responseTrailers);
+                } else if (responseHeaders != null) {
+                    status = finalStatus(responseHeaders.httpHeaders());
                 }
-                responseListener().onClose(status, EMPTY_METADATA);
+                responseListener().onClose(status, trailers);
             } catch (StreamTimeoutException e) {
                 responseListener().onClose(Status.DEADLINE_EXCEEDED, EMPTY_METADATA);
             } catch (Throwable e) {
@@ -264,7 +270,8 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
     private void drainReceivingQueue() {
         socket().log(LOGGER, DEBUG, "[Reading thread] draining receiving queue");
         while (!receivingQueue.isEmpty() && messageRequest.tryAcquire()) {
-            ResT res = toResponse(receivingQueue.remove());
+            BufferData frameData = receivingQueue.remove();
+            ResT res = toResponse(frameData);
             responseListener().onMessage(res);
         }
     }

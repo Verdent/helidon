@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,12 @@ import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
+import io.grpc.ForwardingServerCall;
+import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import io.helidon.common.Weight;
@@ -38,6 +43,11 @@ import io.helidon.webserver.testing.junit5.SetUpServer;
 import org.junit.jupiter.api.BeforeEach;
 
 class GrpcBaseTest {
+    static final Metadata.Key<String> INITIAL_METADATA_KEY =
+            Metadata.Key.of("x-grpc-test-echo-initial", Metadata.ASCII_STRING_MARSHALLER);
+    static final Metadata.Key<byte[]> TRAILING_METADATA_KEY =
+            Metadata.Key.of("x-grpc-test-echo-trailing-bin", Metadata.BINARY_BYTE_MARSHALLER);
+    static final String ERROR_PREFIX = "__status__:";
 
     private final List<Class<?>> calledInterceptors = new CopyOnWriteArrayList<>();
 
@@ -60,7 +70,8 @@ class GrpcBaseTest {
 
     @SetUpRoute
     static void setUpRoute(GrpcRouting.Builder routing) {
-        routing.unary(Strings.getDescriptor(),
+        routing.intercept(new MetadataEchoInterceptor())
+                .unary(Strings.getDescriptor(),
                         "StringService",
                         "Upper",
                         GrpcStubTest::upper)
@@ -133,7 +144,7 @@ class GrpcBaseTest {
             @Override
             public void onCompleted() {
                 streamObserver.onNext(Strings.StringMessage.newBuilder()
-                        .setText(builder.toString())
+                        .setText(builder == null ? "" : builder.toString())
                         .build());
                 streamObserver.onCompleted();
             }
@@ -142,8 +153,17 @@ class GrpcBaseTest {
 
     static StreamObserver<Strings.StringMessage> echo(StreamObserver<Strings.StringMessage> streamObserver) {
         return new StreamObserver<>() {
+            private String failureDescription;
+
             @Override
             public void onNext(Strings.StringMessage value) {
+                if (failureDescription != null) {
+                    return;
+                }
+                if (value.getText().startsWith(ERROR_PREFIX)) {
+                    failureDescription = value.getText().substring(ERROR_PREFIX.length());
+                    return;
+                }
                 streamObserver.onNext(value);
             }
 
@@ -154,13 +174,17 @@ class GrpcBaseTest {
 
             @Override
             public void onCompleted() {
-                streamObserver.onCompleted();
+                if (failureDescription != null) {
+                    streamObserver.onError(Status.INVALID_ARGUMENT.withDescription(failureDescription).asRuntimeException());
+                } else {
+                    streamObserver.onCompleted();
+                }
             }
         };
     }
 
     static void badMethod(Strings.StringMessage req, StreamObserver<Strings.StringMessage> streamObserver) {
-        streamObserver.onError(Status.INTERNAL.asException());
+        streamObserver.onError(Status.INVALID_ARGUMENT.withDescription(req.getText()).asRuntimeException());
     }
 
     Strings.StringMessage newStringMessage(String data) {
@@ -245,5 +269,31 @@ class GrpcBaseTest {
                        new Weight100Interceptor(),
                        new Weight500Interceptor(),
                        new Weight1000Interceptor());
+    }
+
+    private static class MetadataEchoInterceptor implements ServerInterceptor {
+        @Override
+        public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call,
+                                                                     Metadata headers,
+                                                                     ServerCallHandler<ReqT, RespT> next) {
+            String initialMetadata = headers.get(INITIAL_METADATA_KEY);
+            if (initialMetadata != null) {
+                Metadata responseHeaders = new Metadata();
+                responseHeaders.put(INITIAL_METADATA_KEY, initialMetadata);
+                call.sendHeaders(responseHeaders);
+            }
+
+            ServerCall<ReqT, RespT> responseCall = new ForwardingServerCall.SimpleForwardingServerCall<>(call) {
+                @Override
+                public void close(Status status, Metadata trailers) {
+                    byte[] trailingMetadata = headers.get(TRAILING_METADATA_KEY);
+                    if (trailingMetadata != null) {
+                        trailers.put(TRAILING_METADATA_KEY, trailingMetadata);
+                    }
+                    super.close(status, trailers);
+                }
+            };
+            return next.startCall(responseCall, headers);
+        }
     }
 }

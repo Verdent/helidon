@@ -34,6 +34,8 @@ public final class RpcClient {
 
     /**
      * Definition of a typed gRPC client.
+     * <p>
+     * The annotated type must be an interface.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -43,7 +45,7 @@ public final class RpcClient {
          * Target URI of the remote gRPC endpoint.
          * <p>
          * The value can use declarative configuration expressions such as
-         * {@code ${string-service.client.uri:http://localhost:8080}}.
+         * {@code ${text-service.client.uri:http://localhost:8080}}.
          *
          * @return endpoint URI
          */
@@ -53,7 +55,7 @@ public final class RpcClient {
          * Name of a named {@code GrpcClient} instance from the service registry to use.
          * <p>
          * The value can use declarative configuration expressions such as
-         * {@code ${string-service.client.name:string-service}}.
+         * {@code ${text-service.client.name:text-service}}.
          * <p>
          * If the named client is not available, a new client is created from the configured URI.
          *
@@ -79,7 +81,7 @@ public final class RpcClient {
      * {@code *Grpc.SERVICE_NAME} constant.
      * <p>
      * The value can use declarative configuration expressions such as
-     * {@code ${string-service.grpc.service-name:grpc.declarative.StringService}}.
+     * {@code ${text-service.grpc.service-name:grpc.declarative.TextService}}.
      * <p>
      * If not defined, the annotated interface simple name is used, which only matches
      * services whose gRPC service name is also unqualified.
@@ -99,6 +101,8 @@ public final class RpcClient {
 
     /**
      * Marks a unary gRPC client method.
+     * <p>
+     * Supported method shape: {@code ResponseT method(RequestT request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -116,6 +120,8 @@ public final class RpcClient {
 
     /**
      * Marks a server-streaming gRPC client method.
+     * <p>
+     * Supported method shape: {@code java.util.Iterator<ResponseT> method(RequestT request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -123,6 +129,8 @@ public final class RpcClient {
     public @interface ServerStreaming {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */
@@ -131,6 +139,8 @@ public final class RpcClient {
 
     /**
      * Marks a client-streaming gRPC client method.
+     * <p>
+     * Supported method shape: {@code ResponseT method(java.util.Iterator<RequestT> request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -138,6 +148,8 @@ public final class RpcClient {
     public @interface ClientStreaming {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */
@@ -146,6 +158,8 @@ public final class RpcClient {
 
     /**
      * Marks a bidirectional-streaming gRPC client method.
+     * <p>
+     * Supported method shape: {@code java.util.Iterator<ResponseT> method(java.util.Iterator<RequestT> request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -153,6 +167,8 @@ public final class RpcClient {
     public @interface Bidirectional {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */

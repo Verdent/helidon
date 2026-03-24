@@ -329,6 +329,20 @@ interface GreeterClient {
 
 A small end-to-end declarative gRPC example lives in [tests/grpc](tests/grpc/README.md).
 
+### Implementation
+
+For each `@RpcServer.Endpoint`, a class named `EndpointType__GrpcRouteRegistration` is generated.
+This singleton service builds the `GrpcServiceDescriptor`, wraps each declared method through `GrpcEntryPoint.EntryPoints`,
+and registers the endpoint on the configured gRPC listener.
+
+For each `@RpcClient.Endpoint`, a class named `AnnotatedInterface__GrpcClient` is generated.
+This class implements the annotated interface, creates a `GrpcServiceDescriptor` with
+`GrpcClientMethodDescriptor` instances for each declared RPC method, and delegates invocations to a
+`GrpcServiceClient`.
+
+If `clientName` resolves to a named `GrpcClient` in the service registry, the generated client uses that instance.
+Otherwise it resolves the configured URI and creates a dedicated `GrpcClient`.
+
 ## Scheduling
 
 Annotated method(s) of a service will be invoked with the schedule defined by the annotation.

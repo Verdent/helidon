@@ -26,7 +26,12 @@ import java.lang.annotation.Target;
 import io.helidon.service.registry.Service;
 
 /**
- * APIs to define a declarative gRPC server endpoint.
+ * APIs to define declarative gRPC server endpoints.
+ * <p>
+ * Annotate a concrete class with {@link Endpoint}, provide the protobuf descriptor using {@link Proto},
+ * and declare gRPC methods using {@link Unary}, {@link ServerStreaming}, {@link ClientStreaming},
+ * or {@link Bidirectional}. Declarative code generation creates a route-registration service that binds
+ * the endpoint to Helidon WebServer gRPC routing.
  */
 public final class RpcServer {
     private RpcServer() {
@@ -34,6 +39,8 @@ public final class RpcServer {
 
     /**
      * Definition of a gRPC server endpoint.
+     * <p>
+     * The annotated type must be a concrete class.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -48,7 +55,7 @@ public final class RpcServer {
      * <p>
      * If not defined, the endpoint class simple name is used.
      * The value can use declarative configuration expressions such as
-     * {@code ${string-service.grpc.service-name:grpc.declarative.StringService}}.
+     * {@code ${text-service.grpc.service-name:grpc.declarative.TextService}}.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -67,7 +74,7 @@ public final class RpcServer {
      * Listener socket assigned to this endpoint.
      * <p>
      * The value can use declarative configuration expressions such as
-     * {@code ${string-service.server.listener:@default}}.
+     * {@code ${text-service.server.listener:@default}}.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -96,6 +103,9 @@ public final class RpcServer {
 
     /**
      * Marks a unary gRPC method.
+     * <p>
+     * Supported method shape:
+     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -114,6 +124,9 @@ public final class RpcServer {
 
     /**
      * Marks a server-streaming gRPC method.
+     * <p>
+     * Supported method shape:
+     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -122,6 +135,8 @@ public final class RpcServer {
     public @interface ServerStreaming {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */
@@ -130,6 +145,9 @@ public final class RpcServer {
 
     /**
      * Marks a client-streaming gRPC method.
+     * <p>
+     * Supported method shape:
+     * {@code io.grpc.stub.StreamObserver<RequestT> method(io.grpc.stub.StreamObserver<ResponseT> observer)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -138,6 +156,8 @@ public final class RpcServer {
     public @interface ClientStreaming {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */
@@ -146,6 +166,9 @@ public final class RpcServer {
 
     /**
      * Marks a bidirectional gRPC method.
+     * <p>
+     * Supported method shape:
+     * {@code io.grpc.stub.StreamObserver<RequestT> method(io.grpc.stub.StreamObserver<ResponseT> observer)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -154,6 +177,8 @@ public final class RpcServer {
     public @interface Bidirectional {
         /**
          * Name of the gRPC method.
+         * <p>
+         * If not set, the Java method name is used.
          *
          * @return gRPC method name
          */

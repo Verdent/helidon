@@ -27,6 +27,9 @@ import io.helidon.service.registry.Service;
 
 /**
  * APIs to define a declarative gRPC client.
+ * <p>
+ * Declarative code generation creates a singleton implementation qualified with {@link Client}.
+ * RPC methods may be declared directly on the annotated interface or inherited from parent interfaces.
  */
 public final class RpcClient {
     private RpcClient() {
@@ -36,6 +39,8 @@ public final class RpcClient {
      * Definition of a typed gRPC client.
      * <p>
      * The annotated type must be an interface.
+     * Non-default methods declared on the interface or inherited from its parent interfaces
+     * are considered gRPC methods.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -46,6 +51,9 @@ public final class RpcClient {
          * <p>
          * The value can use declarative configuration expressions such as
          * {@code ${text-service.client.uri:http://localhost:8080}}.
+         * <p>
+         * If a dedicated client is created from this URI and the URI starts with {@code http://},
+         * TLS is disabled for that generated client instance.
          *
          * @return endpoint URI
          */
@@ -57,7 +65,9 @@ public final class RpcClient {
          * The value can use declarative configuration expressions such as
          * {@code ${text-service.client.name:text-service}}.
          * <p>
-         * If the named client is not available, a new client is created from the configured URI.
+         * Resolution order is:
+         * named {@code GrpcClient}, named {@code java.util.function.Supplier<GrpcClient>},
+         * then a new client created from the configured URI.
          *
          * @return registry client name
          */
@@ -103,6 +113,7 @@ public final class RpcClient {
      * Marks a unary gRPC client method.
      * <p>
      * Supported method shape: {@code ResponseT method(RequestT request)}.
+     * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -122,6 +133,7 @@ public final class RpcClient {
      * Marks a server-streaming gRPC client method.
      * <p>
      * Supported method shape: {@code java.util.Iterator<ResponseT> method(RequestT request)}.
+     * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -141,6 +153,7 @@ public final class RpcClient {
      * Marks a client-streaming gRPC client method.
      * <p>
      * Supported method shape: {@code ResponseT method(java.util.Iterator<RequestT> request)}.
+     * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -160,6 +173,7 @@ public final class RpcClient {
      * Marks a bidirectional-streaming gRPC client method.
      * <p>
      * Supported method shape: {@code java.util.Iterator<ResponseT> method(java.util.Iterator<RequestT> request)}.
+     * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)

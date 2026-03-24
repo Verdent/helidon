@@ -59,6 +59,69 @@ class GrpcClientCodegenTest {
     }
 
     @Test
+    void testInheritedClientMethodCodegen() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterContract.java", """
+                        package com.example;
+
+                        import io.helidon.grpc.api.RpcClient;
+
+                        interface GreeterContract {
+                            @RpcClient.Unary("SayHello")
+                            String sayHello(String request);
+                        }
+                        """)
+                .addSource("GreeterClient.java", """
+                        package com.example;
+
+                        import io.helidon.grpc.api.RpcClient;
+
+                        @RpcClient.Endpoint("http://localhost:8080")
+                        interface GreeterClient extends GreeterContract {
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterClient__GrpcClient.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("GrpcClientMethodDescriptor.unary(serviceName, \"SayHello\")"));
+        assertThat(content, containsString("return serviceClient.unary(\"SayHello\", request);"));
+    }
+
+    @Test
+    void testUnaryClientMethodNameDefaultsToJavaName() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterClient.java", """
+                        package com.example;
+
+                        import io.helidon.grpc.api.RpcClient;
+
+                        @RpcClient.Endpoint("http://localhost:8080")
+                        interface GreeterClient {
+                            @RpcClient.Unary
+                            String sayHello(String request);
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterClient__GrpcClient.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("serviceName = \"GreeterClient\";"));
+        assertThat(content, containsString("GrpcClientMethodDescriptor.unary(serviceName, \"sayHello\")"));
+        assertThat(content, containsString("return serviceClient.unary(\"sayHello\", request);"));
+    }
+
+    @Test
     void testUnaryClientIteratorParameterRejected() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("BrokenGreeterClient.java", """

@@ -256,11 +256,14 @@ Server endpoint annotations:
 
 - `@RpcServer.Endpoint` - required annotation on a concrete class representing the endpoint
 - `@RpcServer.Listener` - optional listener or socket selection
-- `@RpcServer.ServiceName` - optional service name override
-- `@RpcServer.Proto` - required method returning `com.google.protobuf.Descriptors.FileDescriptor`
+- `@RpcServer.ServiceName` - optional service name override; if missing or blank, the endpoint class simple name is used
+- `@RpcServer.Proto` - required, exactly one method returning `com.google.protobuf.Descriptors.FileDescriptor` and taking no parameters
 
 Server method shapes:
 
+- Method annotations may be declared directly on endpoint methods, or on matching methods from implemented interfaces
+- Blank method annotation values fall back to the Java method name
+- Only non-private, non-static methods are considered
 - `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
 - `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
 - `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
@@ -268,11 +271,14 @@ Server method shapes:
 
 Client annotations:
 
-- `@RpcClient.Endpoint` - required annotation on an interface representing the remote client
-- `@RpcClient.ServiceName` - optional remote service name override
+- `@RpcClient.Endpoint` - required annotation on an interface representing the remote client; `clientName` can be used to select a named `GrpcClient`
+- `@RpcClient.ServiceName` - optional remote service name override; if missing or blank, the interface simple name is used
 
 Client method shapes:
 
+- Methods may be declared on the annotated interface or inherited from parent interfaces
+- Default interface methods are ignored
+- Blank method annotation values fall back to the Java method name
 - `@RpcClient.Unary` - `ResponseT method(RequestT request)`
 - `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)`
 - `@RpcClient.ClientStreaming` - `ResponseT method(Iterator<RequestT> request)`
@@ -286,6 +292,8 @@ MyService(@RpcClient.Client GreeterClient greeterClient) {
 }
 ```
 
+The generated typed client is a singleton service qualified with `@RpcClient.Client`.
+
 ### Configuration
 
 String annotation values can use declarative configuration expressions, including defaults:
@@ -296,8 +304,14 @@ String annotation values can use declarative configuration expressions, includin
 - `@RpcClient.Endpoint(value = "${example.client.uri:http://localhost:8080}", clientName = "${example.client.name:}")`
 - `@RpcClient.ServiceName("${example.grpc.service-name:example.Greeter}")`
 
-If `clientName` resolves to a named `GrpcClient` in the service registry, the generated client uses that instance.
-If no named client is available, the generated client falls back to creating a client from the resolved URI.
+If `clientName` resolves to a non-blank value, the generated client looks up:
+
+1. a named `GrpcClient`
+2. a named `Supplier<GrpcClient>`
+3. a dedicated client created from the resolved URI
+
+If `clientName` is blank or not configured, the generated client is created from the resolved URI.
+When a client is created from `http://...`, TLS is disabled for that generated client instance.
 
 ### Example
 
@@ -333,7 +347,11 @@ A small end-to-end declarative gRPC example lives in [tests/grpc](tests/grpc/REA
 
 For each `@RpcServer.Endpoint`, a class named `EndpointType__GrpcRouteRegistration` is generated.
 This singleton service builds the `GrpcServiceDescriptor`, wraps each declared method through `GrpcEntryPoint.EntryPoints`,
-and registers the endpoint on the configured gRPC listener.
+and registers the endpoint on the configured gRPC listener. This is what makes declarative entry-point interception
+available to gRPC methods for features such as metrics and tracing.
+
+When `@RpcServer.ServiceName` uses a fully qualified protobuf service name, the generated registration normalizes it
+against the protobuf package before building the descriptor, so both `Service` and `package.Service` forms work.
 
 For each `@RpcClient.Endpoint`, a class named `AnnotatedInterface__GrpcClient` is generated.
 This class implements the annotated interface, creates a `GrpcServiceDescriptor` with
@@ -341,7 +359,12 @@ This class implements the annotated interface, creates a `GrpcServiceDescriptor`
 `GrpcServiceClient`.
 
 If `clientName` resolves to a named `GrpcClient` in the service registry, the generated client uses that instance.
-Otherwise it resolves the configured URI and creates a dedicated `GrpcClient`.
+Otherwise it tries a named `Supplier<GrpcClient>` and finally creates a dedicated `GrpcClient` from the resolved URI.
+
+Lower-level gRPC descriptor customization such as custom marshaller suppliers, service or method gRPC interceptors,
+call credentials, and explicit gRPC context values is still available through raw `GrpcServiceDescriptor`,
+`GrpcMethodDescriptor`, `GrpcClientMethodDescriptor`, or named `GrpcClient` configuration. These options are not
+currently exposed as declarative annotations.
 
 ## Scheduling
 

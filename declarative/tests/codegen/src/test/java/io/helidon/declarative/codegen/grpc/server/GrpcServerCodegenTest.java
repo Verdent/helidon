@@ -67,6 +67,87 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testInterfaceMethodAnnotationCodegen() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterContract.java", """
+                        package com.example;
+
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.grpc.api.RpcServer;
+
+                        interface GreeterContract {
+                            @RpcServer.Unary("SayHello")
+                            void sayHello(String request, StreamObserver<String> observer);
+                        }
+                        """)
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import com.google.protobuf.Descriptors;
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.grpc.api.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint implements GreeterContract {
+                            @RpcServer.Proto
+                            static Descriptors.FileDescriptor proto() {
+                                return null;
+                            }
+
+                            @Override
+                            public void sayHello(String request, StreamObserver<String> observer) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("\"SayHello\""));
+        assertThat(content, containsString("entryPoints.unary("));
+    }
+
+    @Test
+    void testUnaryMethodNameDefaultsToJavaName() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import com.google.protobuf.Descriptors;
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.grpc.api.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Proto
+                            Descriptors.FileDescriptor proto() {
+                                return null;
+                            }
+
+                            @RpcServer.Unary
+                            void sayHello(String request, StreamObserver<String> observer) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("serviceName = \"GreeterEndpoint\";"));
+        assertThat(content, containsString("\"sayHello\""));
+    }
+
+    @Test
     void testInterfaceEndpointRejected() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("BrokenEndpoint.java", """

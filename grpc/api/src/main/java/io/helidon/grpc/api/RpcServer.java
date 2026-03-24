@@ -28,10 +28,10 @@ import io.helidon.service.registry.Service;
 /**
  * APIs to define declarative gRPC server endpoints.
  * <p>
- * Annotate a concrete class with {@link Endpoint}, provide the protobuf descriptor using {@link Proto},
- * and declare gRPC methods using {@link Unary}, {@link ServerStreaming}, {@link ClientStreaming},
- * or {@link Bidirectional}. Declarative code generation creates a route-registration service that binds
- * the endpoint to Helidon WebServer gRPC routing.
+ * Method annotations may be declared directly on endpoint methods or on matching methods inherited
+ * from implemented interfaces. Generated handlers are wrapped through
+ * {@code io.helidon.webserver.grpc.GrpcEntryPoint.EntryPoints}, so declarative entry-point
+ * interceptors can participate in gRPC invocations.
  */
 public final class RpcServer {
     private RpcServer() {
@@ -54,6 +54,8 @@ public final class RpcServer {
      * Service name exposed through gRPC routing.
      * <p>
      * If not defined, the endpoint class simple name is used.
+     * If the protobuf descriptor defines a package, both the simple service name and the
+     * fully qualified protobuf service name are accepted.
      * The value can use declarative configuration expressions such as
      * {@code ${text-service.grpc.service-name:grpc.declarative.TextService}}.
      */
@@ -92,8 +94,9 @@ public final class RpcServer {
     /**
      * Marks a method that returns the protobuf descriptor for this service.
      * <p>
+     * Declarative code generation expects exactly one such method on the endpoint type.
      * The method must declare no parameters and return
-     * {@code com.google.protobuf.Descriptors.FileDescriptor}.
+     * {@code com.google.protobuf.Descriptors.FileDescriptor}. It may be either instance or static.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)

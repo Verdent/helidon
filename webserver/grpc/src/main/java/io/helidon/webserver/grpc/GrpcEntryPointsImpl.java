@@ -71,7 +71,8 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
         InterceptionContext ctx = createContext(descriptor, typeAnnotations, methodInfo);
 
         return (request, responseObserver) -> {
-            Interception.Interceptor.Chain<Void> chain = new RequestResponseInvocation<>(ctx, interceptors, actualHandler::invoke);
+            Interception.Interceptor.Chain<Void> chain =
+                    new RequestResponseInvocation<>(ctx, interceptors, actualHandler::invoke);
             try {
                 chain.proceed(new Object[] {request, responseObserver});
             } catch (Throwable thrown) {
@@ -81,10 +82,11 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
     }
 
     @Override
-    public <ReqT, ResT> ServerCalls.ServerStreamingMethod<ReqT, ResT> serverStreaming(ServiceDescriptor<?> descriptor,
-                                                                                      List<Annotation> typeAnnotations,
-                                                                                      TypedElementInfo methodInfo,
-                                                                                      ServerCalls.ServerStreamingMethod<ReqT, ResT> actualHandler) {
+    public <ReqT, ResT> ServerCalls.ServerStreamingMethod<ReqT, ResT> serverStreaming(
+            ServiceDescriptor<?> descriptor,
+            List<Annotation> typeAnnotations,
+            TypedElementInfo methodInfo,
+            ServerCalls.ServerStreamingMethod<ReqT, ResT> actualHandler) {
         if (noInterceptors) {
             return actualHandler;
         }
@@ -92,7 +94,8 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
         InterceptionContext ctx = createContext(descriptor, typeAnnotations, methodInfo);
 
         return (request, responseObserver) -> {
-            Interception.Interceptor.Chain<Void> chain = new RequestResponseInvocation<>(ctx, interceptors, actualHandler::invoke);
+            Interception.Interceptor.Chain<Void> chain =
+                    new RequestResponseInvocation<>(ctx, interceptors, actualHandler::invoke);
             try {
                 chain.proceed(new Object[] {request, responseObserver});
             } catch (Throwable thrown) {
@@ -102,10 +105,11 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
     }
 
     @Override
-    public <ReqT, ResT> ServerCalls.ClientStreamingMethod<ReqT, ResT> clientStreaming(ServiceDescriptor<?> descriptor,
-                                                                                      List<Annotation> typeAnnotations,
-                                                                                      TypedElementInfo methodInfo,
-                                                                                      ServerCalls.ClientStreamingMethod<ReqT, ResT> actualHandler) {
+    public <ReqT, ResT> ServerCalls.ClientStreamingMethod<ReqT, ResT> clientStreaming(
+            ServiceDescriptor<?> descriptor,
+            List<Annotation> typeAnnotations,
+            TypedElementInfo methodInfo,
+            ServerCalls.ClientStreamingMethod<ReqT, ResT> actualHandler) {
         if (noInterceptors) {
             return actualHandler;
         }
@@ -125,10 +129,11 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
     }
 
     @Override
-    public <ReqT, ResT> ServerCalls.BidiStreamingMethod<ReqT, ResT> bidirectional(ServiceDescriptor<?> descriptor,
-                                                                                   List<Annotation> typeAnnotations,
-                                                                                   TypedElementInfo methodInfo,
-                                                                                   ServerCalls.BidiStreamingMethod<ReqT, ResT> actualHandler) {
+    public <ReqT, ResT> ServerCalls.BidiStreamingMethod<ReqT, ResT> bidirectional(
+            ServiceDescriptor<?> descriptor,
+            List<Annotation> typeAnnotations,
+            TypedElementInfo methodInfo,
+            ServerCalls.BidiStreamingMethod<ReqT, ResT> actualHandler) {
         if (noInterceptors) {
             return actualHandler;
         }
@@ -157,7 +162,8 @@ class GrpcEntryPointsImpl implements GrpcEntryPoint.EntryPoints {
                 .build();
     }
 
-    private static List<Interception.EntryPointInterceptor> merge(List<ServiceInstance<Interception.EntryPointInterceptor>> entryPoints) {
+    private static List<Interception.EntryPointInterceptor> merge(
+            List<ServiceInstance<Interception.EntryPointInterceptor>> entryPoints) {
         List<WeightedInterceptor> merged = new ArrayList<>();
         entryPoints.stream()
                 .map(it -> new WeightedInterceptor(it.get(), it.weight()))

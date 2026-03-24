@@ -66,10 +66,11 @@ public final class GrpcEntryPoint {
          * @param <ResT> response type
          * @return wrapped server-streaming handler
          */
-        <ReqT, ResT> ServerCalls.ServerStreamingMethod<ReqT, ResT> serverStreaming(ServiceDescriptor<?> descriptor,
-                                                                                   List<Annotation> typeAnnotations,
-                                                                                   TypedElementInfo methodInfo,
-                                                                                   ServerCalls.ServerStreamingMethod<ReqT, ResT> actualHandler);
+        <ReqT, ResT> ServerCalls.ServerStreamingMethod<ReqT, ResT> serverStreaming(
+                ServiceDescriptor<?> descriptor,
+                List<Annotation> typeAnnotations,
+                TypedElementInfo methodInfo,
+                ServerCalls.ServerStreamingMethod<ReqT, ResT> actualHandler);
 
         /**
          * Wrap a client-streaming method so entry point interceptors can participate in its invocation.
@@ -82,10 +83,11 @@ public final class GrpcEntryPoint {
          * @param <ResT> response type
          * @return wrapped client-streaming handler
          */
-        <ReqT, ResT> ServerCalls.ClientStreamingMethod<ReqT, ResT> clientStreaming(ServiceDescriptor<?> descriptor,
-                                                                                   List<Annotation> typeAnnotations,
-                                                                                   TypedElementInfo methodInfo,
-                                                                                   ServerCalls.ClientStreamingMethod<ReqT, ResT> actualHandler);
+        <ReqT, ResT> ServerCalls.ClientStreamingMethod<ReqT, ResT> clientStreaming(
+                ServiceDescriptor<?> descriptor,
+                List<Annotation> typeAnnotations,
+                TypedElementInfo methodInfo,
+                ServerCalls.ClientStreamingMethod<ReqT, ResT> actualHandler);
 
         /**
          * Wrap a bidirectional-streaming method so entry point interceptors can participate in its invocation.
@@ -98,9 +100,10 @@ public final class GrpcEntryPoint {
          * @param <ResT> response type
          * @return wrapped bidirectional-streaming handler
          */
-        <ReqT, ResT> ServerCalls.BidiStreamingMethod<ReqT, ResT> bidirectional(ServiceDescriptor<?> descriptor,
-                                                                                List<Annotation> typeAnnotations,
-                                                                                TypedElementInfo methodInfo,
-                                                                                ServerCalls.BidiStreamingMethod<ReqT, ResT> actualHandler);
+        <ReqT, ResT> ServerCalls.BidiStreamingMethod<ReqT, ResT> bidirectional(
+                ServiceDescriptor<?> descriptor,
+                List<Annotation> typeAnnotations,
+                TypedElementInfo methodInfo,
+                ServerCalls.BidiStreamingMethod<ReqT, ResT> actualHandler);
     }
 }

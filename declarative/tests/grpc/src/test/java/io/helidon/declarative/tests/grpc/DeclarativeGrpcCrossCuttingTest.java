@@ -16,37 +16,37 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import io.helidon.grpc.api.RpcClient;
-import io.helidon.http.HeaderValues;
-import io.helidon.http.Status;
+import java.util.List;
+
+import io.helidon.metrics.api.Counter;
+import io.helidon.metrics.api.MeterRegistry;
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.ServiceRegistry;
-import io.helidon.webclient.http1.Http1Client;
+import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.webserver.testing.junit5.ServerTest;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.trace.data.SpanData;
-import jakarta.json.JsonNumber;
-import jakarta.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+@ExtendWith(GrpcTestEnvironmentExtension.class)
 @ServerTest
 class DeclarativeGrpcCrossCuttingTest {
-    private final Http1Client httpClient;
+    private final MeterRegistry meterRegistry;
     private final ServiceRegistry registry;
     private final TestSpanExporter exporter;
 
-    DeclarativeGrpcCrossCuttingTest(Http1Client httpClient,
-                                    ServiceRegistry registry,
+    DeclarativeGrpcCrossCuttingTest(ServiceRegistry registry,
                                     TestTracerFactory tracerFactory) {
-        this.httpClient = httpClient;
         this.registry = registry;
+        this.meterRegistry = registry.get(MeterRegistry.class);
         this.exporter = tracerFactory.exporter();
     }
 
@@ -58,7 +58,7 @@ class DeclarativeGrpcCrossCuttingTest {
     @Test
     void testMetricsAndTracingOnGrpcEntryPoint() {
         TextServiceClient typedClient = typedClient();
-        int initialCounter = counterValue();
+        long initialCounter = counterValue("grpc-upper-count");
 
         TextMessages.TextMessage response = typedClient.upper(message("hello"));
         assertThat(response.getText(), is("HELLO"));
@@ -67,7 +67,22 @@ class DeclarativeGrpcCrossCuttingTest {
         assertThat(tracedMethod.getKind(), is(SpanKind.SERVER));
         assertAttribute(tracedMethod, "transport", "grpc");
 
-        assertThat(counterValue(), is(initialCounter + 1));
+        assertThat(counterValue("grpc-upper-count"), is(initialCounter + 1));
+    }
+
+    @Test
+    void testMetricsAndTracingOnClientStreamingEntryPoint() {
+        TextServiceClient typedClient = typedClient();
+        long initialCounter = counterValue("grpc-join-count");
+
+        TextMessages.TextMessage response = typedClient.join(List.of(message("hello"), message("world")).iterator());
+        assertThat(response.getText(), is("hello world"));
+
+        SpanData tracedMethod = exporter.spanNamed("grpc.join");
+        assertThat(tracedMethod.getKind(), is(SpanKind.SERVER));
+        assertAttribute(tracedMethod, "transport", "grpc");
+
+        assertThat(counterValue("grpc-join-count"), is(initialCounter + 1));
     }
 
     private TextServiceClient typedClient() {
@@ -83,20 +98,10 @@ class DeclarativeGrpcCrossCuttingTest {
                 .build();
     }
 
-    private int counterValue() {
-        var metricsResponse = httpClient.get("/observe/metrics")
-                .header(HeaderValues.ACCEPT_JSON)
-                .request(JsonObject.class);
-
-        assertThat(metricsResponse.status(), is(Status.OK_200));
-
-        JsonObject applicationMetrics = metricsResponse.entity().getJsonObject("application");
-        if (applicationMetrics == null) {
-            return 0;
-        }
-
-        JsonNumber counter = applicationMetrics.getJsonNumber("grpc-upper-count");
-        return counter == null ? 0 : counter.intValue();
+    private long counterValue(String metricName) {
+        return meterRegistry.counter(metricName, List.of())
+                .map(Counter::count)
+                .orElse(0L);
     }
 
     private static void assertAttribute(SpanData spanData, String key, String expectedValue) {

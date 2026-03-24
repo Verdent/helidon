@@ -19,7 +19,10 @@ package io.helidon.declarative.codegen.grpc.server;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -29,6 +32,7 @@ import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.codegen.TypeHierarchy;
 import io.helidon.codegen.classmodel.ClassModel;
 import io.helidon.codegen.classmodel.Constructor;
+import io.helidon.codegen.classmodel.Parameter;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
 import io.helidon.common.types.Annotations;
@@ -50,6 +54,8 @@ import static java.util.function.Predicate.not;
 
 class RpcServerExtension implements RegistryCodegenExtension {
     static final TypeName GENERATOR = TypeName.create(RpcServerExtension.class);
+    private static final String DEFAULT_MARSHALLER_NAME = "default";
+    private static final String PROTO_MARSHALLER_NAME = "proto";
 
     private final RegistryCodegenContext ctx;
 
@@ -73,7 +79,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                        serverEndpoint.originatingElementValue());
         }
 
-        Endpoint endpoint = toEndpoint(serverEndpoint);
+        Endpoint endpoint = toEndpoint(roundContext, serverEndpoint);
         TypeName endpointType = serverEndpoint.typeName();
         TypeName descriptorType = ctx.descriptorType(endpointType);
 
@@ -142,12 +148,25 @@ class RpcServerExtension implements RegistryCodegenExtension {
     private Constructor.Builder constructor(Endpoint endpoint,
                                             TypeName endpointType,
                                             TypeName descriptorType) {
+        Map<String, MarshallerDependency> marshallerDependencies = marshallerDependencies(endpoint);
+        Map<TypeName, InterceptorDependency> interceptorDependencies = interceptorDependencies(endpoint);
+        boolean singleton = endpoint.type().hasAnnotation(ServiceCodegenTypes.SERVICE_ANNOTATION_SINGLETON);
+
         Constructor.Builder constructor = Constructor.builder();
         constructor.accessModifier(AccessModifier.PACKAGE_PRIVATE)
                 .addAnnotation(Annotation.create(ServiceCodegenTypes.SERVICE_ANNOTATION_INJECT))
                 .addParameter(CONFIG, "config")
-                .addParameter(endpointType, "endpoint")
+                .addParameter(singleton ? endpointType : supplierOf(endpointType), "endpoint")
                 .addParameter(RpcServerTypes.GRPC_ENTRY_POINTS, "entryPoints");
+
+        marshallerDependencies.values()
+                .forEach(dependency -> constructor.addParameter(param -> param
+                        .name(dependency.parameterName())
+                        .update(it -> marshallerSupplierParameter(it, dependency.name()))));
+        interceptorDependencies.values()
+                .forEach(dependency -> constructor.addParameter(param -> param
+                        .name(dependency.variableName())
+                        .type(dependency.type())));
 
         DelcarativeConfigSupport.assignResolveExpression(constructor,
                                                          "config",
@@ -155,11 +174,9 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                                          endpoint.serviceName());
 
         constructor.addContentLine("if (serviceName.isBlank()) {")
-                .increaseContentPadding()
                 .addContent("serviceName = ")
                 .addContentLiteral(endpointType.className())
                 .addContentLine(";")
-                .decreaseContentPadding()
                 .addContentLine("}");
 
         if (endpoint.listener().isPresent()) {
@@ -169,11 +186,9 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                                              endpoint.listener().get());
 
             constructor.addContentLine("if (socket.isBlank()) {")
-                    .increaseContentPadding()
                     .addContent("socket = ")
                     .addContent(RpcServerTypes.WEB_SERVER)
                     .addContentLine(".DEFAULT_SOCKET_NAME;")
-                    .decreaseContentPadding()
                     .addContentLine("}")
                     .addContentLine("this.socket = socket;");
         }
@@ -183,53 +198,69 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContentLine(".INSTANCE;")
                 .addContent("var annotations = ")
                 .addContent(descriptorType)
-                .addContentLine(".ANNOTATIONS;")
-                .addContent("var proto = ");
+                .addContentLine(".ANNOTATIONS;");
 
-        if (endpoint.protoMethod().isStatic()) {
-            constructor.addContent(endpointType)
-                    .addContent(".");
-        } else {
-            constructor.addContent("endpoint.");
-        }
-        constructor.addContent(endpoint.protoMethod().name())
-                .addContentLine("();")
-                .addContentLine("if (proto != null) {")
-                .increaseContentPadding()
-                .addContentLine("var packageName = proto.getPackage();")
-                .addContentLine("if (!packageName.isBlank()) {")
-                .increaseContentPadding()
-                .addContentLine("var servicePrefix = packageName + \".\";")
-                .addContentLine("if (serviceName.startsWith(servicePrefix)) {")
-                .increaseContentPadding()
-                .addContentLine("serviceName = serviceName.substring(servicePrefix.length());")
-                .decreaseContentPadding()
-                .addContentLine("}")
-                .decreaseContentPadding()
-                .addContentLine("}")
-                .decreaseContentPadding()
-                .addContentLine("}")
-                .addContent("this.descriptor = ")
+        endpoint.protoMethod().ifPresent(protoMethod -> {
+            constructor.addContent("var proto = ");
+
+            if (protoMethod.isStatic()) {
+                constructor.addContent(endpointType)
+                        .addContent(".");
+            } else {
+                constructor.addContent(singleton ? "endpoint." : "endpoint.get().");
+            }
+            constructor.addContent(protoMethod.name())
+                    .addContentLine("();")
+                    .addContentLine("if (proto != null) {")
+                    .addContentLine("var packageName = proto.getPackage();")
+                    .addContentLine("if (!packageName.isBlank()) {")
+                    .addContentLine("var servicePrefix = packageName + \".\";")
+                    .addContentLine("if (serviceName.startsWith(servicePrefix)) {")
+                    .addContentLine("serviceName = serviceName.substring(servicePrefix.length());")
+                    .addContentLine("}")
+                    .addContentLine("}")
+                    .addContentLine("}");
+        });
+
+        marshallerDependencies.values().forEach(dependency -> addMarshallerResolution(constructor, endpoint, dependency));
+
+        constructor.addContent("var descriptorBuilder = ")
                 .addContent(RpcServerTypes.GRPC_SERVICE_DESCRIPTOR)
                 .addContent(".builder(")
                 .addContent(endpointType)
-                .addContentLine(".class, serviceName)")
-                .increaseContentPadding()
-                .increaseContentPadding()
-                .addContentLine(".proto(proto)");
+                .addContentLine(".class, serviceName);");
 
-        for (GrpcMethod method : endpoint.methods()) {
-            addMethod(constructor, descriptorType, method);
+        if (endpoint.protoMethod().isPresent()) {
+            constructor.addContentLine("if (proto != null) {")
+                    .addContentLine("descriptorBuilder.proto(proto);")
+                    .addContentLine("}");
         }
 
-        constructor.addContentLine(".build();")
-                .decreaseContentPadding()
-                .decreaseContentPadding();
+        endpoint.marshaller().ifPresent(marshaller -> {
+            constructor.addContent("descriptorBuilder.marshallerSupplier(");
+            addMarshallerReference(constructor, marshaller, marshallerDependencies);
+            constructor.addContentLine(");");
+        });
+
+        endpoint.interceptors().forEach(interceptor -> constructor.addContent("descriptorBuilder.intercept(")
+                .addContent(interceptorDependencies.get(interceptor.type()).variableName())
+                .addContentLine(");"));
+
+        for (GrpcMethod method : endpoint.methods()) {
+            addMethod(constructor, descriptorType, method, marshallerDependencies, interceptorDependencies, singleton);
+        }
+
+        constructor.addContentLine("this.descriptor = descriptorBuilder.build();");
         return constructor;
     }
 
-    private void addMethod(Constructor.Builder constructor, TypeName descriptorType, GrpcMethod method) {
-        constructor.addContent(".")
+    private void addMethod(Constructor.Builder constructor,
+                           TypeName descriptorType,
+                           GrpcMethod method,
+                           Map<String, MarshallerDependency> marshallerDependencies,
+                           Map<TypeName, InterceptorDependency> interceptorDependencies,
+                           boolean singleton) {
+        constructor.addContent("descriptorBuilder.")
                 .addContent(method.type().registrationMethodName())
                 .addContentLine("(")
                 .increaseContentPadding()
@@ -242,16 +273,47 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContent(descriptorType)
                 .addContent(".")
                 .addContent(method.descriptorConstant())
-                .addContent(", endpoint::")
-                .addContent(method.javaMethodName())
-                .addContentLine("),")
+                .addContent(", ");
+
+        if (singleton) {
+            constructor.addContent("endpoint::")
+                    .addContent(method.javaMethodName());
+        } else {
+            switch (method.type()) {
+            case UNARY, SERVER_STREAMING -> constructor.addContent("(")
+                    .addContent(method.requestType())
+                    .addContent(" request, ")
+                    .addContent(streamObserverOf(method.responseType()))
+                    .addContent(" observer) -> endpoint.get().")
+                    .addContent(method.javaMethodName())
+                    .addContent("(request, observer)");
+            case CLIENT_STREAMING, BIDIRECTIONAL -> constructor.addContent("(")
+                    .addContent(streamObserverOf(method.responseType()))
+                    .addContent(" observer) -> endpoint.get().")
+                    .addContent(method.javaMethodName())
+                    .addContent("(observer)");
+            }
+        }
+
+        constructor.addContentLine("),")
                 .addContent("it -> it.requestType(")
                 .addContent(method.requestType())
                 .addContent(".class)")
                 .addContent(".responseType(")
                 .addContent(method.responseType())
-                .addContent(".class)")
-                .addContentLine(")");
+                .addContent(".class)");
+
+        method.marshaller().ifPresent(marshaller -> {
+            constructor.addContent(".marshallerSupplier(");
+            addMarshallerReference(constructor, marshaller, marshallerDependencies);
+            constructor.addContent(")");
+        });
+
+        method.interceptors().forEach(interceptor -> constructor.addContent(".intercept(")
+                .addContent(interceptorDependencies.get(interceptor.type()).variableName())
+                .addContent(")"));
+
+        constructor.addContentLine(");");
         constructor.decreaseContentPadding()
                 .decreaseContentPadding();
     }
@@ -278,7 +340,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContentLine(".DEFAULT_SOCKET_NAME);"));
     }
 
-    private Endpoint toEndpoint(TypeInfo typeInfo) {
+    private Endpoint toEndpoint(RegistryRoundContext roundContext, TypeInfo typeInfo) {
         Set<Annotation> typeAnnotations = new HashSet<>(TypeHierarchy.hierarchyAnnotations(ctx, typeInfo));
 
         String serviceName = Annotations.findFirst(RpcServerTypes.ANNOTATION_SERVICE_NAME, typeAnnotations)
@@ -290,7 +352,12 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .flatMap(Annotation::stringValue)
                 .filter(not(String::isBlank));
 
-        ProtoMethod protoMethod = protoMethod(typeInfo);
+        Optional<MarshallerConfig> marshaller = marshaller(typeAnnotations);
+        List<InterceptorConfig> interceptors = interceptors(roundContext,
+                                                            typeInfo,
+                                                            Optional.empty(),
+                                                            typeAnnotations);
+        Optional<ProtoMethod> protoMethod = protoMethod(typeInfo);
 
         List<GrpcMethod> grpcMethods = new ArrayList<>();
         for (TypedElementInfo element : typeInfo.elementInfo()) {
@@ -306,7 +373,14 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 continue;
             }
 
-            grpcMethods.add(grpcMethod(typeInfo, element, methodAnnotation));
+            grpcMethods.add(grpcMethod(typeInfo,
+                                       element,
+                                       methodAnnotation,
+                                       marshaller(annotations),
+                                       interceptors(roundContext,
+                                                    typeInfo,
+                                                    Optional.of(element),
+                                                    annotations)));
         }
 
         if (grpcMethods.isEmpty()) {
@@ -315,14 +389,14 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                        typeInfo.originatingElementValue());
         }
 
-        return new Endpoint(typeInfo, serviceName, listener, protoMethod, List.copyOf(grpcMethods));
+        return new Endpoint(typeInfo, serviceName, listener, marshaller, interceptors, protoMethod, List.copyOf(grpcMethods));
     }
 
-    private ProtoMethod protoMethod(TypeInfo typeInfo) {
+    private Optional<ProtoMethod> protoMethod(TypeInfo typeInfo) {
         List<TypedElementInfo> protoMethods = new ArrayList<>();
 
         for (TypedElementInfo element : typeInfo.elementInfo()) {
-            if (!ElementInfoPredicates.isMethod(element) || ElementInfoPredicates.isPrivate(element)) {
+            if (!ElementInfoPredicates.isMethod(element)) {
                 continue;
             }
 
@@ -333,10 +407,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
         }
 
         if (protoMethods.isEmpty()) {
-            throw new CodegenException("Declarative gRPC endpoint " + typeInfo.typeName().fqName()
-                                               + " must define a method annotated with "
-                                               + RpcServerTypes.ANNOTATION_PROTO.fqName(),
-                                       typeInfo.originatingElementValue());
+            return Optional.empty();
         }
 
         if (protoMethods.size() > 1) {
@@ -346,6 +417,13 @@ class RpcServerExtension implements RegistryCodegenExtension {
         }
 
         TypedElementInfo protoMethod = protoMethods.getFirst();
+        if (ElementInfoPredicates.isPrivate(protoMethod)) {
+            throw new CodegenException("Method annotated with @" + RpcServerTypes.ANNOTATION_PROTO.className()
+                                               + " must not be private: "
+                                               + protoMethod.signature().text(),
+                                       protoMethod.originatingElementValue());
+        }
+
         if (!protoMethod.parameterArguments().isEmpty()) {
             throw new CodegenException("Method annotated with @" + RpcServerTypes.ANNOTATION_PROTO.className()
                                                + " must not declare parameters: "
@@ -361,7 +439,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                        protoMethod.originatingElementValue());
         }
 
-        return new ProtoMethod(protoMethod.elementName(), ElementInfoPredicates.isStatic(protoMethod));
+        return Optional.of(new ProtoMethod(protoMethod.elementName(), ElementInfoPredicates.isStatic(protoMethod)));
     }
 
     private MethodAnnotation methodAnnotation(TypeInfo typeInfo,
@@ -395,7 +473,11 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .map(annotation -> new MethodAnnotation(annotation, methodType));
     }
 
-    private GrpcMethod grpcMethod(TypeInfo typeInfo, TypedElementInfo method, MethodAnnotation methodAnnotation) {
+    private GrpcMethod grpcMethod(TypeInfo typeInfo,
+                                  TypedElementInfo method,
+                                  MethodAnnotation methodAnnotation,
+                                  Optional<MarshallerConfig> marshaller,
+                                  List<InterceptorConfig> interceptors) {
         MethodType methodType = methodAnnotation.type();
         MethodSignature signature = switch (methodType) {
             case UNARY, SERVER_STREAMING -> requestResponseSignature(typeInfo, method, methodType);
@@ -407,7 +489,9 @@ class RpcServerExtension implements RegistryCodegenExtension {
                               grpcMethodName(method, methodAnnotation.annotation()),
                               descriptorConstant(typeInfo, method),
                               signature.requestType(),
-                              signature.responseType());
+                              signature.responseType(),
+                              marshaller,
+                              interceptors);
     }
 
     private MethodSignature requestResponseSignature(TypeInfo typeInfo,
@@ -478,6 +562,164 @@ class RpcServerExtension implements RegistryCodegenExtension {
         return typeName.typeArguments().getFirst();
     }
 
+    private Optional<MarshallerConfig> marshaller(Set<Annotation> annotations) {
+        return Annotations.findFirst(RpcServerTypes.ANNOTATION_MARSHALLER, annotations)
+                .map(annotation -> new MarshallerConfig(annotation.stringValue()
+                                                                .filter(not(String::isBlank))
+                                                                .orElse(DEFAULT_MARSHALLER_NAME)));
+    }
+
+    private List<InterceptorConfig> interceptors(RegistryRoundContext roundContext,
+                                                 TypeInfo endpointType,
+                                                 Optional<TypedElementInfo> method,
+                                                 Set<Annotation> annotations) {
+        List<TypeName> interceptorTypes = Annotations.findFirst(RpcServerTypes.ANNOTATION_INTERCEPTORS, annotations)
+                .flatMap(Annotation::typeValues)
+                .orElseGet(List::of);
+
+        interceptorTypes.forEach(it -> validateServerInterceptor(roundContext, endpointType, method, it));
+
+        return interceptorTypes.stream()
+                .map(InterceptorConfig::new)
+                .toList();
+    }
+
+    private void validateServerInterceptor(RegistryRoundContext roundContext,
+                                           TypeInfo endpointType,
+                                           Optional<TypedElementInfo> method,
+                                           TypeName interceptorType) {
+        Optional<TypeInfo> maybeInterceptor = roundContext.typeInfo(interceptorType)
+                .or(() -> ctx.typeInfo(interceptorType));
+
+        if (maybeInterceptor.isEmpty()) {
+            return;
+        }
+
+        TypeInfo interceptorInfo = maybeInterceptor.get();
+        Object originatingElement = method.map(TypedElementInfo::originatingElementValue)
+                .orElseGet(endpointType::originatingElementValue);
+        String location = method.map(it -> endpointType.typeName().fqName() + "." + it.signature().text())
+                .orElseGet(() -> endpointType.typeName().fqName());
+
+        if (interceptorInfo.findInHierarchy(RpcServerTypes.SERVER_INTERCEPTOR).isEmpty()) {
+            throw new CodegenException("Declarative gRPC server interceptor " + interceptorType.fqName()
+                                               + " must implement " + RpcServerTypes.SERVER_INTERCEPTOR.fqName()
+                                               + ": " + location,
+                                       originatingElement);
+        }
+
+        if (!isService(interceptorInfo)) {
+            throw new CodegenException("Declarative gRPC server interceptor " + interceptorType.fqName()
+                                               + " must be a Helidon service registry service"
+                                               + " (annotated with @Service.Provider, @Service.Scope,"
+                                               + " or a meta-annotation thereof): " + location,
+                                       originatingElement);
+        }
+    }
+
+    private boolean isService(TypeInfo type) {
+        if (type.hasAnnotation(ServiceCodegenTypes.SERVICE_ANNOTATION_PROVIDER)) {
+            return true;
+        }
+        if (type.hasAnnotation(ServiceCodegenTypes.SERVICE_ANNOTATION_SCOPE)) {
+            return true;
+        }
+        for (Annotation annotation : type.annotations()) {
+            if (annotation.hasMetaAnnotation(ServiceCodegenTypes.SERVICE_ANNOTATION_PROVIDER)) {
+                return true;
+            }
+            if (annotation.hasMetaAnnotation(ServiceCodegenTypes.SERVICE_ANNOTATION_SCOPE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void marshallerSupplierParameter(Parameter.Builder param, String marshallerName) {
+        param.addAnnotation(Annotation.create(ServiceCodegenTypes.SERVICE_ANNOTATION_NAMED, marshallerName));
+        param.type(optionalMarshallerSupplierType());
+    }
+
+    private TypeName optionalMarshallerSupplierType() {
+        return TypeName.builder()
+                .from(TypeNames.OPTIONAL)
+                .addTypeArgument(RpcServerTypes.MARSHALLER_SUPPLIER)
+                .build();
+    }
+
+    private Map<String, MarshallerDependency> marshallerDependencies(Endpoint endpoint) {
+        Map<String, MarshallerDependency> result = new LinkedHashMap<>();
+        endpoint.marshaller().filter(not(MarshallerConfig::builtIn))
+                .ifPresent(it -> result.computeIfAbsent(it.name(), this::marshallerDependency));
+        endpoint.methods().stream()
+                .map(GrpcMethod::marshaller)
+                .flatMap(Optional::stream)
+                .filter(not(MarshallerConfig::builtIn))
+                .forEach(it -> result.computeIfAbsent(it.name(), this::marshallerDependency));
+        return result;
+    }
+
+    private Map<TypeName, InterceptorDependency> interceptorDependencies(Endpoint endpoint) {
+        Map<TypeName, InterceptorDependency> result = new LinkedHashMap<>();
+        endpoint.interceptors().forEach(it -> result.computeIfAbsent(it.type(), this::serverInterceptorDependency));
+        endpoint.methods().forEach(method -> method.interceptors()
+                .forEach(it -> result.computeIfAbsent(it.type(), this::serverInterceptorDependency)));
+        return result;
+    }
+
+    private MarshallerDependency marshallerDependency(String name) {
+        String baseName = dependencyName("marshallerSupplier", name);
+        return new MarshallerDependency(name, baseName + "_optional", baseName);
+    }
+
+    private InterceptorDependency serverInterceptorDependency(TypeName typeName) {
+        return new InterceptorDependency(typeName, dependencyName("serverInterceptor", typeName.fqName()));
+    }
+
+    private void addMarshallerResolution(Constructor.Builder constructor,
+                                         Endpoint endpoint,
+                                         MarshallerDependency dependency) {
+        constructor.addContent("var ")
+                .addContent(dependency.variableName())
+                .addContent(" = ")
+                .addContent(dependency.parameterName())
+                .addContent(".orElseThrow(() -> new ")
+                .addContent(IllegalStateException.class)
+                .addContent("(")
+                .addContentLiteral("Declarative gRPC endpoint " + endpoint.type().typeName().fqName()
+                                           + " requires a @Service.Named(\"" + dependency.name() + "\") "
+                                           + RpcServerTypes.MARSHALLER_SUPPLIER.fqName() + " service")
+                .addContentLine("));");
+    }
+
+    private void addMarshallerReference(Constructor.Builder constructor,
+                                        MarshallerConfig marshaller,
+                                        Map<String, MarshallerDependency> marshallerDependencies) {
+        if (marshaller.builtIn()) {
+            constructor.addContent(RpcServerTypes.MARSHALLER_SUPPLIER)
+                    .addContent(".create()");
+            return;
+        }
+
+        constructor.addContent(marshallerDependencies.get(marshaller.name()).variableName());
+    }
+
+    private String dependencyName(String prefix, String value) {
+        return prefix + "_" + CodegenUtil.toConstantName(value).toLowerCase(Locale.ROOT);
+    }
+
+    private TypeName supplierOf(TypeName type) {
+        return TypeName.builder(TypeNames.SUPPLIER)
+                .addTypeArgument(type)
+                .build();
+    }
+
+    private TypeName streamObserverOf(TypeName type) {
+        return TypeName.builder(RpcServerTypes.STREAM_OBSERVER)
+                .addTypeArgument(type)
+                .build();
+    }
+
     private static String grpcMethodName(TypedElementInfo method, Annotation annotation) {
         return annotation.stringValue()
                 .filter(not(String::isBlank))
@@ -492,7 +734,9 @@ class RpcServerExtension implements RegistryCodegenExtension {
     private record Endpoint(TypeInfo type,
                             String serviceName,
                             Optional<String> listener,
-                            ProtoMethod protoMethod,
+                            Optional<MarshallerConfig> marshaller,
+                            List<InterceptorConfig> interceptors,
+                            Optional<ProtoMethod> protoMethod,
                             List<GrpcMethod> methods) {
     }
 
@@ -504,43 +748,75 @@ class RpcServerExtension implements RegistryCodegenExtension {
                               String grpcMethodName,
                               String descriptorConstant,
                               TypeName requestType,
-                              TypeName responseType) {
+                              TypeName responseType,
+                              Optional<MarshallerConfig> marshaller,
+                              List<InterceptorConfig> interceptors) {
     }
 
-    private record MethodSignature(TypeName requestType,
-                                   TypeName responseType) {
+    private record MarshallerConfig(String name) {
+        private boolean builtIn() {
+            return DEFAULT_MARSHALLER_NAME.equals(name) || PROTO_MARSHALLER_NAME.equals(name);
+        }
+    }
+
+    private record MarshallerDependency(String name, String parameterName, String variableName) {
+    }
+
+    private record InterceptorConfig(TypeName type) {
+    }
+
+    private record InterceptorDependency(TypeName type, String variableName) {
     }
 
     private record MethodAnnotation(Annotation annotation, MethodType type) {
     }
 
+    private record MethodSignature(TypeName requestType, TypeName responseType) {
+    }
+
     private enum MethodType {
-        UNARY("unary"),
-        SERVER_STREAMING("server streaming"),
-        CLIENT_STREAMING("client streaming"),
-        BIDIRECTIONAL("bidirectional streaming");
+        UNARY("unary", "unary") {
+            @Override
+            String errorPrefix() {
+                return "Unary";
+            }
+        },
+        SERVER_STREAMING("serverStreaming", "serverStreaming") {
+            @Override
+            String errorPrefix() {
+                return "Server streaming";
+            }
+        },
+        CLIENT_STREAMING("clientStreaming", "clientStreaming") {
+            @Override
+            String errorPrefix() {
+                return "Client streaming";
+            }
+        },
+        BIDIRECTIONAL("bidirectional", "bidirectional") {
+            @Override
+            String errorPrefix() {
+                return "Bidirectional streaming";
+            }
+        };
 
-        private final String description;
+        private final String registrationMethodName;
+        private final String entryPointMethodName;
 
-        MethodType(String description) {
-            this.description = description;
+        MethodType(String registrationMethodName, String entryPointMethodName) {
+            this.registrationMethodName = registrationMethodName;
+            this.entryPointMethodName = entryPointMethodName;
         }
 
-        String description() {
-            return description;
+        private String registrationMethodName() {
+            return registrationMethodName;
         }
 
-        String errorPrefix() {
-            return Character.toUpperCase(description.charAt(0)) + description.substring(1);
+        @SuppressWarnings("unused")
+        private String entryPointMethodName() {
+            return entryPointMethodName;
         }
 
-        String registrationMethodName() {
-            return switch (this) {
-                case UNARY -> "unary";
-                case SERVER_STREAMING -> "serverStreaming";
-                case CLIENT_STREAMING -> "clientStreaming";
-                case BIDIRECTIONAL -> "bidirectional";
-            };
-        }
+        abstract String errorPrefix();
     }
 }

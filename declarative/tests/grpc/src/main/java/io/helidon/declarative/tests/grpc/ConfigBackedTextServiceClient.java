@@ -16,24 +16,12 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import java.util.Iterator;
-
 import io.helidon.webclient.grpc.RpcClient;
 
-@RpcClient.Interceptors(TextServiceClientInterceptor.class)
-@RpcClient.Endpoint("${text-service.client.uri:http://localhost:8080}")
-@RpcClient.ServiceName(TextServiceGrpc.SERVICE_NAME)
-interface TextServiceClient {
+@RpcClient.Endpoint(value = ConfiguredTextServiceClient.INVALID_URI,
+                    configKey = "config-backed-text-service")
+@RpcClient.ServiceName(ConfiguredTextServiceEndpoint.CONFIGURED_SERVICE_NAME)
+interface ConfigBackedTextServiceClient {
     @RpcClient.Unary("Upper")
-    @RpcClient.Interceptors(TextServiceClientUpperInterceptor.class)
     TextMessages.TextMessage upper(TextMessages.TextMessage request);
-
-    @RpcClient.ServerStreaming("Split")
-    Iterator<TextMessages.TextMessage> split(TextMessages.TextMessage request);
-
-    @RpcClient.ClientStreaming("Join")
-    TextMessages.TextMessage join(Iterator<TextMessages.TextMessage> request);
-
-    @RpcClient.Bidirectional("Echo")
-    Iterator<TextMessages.TextMessage> echo(Iterator<TextMessages.TextMessage> request);
 }

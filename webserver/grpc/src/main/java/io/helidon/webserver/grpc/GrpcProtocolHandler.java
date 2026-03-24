@@ -25,7 +25,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -60,6 +63,7 @@ import io.helidon.webserver.http2.spi.Http2SubProtocolSelector;
 import io.grpc.Codec;
 import io.grpc.Compressor;
 import io.grpc.CompressorRegistry;
+import io.grpc.Context;
 import io.grpc.Decompressor;
 import io.grpc.DecompressorRegistry;
 import io.grpc.KnownLength;
@@ -82,6 +86,7 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
     private static final HeaderName GRPC_ENCODING = HeaderNames.create("grpc-encoding");
     private static final HeaderName GRPC_ACCEPT_ENCODING = HeaderNames.create("grpc-accept-encoding");
+    private static final HeaderName GRPC_TIMEOUT = HeaderNames.create("grpc-timeout");
     private static final Header GRPC_CONTENT_TYPE = HeaderValues.createCached(CONTENT_TYPE, "application/grpc");
     private static final Header GRPC_ENCODING_IDENTITY = HeaderValues.createCached(GRPC_ENCODING, "identity");
 
@@ -89,6 +94,12 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
     private static final DecompressorRegistry DECOMPRESSOR_REGISTRY = DecompressorRegistry.getDefaultInstance();
     private static final CompressorRegistry COMPRESSOR_REGISTRY = CompressorRegistry.getDefaultInstance();
+    private static final ScheduledExecutorService DEADLINE_EXECUTOR =
+            Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(task, "helidon-grpc-deadline");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private static final Tag OK_TAG = Tag.create("grpc.status", "OK");
 
@@ -125,6 +136,8 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
     private long startMillis;
 
     private volatile boolean callCancelled;
+    private volatile boolean deadlineExceeded;
+    private volatile Context.CancellableContext grpcContext;
     private final AtomicReference<Http2StreamState> currentStreamState = new AtomicReference<>();
 
     GrpcProtocolHandler(ConnectionContext connectionContext,
@@ -153,6 +166,9 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
             // setup compression
             initCompression(serverCall, httpHeaders);
+            if (currentStreamState.get() == Http2StreamState.CLOSED) {
+                return;
+            }
 
             // init metrics
             if (grpcConfig.enableMetrics()) {
@@ -164,15 +180,17 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
             // Include the GrpcConnectionContext in the gRPC Context so that the gRPC customer
             // handler can access the peer info and proxy protocol data.
             var grpcContextImpl = new GrpcConnectionContextImpl(connectionContext);
-            io.grpc.Context.current()
-                .withValue(ServerContextKeys.CONNECTION_CONTEXT, grpcContextImpl)
-                .run(() -> {
+            Context grpcCallContext = initGrpcContext(serverCall, httpHeaders, grpcContextImpl);
+            if (currentStreamState.get() == Http2StreamState.CLOSED) {
+                return;
+            }
+            grpcCallContext.run(() -> {
                     // initiate server call
                     ServerCallHandler<REQ, RES> callHandler = route.callHandler();
                     listener = callHandler.startCall(serverCall, GrpcHeadersUtil.toMetadata(headers));
                     listener.onReady();
                     bytesReceived = 0L;
-                });
+            });
         } catch (Throwable e) {
             LOGGER.log(ERROR, "Failed to initialize grpc protocol handler", e);
             throw e;
@@ -193,7 +211,10 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
     @Override
     public void rstStream(Http2RstStream rstStream) {
         callCancelled = (rstStream.errorCode() == Http2ErrorCode.CANCEL);
-        listener.onCancel();
+        closeGrpcContext();
+        if (listener != null) {
+            listener.onCancel();
+        }
         currentStreamState.updateAndGet(
                 current -> nextStreamState(current, Http2StreamState.HALF_CLOSED_REMOTE));
     }
@@ -212,6 +233,9 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
     @Override
     public void data(Http2FrameHeader header, BufferData data) {
         try {
+            if (deadlineExceeded) {
+                return;
+            }
             boolean isCompressed = false;
 
             // check for any unread data received before
@@ -263,7 +287,9 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
             // if EOS then half close remote
             if (header.flags(Http2FrameTypes.DATA).endOfStream()) {
-                listener.onHalfClose();
+                if (listener != null) {
+                    listener.onHalfClose();
+                }
                 currentStreamState.updateAndGet(
                         current -> nextStreamState(current, Http2StreamState.HALF_CLOSED_REMOTE));
                 // update metrics
@@ -272,7 +298,10 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                 }
             }
         } catch (Exception e) {
-            listener.onCancel();
+            if (listener != null) {
+                listener.onCancel();
+            }
+            closeGrpcContext();
             LOGGER.log(ERROR, "Failed to process grpc request: " + data.debugDataHex(true), e);
         }
     }
@@ -330,6 +359,64 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
         // special handling for identity compressor
         identityCompressor = (compressor == null || compressor instanceof Codec.Identity);
+    }
+
+    private Context initGrpcContext(ServerCall<REQ, RES> serverCall,
+                                    Headers httpHeaders,
+                                    GrpcConnectionContextImpl grpcContextImpl) {
+        Context context = Context.current().withValue(ServerContextKeys.CONNECTION_CONTEXT, grpcContextImpl);
+        if (!httpHeaders.contains(GRPC_TIMEOUT)) {
+            return context;
+        }
+
+        // See the gRPC wire spec for grpc-timeout:
+        // https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md
+        String timeoutHeader = httpHeaders.get(GRPC_TIMEOUT).get();
+        long timeoutNanos;
+        try {
+            timeoutNanos = GrpcHeadersUtil.decodeTimeout(timeoutHeader);
+        } catch (IllegalArgumentException e) {
+            deadlineExceeded = true;
+            serverCall.close(Status.INTERNAL.withDescription("Invalid grpc-timeout header: " + timeoutHeader), new Metadata());
+            currentStreamState.set(Http2StreamState.CLOSED);
+            return context;
+        }
+
+        if (timeoutNanos <= 1) {
+            deadlineExceeded = true;
+            serverCall.close(Status.DEADLINE_EXCEEDED, new Metadata());
+            currentStreamState.set(Http2StreamState.CLOSED);
+            return context;
+        }
+
+        Context.CancellableContext deadlineContext =
+                context.withDeadlineAfter(timeoutNanos, TimeUnit.NANOSECONDS, DEADLINE_EXECUTOR);
+        deadlineContext.addListener(cancelledContext -> onDeadlineExceeded(cancelledContext, serverCall), Runnable::run);
+        grpcContext = deadlineContext;
+        return deadlineContext;
+    }
+
+    private void onDeadlineExceeded(Context cancelledContext, ServerCall<REQ, RES> serverCall) {
+        if (deadlineExceeded || callCancelled) {
+            return;
+        }
+        if (cancelledContext.getDeadline() == null || !cancelledContext.getDeadline().isExpired()) {
+            return;
+        }
+
+        deadlineExceeded = true;
+        if (listener != null) {
+            listener.onCancel();
+        }
+        serverCall.close(Status.DEADLINE_EXCEEDED, new Metadata());
+    }
+
+    private void closeGrpcContext() {
+        Context.CancellableContext cancellableContext = grpcContext;
+        if (cancellableContext != null) {
+            grpcContext = null;
+            cancellableContext.cancel(null);
+        }
     }
 
     boolean identityCompressor() {
@@ -449,7 +536,10 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                     streamWriter.writeData(new Http2FrameData(header, bufferData), flowControl.outbound());
                     bytesSent += writeLength;
                 } catch (IOException e) {
-                    listener.onCancel();
+                    if (listener != null) {
+                        listener.onCancel();
+                    }
+                    closeGrpcContext();
                     LOGGER.log(ERROR, "Failed to respond to grpc request: " + route.method(), e);
                 }
             }
@@ -481,9 +571,10 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                                           flowControl.outbound());
                 currentStreamState.updateAndGet(
                         current -> nextStreamState(current, Http2StreamState.HALF_CLOSED_LOCAL));
+                closeGrpcContext();
 
                 // inform listener of completion
-                if (!callCancelled && listener != null) {
+                if (!callCancelled && !deadlineExceeded && listener != null) {
                     listener.onComplete();
                 }
 
@@ -497,7 +588,7 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
 
             @Override
             public boolean isCancelled() {
-                return currentStreamState.get() == Http2StreamState.CLOSED;
+                return callCancelled || deadlineExceeded || currentStreamState.get() == Http2StreamState.CLOSED;
             }
 
             @Override

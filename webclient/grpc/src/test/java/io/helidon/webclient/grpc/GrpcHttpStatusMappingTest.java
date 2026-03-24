@@ -26,12 +26,19 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/**
+ * Client fallback status mapping tests for non-conforming HTTP responses.
+ * <p>
+ * Official references:
+ * <a href="https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md">HTTP to gRPC status mapping</a>,
+ * <a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">gRPC over HTTP/2</a>.
+ */
 class GrpcHttpStatusMappingTest {
 
     @Test
     void testGrpcStatusTakesPrecedenceOverHttpFallback() {
-        // Spec note: the official HTTP-to-gRPC fallback table only applies when
-        // grpc-status is missing; an explicit grpc-status must win.
+        // If grpc-status was provided, it _must_ be used.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.set(Http2Headers.STATUS_NAME, 503);
         headers.set(HeaderNames.CONTENT_TYPE, "application/grpc");
@@ -46,8 +53,8 @@ class GrpcHttpStatusMappingTest {
 
     @Test
     void testMissingGrpcStatusMapsHttp404ToUnimplemented() {
-        // Spec note: the official HTTP-to-gRPC fallback mapping translates HTTP
-        // 404 responses without grpc-status into UNIMPLEMENTED.
+        // | 404 Not Found | UNIMPLEMENTED |
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.set(Http2Headers.STATUS_NAME, 404);
 
@@ -59,8 +66,8 @@ class GrpcHttpStatusMappingTest {
 
     @Test
     void testMissingGrpcStatusMapsHttp503ToUnavailable() {
-        // Spec note: the official HTTP-to-gRPC fallback mapping translates HTTP
-        // 503 responses without grpc-status into UNAVAILABLE.
+        // | 503 Service Unavailable | UNAVAILABLE |
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.set(Http2Headers.STATUS_NAME, 503);
 
@@ -71,10 +78,40 @@ class GrpcHttpStatusMappingTest {
     }
 
     @Test
+    void testMissingGrpcStatusMapsHttp400ToInternal() {
+        // | 400 Bad Request | INTERNAL |
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
+        assertFallbackStatus(400, Status.Code.INTERNAL);
+    }
+
+    @Test
+    void testMissingGrpcStatusMapsAuthFailuresToGrpcStatuses() {
+        // | 401 Unauthorized | UNAUTHENTICATED |
+        // | 403 Forbidden | PERMISSION_DENIED |
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
+        assertFallbackStatus(401, Status.Code.UNAUTHENTICATED);
+        assertFallbackStatus(403, Status.Code.PERMISSION_DENIED);
+    }
+
+    @Test
+    void testMissingGrpcStatusMapsRetryableHttpStatusesToUnavailable() {
+        // | 429 Too Many Requests | UNAVAILABLE |
+        // | 502 Bad Gateway | UNAVAILABLE |
+        // | 504 Gateway Timeout | UNAVAILABLE |
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md#http-to-grpc-status-code-mapping
+        assertFallbackStatus(429, Status.Code.UNAVAILABLE);
+        assertFallbackStatus(502, Status.Code.UNAVAILABLE);
+        assertFallbackStatus(504, Status.Code.UNAVAILABLE);
+    }
+
+    @Test
     void testNonGrpcContentTypeMapsToUnknown() {
-        // Spec note: PROTOCOL-HTTP2 requires clients to synthesize a final
-        // status if a response uses a non-gRPC content-type and omits
-        // grpc-status, even if the HTTP status is 200.
+        // Implementations should expect broken deployments to send non-200 HTTP status codes in
+        // responses as well as a variety of non-GRPC content-types and to omit **Status** &
+        // **Status-Message**.
+        // Implementations must synthesize a **Status** & **Status-Message** to propagate to the
+        // application layer when this occurs.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.set(Http2Headers.STATUS_NAME, 200);
         headers.set(HeaderNames.CONTENT_TYPE, "text/plain");
@@ -87,8 +124,10 @@ class GrpcHttpStatusMappingTest {
 
     @Test
     void testMissingGrpcStatusOnGrpcContentTypeMapsToUnknown() {
-        // Spec note: a response with HTTP 200 and application/grpc is still not
-        // complete without grpc-status; the client must not treat it as success.
+        // Status must be sent in **Trailers** even if the status code is OK.
+        // Implementations must synthesize a **Status** & **Status-Message** to propagate to the
+        // application layer when this occurs.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.set(Http2Headers.STATUS_NAME, 200);
         headers.set(HeaderNames.CONTENT_TYPE, "application/grpc+proto");
@@ -97,5 +136,35 @@ class GrpcHttpStatusMappingTest {
 
         assertThat(status.getCode(), is(Status.Code.UNKNOWN));
         assertThat(status.getDescription(), containsString("missing grpc-status"));
+    }
+
+    @Test
+    void testGrpcWebContentTypeIsRejectedAsNonGrpc() {
+        // * **Content-Type** → "content-type" "application/grpc" [("+proto" / "+json" / {_custom_})]
+        // Implementations should expect broken deployments to send non-200 HTTP status codes in
+        // responses as well as a variety of non-GRPC content-types and to omit **Status** &
+        // **Status-Message**.
+        // Implementations must synthesize a **Status** & **Status-Message** to propagate to the
+        // application layer when this occurs.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses
+        WritableHeaders<?> headers = WritableHeaders.create();
+        headers.set(Http2Headers.STATUS_NAME, 200);
+        headers.set(HeaderNames.CONTENT_TYPE, "application/grpc-web");
+
+        Status status = GrpcBaseClientCall.finalStatus(headers);
+
+        assertThat(status.getCode(), is(Status.Code.UNKNOWN));
+        assertThat(status.getDescription(), containsString("invalid content-type"));
+    }
+
+    private static void assertFallbackStatus(int httpStatus, Status.Code expectedCode) {
+        WritableHeaders<?> headers = WritableHeaders.create();
+        headers.set(Http2Headers.STATUS_NAME, httpStatus);
+
+        Status status = GrpcBaseClientCall.finalStatus(headers);
+
+        assertThat(status.getCode(), is(expectedCode));
+        assertThat(status.getDescription(), containsString(Integer.toString(httpStatus)));
     }
 }

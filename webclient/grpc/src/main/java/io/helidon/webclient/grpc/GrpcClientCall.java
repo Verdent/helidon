@@ -24,6 +24,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.helidon.common.buffers.BufferData;
 import io.helidon.http.Headers;
@@ -55,10 +56,12 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
 
     private final CountDownLatch startReadBarrier = new CountDownLatch(1);
     private final CountDownLatch startWriteBarrier = new CountDownLatch(1);
+    private final AtomicBoolean closeCalled = new AtomicBoolean();
 
     private volatile Future<?> readStreamFuture;
     private volatile Future<?> writeStreamFuture;
     private volatile Future<?> heartbeatFuture;
+    private volatile boolean cancelRequested;
 
     GrpcClientCall(GrpcChannel grpcChannel, MethodDescriptor<ReqT, ResT> methodDescriptor, CallOptions callOptions) {
         super(grpcChannel, methodDescriptor, callOptions);
@@ -75,11 +78,11 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
     @Override
     public void cancel(String message, Throwable cause) {
         socket().log(LOGGER, DEBUG, "cancel called %s", message);
-        responseListener().onClose(Status.CANCELLED, EMPTY_METADATA);
-        readStreamFuture.cancel(true);
-        writeStreamFuture.cancel(true);
-        heartbeatFuture.cancel(true);
-        close();
+        cancelRequested = true;
+        cancelFuture(readStreamFuture);
+        cancelFuture(writeStreamFuture);
+        cancelFuture(heartbeatFuture);
+        close(Status.CANCELLED, EMPTY_METADATA);
     }
 
     @Override
@@ -91,13 +94,7 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
 
     @Override
     public void sendMessage(ReqT message) {
-        // serialize and queue message for writing
-        byte[] serialized = serializeMessage(message);
-        BufferData messageData = BufferData.createReadOnly(serialized, 0, serialized.length);
-        BufferData headerData = BufferData.create(DATA_PREFIX_LENGTH);
-        headerData.writeInt8(0);                                // no compression
-        headerData.writeUnsignedInt32(messageData.available());         // length prefixed
-        sendingQueue.add(BufferData.create(headerData, messageData));
+        sendingQueue.add(serializeRequestFrame(message));
         startWriteBarrier.countDown();
     }
 
@@ -157,7 +154,7 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
             } catch (Throwable e) {
                 socket().log(LOGGER, ERROR, e.getMessage(), e);
                 Status errorStatus = Status.UNKNOWN.withDescription(e.getMessage()).withCause(e);
-                responseListener().onClose(errorStatus, EMPTY_METADATA);
+                close(errorStatus, EMPTY_METADATA);
             }
             socket().log(LOGGER, DEBUG, "[Writing thread] exiting");
         });
@@ -236,34 +233,37 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
                 } else if (responseHeaders != null) {
                     status = finalStatus(responseHeaders.httpHeaders());
                 }
-                responseListener().onClose(status, trailers);
+                close(status, trailers);
             } catch (StreamTimeoutException e) {
-                responseListener().onClose(Status.DEADLINE_EXCEEDED, EMPTY_METADATA);
+                close(Status.DEADLINE_EXCEEDED, EMPTY_METADATA);
             } catch (Throwable e) {
                 socket().log(LOGGER, ERROR, e.getMessage(), e);
                 Status errorStatus = Status.UNKNOWN.withDescription(e.getMessage()).withCause(e);
-                responseListener().onClose(errorStatus, EMPTY_METADATA);
-            } finally {
-                close();
+                close(errorStatus, EMPTY_METADATA);
             }
             socket().log(LOGGER, DEBUG, "[Reading thread] exiting");
         });
     }
 
-    private void close() {
-        socket().log(LOGGER, DEBUG, "closing client call");
-        sendingQueue.clear();
-        clientStream().cancel();
-        connection().close();
-        unblockUnaryExecutor();
+    private void close(Status status, Metadata trailers) {
+        if (closeCalled.compareAndSet(false, true)) {
+            Status finalStatus = cancelRequested ? Status.CANCELLED : status;
 
-        // update metrics
-        if (enableMetrics()) {
-            MethodMetrics methodMetrics = methodMetrics();
-            methodMetrics.callDuration().record(
-                    Duration.ofMillis(System.currentTimeMillis() - startMillis()));
-            methodMetrics.recvMessageSize().record(bytesRcvd().get());
-            methodMetrics.sentMessageSize().record(bytesSent().get());
+            responseListener().onClose(finalStatus, trailers);
+            socket().log(LOGGER, DEBUG, "closing client call");
+            sendingQueue.clear();
+            clientStream().cancel();
+            connection().close();
+            unblockUnaryExecutor();
+
+            // update metrics
+            if (enableMetrics()) {
+                MethodMetrics methodMetrics = methodMetrics();
+                methodMetrics.callDuration().record(
+                        Duration.ofMillis(System.currentTimeMillis() - startMillis()));
+                methodMetrics.recvMessageSize().record(bytesRcvd().get());
+                methodMetrics.sentMessageSize().record(bytesSent().get());
+            }
         }
     }
 
@@ -273,6 +273,12 @@ class GrpcClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
             BufferData frameData = receivingQueue.remove();
             ResT res = toResponse(frameData);
             responseListener().onMessage(res);
+        }
+    }
+
+    private void cancelFuture(Future<?> future) {
+        if (future != null) {
+            future.cancel(true);
         }
     }
 }

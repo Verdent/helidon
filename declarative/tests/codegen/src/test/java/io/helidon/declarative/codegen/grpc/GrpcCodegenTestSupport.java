@@ -30,8 +30,10 @@ import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypedElementInfo;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigBuilderSupport;
-import io.helidon.grpc.api.RpcClient;
-import io.helidon.grpc.api.RpcServer;
+import io.helidon.grpc.api.Grpc;
+import io.helidon.webclient.grpc.RpcClient;
+import io.helidon.webserver.grpc.RpcServer;
+import io.helidon.grpc.core.MarshallerSupplier;
 import io.helidon.service.registry.Dependency;
 import io.helidon.service.registry.DependencyContext;
 import io.helidon.service.registry.FactoryType;
@@ -50,6 +52,15 @@ import io.helidon.webserver.WebServer;
 import io.helidon.webserver.grpc.GrpcEntryPoint;
 import io.helidon.webserver.grpc.GrpcRouteRegistration;
 
+import io.grpc.CallOptions;
+import io.grpc.Channel;
+import io.grpc.ClientCall;
+import io.grpc.ClientInterceptor;
+import io.grpc.Metadata;
+import io.grpc.MethodDescriptor;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
 import io.grpc.stub.StreamObserver;
 
 public final class GrpcCodegenTestSupport {
@@ -64,8 +75,10 @@ public final class GrpcCodegenTestSupport {
             TypedElementInfo.class,
             Config.class,
             ConfigBuilderSupport.class,
+            Grpc.class,
             RpcClient.class,
             RpcServer.class,
+            MarshallerSupplier.class,
             Dependency.class,
             DependencyContext.class,
             FactoryType.class,
@@ -83,6 +96,15 @@ public final class GrpcCodegenTestSupport {
             GrpcServiceClient.class,
             GrpcServiceDescriptor.class,
             WebServer.class,
+            CallOptions.class,
+            Channel.class,
+            ClientCall.class,
+            ClientInterceptor.class,
+            Metadata.class,
+            MethodDescriptor.class,
+            ServerCall.class,
+            ServerCallHandler.class,
+            ServerInterceptor.class,
             com.google.protobuf.Descriptors.FileDescriptor.class,
             StreamObserver.class
     );

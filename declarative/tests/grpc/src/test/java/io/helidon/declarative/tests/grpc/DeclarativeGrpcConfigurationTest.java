@@ -16,7 +16,11 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import io.helidon.grpc.api.RpcClient;
+import java.lang.reflect.Field;
+import java.time.Duration;
+
+import io.helidon.config.Config;
+import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.ServiceRegistry;
@@ -28,10 +32,14 @@ import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.Socket;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+@ExtendWith(GrpcTestEnvironmentExtension.class)
 @ServerTest
 class DeclarativeGrpcConfigurationTest {
     private static final GrpcServiceDescriptor SERVICE_DESCRIPTOR = GrpcServiceDescriptor.builder()
@@ -44,11 +52,14 @@ class DeclarativeGrpcConfigurationTest {
             .build();
 
     private final GrpcClient configuredSocketClient;
+    private final Config config;
     private final ServiceRegistry registry;
 
     DeclarativeGrpcConfigurationTest(@Socket(ConfiguredTextServiceEndpoint.SOCKET_NAME) GrpcClient configuredSocketClient,
+                                     Config config,
                                      ServiceRegistry registry) {
         this.configuredSocketClient = configuredSocketClient;
+        this.config = config;
         this.registry = registry;
     }
 
@@ -63,6 +74,7 @@ class DeclarativeGrpcConfigurationTest {
         assertThat(registration.socket(), is(ConfiguredTextServiceEndpoint.SOCKET_NAME));
         assertThat(registration.socketRequired(), is(true));
         assertThat(registration.descriptor().fullName(), is(ConfiguredTextServiceEndpoint.CONFIGURED_SERVICE_NAME));
+        assertThat(registration.descriptor().proto(), nullValue());
     }
 
     @Test
@@ -71,18 +83,51 @@ class DeclarativeGrpcConfigurationTest {
                 .unary("Upper", message("hello"));
         assertThat(directResponse.getText(), is("CONFIGURED:HELLO"));
 
-        ConfiguredTextServiceClient typedClient = registry.get(Lookup.builder()
-                .addContract(ConfiguredTextServiceClient.class)
-                .addQualifier(Qualifier.create(RpcClient.Client.class))
-                .build());
+        ConfiguredTextServiceClient typedClient = typedClient(ConfiguredTextServiceClient.class);
 
         TextMessages.TextMessage typedResponse = typedClient.upper(message("hello"));
         assertThat(typedResponse.getText(), is("CONFIGURED:HELLO"));
+    }
+
+    @Test
+    void testDefaultClientSelection() {
+        DefaultTextServiceClient typedClient = typedClient(DefaultTextServiceClient.class);
+
+        TextMessages.TextMessage typedResponse = typedClient.upper(message("hello"));
+        assertThat(typedResponse.getText(), is("HELLO"));
+    }
+
+    @Test
+    void testConfiguredClientSubtreeSelection() throws ReflectiveOperationException {
+        ConfigBackedTextServiceClient typedClient = typedClient(ConfigBackedTextServiceClient.class);
+
+        TextMessages.TextMessage typedResponse = typedClient.upper(message("hello"));
+        assertThat(typedResponse.getText(), is("CONFIGURED:HELLO"));
+
+        GrpcClient underlyingClient = generatedClient(typedClient);
+        assertThat(underlyingClient.clientConfig().protocolConfig().pollWaitTime(), is(Duration.ofSeconds(1)));
+        assertThat(underlyingClient.clientConfig().baseUri().orElseThrow().toString(),
+                   containsString(config.get("test.server.socket." + ConfiguredTextServiceEndpoint.SOCKET_NAME + ".port")
+                                          .asString()
+                                          .orElseThrow()));
     }
 
     private static TextMessages.TextMessage message(String text) {
         return TextMessages.TextMessage.newBuilder()
                 .setText(text)
                 .build();
+    }
+
+    private <T> T typedClient(Class<T> type) {
+        return registry.get(Lookup.builder()
+                .addContract(type)
+                .addQualifier(Qualifier.create(RpcClient.Client.class))
+                .build());
+    }
+
+    private static GrpcClient generatedClient(Object typedClient) throws ReflectiveOperationException {
+        Field clientField = typedClient.getClass().getDeclaredField("client");
+        clientField.setAccessible(true);
+        return (GrpcClient) clientField.get(typedClient);
     }
 }

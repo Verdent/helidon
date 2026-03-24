@@ -35,6 +35,7 @@ import io.helidon.webserver.testing.junit5.SetUpRoute;
 import io.grpc.CallOptions;
 import io.grpc.ClientCall;
 import io.grpc.CompressorRegistry;
+import io.grpc.Context;
 import io.grpc.ForwardingServerCall;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -57,6 +58,13 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * End-to-end interoperability checks for the Helidon gRPC server.
+ * <p>
+ * Official references:
+ * <a href="https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md">gRPC interoperability test descriptions</a>,
+ * <a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">gRPC over HTTP/2</a>.
+ */
 @ServerTest
 class GrpcInteropComplianceTest extends BaseServiceTest {
     private static final long TIMEOUT_SECONDS = 10;
@@ -68,7 +76,9 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
     private static final Metadata.Key<String> GRPC_ENCODING =
             Metadata.Key.of("grpc-encoding", Metadata.ASCII_STRING_MARSHALLER);
     private static final String ERROR_PREFIX = "__status__:";
+    private static final String SLEEP_PREFIX = "__sleep__:";
     private static final AtomicReference<String> LAST_REQUEST_ENCODING = new AtomicReference<>();
+    private static final AtomicReference<Long> LAST_REQUEST_DEADLINE_MILLIS = new AtomicReference<>();
 
     GrpcInteropComplianceTest(WebServer server) {
         super(server);
@@ -83,8 +93,9 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testUnaryCustomMetadataRoundTrip() throws InterruptedException {
-        // Spec note: upstream interop case "custom_metadata" verifies ASCII and
-        // binary metadata survive a unary round-trip, including trailer values.
+        // This test verifies that custom metadata in either binary or ascii format can be sent as
+        // initial-metadata by the client and as both initial- and trailing-metadata by the server.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#custom_metadata
         Metadata metadata = requestMetadata();
 
         CallResult<Strings.StringMessage> result = unaryCall(StringServiceGrpc.getUpperMethod(),
@@ -101,8 +112,9 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testBidirectionalCustomMetadataRoundTrip() throws InterruptedException {
-        // Spec note: upstream interop case "custom_metadata" also applies to
-        // streaming RPCs, including binary trailer metadata.
+        // This test verifies that custom metadata in either binary or ascii format can be sent as
+        // initial-metadata by the client and as both initial- and trailing-metadata by the server.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#custom_metadata
         Metadata metadata = requestMetadata();
 
         CallResult<Strings.StringMessage> result = streamingCall(StringServiceGrpc.getEchoMethod(),
@@ -120,8 +132,8 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testEmptyUnaryPayloadRoundTrip() throws InterruptedException {
-        // Spec note: upstream interop case "empty_unary" verifies a unary RPC
-        // can carry an empty protobuf payload and still complete with OK status.
+        // This test verifies that implementations support zero-size messages.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#empty_unary
         CallResult<Strings.StringMessage> result = unaryCall(StringServiceGrpc.getUpperMethod(),
                                                              new Metadata(),
                                                              Strings.StringMessage.getDefaultInstance());
@@ -133,9 +145,9 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testLargeUnaryPayloadSpanningMultipleHttp2Frames() throws InterruptedException {
-        // Spec note: upstream interop case "large_unary" validates that one gRPC
-        // message may span multiple HTTP/2 DATA frames but still decode as a
-        // single protobuf message.
+        // This test verifies unary calls succeed in sending messages, and touches on flow control
+        // (even if compression is enabled on the channel).
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#large_unary
         String requestText = "grpc".repeat(32 * 1024);
 
         CallResult<Strings.StringMessage> result = unaryCall(StringServiceGrpc.getUpperMethod(),
@@ -148,9 +160,65 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
     }
 
     @Test
+    void testServerStreamingRoundTrip() throws InterruptedException {
+        // This test verifies that server-only streaming succeeds.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#server_streaming
+        CallResult<Strings.StringMessage> result = streamingCall(StringServiceGrpc.getSplitMethod(),
+                                                                 new Metadata(),
+                                                                 List.of(message("one two three")));
+
+        assertThat(result.status().getCode(), is(Status.Code.OK));
+        assertThat(texts(result.messages()), contains("one", "two", "three"));
+    }
+
+    @Test
+    void testClientStreamingRoundTrip() throws InterruptedException {
+        // This test verifies that client-only streaming succeeds.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#client_streaming
+        CallResult<Strings.StringMessage> result = streamingCall(StringServiceGrpc.getJoinMethod(),
+                                                                 new Metadata(),
+                                                                 List.of(message("one"),
+                                                                         message("two"),
+                                                                         message("three")));
+
+        assertThat(result.status().getCode(), is(Status.Code.OK));
+        assertThat(result.messages().size(), is(1));
+        assertThat(result.messages().getFirst().getText(), is("one two three"));
+    }
+
+    @Test
+    void testEmptyBidirectionalStreamCompletesWithoutMessages() throws InterruptedException {
+        // This test verifies that streams support having zero-messages in both directions.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#empty_stream
+        CallResult<Strings.StringMessage> result = streamingCall(StringServiceGrpc.getEchoMethod(),
+                                                                 new Metadata(),
+                                                                 List.of());
+
+        assertThat(result.status().getCode(), is(Status.Code.OK));
+        assertThat(result.messages().isEmpty(), is(true));
+    }
+
+    @Test
+    void testServerHonorsGrpcTimeoutDeadline() {
+        // This test verifies that an RPC request whose lifetime exceeds its configured timeout
+        // value will end with the DeadlineExceeded status.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#timeout_on_sleeping_server
+        LAST_REQUEST_DEADLINE_MILLIS.set(null);
+        StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(channel)
+                .withDeadlineAfter(100, TimeUnit.MILLISECONDS);
+
+        StatusRuntimeException exception = assertThrows(StatusRuntimeException.class,
+                                                        () -> service.upper(message(SLEEP_PREFIX + "250")));
+
+        assertThat(exception.getStatus().getCode(), is(Status.Code.DEADLINE_EXCEEDED));
+        assertThat(LAST_REQUEST_DEADLINE_MILLIS.get() != null && LAST_REQUEST_DEADLINE_MILLIS.get() > 0, is(true));
+    }
+
+    @Test
     void testUnaryStatusCodeAndMessage() {
-        // Spec note: upstream interop case "status_code_and_message" requires
-        // grpc-status and grpc-message to surface as the final RPC status.
+        // This test verifies unary calls succeed in sending messages, and propagate back status
+        // code and message sent along with the messages.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#status_code_and_message
         StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(channel);
 
         StatusRuntimeException exception = assertThrows(StatusRuntimeException.class,
@@ -162,8 +230,8 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testSpecialStatusMessageRoundTrip() {
-        // Spec note: PROTOCOL-HTTP2 percent-encodes grpc-message bytes outside
-        // the visible ASCII range; the client must decode them losslessly.
+        // This test verifies Unicode and whitespace is correctly processed in status message.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#special_status_message
         StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(channel);
         String statusMessage = "Bad input % \n and unicode \u00A9";
 
@@ -176,8 +244,9 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testBidirectionalStatusCodeAndMessage() throws InterruptedException {
-        // Spec note: upstream interop case "status_code_and_message" also applies
-        // when the final status is delivered after streaming responses.
+        // received status code is the same as the sent code for both Procedure steps 1 and 2
+        // received status message is the same as the sent message for both Procedure steps 1 and 2
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#status_code_and_message
         String statusMessage = "stream failure \u00A9";
 
         CallResult<Strings.StringMessage> result = streamingCall(StringServiceGrpc.getEchoMethod(),
@@ -193,8 +262,8 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testPingPongStreamingPreservesMessageOrder() throws InterruptedException {
-        // Spec note: upstream interop case "ping_pong" verifies bidi calls can
-        // alternate writes and reads while preserving message order.
+        // This test verifies that full duplex bidi is supported.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#ping_pong
         RecordingListener<Strings.StringMessage> listener = new RecordingListener<>();
         ClientCall<Strings.StringMessage, Strings.StringMessage> call =
                 channel.newCall(StringServiceGrpc.getEchoMethod(), CallOptions.DEFAULT);
@@ -223,9 +292,47 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
     }
 
     @Test
+    void testCancelAfterBeginClosesWithCancelled() throws InterruptedException {
+        // This test verifies that a request can be cancelled after metadata has been sent but
+        // before payloads are sent.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#cancel_after_begin
+        RecordingListener<Strings.StringMessage> listener = new RecordingListener<>();
+        ClientCall<Strings.StringMessage, Strings.StringMessage> call =
+                channel.newCall(StringServiceGrpc.getJoinMethod(), CallOptions.DEFAULT);
+
+        call.start(listener, new Metadata());
+        call.request(1);
+        call.cancel("cancel_after_begin", null);
+
+        CallResult<Strings.StringMessage> result = listener.await();
+        assertThat(result.status().getCode(), is(Status.Code.CANCELLED));
+    }
+
+    @Test
+    void testCancelAfterFirstResponseClosesWithCancelled() throws InterruptedException {
+        // This test verifies that a request can be cancelled after receiving a message from the
+        // server.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#cancel_after_first_response
+        RecordingListener<Strings.StringMessage> listener = new RecordingListener<>();
+        ClientCall<Strings.StringMessage, Strings.StringMessage> call =
+                channel.newCall(StringServiceGrpc.getEchoMethod(), CallOptions.DEFAULT);
+
+        call.start(listener, new Metadata());
+        call.request(1);
+        call.sendMessage(message("one"));
+        listener.awaitMessages(1);
+        call.cancel("cancel_after_first_response", null);
+
+        CallResult<Strings.StringMessage> result = listener.await();
+        assertThat(texts(result.messages()), contains("one"));
+        assertThat(result.status().getCode(), is(Status.Code.CANCELLED));
+    }
+
+    @Test
     void testMissingMethodReturnsUnimplemented() throws InterruptedException {
-        // Spec note: upstream interop case "unimplemented_method" requires an
-        // unknown method to close with grpc-status UNIMPLEMENTED.
+        // This test verifies that calling an unimplemented RPC method returns the UNIMPLEMENTED
+        // status code.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#unimplemented_method
         CallResult<Strings.StringMessage> result = unaryCall(missingUnaryMethod("StringService", "MissingMethod"),
                                                              new Metadata(),
                                                              message("hello"));
@@ -236,8 +343,8 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testMissingServiceReturnsUnimplemented() throws InterruptedException {
-        // Spec note: upstream interop case "unimplemented_service" requires an
-        // unknown service to close with grpc-status UNIMPLEMENTED.
+        // This test verifies calling an unimplemented server returns the UNIMPLEMENTED status code.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#unimplemented_service
         CallResult<Strings.StringMessage> result = unaryCall(missingUnaryMethod("MissingService", "Upper"),
                                                              new Metadata(),
                                                              message("hello"));
@@ -248,8 +355,8 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
 
     @Test
     void testCompressedUnaryRoundTrip() throws InterruptedException {
-        // Spec note: upstream interop case "client_compressed_unary" verifies
-        // the server accepts a gzip-compressed request body.
+        // Paraphrase: this covers the compressed unary request path from client_compressed_unary.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#client_compressed_unary
         LAST_REQUEST_ENCODING.set(null);
         ManagedChannel gzipChannel = ManagedChannelBuilder.forAddress("localhost", port())
                 .usePlaintext()
@@ -263,6 +370,42 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
             Strings.StringMessage response = gzipStub.upper(message("hello"));
 
             assertThat(response.getText(), is("HELLO"));
+            assertThat(LAST_REQUEST_ENCODING.get(), containsString("gzip"));
+        } finally {
+            gzipChannel.shutdown();
+            assertThat(gzipChannel.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS), is(true));
+        }
+    }
+
+    @Test
+    void testCompressedClientStreamingRoundTrip() throws InterruptedException {
+        // Paraphrase: this covers the successful mixed compressed and uncompressed request path from
+        // client_compressed_streaming.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#client_compressed_streaming
+        LAST_REQUEST_ENCODING.set(null);
+        ManagedChannel gzipChannel = ManagedChannelBuilder.forAddress("localhost", port())
+                .usePlaintext()
+                .compressorRegistry(CompressorRegistry.getDefaultInstance())
+                .build();
+
+        try {
+            RecordingListener<Strings.StringMessage> listener = new RecordingListener<>();
+            ClientCall<Strings.StringMessage, Strings.StringMessage> call =
+                    gzipChannel.newCall(StringServiceGrpc.getJoinMethod(), CallOptions.DEFAULT.withCompression("gzip"));
+
+            call.start(listener, new Metadata());
+            call.request(1);
+            call.setMessageCompression(true);
+            call.sendMessage(message("one"));
+            call.setMessageCompression(false);
+            call.sendMessage(message("two"));
+            call.halfClose();
+
+            CallResult<Strings.StringMessage> result = listener.await();
+
+            assertThat(result.status().getCode(), is(Status.Code.OK));
+            assertThat(result.messages().size(), is(1));
+            assertThat(result.messages().getFirst().getText(), is("one two"));
             assertThat(LAST_REQUEST_ENCODING.get(), containsString("gzip"));
         } finally {
             gzipChannel.shutdown();
@@ -332,6 +475,30 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
                 .toList();
     }
 
+    private static boolean waitForDeadlineOrDelay(String requestText) {
+        Context context = Context.current();
+        io.grpc.Deadline deadline = context.getDeadline();
+        LAST_REQUEST_DEADLINE_MILLIS.set(deadline == null ? null : Math.max(0, deadline.timeRemaining(TimeUnit.MILLISECONDS)));
+
+        long sleepMillis = Long.parseLong(requestText.substring(SLEEP_PREFIX.length()));
+        long remaining = sleepMillis;
+        while (remaining > 0) {
+            if (context.isCancelled()) {
+                return true;
+            }
+
+            long waitMillis = Math.min(remaining, 10);
+            try {
+                Thread.sleep(waitMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return true;
+            }
+            remaining -= waitMillis;
+        }
+        return context.isCancelled();
+    }
+
     private record CallResult<T>(Metadata headers,
                                  List<T> messages,
                                  Status status,
@@ -387,7 +554,15 @@ class GrpcInteropComplianceTest extends BaseServiceTest {
     private static final class ComplianceStringService extends StringServiceGrpc.StringServiceImplBase {
         @Override
         public void upper(Strings.StringMessage request, StreamObserver<Strings.StringMessage> observer) {
-            observer.onNext(message(request.getText().toUpperCase(Locale.ROOT)));
+            String requestText = request.getText();
+            if (requestText.startsWith(SLEEP_PREFIX)) {
+                if (waitForDeadlineOrDelay(requestText)) {
+                    return;
+                }
+                requestText = "slept";
+            }
+
+            observer.onNext(message(requestText.toUpperCase(Locale.ROOT)));
             observer.onCompleted();
         }
 

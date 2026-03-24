@@ -33,10 +33,5 @@
             <groupId>io.grpc</groupId>
             <artifactId>grpc-api</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.helidon.service</groupId>
-            <artifactId>helidon-service-registry</artifactId>
-            <optional>true</optional>
-        </dependency>
     </dependencies>
 </project>

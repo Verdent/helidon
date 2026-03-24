@@ -86,6 +86,8 @@ The following features are currently implemented:
 - <<Dec-Security, Security>>
 - <<Dec-Metrics, Metrics>>
 - <<Dec-Tracing, Tracing>>
+- <<Dec-gRPC-Server, gRPC Server>>
+- <<Dec-gRPC-Client, gRPC Client>>
 - <<Dec-WebSocket-Server, WebSocket Server>>
 - <<Dec-WebSocket-Client, WebSocket Client>>
 - <<Dec-CORS, WebServer CORS>>
@@ -472,6 +474,112 @@ A traced method with an explicit span name, adding a tag with a constant value, 
 include::{sourcedir}/se/inject/DeclarativeExample.java[tag=snippet_14, indent=0]
 ----
 
+=== gRPC Server [[Dec-gRPC-Server]]
+
+To create a gRPC endpoint, annotate a class with `@RpcServer.Endpoint`, optionally define one method annotated with
+`@RpcServer.Proto`, and add at least one gRPC method annotation.
+
+Services available for injection:
+
+N/A
+
+Supported method shapes:
+
+- `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
+- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
+- `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+- `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+
+Method annotations can be declared directly on endpoint methods, or on matching methods from implemented interfaces.
+String annotation values can use configuration expressions such as `${example.grpc.service-name:example.Greeter}`.
+If no `@RpcServer.Proto` method is declared, the configured service name is used as-is and the generated registration omits
+proto schema metadata.
+Type-level `@RpcServer.Marshaller` defines the default marshaller supplier for all methods on the endpoint, while a method-level
+`@RpcServer.Marshaller` overrides the default for that RPC method. Type-level and method-level `@RpcServer.Interceptors`
+are combined for the RPC method. Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service
+registry services.
+
+Annotations on endpoint type:
+
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Endpoint.html[`io.helidon.webserver.grpc.RpcServer.Endpoint`] - required annotation
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Listener.html[`io.helidon.webserver.grpc.RpcServer.Listener`] - named listener this endpoint should be served on
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.ServiceName.html[`io.helidon.webserver.grpc.RpcServer.ServiceName`] - override the gRPC service name
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Marshaller.html[`io.helidon.webserver.grpc.RpcServer.Marshaller`] - named marshaller supplier to use for the endpoint, `default` and `proto` are built in
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Interceptors.html[`io.helidon.webserver.grpc.RpcServer.Interceptors`] - ordered list of gRPC server interceptors to apply to all endpoint methods
+
+Annotations on endpoint methods:
+
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Proto.html[`io.helidon.webserver.grpc.RpcServer.Proto`] - optional protobuf descriptor method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Unary.html[`io.helidon.webserver.grpc.RpcServer.Unary`] - unary gRPC method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.ServerStreaming.html[`io.helidon.webserver.grpc.RpcServer.ServerStreaming`] - server-streaming gRPC method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.ClientStreaming.html[`io.helidon.webserver.grpc.RpcServer.ClientStreaming`] - client-streaming gRPC method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Bidirectional.html[`io.helidon.webserver.grpc.RpcServer.Bidirectional`] - bidirectional-streaming gRPC method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Marshaller.html[`io.helidon.webserver.grpc.RpcServer.Marshaller`] - named marshaller supplier to use for a specific RPC method
+- link:{grpc-server-javadoc-base-url}/io/helidon/webserver/grpc/RpcServer.Interceptors.html[`io.helidon.webserver.grpc.RpcServer.Interceptors`] - ordered list of gRPC server interceptors for a specific RPC method
+
+[source,java]
+.Example of a gRPC Server Endpoint
+----
+include::{sourcedir}/se/inject/DeclarativeExample.java[tag=snippet_19, indent=0]
+----
+
+=== gRPC Client [[Dec-gRPC-Client]]
+
+To create a typed gRPC client, create an interface annotated with `@RpcClient.Endpoint`, and add at least one gRPC method
+annotation.
+
+The generated client implementation is a singleton service qualified with `@RpcClient.Client`, so it can be injected into
+other services using that qualifier.
+
+Supported method shapes:
+
+- `@RpcClient.Unary` - `ResponseT method(RequestT request)`
+- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)`
+- `@RpcClient.ClientStreaming` - `ResponseT method(Iterator<RequestT> request)`
+- `@RpcClient.Bidirectional` - `Iterator<ResponseT> method(Iterator<RequestT> request)`
+
+With the built-in `default` and `proto` marshaller suppliers, `RequestT` and `ResponseT`
+must be protobuf message types. For string-like payloads, use a protobuf message such as
+`com.google.protobuf.StringValue`, or configure a custom marshaller supplier.
+
+Methods may be declared on the annotated interface or inherited from parent interfaces. Default interface methods are ignored.
+The `value` of `@RpcClient.Endpoint` is the initial endpoint URI. Because the annotation element has no Java default, specify a
+URI or an empty string, and then override it using configuration if needed. The base configuration key is the fully qualified
+name of the annotated interface and can be overridden using `configKey`. Supported keys under that base are `uri` and `client`.
+Type-level `@RpcClient.Marshaller` defines the default marshaller supplier for all RPC methods on the client, while a
+method-level `@RpcClient.Marshaller` overrides the default for that RPC method. Type-level and method-level
+`@RpcClient.Interceptors` are combined for the RPC method. Interceptor classes must implement `io.grpc.ClientInterceptor`
+and be Helidon service registry services.
+If `clientName` is configured on `@RpcClient.Endpoint`, the generated client first tries a named `GrpcClient`, then a named
+`Supplier<GrpcClient>`, and finally creates a dedicated client from the configured URI. The `clientName` attribute is a static
+service registry name and does not support configuration expressions.
+
+Annotations on endpoint type:
+
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Endpoint.html[`io.helidon.webclient.grpc.RpcClient.Endpoint`] - required annotation, `value` defines the initial URI, `configKey` overrides the configuration base, `clientName` selects a named `GrpcClient`
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.ServiceName.html[`io.helidon.webclient.grpc.RpcClient.ServiceName`] - override the remote gRPC service name
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Marshaller.html[`io.helidon.webclient.grpc.RpcClient.Marshaller`] - named marshaller supplier to use for the client, `default` and `proto` are built in
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Interceptors.html[`io.helidon.webclient.grpc.RpcClient.Interceptors`] - ordered list of gRPC client interceptors to apply to all RPC methods
+
+Qualifier for injection:
+
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Client.html[`io.helidon.webclient.grpc.RpcClient.Client`] - qualifier for generated typed gRPC clients
+
+Annotations on endpoint methods:
+
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Unary.html[`io.helidon.webclient.grpc.RpcClient.Unary`] - unary gRPC method
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.ServerStreaming.html[`io.helidon.webclient.grpc.RpcClient.ServerStreaming`] - server-streaming gRPC method
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.ClientStreaming.html[`io.helidon.webclient.grpc.RpcClient.ClientStreaming`] - client-streaming gRPC method
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Bidirectional.html[`io.helidon.webclient.grpc.RpcClient.Bidirectional`] - bidirectional-streaming gRPC method
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Marshaller.html[`io.helidon.webclient.grpc.RpcClient.Marshaller`] - named marshaller supplier to use for a specific RPC method
+- link:{grpc-client-javadoc-base-url}/io/helidon/webclient/grpc/RpcClient.Interceptors.html[`io.helidon.webclient.grpc.RpcClient.Interceptors`] - ordered list of gRPC client interceptors for a specific RPC method
+
+[source,java]
+.Example of a Typed gRPC Client
+----
+include::{sourcedir}/se/inject/DeclarativeExample.java[tag=snippet_20, indent=0]
+----
+
 === WebSocket Server [[Dec-WebSocket-Server]]
 
 To create a WebSocket endpoint, simply annotate a class with `@WebSocketServer.Endpoint`, and
@@ -605,4 +713,3 @@ include::{sourcedir}/se/inject/DeclarativeExample.java[tag=snippet_18, indent=0]
 
 To add a declarative health check, create a service that implements io.helidon.health.HealthCheck or produces an instance of it.
 The WebServer health observer discovers all such services and uses them to contribute to the health response. Because the lookup is performed only once, you must not use the @Service.PerRequest scope. The recommended scope is @Service.Singleton.
-

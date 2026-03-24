@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.helidon.grpc.api;
+package io.helidon.webclient.grpc;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -41,6 +41,9 @@ public final class RpcClient {
      * The annotated type must be an interface.
      * Non-default methods declared on the interface or inherited from its parent interfaces
      * are considered gRPC methods.
+     * <p>
+     * The base of configuration for a declarative client is the fully qualified name of the
+     * annotated interface. This key can be overridden using {@link #configKey()}.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -52,6 +55,10 @@ public final class RpcClient {
          * The value can use declarative configuration expressions such as
          * {@code ${text-service.client.uri:http://localhost:8080}}.
          * <p>
+         * If left blank, the URI may be provided through configuration under {@link #configKey()}.
+         * The URI is only required when the generated client must create a dedicated
+         * {@code GrpcClient} instance.
+         * <p>
          * If a dedicated client is created from this URI and the URI starts with {@code http://},
          * TLS is disabled for that generated client instance.
          *
@@ -60,14 +67,22 @@ public final class RpcClient {
         String value();
 
         /**
+         * Configuration key base to use when looking up options for the generated client.
+         * <p>
+         * Supported keys are:
+         * <ul>
+         *     <li>{@code uri} - remote gRPC endpoint URI</li>
+         *     <li>{@code client} - gRPC client configuration subtree</li>
+         * </ul>
+         *
+         * @return configuration key prefix
+         */
+        String configKey() default "";
+
+        /**
          * Name of a named {@code GrpcClient} instance from the service registry to use.
          * <p>
-         * The value can use declarative configuration expressions such as
-         * {@code ${text-service.client.name:text-service}}.
-         * <p>
-         * Resolution order is:
-         * named {@code GrpcClient}, named {@code java.util.function.Supplier<GrpcClient>},
-         * then a new client created from the configured URI.
+         * This value is a static service registry name.
          *
          * @return registry client name
          */
@@ -107,6 +122,54 @@ public final class RpcClient {
          * @return service name
          */
         String value();
+    }
+
+    /**
+     * Declares an ordered list of gRPC client interceptors.
+     * <p>
+     * May be used on the client interface to define interceptors for all RPC methods, or on an individual
+     * RPC method to add method-specific interceptors.
+     */
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.CLASS)
+    @Documented
+    @Inherited
+    public @interface Interceptors {
+        /**
+         * Ordered interceptor classes.
+         *
+         * @return interceptor classes
+         */
+        Class<?>[] value();
+    }
+
+    /**
+     * Declares the named marshaller supplier for a typed gRPC client or one of its RPC methods.
+     * <p>
+     * May be used on the client interface to define the default marshaller supplier for all RPC methods,
+     * or on an individual RPC method to override the default.
+     */
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.CLASS)
+    @Documented
+    @Inherited
+    public @interface Marshaller {
+        /**
+         * The built-in protobuf marshaller supplier name.
+         */
+        String PROTO = "proto";
+
+        /**
+         * The built-in default marshaller supplier name.
+         */
+        String DEFAULT = "default";
+
+        /**
+         * Named marshaller supplier to use.
+         *
+         * @return marshaller supplier name
+         */
+        String value() default DEFAULT;
     }
 
     /**

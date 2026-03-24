@@ -16,16 +16,14 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import io.helidon.grpc.api.RpcClient;
+import io.helidon.webclient.grpc.RpcClient;
 
 @RpcClient.Endpoint(value = ConfiguredTextServiceClient.INVALID_URI,
-                    clientName = ConfiguredTextServiceClient.CLIENT_NAME_EXPRESSION)
+                    clientName = ConfiguredTextServiceClient.CLIENT_NAME)
 @RpcClient.ServiceName(ConfiguredTextServiceClient.SERVICE_NAME_EXPRESSION)
 interface ConfiguredTextServiceClient {
     String INVALID_URI = "http://localhost:1";
-    String DEFAULT_CLIENT_NAME = "missing-configured-client";
-    String CLIENT_NAME_EXPRESSION =
-            "${configured-text-service.client.name:" + DEFAULT_CLIENT_NAME + "}";
+    String CLIENT_NAME = ConfiguredGrpcClient.CLIENT_NAME;
     String SERVICE_NAME_EXPRESSION =
             "${configured-text-service.grpc.service-name:" + ConfiguredTextServiceEndpoint.DEFAULT_SERVICE_NAME + "}";
 

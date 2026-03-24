@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import io.helidon.grpc.api.RpcClient;
+import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.ServiceRegistry;
@@ -31,6 +31,7 @@ import io.helidon.webserver.testing.junit5.ServerTest;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.hasItems;
@@ -38,6 +39,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+@ExtendWith(GrpcTestEnvironmentExtension.class)
 @ServerTest
 class DeclarativeGrpcTest {
     private static final GrpcServiceDescriptor SERVICE_DESCRIPTOR = GrpcServiceDescriptor.builder()
@@ -75,6 +77,7 @@ class DeclarativeGrpcTest {
     @BeforeEach
     void beforeEach() {
         SomeEntryPointInterceptor.reset();
+        GrpcInterceptorRecorder.reset();
     }
 
     @Test
@@ -138,6 +141,18 @@ class DeclarativeGrpcTest {
                             startsWith(TextServiceEndpoint.class.getName() + ".split("),
                             startsWith(TextServiceEndpoint.class.getName() + ".join("),
                             startsWith(TextServiceEndpoint.class.getName() + ".echo(")));
+    }
+
+    @Test
+    void testTypedClientGrpcInterceptors() {
+        TextMessages.TextMessage response = typedClient().upper(message("hello"));
+
+        assertThat(response.getText(), is("HELLO"));
+        assertThat(GrpcInterceptorRecorder.executions(),
+                   hasItems("TextServiceClientInterceptor:" + TextServiceGrpc.SERVICE_NAME + "/Upper",
+                            "TextServiceClientUpperInterceptor:" + TextServiceGrpc.SERVICE_NAME + "/Upper",
+                            "TextServiceServerInterceptor:" + TextServiceGrpc.SERVICE_NAME + "/Upper",
+                            "TextServiceServerUpperInterceptor:" + TextServiceGrpc.SERVICE_NAME + "/Upper"));
     }
 
     private static TextMessages.TextMessage message(String text) {

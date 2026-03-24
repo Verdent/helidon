@@ -25,14 +25,15 @@ import java.util.Map;
 import java.util.Set;
 
 import io.helidon.common.types.TypeName;
-import io.helidon.grpc.api.RpcClient;
-import io.helidon.service.registry.FactoryType;
-import io.helidon.service.registry.Lookup;
+import io.helidon.webclient.grpc.RpcClient;
+import io.helidon.grpc.core.MarshallerSupplier;
 import io.helidon.webclient.grpc.GrpcClient;
+import io.helidon.webclient.grpc.GrpcClientConfig;
 import io.helidon.webclient.grpc.GrpcClientMethodDescriptor;
 import io.helidon.webclient.grpc.GrpcServiceClient;
 import io.helidon.webclient.grpc.GrpcServiceDescriptor;
 
+import io.grpc.ClientInterceptor;
 import io.grpc.stub.StreamObserver;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.junit.jupiter.api.Test;
@@ -68,13 +69,16 @@ class DeclarativeCodegenGrpcClientTypesTest {
         checkField(toCheck, checked, fields, "ANNOTATION_ENDPOINT", RpcClient.Endpoint.class);
         checkField(toCheck, checked, fields, "ANNOTATION_CLIENT_QUALIFIER", RpcClient.Client.class);
         checkField(toCheck, checked, fields, "ANNOTATION_SERVICE_NAME", RpcClient.ServiceName.class);
+        checkField(toCheck, checked, fields, "ANNOTATION_INTERCEPTORS", RpcClient.Interceptors.class);
+        checkField(toCheck, checked, fields, "ANNOTATION_MARSHALLER", RpcClient.Marshaller.class);
         checkField(toCheck, checked, fields, "ANNOTATION_UNARY", RpcClient.Unary.class);
         checkField(toCheck, checked, fields, "ANNOTATION_SERVER_STREAMING", RpcClient.ServerStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_CLIENT_STREAMING", RpcClient.ClientStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_BIDIRECTIONAL", RpcClient.Bidirectional.class);
-        checkField(toCheck, checked, fields, "FACTORY_TYPE", FactoryType.class);
-        checkField(toCheck, checked, fields, "LOOKUP", Lookup.class);
+        checkField(toCheck, checked, fields, "CLIENT_INTERCEPTOR", ClientInterceptor.class);
+        checkField(toCheck, checked, fields, "MARSHALLER_SUPPLIER", MarshallerSupplier.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT", GrpcClient.class);
+        checkField(toCheck, checked, fields, "GRPC_CLIENT_CONFIG", GrpcClientConfig.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_CLIENT", GrpcServiceClient.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_METHOD_DESCRIPTOR", GrpcClientMethodDescriptor.class);

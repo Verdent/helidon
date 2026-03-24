@@ -17,26 +17,59 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import io.helidon.service.registry.Service;
 import io.helidon.tracing.Tracer;
-import io.helidon.tracing.providers.jaeger.JaegerTracerBuilder;
+import io.helidon.tracing.providers.opentelemetry.HelidonOpenTelemetry;
+
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.semconv.ServiceAttributes;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 
 @Service.Singleton
-public class TestTracerFactory implements Supplier<Tracer> {
+class TestTracerFactory implements Supplier<Tracer> {
     private final TestSpanExporter exporter = new TestSpanExporter();
+    private final OpenTelemetrySdk openTelemetry;
+    private final Tracer tracer;
+
+    public TestTracerFactory() {
+        SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+                .setResource(Resource.getDefault().merge(Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME,
+                                                                                       "declarative-grpc-test"))))
+                .addSpanProcessor(BatchSpanProcessor.builder(exporter)
+                        .setScheduleDelay(Duration.ofMillis(100))
+                        .build())
+                .build();
+
+        openTelemetry = OpenTelemetrySdk.builder()
+                .setTracerProvider(tracerProvider)
+                .setPropagators(ContextPropagators.create(TextMapPropagator.composite(
+                        W3CTraceContextPropagator.getInstance(),
+                        W3CBaggagePropagator.getInstance())))
+                .build();
+
+        tracer = HelidonOpenTelemetry.create(openTelemetry,
+                                             openTelemetry.getTracer("declarative-grpc-test"),
+                                             Map.of());
+    }
 
     @Override
     public Tracer get() {
-        return JaegerTracerBuilder.forService("declarative-grpc-test")
-                .scheduleDelay(Duration.ofMillis(100))
-                .addSpanExporter(exporter)
-                .build();
+        return tracer;
     }
 
     @Service.PreDestroy
     public void shutdown() {
+        openTelemetry.close();
         exporter.close();
     }
 

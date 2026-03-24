@@ -18,6 +18,7 @@ package io.helidon.grpc.core;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
+import java.util.concurrent.TimeUnit;
 
 import io.helidon.http.Header;
 import io.helidon.http.HeaderNames;
@@ -35,6 +36,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  */
 public class GrpcHeadersUtil {
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
+    private static final long MAX_TIMEOUT_VALUE = 100_000_000L;
 
     private GrpcHeadersUtil() {
     }
@@ -148,6 +150,78 @@ public class GrpcHeadersUtil {
         }
 
         return bytes.toString(UTF_8);
+    }
+
+    /**
+     * Encodes a {@code grpc-timeout} header value from a timeout expressed in
+     * nanoseconds.
+     * <p>
+     * The timeout header is defined by the gRPC over HTTP/2 wire specification:
+     * <a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">PROTOCOL-HTTP2.md</a>.
+     * The header grammar allows at most eight ASCII digits plus a unit suffix.
+     * <p>
+     * This encoder always emits a positive timeout value. Although older gRPC
+     * implementations have sometimes accepted or emitted {@code 0n}, emitting
+     * {@code 1n} for non-positive values stays within the protocol grammar while
+     * still representing an immediate deadline.
+     *
+     * @param timeoutNanos timeout to encode, in nanoseconds
+     * @return encoded timeout header value
+     */
+    public static String encodeTimeout(long timeoutNanos) {
+        long timeout = timeoutNanos <= 0 ? 1 : timeoutNanos;
+
+        if (timeout < MAX_TIMEOUT_VALUE) {
+            return timeout + "n";
+        }
+        if (timeout < MAX_TIMEOUT_VALUE * TimeUnit.MICROSECONDS.toNanos(1)) {
+            return TimeUnit.NANOSECONDS.toMicros(timeout) + "u";
+        }
+        if (timeout < MAX_TIMEOUT_VALUE * TimeUnit.MILLISECONDS.toNanos(1)) {
+            return TimeUnit.NANOSECONDS.toMillis(timeout) + "m";
+        }
+        if (timeout < MAX_TIMEOUT_VALUE * TimeUnit.SECONDS.toNanos(1)) {
+            return TimeUnit.NANOSECONDS.toSeconds(timeout) + "S";
+        }
+        if (timeout < MAX_TIMEOUT_VALUE * TimeUnit.MINUTES.toNanos(1)) {
+            return TimeUnit.NANOSECONDS.toMinutes(timeout) + "M";
+        }
+        return TimeUnit.NANOSECONDS.toHours(timeout) + "H";
+    }
+
+    /**
+     * Decodes a {@code grpc-timeout} header value into nanoseconds.
+     * <p>
+     * See the gRPC over HTTP/2 wire specification:
+     * <a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">PROTOCOL-HTTP2.md</a>.
+     *
+     * @param timeoutValue encoded timeout header value
+     * @return decoded timeout in nanoseconds
+     * @throws IllegalArgumentException if the header value has an invalid format
+     */
+    public static long decodeTimeout(String timeoutValue) {
+        if (timeoutValue.isEmpty()) {
+            throw new IllegalArgumentException("empty timeout");
+        }
+        if (timeoutValue.length() > 9) {
+            throw new IllegalArgumentException("bad timeout format");
+        }
+
+        long timeout = Long.parseLong(timeoutValue.substring(0, timeoutValue.length() - 1));
+        if (timeout < 0) {
+            throw new IllegalArgumentException("negative timeout");
+        }
+
+        return switch (timeoutValue.charAt(timeoutValue.length() - 1)) {
+            case 'n' -> timeout;
+            case 'u' -> TimeUnit.MICROSECONDS.toNanos(timeout);
+            case 'm' -> TimeUnit.MILLISECONDS.toNanos(timeout);
+            case 'S' -> TimeUnit.SECONDS.toNanos(timeout);
+            case 'M' -> TimeUnit.MINUTES.toNanos(timeout);
+            case 'H' -> TimeUnit.HOURS.toNanos(timeout);
+            default -> throw new IllegalArgumentException("Invalid timeout unit: "
+                                                                  + timeoutValue.charAt(timeoutValue.length() - 1));
+        };
     }
 
     private static void updateMetadata(Metadata metadata, Header header, Base64.Decoder decoder) {

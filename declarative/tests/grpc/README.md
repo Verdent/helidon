@@ -10,8 +10,9 @@ What it demonstrates
 - declarative gRPC server registration
 - typed declarative gRPC client injection
 - all four RPC interaction styles
+- service-level and method-level gRPC interceptors
 - entry-point interception, metrics, and tracing on gRPC methods
-- listener, service-name, and named-client configuration through annotation expressions
+- listener, service-name, config-key, static named-client, and default-client configuration
 
 Key files
 ---------
@@ -19,7 +20,11 @@ Key files
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary and streaming text operations
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceEndpoint.java` - endpoint using configuration placeholders
-- `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and named client selection
+- `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and static named client selection
+- `src/main/java/io/helidon/declarative/tests/grpc/DefaultGrpcClient.java` - unnamed registry client used by generated clients as the default fallback
+- `src/main/java/io/helidon/declarative/tests/grpc/ConfigBackedTextServiceClient.java` - client using `configKey` and a `GrpcClient` config subtree
+- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClientInterceptor.java` - client-wide gRPC interceptor
+- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceServerUpperInterceptor.java` - method-specific server interceptor
 - `src/main/java/io/helidon/declarative/tests/grpc/Main.java` - application bootstrap
 - `src/main/resources/application.yaml` - listener and client configuration
 
@@ -44,13 +49,16 @@ class GreeterEndpoint {
     }
 }
 
-@RpcClient.Endpoint("${greeter.uri:http://localhost:8080}")
+@RpcClient.Endpoint(value = "${greeter.uri:http://localhost:8080}",
+                    configKey = "greeter.client")
 @RpcClient.ServiceName("example.Greeter")
 interface GreeterClient {
     @RpcClient.Unary("SayHello")
     HelloReply sayHello(HelloRequest request);
 }
 ```
+
+No explicit service scope is needed on the endpoint. If you do not declare one, the endpoint is treated as a singleton service by default.
 
 Validation
 ----------

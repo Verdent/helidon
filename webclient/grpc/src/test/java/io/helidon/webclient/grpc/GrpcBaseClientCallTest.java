@@ -15,10 +15,14 @@
  */
 package io.helidon.webclient.grpc;
 
+import java.util.concurrent.TimeUnit;
+
+import io.helidon.grpc.core.GrpcHeadersUtil;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.WritableHeaders;
 import io.helidon.http.http2.Http2Headers;
 
+import io.grpc.CallOptions;
 import io.grpc.Metadata;
 import org.junit.jupiter.api.Test;
 
@@ -26,13 +30,25 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 
+/**
+ * Client request header compliance tests based on the gRPC over HTTP/2 wire specification.
+ * <p>
+ * Official reference:
+ * <a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">gRPC over HTTP/2</a>.
+ */
 class GrpcBaseClientCallTest {
 
     @Test
     void testSetupHeadersIncludeGrpcTransportRequirements() {
-        // Spec note: PROTOCOL-HTTP2 requires gRPC requests to use POST with the
-        // method path, content-type application/grpc, TE: trailers, and the
-        // grpc-accept-encoding negotiation header when compression is supported.
+        // * **Request-Headers** → Call-Definition *Custom-Metadata
+        // * **Method** → ":method POST"
+        // * **Path** → ":path" "/" Service-Name "/" {_method name_}
+        // * **Scheme** → ":scheme " ("http" / "https")
+        // * **TE** → "te" "trailers" ; Used to detect incompatible proxies
+        // * **Content-Type** → "content-type" "application/grpc" [("+proto" / "+json" / {_custom_})]
+        // * **Message-Accept-Encoding** → "grpc-accept-encoding" Content-Coding *(","
+        //   Content-Coding)
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
         Metadata metadata = new Metadata();
         Metadata.Key<String> key = Metadata.Key.of("cookie", Metadata.ASCII_STRING_MARSHALLER);
         metadata.put(key, "sugar");
@@ -46,5 +62,44 @@ class GrpcBaseClientCallTest {
         assertThat(headers.get(HeaderNames.CONTENT_TYPE).get(), is("application/grpc"));
         assertThat(headers.get(HeaderNames.TE).get(), is("trailers"));
         assertThat(headers.get(HeaderNames.create("grpc-accept-encoding")).get(), is("gzip"));
+    }
+
+    @Test
+    void testSetupHeadersIncludeGrpcTimeoutWhenDeadlineIsPresent() {
+        // * **Timeout** → "grpc-timeout" TimeoutValue TimeoutUnit
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        WritableHeaders<?> headers = GrpcBaseClientCall.setupHeaders(new Metadata(),
+                                                                     "localhost",
+                                                                     "foo",
+                                                                     CallOptions.DEFAULT.withDeadlineAfter(10,
+                                                                                                           TimeUnit.SECONDS));
+
+        assertThat(headers.contains(GrpcBaseClientCall.GRPC_TIMEOUT_NAME), is(true));
+        assertThat(GrpcHeadersUtil.decodeTimeout(headers.get(GrpcBaseClientCall.GRPC_TIMEOUT_NAME).get()) > 0, is(true));
+    }
+
+    @Test
+    void testSetupHeadersUseTheActualRequestScheme() {
+        // * **Scheme** → ":scheme " ("http" / "https")
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        WritableHeaders<?> headers = GrpcBaseClientCall.setupHeaders(new Metadata(),
+                                                                     "localhost",
+                                                                     "foo",
+                                                                     CallOptions.DEFAULT,
+                                                                     "https");
+
+        assertThat(headers.get(Http2Headers.SCHEME_NAME).get(), is("https"));
+    }
+
+    @Test
+    void testSetupHeadersIncludeGrpcEncodingWhenCompressionIsConfigured() {
+        // * **Message-Encoding** → "grpc-encoding" Content-Coding
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        WritableHeaders<?> headers = GrpcBaseClientCall.setupHeaders(new Metadata(),
+                                                                     "localhost",
+                                                                     "foo",
+                                                                     CallOptions.DEFAULT.withCompression("gzip"));
+
+        assertThat(headers.get(GrpcBaseClientCall.GRPC_ENCODING_NAME).get(), is("gzip"));
     }
 }

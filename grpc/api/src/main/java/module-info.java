@@ -19,7 +19,6 @@
  */
 module io.helidon.grpc.api {
 
-    requires static io.helidon.service.registry;
     requires transitive io.grpc;
 
     exports io.helidon.grpc.api;

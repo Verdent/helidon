@@ -68,4 +68,7 @@ module io.helidon.declarative.codegen {
     provides io.helidon.codegen.spi.AnnotationMapperProvider
             with io.helidon.declarative.codegen.http.restclient.RestClientAnnotationMapperProvider,
                     io.helidon.declarative.codegen.grpc.client.RpcClientAnnotationMapperProvider;
+
+    provides io.helidon.codegen.spi.TypeMapperProvider
+            with io.helidon.declarative.codegen.grpc.server.RpcServerTypeMapperProvider;
 }

@@ -34,8 +34,14 @@ class GrpcProtocolHandlerNotFoundTest {
 
     @Test
     void testMissingGrpcRouteReturnsOkWithUnimplementedStatus() {
-        // Spec note: unknown gRPC methods and services are reported via
-        // grpc-status UNIMPLEMENTED while the HTTP status remains 200.
+        // This test verifies that calling an unimplemented RPC method returns the UNIMPLEMENTED
+        // status code.
+        // This test verifies calling an unimplemented server returns the UNIMPLEMENTED status code.
+        // * **HTTP-Status** → ":status 200"
+        // Status must be sent in **Trailers** even if the status code is OK.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#unimplemented_method
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md#unimplemented_service
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses
         Http2StreamWriter writer = new Http2StreamWriter() {
             @Override
             public void write(Http2FrameData frame) {

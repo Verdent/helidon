@@ -96,18 +96,13 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
             return;
         }
 
-        // serialize and write message
-        byte[] serialized = serializeMessage(message);
-        BufferData messageData = BufferData.createReadOnly(serialized, 0, serialized.length);
-        BufferData headerData = BufferData.create(DATA_PREFIX_LENGTH);
-        headerData.writeInt8(0);                                // no compression
-        headerData.writeUnsignedInt32(messageData.available());         // length prefixed
-        clientStream().writeData(BufferData.create(headerData, messageData), true);
+        BufferData requestFrame = serializeRequestFrame(message);
+        clientStream().writeData(requestFrame, true);
         requestSent = true;
 
         // update bytes sent
         if (enableMetrics()) {
-            bytesSent().addAndGet(serialized.length);
+            bytesSent().addAndGet(requestFrame.available() - DATA_PREFIX_LENGTH);
         }
 
         // read response headers, or trailers if an error occurred

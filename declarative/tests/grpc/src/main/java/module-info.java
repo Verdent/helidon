@@ -20,7 +20,6 @@ module io.helidon.declarative.tests.grpc {
     requires io.grpc.protobuf;
     requires io.grpc.stub;
     requires io.helidon.config.yaml;
-    requires io.helidon.grpc.api;
     requires io.helidon.logging.common;
     requires io.helidon.metrics.api;
     requires io.helidon.service.registry;

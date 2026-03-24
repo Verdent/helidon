@@ -72,7 +72,7 @@ public class GrpcProtocolSelector implements Http2SubProtocolSelector {
         if (httpHeaders.contains(HeaderNames.CONTENT_TYPE)) {
             String contentType = httpHeaders.get(HeaderNames.CONTENT_TYPE).get();
 
-            if (contentType.startsWith("application/grpc")) {
+            if (isGrpcContentType(contentType)) {
                 GrpcRouting routing = router.routing(GrpcRouting.class, GrpcRouting.empty());
 
                 GrpcRouteHandler<?, ?> route = routing.findRoute(prologue);
@@ -93,5 +93,17 @@ public class GrpcProtocolSelector implements Http2SubProtocolSelector {
             }
         }
         return NOT_SUPPORTED;
+    }
+
+    private static boolean isGrpcContentType(String contentType) {
+        String grpcContentType = "application/grpc";
+        if (!contentType.regionMatches(true, 0, grpcContentType, 0, grpcContentType.length())) {
+            return false;
+        }
+        if (contentType.length() == grpcContentType.length()) {
+            return true;
+        }
+        char suffix = contentType.charAt(grpcContentType.length());
+        return suffix == '+' || suffix == ';';
     }
 }

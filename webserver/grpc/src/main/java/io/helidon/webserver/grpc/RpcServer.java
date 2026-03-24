@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.helidon.grpc.api;
+package io.helidon.webserver.grpc;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -41,6 +41,8 @@ public final class RpcServer {
      * Definition of a gRPC server endpoint.
      * <p>
      * The annotated type must be a concrete class.
+     * If no explicit {@link Service} scope is declared, declarative code generation treats the
+     * endpoint as a singleton service.
      */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.CLASS)
@@ -92,10 +94,58 @@ public final class RpcServer {
     }
 
     /**
-     * Marks a method that returns the protobuf descriptor for this service.
+     * Declares an ordered list of gRPC server interceptors.
      * <p>
-     * Declarative code generation expects exactly one such method on the endpoint type.
-     * The method must declare no parameters and return
+     * May be used on the endpoint type to define interceptors for all RPC methods, or on an individual
+     * RPC method to add method-specific interceptors.
+     */
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.CLASS)
+    @Documented
+    @Inherited
+    public @interface Interceptors {
+        /**
+         * Ordered interceptor classes.
+         *
+         * @return interceptor classes
+         */
+        Class<?>[] value();
+    }
+
+    /**
+     * Declares the named marshaller supplier for an endpoint or one of its RPC methods.
+     * <p>
+     * May be used on the endpoint type to define the default marshaller supplier for all RPC methods,
+     * or on an individual RPC method to override the default.
+     */
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.CLASS)
+    @Documented
+    @Inherited
+    public @interface Marshaller {
+        /**
+         * The built-in protobuf marshaller supplier name.
+         */
+        String PROTO = "proto";
+
+        /**
+         * The built-in default marshaller supplier name.
+         */
+        String DEFAULT = "default";
+
+        /**
+         * Named marshaller supplier to use.
+         *
+         * @return marshaller supplier name
+         */
+        String value() default DEFAULT;
+    }
+
+    /**
+     * Marks an optional method that returns the protobuf descriptor for this service.
+     * <p>
+     * Declarative code generation accepts at most one such method on the endpoint type.
+     * When declared, the method must declare no parameters and return
      * {@code com.google.protobuf.Descriptors.FileDescriptor}. It may be either instance or static.
      */
     @Target(ElementType.METHOD)

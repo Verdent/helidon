@@ -18,16 +18,13 @@ package io.helidon.declarative.tests.grpc;
 
 import java.util.Locale;
 
-import io.helidon.grpc.api.RpcServer;
-import io.helidon.service.registry.Service;
+import io.helidon.webserver.grpc.RpcServer;
 
-import com.google.protobuf.Descriptors;
 import io.grpc.stub.StreamObserver;
 
 @RpcServer.Endpoint
 @RpcServer.Listener(ConfiguredTextServiceEndpoint.LISTENER_EXPRESSION)
 @RpcServer.ServiceName(ConfiguredTextServiceEndpoint.SERVICE_NAME_EXPRESSION)
-@Service.Singleton
 class ConfiguredTextServiceEndpoint {
     static final String SOCKET_NAME = "grpc-config";
     static final String CONFIGURED_SERVICE_NAME = TextServiceGrpc.SERVICE_NAME;
@@ -35,11 +32,6 @@ class ConfiguredTextServiceEndpoint {
     static final String LISTENER_EXPRESSION = "${configured-text-service.server.listener:@default}";
     static final String SERVICE_NAME_EXPRESSION =
             "${configured-text-service.grpc.service-name:" + DEFAULT_SERVICE_NAME + "}";
-
-    @RpcServer.Proto
-    Descriptors.FileDescriptor proto() {
-        return TextMessages.getDescriptor();
-    }
 
     @RpcServer.Unary("Upper")
     void upper(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {

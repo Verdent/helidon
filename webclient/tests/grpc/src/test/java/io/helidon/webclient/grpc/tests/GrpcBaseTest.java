@@ -21,11 +21,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
+import io.grpc.Context;
 import io.grpc.ForwardingServerCall;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
@@ -47,7 +50,12 @@ class GrpcBaseTest {
             Metadata.Key.of("x-grpc-test-echo-initial", Metadata.ASCII_STRING_MARSHALLER);
     static final Metadata.Key<byte[]> TRAILING_METADATA_KEY =
             Metadata.Key.of("x-grpc-test-echo-trailing-bin", Metadata.BINARY_BYTE_MARSHALLER);
+    static final Metadata.Key<String> REQUEST_ENCODING_KEY =
+            Metadata.Key.of("grpc-encoding", Metadata.ASCII_STRING_MARSHALLER);
     static final String ERROR_PREFIX = "__status__:";
+    static final String SLEEP_PREFIX = "__sleep__:";
+    static final AtomicReference<String> LAST_REQUEST_ENCODING = new AtomicReference<>();
+    static final AtomicReference<Long> LAST_REQUEST_DEADLINE_MILLIS = new AtomicReference<>();
 
     private final List<Class<?>> calledInterceptors = new CopyOnWriteArrayList<>();
 
@@ -96,12 +104,22 @@ class GrpcBaseTest {
     @BeforeEach
     void setUpTest() {
         calledInterceptors.clear();
+        LAST_REQUEST_ENCODING.set(null);
+        LAST_REQUEST_DEADLINE_MILLIS.set(null);
     }
 
     static void upper(Strings.StringMessage req,
-                              StreamObserver<Strings.StringMessage> streamObserver) {
+                      StreamObserver<Strings.StringMessage> streamObserver) {
+        String requestText = req.getText();
+        if (requestText.startsWith(SLEEP_PREFIX)) {
+            if (waitForDeadlineOrDelay(requestText)) {
+                return;
+            }
+            requestText = "slept";
+        }
+
         Strings.StringMessage msg = Strings.StringMessage.newBuilder()
-                .setText(req.getText().toUpperCase(Locale.ROOT))
+                .setText(requestText.toUpperCase(Locale.ROOT))
                 .build();
         streamObserver.onNext(msg);
         streamObserver.onCompleted();
@@ -185,6 +203,30 @@ class GrpcBaseTest {
 
     static void badMethod(Strings.StringMessage req, StreamObserver<Strings.StringMessage> streamObserver) {
         streamObserver.onError(Status.INVALID_ARGUMENT.withDescription(req.getText()).asRuntimeException());
+    }
+
+    private static boolean waitForDeadlineOrDelay(String requestText) {
+        Context context = Context.current();
+        io.grpc.Deadline deadline = context.getDeadline();
+        LAST_REQUEST_DEADLINE_MILLIS.set(deadline == null ? null : Math.max(0, deadline.timeRemaining(TimeUnit.MILLISECONDS)));
+
+        long sleepMillis = Long.parseLong(requestText.substring(SLEEP_PREFIX.length()));
+        long remaining = sleepMillis;
+        while (remaining > 0) {
+            if (context.isCancelled()) {
+                return true;
+            }
+
+            long waitMillis = Math.min(remaining, 10);
+            try {
+                Thread.sleep(waitMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return true;
+            }
+            remaining -= waitMillis;
+        }
+        return context.isCancelled();
     }
 
     Strings.StringMessage newStringMessage(String data) {
@@ -276,6 +318,7 @@ class GrpcBaseTest {
         public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call,
                                                                      Metadata headers,
                                                                      ServerCallHandler<ReqT, RespT> next) {
+            LAST_REQUEST_ENCODING.set(headers.get(REQUEST_ENCODING_KEY));
             String initialMetadata = headers.get(INITIAL_METADATA_KEY);
             if (initialMetadata != null) {
                 Metadata responseHeaders = new Metadata();

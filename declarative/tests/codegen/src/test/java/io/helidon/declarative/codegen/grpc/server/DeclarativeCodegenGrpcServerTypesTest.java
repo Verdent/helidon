@@ -24,11 +24,13 @@ import java.util.Map;
 import java.util.Set;
 
 import io.helidon.common.types.TypeName;
-import io.helidon.grpc.api.RpcServer;
+import io.helidon.webserver.grpc.RpcServer;
+import io.helidon.grpc.core.MarshallerSupplier;
 import io.helidon.webserver.grpc.GrpcEntryPoint;
 import io.helidon.webserver.grpc.GrpcRouteRegistration;
 import io.helidon.webserver.grpc.GrpcServiceDescriptor;
 
+import io.grpc.ServerInterceptor;
 import io.grpc.stub.ServerCalls;
 import io.grpc.stub.StreamObserver;
 import org.hamcrest.collection.IsEmptyCollection;
@@ -65,11 +67,15 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "ANNOTATION_ENDPOINT", RpcServer.Endpoint.class);
         checkField(toCheck, checked, fields, "ANNOTATION_LISTENER", RpcServer.Listener.class);
         checkField(toCheck, checked, fields, "ANNOTATION_SERVICE_NAME", RpcServer.ServiceName.class);
+        checkField(toCheck, checked, fields, "ANNOTATION_INTERCEPTORS", RpcServer.Interceptors.class);
+        checkField(toCheck, checked, fields, "ANNOTATION_MARSHALLER", RpcServer.Marshaller.class);
         checkField(toCheck, checked, fields, "ANNOTATION_PROTO", RpcServer.Proto.class);
         checkField(toCheck, checked, fields, "ANNOTATION_UNARY", RpcServer.Unary.class);
         checkField(toCheck, checked, fields, "ANNOTATION_SERVER_STREAMING", RpcServer.ServerStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_CLIENT_STREAMING", RpcServer.ClientStreaming.class);
         checkField(toCheck, checked, fields, "ANNOTATION_BIDIRECTIONAL", RpcServer.Bidirectional.class);
+        checkField(toCheck, checked, fields, "SERVER_INTERCEPTOR", ServerInterceptor.class);
+        checkField(toCheck, checked, fields, "MARSHALLER_SUPPLIER", MarshallerSupplier.class);
         checkField(toCheck, checked, fields, "GRPC_ROUTE_REGISTRATION", GrpcRouteRegistration.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);
         checkField(toCheck, checked, fields, "GRPC_ENTRY_POINTS", GrpcEntryPoint.EntryPoints.class);

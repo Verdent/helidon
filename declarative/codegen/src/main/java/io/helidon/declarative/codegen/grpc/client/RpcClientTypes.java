@@ -20,20 +20,25 @@ import io.helidon.common.types.Annotation;
 import io.helidon.common.types.TypeName;
 
 final class RpcClientTypes {
-    static final TypeName ANNOTATION_ENDPOINT = TypeName.create("io.helidon.grpc.api.RpcClient.Endpoint");
-    static final TypeName ANNOTATION_CLIENT_QUALIFIER = TypeName.create("io.helidon.grpc.api.RpcClient.Client");
-    static final TypeName ANNOTATION_SERVICE_NAME = TypeName.create("io.helidon.grpc.api.RpcClient.ServiceName");
-    static final TypeName ANNOTATION_UNARY = TypeName.create("io.helidon.grpc.api.RpcClient.Unary");
+    static final TypeName ANNOTATION_ENDPOINT = TypeName.create("io.helidon.webclient.grpc.RpcClient.Endpoint");
+    static final TypeName ANNOTATION_CLIENT_QUALIFIER = TypeName.create("io.helidon.webclient.grpc.RpcClient.Client");
+    static final TypeName ANNOTATION_SERVICE_NAME = TypeName.create("io.helidon.webclient.grpc.RpcClient.ServiceName");
+    static final TypeName ANNOTATION_INTERCEPTORS =
+            TypeName.create("io.helidon.webclient.grpc.RpcClient.Interceptors");
+    static final TypeName ANNOTATION_MARSHALLER =
+            TypeName.create("io.helidon.webclient.grpc.RpcClient.Marshaller");
+    static final TypeName ANNOTATION_UNARY = TypeName.create("io.helidon.webclient.grpc.RpcClient.Unary");
     static final TypeName ANNOTATION_SERVER_STREAMING =
-            TypeName.create("io.helidon.grpc.api.RpcClient.ServerStreaming");
+            TypeName.create("io.helidon.webclient.grpc.RpcClient.ServerStreaming");
     static final TypeName ANNOTATION_CLIENT_STREAMING =
-            TypeName.create("io.helidon.grpc.api.RpcClient.ClientStreaming");
+            TypeName.create("io.helidon.webclient.grpc.RpcClient.ClientStreaming");
     static final TypeName ANNOTATION_BIDIRECTIONAL =
-            TypeName.create("io.helidon.grpc.api.RpcClient.Bidirectional");
+            TypeName.create("io.helidon.webclient.grpc.RpcClient.Bidirectional");
 
-    static final TypeName FACTORY_TYPE = TypeName.create("io.helidon.service.registry.FactoryType");
-    static final TypeName LOOKUP = TypeName.create("io.helidon.service.registry.Lookup");
+    static final TypeName CLIENT_INTERCEPTOR = TypeName.create("io.grpc.ClientInterceptor");
+    static final TypeName MARSHALLER_SUPPLIER = TypeName.create("io.helidon.grpc.core.MarshallerSupplier");
     static final TypeName GRPC_CLIENT = TypeName.create("io.helidon.webclient.grpc.GrpcClient");
+    static final TypeName GRPC_CLIENT_CONFIG = TypeName.create("io.helidon.webclient.grpc.GrpcClientConfig");
     static final TypeName GRPC_SERVICE_CLIENT = TypeName.create("io.helidon.webclient.grpc.GrpcServiceClient");
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webclient.grpc.GrpcServiceDescriptor");
     static final TypeName GRPC_CLIENT_METHOD_DESCRIPTOR =

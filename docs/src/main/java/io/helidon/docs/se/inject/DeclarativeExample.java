@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.protobuf.StringValue;
 import io.helidon.common.Default;
 import io.helidon.common.media.type.MediaTypes;
 import io.helidon.common.types.Annotation;
@@ -31,6 +32,8 @@ import io.helidon.http.Http;
 import io.helidon.http.HttpPrologue;
 import io.helidon.http.Method;
 import io.helidon.http.Status;
+import io.helidon.webclient.grpc.RpcClient;
+import io.helidon.webserver.grpc.RpcServer;
 import io.helidon.logging.common.LogConfig;
 import io.helidon.metrics.api.Metrics;
 import io.helidon.scheduling.Scheduling;
@@ -53,6 +56,7 @@ import io.helidon.webserver.websocket.WebSocketServer;
 import io.helidon.websocket.WebSocket;
 import io.helidon.websocket.WsSession;
 
+import io.grpc.stub.StreamObserver;
 import jakarta.json.Json;
 import jakarta.json.JsonBuilderFactory;
 import jakarta.json.JsonObject;
@@ -242,6 +246,28 @@ public class DeclarativeExample {
         }
         // end::snippet_14[]
     }
+
+    // tag::snippet_19[]
+    @RpcServer.Endpoint
+    @RpcServer.ServiceName("example.Greeter")
+    @Service.Singleton
+    static class GreeterEndpoint {
+        @RpcServer.Unary("SayHello")
+        void sayHello(StringValue request, StreamObserver<StringValue> observer) {
+            observer.onNext(StringValue.of("Hello " + request.getValue() + "!"));
+            observer.onCompleted();
+        }
+    }
+    // end::snippet_19[]
+
+    // tag::snippet_20[]
+    @RpcClient.Endpoint("${greeter.uri:http://localhost:8080}")
+    @RpcClient.ServiceName("example.Greeter")
+    interface GreeterClient {
+        @RpcClient.Unary("SayHello")
+        StringValue sayHello(StringValue request);
+    }
+    // end::snippet_20[]
 
     @SuppressWarnings("deprecation")
     // tag::snippet_15[]

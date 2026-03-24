@@ -28,6 +28,7 @@ module io.helidon.webclient.grpc {
 
     requires static io.helidon.common.features.api;
     requires static io.helidon.config.metadata;
+    requires static io.helidon.service.registry;
 
     requires transitive io.grpc;
     requires transitive io.grpc.stub;

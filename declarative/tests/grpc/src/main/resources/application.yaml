@@ -29,5 +29,10 @@ configured-text-service:
     listener: "grpc-config"
   grpc:
     service-name: "grpc.declarative.TextService"
+
+config-backed-text-service:
+  uri: "http://localhost:${test.server.socket.grpc-config.port}"
   client:
-    name: "configured-text-service"
+    base-uri: "http://localhost:1"
+    protocol-config:
+      poll-wait-time: "PT1S"

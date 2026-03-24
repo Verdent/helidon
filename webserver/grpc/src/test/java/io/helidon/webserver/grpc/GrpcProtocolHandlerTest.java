@@ -55,9 +55,13 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testIdentityAcceptEncodingKeepsIdentityCompression() {
-        // Spec note: PROTOCOL-HTTP2 defines identity as the implicit "no
-        // compression" encoding, so advertising only identity must keep the
-        // response stream uncompressed.
+        // * **Message-Accept-Encoding** → "grpc-accept-encoding" Content-Coding *(","
+        //   Content-Coding)
+        // For every message a server is requested to compress using an algorithm it knows the
+        // client doesn't support (as indicated by the last `grpc-accept-encoding` header received
+        // from the client), it SHALL send the message uncompressed.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/compression.md#compression-method-asymmetry-between-peers
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.add(GRPC_ACCEPT_ENCODING, "identity");
         GrpcProtocolHandler<Object, Object> handler = newHandler(headers, GrpcConfig.create());
@@ -69,8 +73,12 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testGzipAcceptEncodingNegotiatesGzipCompression() {
-        // Spec note: when the client advertises gzip in grpc-accept-encoding,
-        // the server may select gzip for its responses.
+        // * **Message-Accept-Encoding** → "grpc-accept-encoding" Content-Coding *(","
+        //   Content-Coding)
+        // A server is always aware of what its clients support, as clients disclose it in the
+        // Message-Accept-Encoding header as part of the RPC.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/compression.md#compression-levels-and-algorithms
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.add(GRPC_ACCEPT_ENCODING, "gzip");
         GrpcProtocolHandler<Object, Object> handler = newHandler(headers, GrpcConfig.create());
@@ -82,9 +90,9 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testCommaJoinedAcceptEncodingNegotiatesGzipCompression() {
-        // Spec note: HTTP/2 allows repeated header values to be comma-joined,
-        // so grpc-accept-encoding must still parse beyond the first token in a
-        // single comma-separated header value to reach a later supported codec.
+        // * **Message-Accept-Encoding** → "grpc-accept-encoding" Content-Coding *(","
+        //   Content-Coding)
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.add(GRPC_ACCEPT_ENCODING, "snappy, gzip");
         GrpcProtocolHandler<Object, Object> handler = newHandler(headers, GrpcConfig.create());
@@ -96,8 +104,10 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testCompressionDisabledIgnoresGzipNegotiation() {
-        // Spec note: disabling server-side compression must override any
-        // grpc-accept-encoding negotiation and keep the response identity.
+        // If the user (through the previously described mechanisms) requests to disable compression
+        // the next message MUST be sent uncompressed.
+        // This applies to both the unary and streaming cases.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/compression.md#specific-disabling-of-compression
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.add(GRPC_ACCEPT_ENCODING, "gzip");
         GrpcProtocolHandler<Object, Object> handler = newHandler(headers,
@@ -112,9 +122,14 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testUnsupportedRequestCompressionClosesWithUnimplemented() {
-        // Spec note: PROTOCOL-HTTP2 requires unsupported grpc-encoding values
-        // to fail with UNIMPLEMENTED and advertise the encodings the server
-        // does support.
+        // If a client message is compressed by an algorithm that is not supported by a server, the
+        // message WILL result in an `UNIMPLEMENTED` error status on the server.
+        // The server will then include a `grpc-accept-encoding` response header which specifies the
+        // algorithms that the server accepts.
+        // The returned `grpc-accept-encoding` header MUST NOT contain the compression method
+        // (encoding) used.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/compression.md#compression-method-asymmetry-between-peers
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/compression.md#test-cases
         WritableHeaders<?> headers = WritableHeaders.create();
         headers.add(GRPC_ENCODING, "snappy");
         GrpcProtocolHandler<Object, Object> handler = newHandler(headers, GrpcConfig.create());
@@ -129,9 +144,9 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testCompressedRequestStreamSignalsEofAtMessageBoundary() throws IOException {
-        // Spec note: upstream interop case "client_compressed_unary" depends on
-        // the compressed request body being exposed as a bounded gzip stream
-        // that reaches EOF exactly at the gRPC message boundary.
+        // A **Compressed-Flag** value of 1 indicates that the binary octet sequence of **Message**
+        // is compressed using the mechanism declared by the **Message-Encoding** header.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests
         byte[] compressed = gzip("hello grpc");
 
         try (GZIPInputStream gzipInputStream = new GZIPInputStream(new GrpcProtocolHandler.BufferDataInputStream(
@@ -144,8 +159,9 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testHalfClosedLocalThenRemoteTransitionsToClosed() {
-        // Spec note: gRPC rides on HTTP/2 stream states, so once both halves of
-        // the stream are closed the transport state must become CLOSED.
+        // Paraphrase: the gRPC transport mapping uses the HTTP/2 stream lifecycle for RPC closure,
+        // so opposite half-closed states must collapse to a fully closed stream.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#http2-transport-mapping
         Http2StreamState next = GrpcProtocolHandler.nextStreamState(
                 Http2StreamState.HALF_CLOSED_LOCAL, Http2StreamState.HALF_CLOSED_REMOTE);
 
@@ -154,8 +170,9 @@ class GrpcProtocolHandlerTest {
 
     @Test
     void testHalfClosedRemoteThenLocalTransitionsToClosed() {
-        // Spec note: gRPC over HTTP/2 must converge to CLOSED regardless of the
-        // order in which the local and remote halves close.
+        // Paraphrase: the gRPC transport mapping uses the HTTP/2 stream lifecycle for RPC closure,
+        // so opposite half-closed states must collapse to a fully closed stream.
+        // Spec: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#http2-transport-mapping
         Http2StreamState next = GrpcProtocolHandler.nextStreamState(
                 Http2StreamState.HALF_CLOSED_REMOTE, Http2StreamState.HALF_CLOSED_LOCAL);
 

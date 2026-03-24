@@ -128,12 +128,22 @@ class GrpcRouteHandler<ReqT, ResT> extends GrpcRoute {
                                                                            ServerMethodDefinition<?, ?> method,
                                                                            WeightedBag<ServerInterceptor> interceptors) {
         ServerServiceDefinition definition = service.bindService();
+        GrpcServiceDescriptor serviceDescriptor = service instanceof BindableServiceImpl svc ? svc.serviceDescriptor() : null;
+        WeightedBag<ServerInterceptor> effectiveInterceptors = interceptors;
+        if (serviceDescriptor != null) {
+            GrpcMethodDescriptor<ReqT, ResT> methodDescriptor =
+                    (GrpcMethodDescriptor<ReqT, ResT>) serviceDescriptor.method(method.getMethodDescriptor().getBareMethodName());
+            if (methodDescriptor != null && !methodDescriptor.interceptors().isEmpty()) {
+                effectiveInterceptors = interceptors.copyMe();
+                effectiveInterceptors.merge(methodDescriptor.interceptors());
+            }
+        }
         String path = definition.getServiceDescriptor().getName() + "/"
                 + method.getMethodDescriptor().getBareMethodName();
         ServerCallHandler<ReqT, ResT> callHandler = GrpcInterceptorUtil.interceptHandler(
                 (ServerCallHandler<ReqT, ResT>) method.getServerCallHandler(),
-                interceptors,
-                service instanceof BindableServiceImpl svc ? svc.serviceDescriptor() : null);
+                effectiveInterceptors,
+                serviceDescriptor);
         return new GrpcRouteHandler<>((MethodDescriptor<ReqT, ResT>) method.getMethodDescriptor(),
                                       PathMatchers.exact(path),
                                       callHandler,

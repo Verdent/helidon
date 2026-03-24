@@ -19,18 +19,24 @@ package io.helidon.declarative.codegen.grpc.server;
 import io.helidon.common.types.TypeName;
 
 final class RpcServerTypes {
-    static final TypeName ANNOTATION_ENDPOINT = TypeName.create("io.helidon.grpc.api.RpcServer.Endpoint");
-    static final TypeName ANNOTATION_LISTENER = TypeName.create("io.helidon.grpc.api.RpcServer.Listener");
-    static final TypeName ANNOTATION_SERVICE_NAME = TypeName.create("io.helidon.grpc.api.RpcServer.ServiceName");
-    static final TypeName ANNOTATION_PROTO = TypeName.create("io.helidon.grpc.api.RpcServer.Proto");
-    static final TypeName ANNOTATION_UNARY = TypeName.create("io.helidon.grpc.api.RpcServer.Unary");
+    static final TypeName ANNOTATION_ENDPOINT = TypeName.create("io.helidon.webserver.grpc.RpcServer.Endpoint");
+    static final TypeName ANNOTATION_LISTENER = TypeName.create("io.helidon.webserver.grpc.RpcServer.Listener");
+    static final TypeName ANNOTATION_SERVICE_NAME = TypeName.create("io.helidon.webserver.grpc.RpcServer.ServiceName");
+    static final TypeName ANNOTATION_INTERCEPTORS =
+            TypeName.create("io.helidon.webserver.grpc.RpcServer.Interceptors");
+    static final TypeName ANNOTATION_MARSHALLER =
+            TypeName.create("io.helidon.webserver.grpc.RpcServer.Marshaller");
+    static final TypeName ANNOTATION_PROTO = TypeName.create("io.helidon.webserver.grpc.RpcServer.Proto");
+    static final TypeName ANNOTATION_UNARY = TypeName.create("io.helidon.webserver.grpc.RpcServer.Unary");
     static final TypeName ANNOTATION_SERVER_STREAMING =
-            TypeName.create("io.helidon.grpc.api.RpcServer.ServerStreaming");
+            TypeName.create("io.helidon.webserver.grpc.RpcServer.ServerStreaming");
     static final TypeName ANNOTATION_CLIENT_STREAMING =
-            TypeName.create("io.helidon.grpc.api.RpcServer.ClientStreaming");
+            TypeName.create("io.helidon.webserver.grpc.RpcServer.ClientStreaming");
     static final TypeName ANNOTATION_BIDIRECTIONAL =
-            TypeName.create("io.helidon.grpc.api.RpcServer.Bidirectional");
+            TypeName.create("io.helidon.webserver.grpc.RpcServer.Bidirectional");
 
+    static final TypeName SERVER_INTERCEPTOR = TypeName.create("io.grpc.ServerInterceptor");
+    static final TypeName MARSHALLER_SUPPLIER = TypeName.create("io.helidon.grpc.core.MarshallerSupplier");
     static final TypeName GRPC_ROUTE_REGISTRATION = TypeName.create("io.helidon.webserver.grpc.GrpcRouteRegistration");
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webserver.grpc.GrpcServiceDescriptor");
     static final TypeName GRPC_ENTRY_POINTS = TypeName.create("io.helidon.webserver.grpc.GrpcEntryPoint.EntryPoints");

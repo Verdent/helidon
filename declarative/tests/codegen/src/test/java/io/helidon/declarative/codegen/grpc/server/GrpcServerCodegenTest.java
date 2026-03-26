@@ -362,6 +362,7 @@ class GrpcServerCodegenTest {
                 .addSource("StreamingEndpoint.java", """
                         package com.example;
 
+                        import java.util.List;
                         import java.util.stream.Stream;
                         import io.helidon.webserver.grpc.RpcServer;
 
@@ -370,6 +371,11 @@ class GrpcServerCodegenTest {
                             @RpcServer.ServerStreaming("Split")
                             Stream<String> split(String request) {
                                 return Stream.of(request.split(" "));
+                            }
+
+                            @RpcServer.ServerStreaming("SplitIterable")
+                            Iterable<String> splitIterable(String request) {
+                                return List.of(request.split(" "));
                             }
                         }
                         """)
@@ -383,6 +389,7 @@ class GrpcServerCodegenTest {
 
         String content = Files.readString(generated, StandardCharsets.UTF_8);
         assertThat(content, containsString("ResponseHelper.stream(observer, endpoint.split(request))"));
+        assertThat(content, containsString("ResponseHelper.stream(observer, StreamSupport.stream(endpoint.splitIterable(request).spliterator(), false))"));
     }
 
     @Test
@@ -391,6 +398,7 @@ class GrpcServerCodegenTest {
                 .addSource("StreamingEndpoint.java", """
                         package com.example;
 
+                        import java.util.List;
                         import java.util.stream.Stream;
 
                         import io.grpc.stub.StreamObserver;
@@ -406,6 +414,11 @@ class GrpcServerCodegenTest {
                             @RpcServer.ServerStreaming("ObserverNoRequest")
                             void observerNoRequest(StreamObserver<String> observer) {
                             }
+
+                            @RpcServer.ServerStreaming("IterableNoRequest")
+                            Iterable<String> iterableNoRequest() {
+                                return List.of("hello");
+                            }
                         }
                         """)
                 .build()
@@ -419,6 +432,7 @@ class GrpcServerCodegenTest {
         String content = Files.readString(generated, StandardCharsets.UTF_8);
         assertThat(content, containsString("ResponseHelper.stream(observer, endpoint.noRequest())"));
         assertThat(content, containsString("(Empty request, StreamObserver<String> observer) -> endpoint.observerNoRequest(observer)"));
+        assertThat(content, containsString("ResponseHelper.stream(observer, StreamSupport.stream(endpoint.iterableNoRequest().spliterator(), false))"));
         assertThat(content, containsString(".requestType(Empty.class).responseType(String.class)"));
     }
 

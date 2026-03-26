@@ -19,6 +19,7 @@ package io.helidon.declarative.tests.grpc;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.service.registry.Lookup;
@@ -127,10 +128,10 @@ class DeclarativeGrpcTest {
         TextMessages.TextMessage unary = typedClient.upper(message("hello"));
         assertThat(unary.getText(), is("HELLO"));
 
-        Iterator<TextMessages.TextMessage> serverStreaming = typedClient.split(message("hello world"));
+        Stream<TextMessages.TextMessage> serverStreaming = typedClient.split(message("hello world"));
         assertThat(toTexts(serverStreaming), is(List.of("hello", "world")));
 
-        TextMessages.TextMessage clientStreaming = typedClient.join(List.of(message("hello"), message("world")));
+        TextMessages.TextMessage clientStreaming = typedClient.join(Stream.of(message("hello"), message("world")));
         assertThat(clientStreaming.getText(), is("hello world"));
 
         Iterator<TextMessages.TextMessage> bidirectional = typedClient.echo(List.of(message("hello"), message("world")).iterator());
@@ -172,5 +173,12 @@ class DeclarativeGrpcTest {
         List<String> result = new ArrayList<>();
         messages.forEachRemaining(message -> result.add(message.getText()));
         return result;
+    }
+
+    private static List<String> toTexts(Stream<TextMessages.TextMessage> messages) {
+        try (messages) {
+            return messages.map(TextMessages.TextMessage::getText)
+                    .toList();
+        }
     }
 }

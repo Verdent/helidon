@@ -16,6 +16,7 @@
 
 package io.helidon.declarative.tests.grpc;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
 
@@ -49,14 +50,15 @@ class TextServiceEndpoint {
     }
 
     @RpcServer.ServerStreaming("Split")
-    Stream<TextMessages.TextMessage> split(TextMessages.TextMessage request) {
+    Iterable<TextMessages.TextMessage> split(TextMessages.TextMessage request) {
         if (request.getText().isBlank()) {
-            return Stream.empty();
+            return List.of();
         }
 
         return Stream.of(request.getText().split(" "))
                 .filter(part -> !part.isEmpty())
-                .map(TextServiceEndpoint::message);
+                .map(TextServiceEndpoint::message)
+                .toList();
     }
 
     @RpcServer.ClientStreaming("Join")

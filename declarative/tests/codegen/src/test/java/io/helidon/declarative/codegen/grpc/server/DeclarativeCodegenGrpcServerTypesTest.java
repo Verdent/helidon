@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import io.helidon.common.types.TypeName;
 import io.helidon.grpc.core.MarshallerSupplier;
@@ -90,6 +91,7 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "COMPLETION_STAGE", CompletionStage.class);
         checkField(toCheck, checked, fields, "COMPLETABLE_FUTURE", CompletableFuture.class);
         checkField(toCheck, checked, fields, "STREAM", Stream.class);
+        checkField(toCheck, checked, fields, "STREAM_SUPPORT", StreamSupport.class);
         checkField(toCheck, checked, fields, "GRPC_UNARY_METHOD", ServerCalls.UnaryMethod.class);
         checkField(toCheck, checked, fields, "GRPC_SERVER_STREAMING_METHOD", ServerCalls.ServerStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_STREAMING_METHOD", ServerCalls.ClientStreamingMethod.class);

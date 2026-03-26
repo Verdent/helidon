@@ -17,6 +17,7 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.helidon.metrics.api.Counter;
 import io.helidon.metrics.api.MeterRegistry;
@@ -75,7 +76,7 @@ class DeclarativeGrpcCrossCuttingTest {
         TextServiceClient typedClient = typedClient();
         long initialCounter = counterValue("grpc-join-count");
 
-        TextMessages.TextMessage response = typedClient.join(List.of(message("hello"), message("world")));
+        TextMessages.TextMessage response = typedClient.join(Stream.of(message("hello"), message("world")));
         assertThat(response.getText(), is("hello world"));
 
         SpanData tracedMethod = exporter.spanNamed("grpc.join");

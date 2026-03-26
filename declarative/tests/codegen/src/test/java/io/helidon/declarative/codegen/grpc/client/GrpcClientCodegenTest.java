@@ -66,6 +66,7 @@ class GrpcClientCodegenTest {
                         package com.example;
 
                         import java.util.Iterator;
+                        import java.util.stream.Stream;
                         import io.helidon.webclient.grpc.RpcClient;
 
                         @RpcClient.Endpoint("http://localhost:8080")
@@ -75,6 +76,9 @@ class GrpcClientCodegenTest {
 
                             @RpcClient.ServerStreaming("Split")
                             Iterator<String> split();
+
+                            @RpcClient.ServerStreaming("SplitStream")
+                            Stream<String> splitStream();
                         }
                         """)
                 .build()
@@ -91,6 +95,12 @@ class GrpcClientCodegenTest {
         assertThat(content, containsString("return serviceClient.unary(\"Ping\", Empty.getDefaultInstance());"));
         assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"Split\")"));
         assertThat(content, containsString("return serviceClient.serverStream(\"Split\", Empty.getDefaultInstance());"));
+        assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"SplitStream\")"));
+        assertThat(content,
+                   containsString("return java.util.stream.StreamSupport.stream("
+                                          + "java.util.Spliterators.spliteratorUnknownSize("
+                                          + "serviceClient.serverStream(\"SplitStream\", Empty.getDefaultInstance()),"
+                                          + " java.util.Spliterator.ORDERED), false);"));
     }
 
     @Test
@@ -100,6 +110,7 @@ class GrpcClientCodegenTest {
                         package com.example;
 
                         import java.util.Iterator;
+                        import java.util.stream.Stream;
 
                         import io.helidon.webclient.grpc.RpcClient;
 
@@ -108,8 +119,14 @@ class GrpcClientCodegenTest {
                             @RpcClient.ServerStreaming("Split")
                             Iterator<String> split(String request);
 
+                            @RpcClient.ServerStreaming("SplitStream")
+                            Stream<String> splitStream(String request);
+
                             @RpcClient.ClientStreaming("Join")
                             String join(Iterable<String> request);
+
+                            @RpcClient.ClientStreaming("JoinStream")
+                            String joinStream(Stream<String> request);
 
                             @RpcClient.Bidirectional("Echo")
                             Iterator<String> echo(Iterator<String> request);
@@ -126,8 +143,17 @@ class GrpcClientCodegenTest {
         String content = Files.readString(generated, StandardCharsets.UTF_8);
         assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"Split\")"));
         assertThat(content, containsString("return serviceClient.serverStream(\"Split\", request);"));
+        assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"SplitStream\")"));
+        assertThat(content,
+                   containsString("return java.util.stream.StreamSupport.stream("
+                                          + "java.util.Spliterators.spliteratorUnknownSize("
+                                          + "serviceClient.serverStream(\"SplitStream\", request),"
+                                          + " java.util.Spliterator.ORDERED), false);"));
         assertThat(content, containsString("GrpcClientMethodDescriptor.clientStreaming(serviceName, \"Join\")"));
         assertThat(content, containsString("return serviceClient.clientStream(\"Join\", request.iterator());"));
+        assertThat(content, containsString("GrpcClientMethodDescriptor.clientStreaming(serviceName, \"JoinStream\")"));
+        assertThat(content, containsString("try (var requestStream = request) {"));
+        assertThat(content, containsString("return serviceClient.clientStream(\"JoinStream\", requestStream.iterator());"));
         assertThat(content, containsString("GrpcClientMethodDescriptor.bidirectional(serviceName, \"Echo\")"));
         assertThat(content, containsString("return serviceClient.bidi(\"Echo\", request);"));
     }
@@ -298,8 +324,8 @@ class GrpcClientCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Declarative gRPC unary client request parameter must not be an iterator or"
-                                          + " stream observer"));
+                   containsString("Declarative gRPC unary client request parameter must not be an iterator,"
+                                          + " stream, or stream observer"));
     }
 
     @Test

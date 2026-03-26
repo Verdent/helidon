@@ -45,6 +45,7 @@ final class RpcServerTypes {
     static final TypeName COMPLETION_STAGE = TypeName.create("java.util.concurrent.CompletionStage");
     static final TypeName COMPLETABLE_FUTURE = TypeName.create("java.util.concurrent.CompletableFuture");
     static final TypeName STREAM = TypeName.create("java.util.stream.Stream");
+    static final TypeName STREAM_SUPPORT = TypeName.create("java.util.stream.StreamSupport");
     static final TypeName GRPC_UNARY_METHOD = TypeName.create("io.grpc.stub.ServerCalls.UnaryMethod");
     static final TypeName GRPC_SERVER_STREAMING_METHOD =
             TypeName.create("io.grpc.stub.ServerCalls.ServerStreamingMethod");

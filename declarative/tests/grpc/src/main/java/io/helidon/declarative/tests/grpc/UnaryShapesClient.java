@@ -16,7 +16,7 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import java.util.Iterator;
+import java.util.stream.Stream;
 
 import io.helidon.webclient.grpc.RpcClient;
 import com.google.protobuf.Empty;
@@ -40,8 +40,11 @@ interface UnaryShapesClient {
     Empty ping();
 
     @RpcClient.ServerStreaming("NoArgSplit")
-    Iterator<TextMessages.TextMessage> noArgSplit();
+    Stream<TextMessages.TextMessage> noArgSplit();
 
     @RpcClient.ServerStreaming("ObserverSplit")
-    Iterator<TextMessages.TextMessage> observerSplit();
+    Stream<TextMessages.TextMessage> observerSplit();
+
+    @RpcClient.ServerStreaming("IterableNoArgSplit")
+    Stream<TextMessages.TextMessage> iterableNoArgSplit();
 }

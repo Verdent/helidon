@@ -16,6 +16,7 @@
 
 package io.helidon.declarative.tests.grpc;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -68,6 +69,11 @@ class UnaryShapesEndpoint {
         observer.onNext(message("observer"));
         observer.onNext(message("stream"));
         observer.onCompleted();
+    }
+
+    @RpcServer.ServerStreaming("IterableNoArgSplit")
+    Iterable<TextMessages.TextMessage> iterableNoArgSplit() {
+        return List.of(message("iterable"), message("stream"));
     }
 
     static void reset() {

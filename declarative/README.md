@@ -270,7 +270,7 @@ Server method shapes:
 - Method-level `@RpcServer.Interceptors` are combined with endpoint-level interceptors for that RPC method
 - Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service registry services
 - `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `ResponseT method(RequestT request)`, `ResponseT method()`, `void method(RequestT request)`, or `void method()`
-- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `Stream<ResponseT> method(RequestT request)`, or `Stream<ResponseT> method()`
+- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `Stream<ResponseT> method(RequestT request)`, `Iterable<ResponseT> method(RequestT request)`, `Stream<ResponseT> method()`, or `Iterable<ResponseT> method()`
 - `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`, `ResponseT method(Iterable<RequestT> requests)`, `ResponseT method(Iterator<RequestT> requests)`, `void method(Iterable<RequestT> requests)`, or `void method(Iterator<RequestT> requests)`
 - `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 
@@ -293,8 +293,8 @@ Client method shapes:
 - Method-level `@RpcClient.Interceptors` are combined with client-level interceptors for that RPC method
 - Interceptor classes must implement `io.grpc.ClientInterceptor` and be Helidon service registry services
 - `@RpcClient.Unary` - `ResponseT method(RequestT request)` or `ResponseT method()`
-- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)` or `Iterator<ResponseT> method()`
-- `@RpcClient.ClientStreaming` - `ResponseT method(Iterable<RequestT> request)` or `ResponseT method(Iterator<RequestT> request)`
+- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)`, `Iterator<ResponseT> method()`, `Stream<ResponseT> method(RequestT request)`, or `Stream<ResponseT> method()`
+- `@RpcClient.ClientStreaming` - `ResponseT method(Iterable<RequestT> request)`, `ResponseT method(Iterator<RequestT> request)`, or `ResponseT method(Stream<RequestT> request)`
 - `@RpcClient.Bidirectional` - `Iterator<ResponseT> method(Iterator<RequestT> request)`
 
 With the built-in `default` and `proto` marshaller suppliers, `RequestT` and `ResponseT`

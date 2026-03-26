@@ -197,7 +197,9 @@ public final class RpcClient {
      * <p>
      * Supported method shapes:
      * {@code java.util.Iterator<ResponseT> method(RequestT request)} and
-     * {@code java.util.Iterator<ResponseT> method()}.
+     * {@code java.util.Iterator<ResponseT> method()},
+     * {@code java.util.stream.Stream<ResponseT> method(RequestT request)}, and
+     * {@code java.util.stream.Stream<ResponseT> method()}.
      * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
@@ -219,7 +221,8 @@ public final class RpcClient {
      * <p>
      * Supported method shapes:
      * {@code ResponseT method(java.lang.Iterable<RequestT> request)} and
-     * {@code ResponseT method(java.util.Iterator<RequestT> request)}.
+     * {@code ResponseT method(java.util.Iterator<RequestT> request)} and
+     * {@code ResponseT method(java.util.stream.Stream<RequestT> request)}.
      * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)

@@ -32,6 +32,7 @@ import io.helidon.codegen.ElementInfoPredicates;
 import io.helidon.codegen.TypeHierarchy;
 import io.helidon.codegen.classmodel.ClassModel;
 import io.helidon.codegen.classmodel.Constructor;
+import io.helidon.codegen.classmodel.Method;
 import io.helidon.codegen.classmodel.Parameter;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotation;
@@ -373,25 +374,65 @@ class RpcClientExtension implements RegistryCodegenExtension {
                                     .name(parameter.name())
                                     .type(parameter.typeName())));
 
-                    it.addContent("return serviceClient.")
-                            .addContent(method.type().clientMethodName())
-                            .addContent("(")
-                            .addContentLiteral(method.grpcMethodName())
-                            .addContent(", ");
-
-                    if (method.parameters().isEmpty()) {
-                        it.addContent(RpcClientTypes.PROTO_EMPTY)
-                                .addContent(".getDefaultInstance()");
-                    } else if (method.type() == MethodType.CLIENT_STREAMING
-                            && isIterable(method.parameters().getFirst().typeName())) {
-                        it.addContent(method.parameters().getFirst().name())
-                                .addContent(".iterator()");
+                    if (method.type() == MethodType.CLIENT_STREAMING
+                            && !method.parameters().isEmpty()
+                            && isStream(method.parameters().getFirst().typeName())) {
+                        it.addContent("try (var requestStream = ")
+                                .addContent(method.parameters().getFirst().name())
+                                .addContentLine(") {");
+                        addClientMethodReturn(it, method, "requestStream.iterator()");
+                        it.addContentLine("}");
                     } else {
-                        it.addContent(method.parameters().getFirst().name());
+                        addClientMethodReturn(it, method, null);
                     }
-
-                    it.addContentLine(");");
                 }));
+    }
+
+    private void addClientMethodReturn(Method.Builder methodBuilder,
+                                       GrpcMethod method,
+                                       String requestAccessOverride) {
+        if (method.type() == MethodType.SERVER_STREAMING && isStream(method.returnType())) {
+            methodBuilder.addContent("return java.util.stream.StreamSupport.stream("
+                                             + "java.util.Spliterators.spliteratorUnknownSize(serviceClient.")
+                    .addContent(method.type().clientMethodName())
+                    .addContent("(")
+                    .addContentLiteral(method.grpcMethodName())
+                    .addContent(", ");
+            addRequestAccess(methodBuilder, method, requestAccessOverride);
+            methodBuilder.addContentLine("), java.util.Spliterator.ORDERED), false);");
+            return;
+        }
+
+        methodBuilder.addContent("return serviceClient.")
+                .addContent(method.type().clientMethodName())
+                .addContent("(")
+                .addContentLiteral(method.grpcMethodName())
+                .addContent(", ");
+        addRequestAccess(methodBuilder, method, requestAccessOverride);
+        methodBuilder.addContentLine(");");
+    }
+
+    private void addRequestAccess(Method.Builder methodBuilder,
+                                  GrpcMethod method,
+                                  String requestAccessOverride) {
+        if (method.parameters().isEmpty()) {
+            methodBuilder.addContent(RpcClientTypes.PROTO_EMPTY)
+                    .addContent(".getDefaultInstance()");
+            return;
+        }
+
+        if (requestAccessOverride != null) {
+            methodBuilder.addContent(requestAccessOverride);
+            return;
+        }
+
+        if (method.type() == MethodType.CLIENT_STREAMING && isIterable(method.parameters().getFirst().typeName())) {
+            methodBuilder.addContent(method.parameters().getFirst().name())
+                    .addContent(".iterator()");
+            return;
+        }
+
+        methodBuilder.addContent(method.parameters().getFirst().name());
     }
 
     private Endpoint toEndpoint(RegistryRoundContext roundContext, TypeInfo typeInfo) {
@@ -534,13 +575,13 @@ class RpcClientExtension implements RegistryCodegenExtension {
                 : parameters.getFirst().typeName();
         TypeName responseType = method.typeName();
 
-        if (voidType(responseType) || isIterator(responseType) || isStreamObserver(responseType)) {
+        if (voidType(responseType) || isIterator(responseType) || isStream(responseType) || isStreamObserver(responseType)) {
             throw new CodegenException("Declarative gRPC unary client method must return a single response type",
                                        method.originatingElementValue());
         }
-        if (!parameters.isEmpty() && (isIterator(requestType) || isStreamObserver(requestType))) {
-            throw new CodegenException("Declarative gRPC unary client request parameter must not be an iterator or"
-                                               + " stream observer",
+        if (!parameters.isEmpty() && (isIterator(requestType) || isStream(requestType) || isStreamObserver(requestType))) {
+            throw new CodegenException("Declarative gRPC unary client request parameter must not be an iterator,"
+                                               + " stream, or stream observer",
                                        method.originatingElementValue());
         }
 
@@ -569,17 +610,19 @@ class RpcClientExtension implements RegistryCodegenExtension {
         TypeName requestType = parameters.isEmpty()
                 ? RpcClientTypes.PROTO_EMPTY
                 : parameters.getFirst().typeName();
-        if (!parameters.isEmpty() && (isIterator(requestType) || isStreamObserver(requestType))) {
-            throw new CodegenException("Declarative gRPC server streaming client request parameter must not be an iterator or"
-                                               + " stream observer",
+        if (!parameters.isEmpty() && (isIterator(requestType) || isStream(requestType) || isStreamObserver(requestType))) {
+            throw new CodegenException("Declarative gRPC server streaming client request parameter must not be an"
+                                               + " iterator, stream, or stream observer",
                                        method.originatingElementValue());
         }
 
-        TypeName responseType = iteratorType(method.typeName(),
-                                             method,
-                                             "Declarative gRPC server streaming client method must return "
-                                                     + RpcClientTypes.ITERATOR.fqName()
-                                                     + "<ResponseT>");
+        TypeName responseType = iteratorOrStreamType(method.typeName(),
+                                                     method,
+                                                     "Declarative gRPC server streaming client method must return "
+                                                             + RpcClientTypes.ITERATOR.fqName()
+                                                             + "<ResponseT> or "
+                                                             + RpcClientTypes.STREAM.fqName()
+                                                             + "<ResponseT>");
 
         return new GrpcMethod(MethodType.SERVER_STREAMING,
                               method.elementName(),
@@ -599,20 +642,23 @@ class RpcClientExtension implements RegistryCodegenExtension {
         List<TypedElementInfo> parameters = method.parameterArguments();
         if (parameters.size() != 1) {
             throw new CodegenException("Declarative gRPC client streaming client method must have exactly one request"
-                                               + " iterator or iterable parameter",
+                                               + " iterator, iterable, or stream parameter",
                                        method.originatingElementValue());
         }
 
-        TypeName requestType = iteratorOrIterableType(parameters.getFirst().typeName(),
-                                                      method,
-                                                      "Declarative gRPC client streaming client request parameter must be "
-                                                              + RpcClientTypes.ITERATOR.fqName()
-                                                              + "<RequestT> or "
-                                                              + RpcClientTypes.ITERABLE.fqName()
-                                                              + "<RequestT>");
+        TypeName requestType = iteratorOrIterableOrStreamType(parameters.getFirst().typeName(),
+                                                              method,
+                                                              "Declarative gRPC client streaming client request parameter"
+                                                                      + " must be "
+                                                                      + RpcClientTypes.ITERATOR.fqName()
+                                                                      + "<RequestT>, "
+                                                                      + RpcClientTypes.ITERABLE.fqName()
+                                                                      + "<RequestT>, or "
+                                                                      + RpcClientTypes.STREAM.fqName()
+                                                                      + "<RequestT>");
         TypeName responseType = method.typeName();
 
-        if (voidType(responseType) || isIterator(responseType) || isStreamObserver(responseType)) {
+        if (voidType(responseType) || isIterator(responseType) || isStream(responseType) || isStreamObserver(responseType)) {
             throw new CodegenException("Declarative gRPC client streaming client method must return a single response type",
                                        method.originatingElementValue());
         }
@@ -674,8 +720,16 @@ class RpcClientExtension implements RegistryCodegenExtension {
         return typeName.typeArguments().getFirst();
     }
 
-    private TypeName iteratorOrIterableType(TypeName typeName, TypedElementInfo method, String message) {
-        if ((!isIterator(typeName) && !isIterable(typeName)) || typeName.typeArguments().size() != 1) {
+    private TypeName iteratorOrStreamType(TypeName typeName, TypedElementInfo method, String message) {
+        if ((!isIterator(typeName) && !isStream(typeName)) || typeName.typeArguments().size() != 1) {
+            throw new CodegenException(message, method.originatingElementValue());
+        }
+        return typeName.typeArguments().getFirst();
+    }
+
+    private TypeName iteratorOrIterableOrStreamType(TypeName typeName, TypedElementInfo method, String message) {
+        if ((!isIterator(typeName) && !isIterable(typeName) && !isStream(typeName))
+                || typeName.typeArguments().size() != 1) {
             throw new CodegenException(message, method.originatingElementValue());
         }
         return typeName.typeArguments().getFirst();
@@ -687,6 +741,10 @@ class RpcClientExtension implements RegistryCodegenExtension {
 
     private boolean isIterator(TypeName typeName) {
         return typeName.fqName().equals(RpcClientTypes.ITERATOR.fqName());
+    }
+
+    private boolean isStream(TypeName typeName) {
+        return typeName.fqName().equals(RpcClientTypes.STREAM.fqName());
     }
 
     private boolean isStreamObserver(TypeName typeName) {

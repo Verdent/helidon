@@ -187,7 +187,9 @@ public final class RpcServer {
      * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)},
      * {@code void method(io.grpc.stub.StreamObserver<ResponseT> observer)},
      * {@code java.util.stream.Stream<ResponseT> method(RequestT request)}, and
-     * {@code java.util.stream.Stream<ResponseT> method()}.
+     * {@code java.lang.Iterable<ResponseT> method(RequestT request)},
+     * {@code java.util.stream.Stream<ResponseT> method()}, and
+     * {@code java.lang.Iterable<ResponseT> method()}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)

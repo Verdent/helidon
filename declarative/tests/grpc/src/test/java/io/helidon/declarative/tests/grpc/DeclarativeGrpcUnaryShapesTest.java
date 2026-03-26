@@ -16,9 +16,8 @@
 
 package io.helidon.declarative.tests.grpc;
 
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
@@ -95,6 +94,11 @@ class DeclarativeGrpcUnaryShapesTest {
         assertThat(toTexts(typedClient().observerSplit()), is(List.of("observer", "stream")));
     }
 
+    @Test
+    void testServerStreamingNoRequestIterableReturnShape() {
+        assertThat(toTexts(typedClient().iterableNoArgSplit()), is(List.of("iterable", "stream")));
+    }
+
     private UnaryShapesClient typedClient() {
         return registry.get(Lookup.builder()
                                     .addContract(UnaryShapesClient.class)
@@ -108,9 +112,10 @@ class DeclarativeGrpcUnaryShapesTest {
                 .build();
     }
 
-    private static List<String> toTexts(Iterator<TextMessages.TextMessage> messages) {
-        List<String> result = new ArrayList<>();
-        messages.forEachRemaining(message -> result.add(message.getText()));
-        return result;
+    private static List<String> toTexts(Stream<TextMessages.TextMessage> messages) {
+        try (messages) {
+            return messages.map(TextMessages.TextMessage::getText)
+                    .toList();
+        }
     }
 }

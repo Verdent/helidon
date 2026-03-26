@@ -17,6 +17,7 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 import io.helidon.webclient.grpc.RpcClient;
 
@@ -36,4 +37,10 @@ interface ClientStreamingShapesClient {
 
     @RpcClient.ClientStreaming("CountIterator")
     Empty countIterator(Iterator<TextMessages.TextMessage> request);
+
+    @RpcClient.ClientStreaming("JoinIterable")
+    TextMessages.TextMessage joinStream(Stream<TextMessages.TextMessage> request);
+
+    @RpcClient.ClientStreaming("CountIterable")
+    Empty countStream(Stream<TextMessages.TextMessage> request);
 }

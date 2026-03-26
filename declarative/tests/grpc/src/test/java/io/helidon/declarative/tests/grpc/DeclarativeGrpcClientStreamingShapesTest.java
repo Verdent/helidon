@@ -17,6 +17,7 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
@@ -74,6 +75,21 @@ class DeclarativeGrpcClientStreamingShapesTest {
 
         assertThat(response, is(Empty.getDefaultInstance()));
         assertThat(ClientStreamingShapesEndpoint.iteratorCount(), is(3));
+    }
+
+    @Test
+    void testClientStreamingStreamReturnShape() {
+        TextMessages.TextMessage response = typedClient().joinStream(Stream.of(message("stream"), message("input")));
+
+        assertThat(response.getText(), is("ITERABLE:stream input"));
+    }
+
+    @Test
+    void testClientStreamingStreamEmptyResponseShape() {
+        Empty response = typedClient().countStream(Stream.of(message("one"), message("two"), message("three"), message("four")));
+
+        assertThat(response, is(Empty.getDefaultInstance()));
+        assertThat(ClientStreamingShapesEndpoint.iterableCount(), is(4));
     }
 
     private ClientStreamingShapesClient typedClient() {

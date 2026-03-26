@@ -46,6 +46,7 @@ final class RpcClientTypes {
     static final TypeName PROTO_EMPTY = TypeName.create("com.google.protobuf.Empty");
     static final TypeName ITERABLE = TypeName.create("java.lang.Iterable");
     static final TypeName ITERATOR = TypeName.create("java.util.Iterator");
+    static final TypeName STREAM = TypeName.create("java.util.stream.Stream");
     static final TypeName STREAM_OBSERVER = TypeName.create("io.grpc.stub.StreamObserver");
 
     static final Annotation RPC_CLIENT_QUALIFIER_INSTANCE = Annotation.create(ANNOTATION_CLIENT_QUALIFIER);

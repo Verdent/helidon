@@ -17,6 +17,7 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 import io.helidon.webclient.grpc.RpcClient;
 
@@ -29,10 +30,10 @@ interface TextServiceClient {
     TextMessages.TextMessage upper(TextMessages.TextMessage request);
 
     @RpcClient.ServerStreaming("Split")
-    Iterator<TextMessages.TextMessage> split(TextMessages.TextMessage request);
+    Stream<TextMessages.TextMessage> split(TextMessages.TextMessage request);
 
     @RpcClient.ClientStreaming("Join")
-    TextMessages.TextMessage join(Iterable<TextMessages.TextMessage> request);
+    TextMessages.TextMessage join(Stream<TextMessages.TextMessage> request);
 
     @RpcClient.Bidirectional("Echo")
     Iterator<TextMessages.TextMessage> echo(Iterator<TextMessages.TextMessage> request);

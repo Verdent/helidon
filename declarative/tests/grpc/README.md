@@ -19,11 +19,11 @@ Key files
 ---------
 
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary and all streaming text operations, including blocking client streaming
-- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract, using `Iterable` for client streaming
+- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract, using `Stream` for typed server-streaming and client-streaming shortcuts
 - `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesEndpoint.java` - dedicated endpoint covering blocking unary and no-request server-streaming shortcut forms
 - `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesClient.java` - typed client for the shortcut endpoint, including no-arg unary and server-streaming methods
 - `src/main/java/io/helidon/declarative/tests/grpc/ClientStreamingShapesEndpoint.java` - dedicated endpoint covering blocking client-streaming shortcut forms
-- `src/main/java/io/helidon/declarative/tests/grpc/ClientStreamingShapesClient.java` - typed client for iterable and iterator client-streaming shortcuts
+- `src/main/java/io/helidon/declarative/tests/grpc/ClientStreamingShapesClient.java` - typed client for iterable, iterator, and stream client-streaming shortcuts
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceEndpoint.java` - endpoint using configuration placeholders
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and static named client selection
 - `src/main/java/io/helidon/declarative/tests/grpc/DefaultGrpcClient.java` - unnamed registry client used by generated clients as the default fallback
@@ -33,7 +33,7 @@ Key files
 - `src/main/java/io/helidon/declarative/tests/grpc/Main.java` - application bootstrap
 - `src/main/resources/application.yaml` - listener and client configuration
 - `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcUnaryShapesTest.java` - explicit functional tests for the blocking shortcut forms
-- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcClientStreamingShapesTest.java` - explicit functional tests for blocking client-streaming shortcut forms
+- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcClientStreamingShapesTest.java` - explicit functional tests for blocking client-streaming shortcut forms and stream-based client input
 
 Minimal shape
 -------------
@@ -69,11 +69,11 @@ No explicit service scope is needed on the endpoint. If you do not declare one, 
 Supported server shapes:
 
 - `@RpcServer.Unary` supports observer-based methods, no-request unary methods, direct response return, and unary methods that implicitly respond with `com.google.protobuf.Empty`
-- `@RpcServer.ServerStreaming` supports observer-based methods, no-request server-streaming methods, and `Stream<ResponseT>` return
+- `@RpcServer.ServerStreaming` supports observer-based methods, no-request server-streaming methods, and `Stream<ResponseT>` or `Iterable<ResponseT>` return
 - `@RpcServer.ClientStreaming` supports the explicit `StreamObserver<ResponseT>` response parameter and blocking `Iterable` or `Iterator` shortcut methods that return a single response or implicitly `com.google.protobuf.Empty`
 - `@RpcServer.Bidirectional` stays on the explicit `StreamObserver` form
 
-Generated typed clients in this module also support no-arg unary, no-arg server-streaming methods, and `Iterable` client-streaming request sources. No-arg calls use `com.google.protobuf.Empty` on the wire.
+Generated typed clients in this module also support no-arg unary, no-arg server-streaming methods, `Iterator` or `Stream` server-streaming return shapes, and `Iterable`, `Iterator`, or `Stream` client-streaming request sources. No-arg calls use `com.google.protobuf.Empty` on the wire.
 
 Validation
 ----------

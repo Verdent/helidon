@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import io.helidon.common.types.TypeName;
 import io.helidon.webclient.grpc.RpcClient;
@@ -86,6 +87,7 @@ class DeclarativeCodegenGrpcClientTypesTest {
         checkField(toCheck, checked, fields, "PROTO_EMPTY", Empty.class);
         checkField(toCheck, checked, fields, "ITERABLE", Iterable.class);
         checkField(toCheck, checked, fields, "ITERATOR", Iterator.class);
+        checkField(toCheck, checked, fields, "STREAM", Stream.class);
         checkField(toCheck, checked, fields, "STREAM_OBSERVER", StreamObserver.class);
 
         assertThat("If the collection is not empty, please add appropriate checkField line to this test",

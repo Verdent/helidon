@@ -16,11 +16,32 @@
 
 package io.helidon.declarative.tests.grpc;
 
+import java.util.Iterator;
+
 import io.helidon.webclient.grpc.RpcClient;
+import com.google.protobuf.Empty;
 
 @RpcClient.Endpoint("${unary-shapes.client.uri:http://localhost:8080}")
 @RpcClient.ServiceName(UnaryShapesEndpoint.SERVICE_NAME)
 interface UnaryShapesClient {
     @RpcClient.Unary("DirectUpper")
     TextMessages.TextMessage directUpper(TextMessages.TextMessage request);
+
+    @RpcClient.Unary("NoArgUpper")
+    TextMessages.TextMessage noArgUpper();
+
+    @RpcClient.Unary("ObserverUpper")
+    TextMessages.TextMessage observerUpper();
+
+    @RpcClient.Unary("Notify")
+    Empty notify(TextMessages.TextMessage request);
+
+    @RpcClient.Unary("Ping")
+    Empty ping();
+
+    @RpcClient.ServerStreaming("NoArgSplit")
+    Iterator<TextMessages.TextMessage> noArgSplit();
+
+    @RpcClient.ServerStreaming("ObserverSplit")
+    Iterator<TextMessages.TextMessage> observerSplit();
 }

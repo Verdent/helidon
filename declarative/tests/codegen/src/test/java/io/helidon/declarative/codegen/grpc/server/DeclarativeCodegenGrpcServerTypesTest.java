@@ -34,6 +34,7 @@ import io.helidon.webserver.grpc.GrpcRouteRegistration;
 import io.helidon.webserver.grpc.GrpcServiceDescriptor;
 import io.helidon.webserver.grpc.RpcServer;
 
+import com.google.protobuf.Empty;
 import io.grpc.ServerInterceptor;
 import io.grpc.stub.ServerCalls;
 import io.grpc.stub.StreamObserver;
@@ -92,6 +93,7 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "GRPC_SERVER_STREAMING_METHOD", ServerCalls.ServerStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_STREAMING_METHOD", ServerCalls.ClientStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_BIDI_STREAMING_METHOD", ServerCalls.BidiStreamingMethod.class);
+        checkField(toCheck, checked, fields, "PROTO_EMPTY", Empty.class);
         checkField(toCheck,
                    checked,
                    fields,

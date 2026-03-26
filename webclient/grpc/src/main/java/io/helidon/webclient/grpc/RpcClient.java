@@ -175,7 +175,7 @@ public final class RpcClient {
     /**
      * Marks a unary gRPC client method.
      * <p>
-     * Supported method shape: {@code ResponseT method(RequestT request)}.
+     * Supported method shapes: {@code ResponseT method(RequestT request)} and {@code ResponseT method()}.
      * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)
@@ -195,7 +195,9 @@ public final class RpcClient {
     /**
      * Marks a server-streaming gRPC client method.
      * <p>
-     * Supported method shape: {@code java.util.Iterator<ResponseT> method(RequestT request)}.
+     * Supported method shapes:
+     * {@code java.util.Iterator<ResponseT> method(RequestT request)} and
+     * {@code java.util.Iterator<ResponseT> method()}.
      * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)

@@ -269,8 +269,8 @@ Server method shapes:
 - A method-level `@RpcServer.Marshaller` overrides the endpoint default for that RPC method
 - Method-level `@RpcServer.Interceptors` are combined with endpoint-level interceptors for that RPC method
 - Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service registry services
-- `@RpcServer.Unary` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `ResponseT method(RequestT request)`
-- `@RpcServer.ServerStreaming` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `Stream<ResponseT> method(RequestT request)`
+- `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `ResponseT method(RequestT request)`, `ResponseT method()`, `void method(RequestT request)`, or `void method()`
+- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `Stream<ResponseT> method(RequestT request)`, or `Stream<ResponseT> method()`
 - `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 - `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 
@@ -292,14 +292,19 @@ Client method shapes:
 - A method-level `@RpcClient.Marshaller` overrides the client default for that RPC method
 - Method-level `@RpcClient.Interceptors` are combined with client-level interceptors for that RPC method
 - Interceptor classes must implement `io.grpc.ClientInterceptor` and be Helidon service registry services
-- `@RpcClient.Unary` - `ResponseT method(RequestT request)`
-- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)`
+- `@RpcClient.Unary` - `ResponseT method(RequestT request)` or `ResponseT method()`
+- `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)` or `Iterator<ResponseT> method()`
 - `@RpcClient.ClientStreaming` - `ResponseT method(Iterator<RequestT> request)`
 - `@RpcClient.Bidirectional` - `Iterator<ResponseT> method(Iterator<RequestT> request)`
 
 With the built-in `default` and `proto` marshaller suppliers, `RequestT` and `ResponseT`
 must be protobuf message types. For string-like payloads, use a protobuf message such as
 `com.google.protobuf.StringValue`, or configure a custom marshaller supplier.
+
+When a server shortcut omits the request, the generated descriptor uses `com.google.protobuf.Empty`
+as the request type. When a unary server shortcut omits the response, the generated descriptor uses
+`com.google.protobuf.Empty` as the response type. Generated no-arg typed clients likewise send
+`com.google.protobuf.Empty.getDefaultInstance()` as the request payload.
 
 To inject a declarative gRPC client, inject the annotated interface using the `@RpcClient.Client` qualifier:
 
@@ -381,8 +386,9 @@ and registers the endpoint on the configured gRPC listener. This is what makes d
 available to gRPC methods for features such as metrics and tracing.
 
 For unary methods that return a value, the generated registration completes the observer through
-`io.helidon.grpc.core.ResponseHelper.complete(...)`. For server-streaming methods that return `Stream<ResponseT>`, it
-uses `io.helidon.grpc.core.ResponseHelper.stream(...)`.
+`io.helidon.grpc.core.ResponseHelper.complete(...)`. For unary methods that do not return a response,
+it completes the observer with `com.google.protobuf.Empty`. For server-streaming methods that return
+`Stream<ResponseT>`, it uses `io.helidon.grpc.core.ResponseHelper.stream(...)`.
 
 The endpoint type itself is also treated as a service registry service. If no explicit service scope is declared,
 it defaults to `@Service.Singleton`, matching the REST-style default. If needed, you can still declare

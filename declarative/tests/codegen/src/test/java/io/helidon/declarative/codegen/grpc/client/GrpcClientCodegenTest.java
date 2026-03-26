@@ -60,6 +60,40 @@ class GrpcClientCodegenTest {
     }
 
     @Test
+    void testNoRequestClientCodegen() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterClient.java", """
+                        package com.example;
+
+                        import java.util.Iterator;
+                        import io.helidon.webclient.grpc.RpcClient;
+
+                        @RpcClient.Endpoint("http://localhost:8080")
+                        interface GreeterClient {
+                            @RpcClient.Unary("Ping")
+                            String ping();
+
+                            @RpcClient.ServerStreaming("Split")
+                            Iterator<String> split();
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterClient__GrpcClient.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("GrpcClientMethodDescriptor.unary(serviceName, \"Ping\")"));
+        assertThat(content, containsString(".requestType(Empty.class).responseType(String.class)"));
+        assertThat(content, containsString("return serviceClient.unary(\"Ping\", Empty.getDefaultInstance());"));
+        assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"Split\")"));
+        assertThat(content, containsString("return serviceClient.serverStream(\"Split\", Empty.getDefaultInstance());"));
+    }
+
+    @Test
     void testStreamingClientCodegen() throws IOException {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("StreamingClient.java", """

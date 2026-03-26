@@ -16,12 +16,18 @@
 
 package io.helidon.declarative.tests.grpc;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 import io.helidon.service.registry.Lookup;
 import io.helidon.service.registry.Qualifier;
 import io.helidon.service.registry.ServiceRegistry;
 import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.webserver.testing.junit5.ServerTest;
 
+import com.google.protobuf.Empty;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -37,11 +43,56 @@ class DeclarativeGrpcUnaryShapesTest {
         this.registry = registry;
     }
 
+    @BeforeEach
+    void beforeEach() {
+        UnaryShapesEndpoint.reset();
+    }
+
     @Test
     void testUnaryDirectReturnShape() {
         TextMessages.TextMessage response = typedClient().directUpper(message("hello"));
 
         assertThat(response.getText(), is("DIRECT:HELLO"));
+    }
+
+    @Test
+    void testUnaryNoRequestReturnShape() {
+        TextMessages.TextMessage response = typedClient().noArgUpper();
+
+        assertThat(response.getText(), is("NO_ARG:HELLO"));
+    }
+
+    @Test
+    void testUnaryNoRequestObserverShape() {
+        TextMessages.TextMessage response = typedClient().observerUpper();
+
+        assertThat(response.getText(), is("OBSERVER:HELLO"));
+    }
+
+    @Test
+    void testUnaryRequestNoResponseShape() {
+        Empty response = typedClient().notify(message("hello"));
+
+        assertThat(response, is(Empty.getDefaultInstance()));
+        assertThat(UnaryShapesEndpoint.lastNotify(), is("HELLO"));
+    }
+
+    @Test
+    void testUnaryNoRequestNoResponseShape() {
+        Empty response = typedClient().ping();
+
+        assertThat(response, is(Empty.getDefaultInstance()));
+        assertThat(UnaryShapesEndpoint.pingCount(), is(1));
+    }
+
+    @Test
+    void testServerStreamingNoRequestReturnShape() {
+        assertThat(toTexts(typedClient().noArgSplit()), is(List.of("alpha", "beta")));
+    }
+
+    @Test
+    void testServerStreamingNoRequestObserverShape() {
+        assertThat(toTexts(typedClient().observerSplit()), is(List.of("observer", "stream")));
     }
 
     private UnaryShapesClient typedClient() {
@@ -55,5 +106,11 @@ class DeclarativeGrpcUnaryShapesTest {
         return TextMessages.TextMessage.newBuilder()
                 .setText(text)
                 .build();
+    }
+
+    private static List<String> toTexts(Iterator<TextMessages.TextMessage> messages) {
+        List<String> result = new ArrayList<>();
+        messages.forEachRemaining(message -> result.add(message.getText()));
+        return result;
     }
 }

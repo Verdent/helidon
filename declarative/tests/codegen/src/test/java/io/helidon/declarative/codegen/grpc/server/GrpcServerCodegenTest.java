@@ -178,6 +178,55 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testUnaryEndpointCodegenSupportsBlockingShortcutShapes() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("NoRequest")
+                            String noRequest() {
+                                return "hello";
+                            }
+
+                            @RpcServer.Unary("ObserverNoRequest")
+                            void observerNoRequest(StreamObserver<String> observer) {
+                            }
+
+                            @RpcServer.Unary("Notify")
+                            void notify(String request) {
+                            }
+
+                            @RpcServer.Unary("Ping")
+                            void ping() {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.noRequest())"));
+        assertThat(content, containsString("(Empty request, StreamObserver<String> observer) -> endpoint.observerNoRequest(observer)"));
+        assertThat(content, containsString(".requestType(Empty.class).responseType(String.class)"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, () -> endpoint.notify(request), "
+                                                  + "Empty.getDefaultInstance())"));
+        assertThat(content, containsString(".requestType(String.class).responseType(Empty.class)"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, () -> endpoint.ping(), "
+                                                  + "Empty.getDefaultInstance())"));
+        assertThat(content, containsString(".requestType(Empty.class).responseType(Empty.class)"));
+    }
+
+    @Test
     void testUnaryEndpointCodegenRejectsCompletableFutureResponse() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
@@ -253,9 +302,7 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must declare either "
-                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
-                                          + "ResponseT method(RequestT request)"));
+                   containsString("Unary declarative gRPC method must declare one of "));
     }
 
     @Test
@@ -306,9 +353,7 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must declare either "
-                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
-                                          + "ResponseT method(RequestT request)"));
+                   containsString("Unary declarative gRPC method must declare one of "));
     }
 
     @Test
@@ -338,6 +383,43 @@ class GrpcServerCodegenTest {
 
         String content = Files.readString(generated, StandardCharsets.UTF_8);
         assertThat(content, containsString("ResponseHelper.stream(observer, endpoint.split(request))"));
+    }
+
+    @Test
+    void testServerStreamingEndpointCodegenSupportsNoRequestShapes() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("StreamingEndpoint.java", """
+                        package com.example;
+
+                        import java.util.stream.Stream;
+
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class StreamingEndpoint {
+                            @RpcServer.ServerStreaming("NoRequest")
+                            Stream<String> noRequest() {
+                                return Stream.of("hello");
+                            }
+
+                            @RpcServer.ServerStreaming("ObserverNoRequest")
+                            void observerNoRequest(StreamObserver<String> observer) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/StreamingEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.stream(observer, endpoint.noRequest())"));
+        assertThat(content, containsString("(Empty request, StreamObserver<String> observer) -> endpoint.observerNoRequest(observer)"));
+        assertThat(content, containsString(".requestType(Empty.class).responseType(String.class)"));
     }
 
     @Test
@@ -556,7 +638,8 @@ class GrpcServerCodegenTest {
                         @RpcServer.Endpoint
                         class BrokenUnaryEndpoint {
                             @RpcServer.Unary
-                            void sayHello(String request) {
+                            String sayHello(String request, String other) {
+                                return request + other;
                             }
                         }
                         """)
@@ -565,10 +648,7 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must declare either "
-                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
-                                          + "ResponseT "
-                                          + "method(RequestT request)"));
+                   containsString("Unary declarative gRPC method must declare one of "));
     }
 
     @Test

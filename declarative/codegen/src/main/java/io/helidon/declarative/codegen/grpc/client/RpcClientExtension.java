@@ -377,9 +377,16 @@ class RpcClientExtension implements RegistryCodegenExtension {
                             .addContent(method.type().clientMethodName())
                             .addContent("(")
                             .addContentLiteral(method.grpcMethodName())
-                            .addContent(", ")
-                            .addContent(method.parameters().getFirst().name())
-                            .addContentLine(");");
+                            .addContent(", ");
+
+                    if (method.parameters().isEmpty()) {
+                        it.addContent(RpcClientTypes.PROTO_EMPTY)
+                                .addContent(".getDefaultInstance()");
+                    } else {
+                        it.addContent(method.parameters().getFirst().name());
+                    }
+
+                    it.addContentLine(");");
                 }));
     }
 
@@ -513,19 +520,21 @@ class RpcClientExtension implements RegistryCodegenExtension {
                                    Optional<MarshallerConfig> marshaller,
                                    List<InterceptorConfig> interceptors) {
         List<TypedElementInfo> parameters = method.parameterArguments();
-        if (parameters.size() != 1) {
-            throw new CodegenException("Declarative gRPC unary client method must have exactly one request parameter",
+        if (parameters.size() > 1) {
+            throw new CodegenException("Declarative gRPC unary client method must have zero or one request parameter",
                                        method.originatingElementValue());
         }
 
-        TypeName requestType = parameters.getFirst().typeName();
+        TypeName requestType = parameters.isEmpty()
+                ? RpcClientTypes.PROTO_EMPTY
+                : parameters.getFirst().typeName();
         TypeName responseType = method.typeName();
 
         if (voidType(responseType) || isIterator(responseType) || isStreamObserver(responseType)) {
             throw new CodegenException("Declarative gRPC unary client method must return a single response type",
                                        method.originatingElementValue());
         }
-        if (isIterator(requestType) || isStreamObserver(requestType)) {
+        if (!parameters.isEmpty() && (isIterator(requestType) || isStreamObserver(requestType))) {
             throw new CodegenException("Declarative gRPC unary client request parameter must not be an iterator or"
                                                + " stream observer",
                                        method.originatingElementValue());
@@ -547,14 +556,16 @@ class RpcClientExtension implements RegistryCodegenExtension {
                                              Optional<MarshallerConfig> marshaller,
                                              List<InterceptorConfig> interceptors) {
         List<TypedElementInfo> parameters = method.parameterArguments();
-        if (parameters.size() != 1) {
-            throw new CodegenException("Declarative gRPC server streaming client method must have exactly one request"
+        if (parameters.size() > 1) {
+            throw new CodegenException("Declarative gRPC server streaming client method must have zero or one request"
                                                + " parameter",
                                        method.originatingElementValue());
         }
 
-        TypeName requestType = parameters.getFirst().typeName();
-        if (isIterator(requestType) || isStreamObserver(requestType)) {
+        TypeName requestType = parameters.isEmpty()
+                ? RpcClientTypes.PROTO_EMPTY
+                : parameters.getFirst().typeName();
+        if (!parameters.isEmpty() && (isIterator(requestType) || isStreamObserver(requestType))) {
             throw new CodegenException("Declarative gRPC server streaming client request parameter must not be an iterator or"
                                                + " stream observer",
                                        method.originatingElementValue());

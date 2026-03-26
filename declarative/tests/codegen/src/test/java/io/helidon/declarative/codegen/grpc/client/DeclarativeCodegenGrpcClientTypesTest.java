@@ -33,6 +33,7 @@ import io.helidon.webclient.grpc.GrpcClientMethodDescriptor;
 import io.helidon.webclient.grpc.GrpcServiceClient;
 import io.helidon.webclient.grpc.GrpcServiceDescriptor;
 
+import com.google.protobuf.Empty;
 import io.grpc.ClientInterceptor;
 import io.grpc.stub.StreamObserver;
 import org.hamcrest.collection.IsEmptyCollection;
@@ -82,6 +83,7 @@ class DeclarativeCodegenGrpcClientTypesTest {
         checkField(toCheck, checked, fields, "GRPC_SERVICE_CLIENT", GrpcServiceClient.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_METHOD_DESCRIPTOR", GrpcClientMethodDescriptor.class);
+        checkField(toCheck, checked, fields, "PROTO_EMPTY", Empty.class);
         checkField(toCheck, checked, fields, "ITERATOR", Iterator.class);
         checkField(toCheck, checked, fields, "STREAM_OBSERVER", StreamObserver.class);
 

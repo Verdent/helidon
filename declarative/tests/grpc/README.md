@@ -10,7 +10,7 @@ What it demonstrates
 - declarative gRPC server registration
 - typed declarative gRPC client injection
 - all four RPC interaction styles
-- simplified unary and server-streaming server method shapes with explicit functional coverage
+- blocking unary and server-streaming shortcut shapes with explicit functional coverage
 - service-level and method-level gRPC interceptors
 - entry-point interception, metrics, and tracing on gRPC methods
 - listener, service-name, config-key, static named-client, and default-client configuration
@@ -20,8 +20,8 @@ Key files
 
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary and all streaming text operations
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract
-- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesEndpoint.java` - dedicated endpoint covering the direct unary shortcut form
-- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesClient.java` - typed client for the unary shortcut endpoint
+- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesEndpoint.java` - dedicated endpoint covering blocking unary and no-request server-streaming shortcut forms
+- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesClient.java` - typed client for the shortcut endpoint, including no-arg unary and server-streaming methods
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceEndpoint.java` - endpoint using configuration placeholders
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and static named client selection
 - `src/main/java/io/helidon/declarative/tests/grpc/DefaultGrpcClient.java` - unnamed registry client used by generated clients as the default fallback
@@ -30,7 +30,7 @@ Key files
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceServerUpperInterceptor.java` - method-specific server interceptor
 - `src/main/java/io/helidon/declarative/tests/grpc/Main.java` - application bootstrap
 - `src/main/resources/application.yaml` - listener and client configuration
-- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcUnaryShapesTest.java` - explicit functional tests for the direct unary shortcut form
+- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcUnaryShapesTest.java` - explicit functional tests for the blocking shortcut forms
 
 Minimal shape
 -------------
@@ -65,10 +65,12 @@ No explicit service scope is needed on the endpoint. If you do not declare one, 
 
 Supported server shapes:
 
-- `@RpcServer.Unary` supports observer-based methods and direct response return
-- `@RpcServer.ServerStreaming` supports observer-based methods and `Stream<ResponseT>` return
+- `@RpcServer.Unary` supports observer-based methods, no-request unary methods, direct response return, and unary methods that implicitly respond with `com.google.protobuf.Empty`
+- `@RpcServer.ServerStreaming` supports observer-based methods, no-request server-streaming methods, and `Stream<ResponseT>` return
 - `@RpcServer.ClientStreaming` stays on the explicit `StreamObserver<ResponseT>` response parameter
 - `@RpcServer.Bidirectional` stays on the explicit `StreamObserver` form
+
+Generated typed clients in this module also support no-arg unary and no-arg server-streaming methods. Those calls use `com.google.protobuf.Empty` on the wire.
 
 Validation
 ----------

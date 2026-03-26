@@ -10,6 +10,7 @@ What it demonstrates
 - declarative gRPC server registration
 - typed declarative gRPC client injection
 - all four RPC interaction styles
+- simplified unary and server-streaming server method shapes
 - service-level and method-level gRPC interceptors
 - entry-point interception, metrics, and tracing on gRPC methods
 - listener, service-name, config-key, static named-client, and default-client configuration
@@ -41,11 +42,10 @@ class GreeterEndpoint {
     }
 
     @RpcServer.Unary("SayHello")
-    void sayHello(HelloRequest request, StreamObserver<HelloReply> observer) {
-        observer.onNext(HelloReply.newBuilder()
-                                .setMessage("Hello " + request.getName())
-                                .build());
-        observer.onCompleted();
+    HelloReply sayHello(HelloRequest request) {
+        return HelloReply.newBuilder()
+                .setMessage("Hello " + request.getName())
+                .build();
     }
 }
 
@@ -59,6 +59,12 @@ interface GreeterClient {
 ```
 
 No explicit service scope is needed on the endpoint. If you do not declare one, the endpoint is treated as a singleton service by default.
+
+Supported server shapes:
+
+- `@RpcServer.Unary` supports observer-based methods, direct response return, and `CompletionStage` / `CompletableFuture` response return
+- `@RpcServer.ServerStreaming` supports observer-based methods and `Stream<ResponseT>` return
+- `@RpcServer.ClientStreaming` and `@RpcServer.Bidirectional` currently stay on the explicit `StreamObserver` form
 
 Validation
 ----------

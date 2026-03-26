@@ -37,10 +37,14 @@ final class RpcServerTypes {
 
     static final TypeName SERVER_INTERCEPTOR = TypeName.create("io.grpc.ServerInterceptor");
     static final TypeName MARSHALLER_SUPPLIER = TypeName.create("io.helidon.grpc.core.MarshallerSupplier");
+    static final TypeName RESPONSE_HELPER = TypeName.create("io.helidon.grpc.core.ResponseHelper");
     static final TypeName GRPC_ROUTE_REGISTRATION = TypeName.create("io.helidon.webserver.grpc.GrpcRouteRegistration");
     static final TypeName GRPC_SERVICE_DESCRIPTOR = TypeName.create("io.helidon.webserver.grpc.GrpcServiceDescriptor");
     static final TypeName GRPC_ENTRY_POINTS = TypeName.create("io.helidon.webserver.grpc.GrpcEntryPoint.EntryPoints");
     static final TypeName WEB_SERVER = TypeName.create("io.helidon.webserver.WebServer");
+    static final TypeName COMPLETION_STAGE = TypeName.create("java.util.concurrent.CompletionStage");
+    static final TypeName COMPLETABLE_FUTURE = TypeName.create("java.util.concurrent.CompletableFuture");
+    static final TypeName STREAM = TypeName.create("java.util.stream.Stream");
     static final TypeName GRPC_UNARY_METHOD = TypeName.create("io.grpc.stub.ServerCalls.UnaryMethod");
     static final TypeName GRPC_SERVER_STREAMING_METHOD =
             TypeName.create("io.grpc.stub.ServerCalls.ServerStreamingMethod");

@@ -269,8 +269,8 @@ Server method shapes:
 - A method-level `@RpcServer.Marshaller` overrides the endpoint default for that RPC method
 - Method-level `@RpcServer.Interceptors` are combined with endpoint-level interceptors for that RPC method
 - Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service registry services
-- `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
-- `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`
+- `@RpcServer.Unary` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `ResponseT`, `CompletionStage<ResponseT>`, or `CompletableFuture<ResponseT>` from `method(RequestT request)`
+- `@RpcServer.ServerStreaming` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `Stream<ResponseT> method(RequestT request)`
 - `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 - `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 
@@ -358,11 +358,10 @@ class GreeterEndpoint {
     }
 
     @RpcServer.Unary("SayHello")
-    void sayHello(HelloRequest request, StreamObserver<HelloReply> observer) {
-        observer.onNext(HelloReply.newBuilder()
-                                .setMessage("Hello " + request.getName())
-                                .build());
-        observer.onCompleted();
+    HelloReply sayHello(HelloRequest request) {
+        return HelloReply.newBuilder()
+                .setMessage("Hello " + request.getName())
+                .build();
     }
 }
 
@@ -380,6 +379,10 @@ For each `@RpcServer.Endpoint`, a class named `EndpointType__GrpcRouteRegistrati
 This singleton service builds the `GrpcServiceDescriptor`, wraps each declared method through `GrpcEntryPoint.EntryPoints`,
 and registers the endpoint on the configured gRPC listener. This is what makes declarative entry-point interception
 available to gRPC methods for features such as metrics and tracing.
+
+For unary methods that return a value or `CompletionStage`, the generated registration completes the observer through
+`io.helidon.grpc.core.ResponseHelper.complete(...)`. For server-streaming methods that return `Stream<ResponseT>`, it
+uses `io.helidon.grpc.core.ResponseHelper.stream(...)`.
 
 The endpoint type itself is also treated as a service registry service. If no explicit service scope is declared,
 it defaults to `@Service.Singleton`, matching the REST-style default. If needed, you can still declare

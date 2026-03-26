@@ -18,17 +18,21 @@ package io.helidon.declarative.codegen.grpc.server;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import io.helidon.common.types.TypeName;
-import io.helidon.webserver.grpc.RpcServer;
 import io.helidon.grpc.core.MarshallerSupplier;
+import io.helidon.grpc.core.ResponseHelper;
 import io.helidon.webserver.grpc.GrpcEntryPoint;
 import io.helidon.webserver.grpc.GrpcRouteRegistration;
 import io.helidon.webserver.grpc.GrpcServiceDescriptor;
+import io.helidon.webserver.grpc.RpcServer;
 
 import io.grpc.ServerInterceptor;
 import io.grpc.stub.ServerCalls;
@@ -76,10 +80,14 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "ANNOTATION_BIDIRECTIONAL", RpcServer.Bidirectional.class);
         checkField(toCheck, checked, fields, "SERVER_INTERCEPTOR", ServerInterceptor.class);
         checkField(toCheck, checked, fields, "MARSHALLER_SUPPLIER", MarshallerSupplier.class);
+        checkField(toCheck, checked, fields, "RESPONSE_HELPER", ResponseHelper.class);
         checkField(toCheck, checked, fields, "GRPC_ROUTE_REGISTRATION", GrpcRouteRegistration.class);
         checkField(toCheck, checked, fields, "GRPC_SERVICE_DESCRIPTOR", GrpcServiceDescriptor.class);
         checkField(toCheck, checked, fields, "GRPC_ENTRY_POINTS", GrpcEntryPoint.EntryPoints.class);
         checkField(toCheck, checked, fields, "WEB_SERVER", io.helidon.webserver.WebServer.class);
+        checkField(toCheck, checked, fields, "COMPLETION_STAGE", CompletionStage.class);
+        checkField(toCheck, checked, fields, "COMPLETABLE_FUTURE", CompletableFuture.class);
+        checkField(toCheck, checked, fields, "STREAM", Stream.class);
         checkField(toCheck, checked, fields, "GRPC_UNARY_METHOD", ServerCalls.UnaryMethod.class);
         checkField(toCheck, checked, fields, "GRPC_SERVER_STREAMING_METHOD", ServerCalls.ServerStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_STREAMING_METHOD", ServerCalls.ClientStreamingMethod.class);

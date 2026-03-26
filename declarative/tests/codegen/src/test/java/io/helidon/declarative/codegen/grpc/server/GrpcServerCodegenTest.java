@@ -150,6 +150,120 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testUnaryEndpointCodegenSupportsReturnedResponse() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            String sayHello(String request) {
+                                return request.toUpperCase();
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.sayHello(request))"));
+    }
+
+    @Test
+    void testUnaryEndpointCodegenSupportsFutureResponse() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletableFuture;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            CompletableFuture<String> sayHello(String request) {
+                                return CompletableFuture.completedFuture(request.toUpperCase());
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.sayHello(request))"));
+    }
+
+    @Test
+    void testUnaryEndpointCodegenRejectsRawFutureResponse() {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletionStage;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            CompletionStage sayHello(String request) {
+                                return null;
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Unary declarative gRPC method must return "
+                                          + "java.util.concurrent.CompletionStage<ResponseT> "
+                                          + "(or java.util.concurrent.CompletableFuture<ResponseT>) "
+                                          + "when not using StreamObserver"));
+    }
+
+    @Test
+    void testServerStreamingEndpointCodegenSupportsReturnedStream() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("StreamingEndpoint.java", """
+                        package com.example;
+
+                        import java.util.stream.Stream;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class StreamingEndpoint {
+                            @RpcServer.ServerStreaming("Split")
+                            Stream<String> split(String request) {
+                                return Stream.of(request.split(" "));
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/StreamingEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.stream(observer, endpoint.split(request))"));
+    }
+
+    @Test
     void testStreamingEndpointCodegen() throws IOException {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("StreamingEndpoint.java", """
@@ -320,7 +434,10 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must declare exactly two parameters"));
+                   containsString("Unary declarative gRPC method must declare either "
+                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                          + "ResponseT/CompletionStage<ResponseT>/CompletableFuture<ResponseT> "
+                                          + "method(RequestT request)"));
     }
 
     @Test

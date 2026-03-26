@@ -17,10 +17,9 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 import io.helidon.webserver.grpc.RpcServer;
-
-import io.grpc.stub.StreamObserver;
 
 @RpcServer.Endpoint
 @RpcServer.Listener(ConfiguredTextServiceEndpoint.LISTENER_EXPRESSION)
@@ -34,10 +33,9 @@ class ConfiguredTextServiceEndpoint {
             "${configured-text-service.grpc.service-name:" + DEFAULT_SERVICE_NAME + "}";
 
     @RpcServer.Unary("Upper")
-    void upper(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
-        observer.onNext(TextMessages.TextMessage.newBuilder()
-                                .setText("CONFIGURED:" + request.getText().toUpperCase(Locale.ROOT))
-                                .build());
-        observer.onCompleted();
+    CompletableFuture<TextMessages.TextMessage> upper(TextMessages.TextMessage request) {
+        return CompletableFuture.completedFuture(TextMessages.TextMessage.newBuilder()
+                                                         .setText("CONFIGURED:" + request.getText().toUpperCase(Locale.ROOT))
+                                                         .build());
     }
 }

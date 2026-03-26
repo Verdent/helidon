@@ -17,6 +17,7 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Locale;
+import java.util.stream.Stream;
 
 import io.helidon.webserver.grpc.RpcServer;
 import io.helidon.metrics.api.Metrics;
@@ -41,27 +42,21 @@ class TextServiceEndpoint {
     @Metrics.Counted(value = "grpc-upper-count", absoluteName = true)
     @Tracing.Traced(value = "grpc.upper", tags = @Tracing.Tag(key = "transport", value = "grpc"),
                     kind = Span.Kind.SERVER)
-    void upper(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
-        observer.onNext(TextMessages.TextMessage.newBuilder()
-                                .setText(request.getText().toUpperCase(Locale.ROOT))
-                                .build());
-        observer.onCompleted();
+    TextMessages.TextMessage upper(TextMessages.TextMessage request) {
+        return TextMessages.TextMessage.newBuilder()
+                .setText(request.getText().toUpperCase(Locale.ROOT))
+                .build();
     }
 
     @RpcServer.ServerStreaming("Split")
-    void split(TextMessages.TextMessage request, StreamObserver<TextMessages.TextMessage> observer) {
+    Stream<TextMessages.TextMessage> split(TextMessages.TextMessage request) {
         if (request.getText().isBlank()) {
-            observer.onCompleted();
-            return;
+            return Stream.empty();
         }
 
-        for (String part : request.getText().split(" ")) {
-            if (part.isEmpty()) {
-                continue;
-            }
-            observer.onNext(message(part));
-        }
-        observer.onCompleted();
+        return Stream.of(request.getText().split(" "))
+                .filter(part -> !part.isEmpty())
+                .map(TextServiceEndpoint::message);
     }
 
     @RpcServer.ClientStreaming("Join")

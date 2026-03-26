@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -93,6 +94,8 @@ class DeclarativeCodegenGrpcServerTypesTest {
         checkField(toCheck, checked, fields, "GRPC_SERVER_STREAMING_METHOD", ServerCalls.ServerStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_CLIENT_STREAMING_METHOD", ServerCalls.ClientStreamingMethod.class);
         checkField(toCheck, checked, fields, "GRPC_BIDI_STREAMING_METHOD", ServerCalls.BidiStreamingMethod.class);
+        checkField(toCheck, checked, fields, "ITERABLE", Iterable.class);
+        checkField(toCheck, checked, fields, "ITERATOR", Iterator.class);
         checkField(toCheck, checked, fields, "PROTO_EMPTY", Empty.class);
         checkField(toCheck,
                    checked,

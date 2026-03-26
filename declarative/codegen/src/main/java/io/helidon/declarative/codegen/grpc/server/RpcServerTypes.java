@@ -53,6 +53,8 @@ final class RpcServerTypes {
     static final TypeName GRPC_BIDI_STREAMING_METHOD =
             TypeName.create("io.grpc.stub.ServerCalls.BidiStreamingMethod");
     static final TypeName STREAM_OBSERVER = TypeName.create("io.grpc.stub.StreamObserver");
+    static final TypeName ITERABLE = TypeName.create("java.lang.Iterable");
+    static final TypeName ITERATOR = TypeName.create("java.util.Iterator");
     static final TypeName PROTO_EMPTY = TypeName.create("com.google.protobuf.Empty");
     static final TypeName PROTO_FILE_DESCRIPTOR = TypeName.create("com.google.protobuf.Descriptors.FileDescriptor");
 

@@ -217,7 +217,9 @@ public final class RpcClient {
     /**
      * Marks a client-streaming gRPC client method.
      * <p>
-     * Supported method shape: {@code ResponseT method(java.util.Iterator<RequestT> request)}.
+     * Supported method shapes:
+     * {@code ResponseT method(java.lang.Iterable<RequestT> request)} and
+     * {@code ResponseT method(java.util.Iterator<RequestT> request)}.
      * Default interface methods are ignored by declarative code generation.
      */
     @Target(ElementType.METHOD)

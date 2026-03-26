@@ -44,6 +44,7 @@ final class RpcClientTypes {
     static final TypeName GRPC_CLIENT_METHOD_DESCRIPTOR =
             TypeName.create("io.helidon.webclient.grpc.GrpcClientMethodDescriptor");
     static final TypeName PROTO_EMPTY = TypeName.create("com.google.protobuf.Empty");
+    static final TypeName ITERABLE = TypeName.create("java.lang.Iterable");
     static final TypeName ITERATOR = TypeName.create("java.util.Iterator");
     static final TypeName STREAM_OBSERVER = TypeName.create("io.grpc.stub.StreamObserver");
 

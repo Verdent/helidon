@@ -271,7 +271,7 @@ Server method shapes:
 - Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service registry services
 - `@RpcServer.Unary` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `ResponseT method(RequestT request)`, `ResponseT method()`, `void method(RequestT request)`, or `void method()`
 - `@RpcServer.ServerStreaming` - `void method(RequestT request, StreamObserver<ResponseT> observer)`, `void method(StreamObserver<ResponseT> observer)`, `Stream<ResponseT> method(RequestT request)`, or `Stream<ResponseT> method()`
-- `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+- `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`, `ResponseT method(Iterable<RequestT> requests)`, `ResponseT method(Iterator<RequestT> requests)`, `void method(Iterable<RequestT> requests)`, or `void method(Iterator<RequestT> requests)`
 - `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 
 If no `@RpcServer.Proto` method is declared, the generated registration uses the configured service name as-is and omits
@@ -294,7 +294,7 @@ Client method shapes:
 - Interceptor classes must implement `io.grpc.ClientInterceptor` and be Helidon service registry services
 - `@RpcClient.Unary` - `ResponseT method(RequestT request)` or `ResponseT method()`
 - `@RpcClient.ServerStreaming` - `Iterator<ResponseT> method(RequestT request)` or `Iterator<ResponseT> method()`
-- `@RpcClient.ClientStreaming` - `ResponseT method(Iterator<RequestT> request)`
+- `@RpcClient.ClientStreaming` - `ResponseT method(Iterable<RequestT> request)` or `ResponseT method(Iterator<RequestT> request)`
 - `@RpcClient.Bidirectional` - `Iterator<ResponseT> method(Iterator<RequestT> request)`
 
 With the built-in `default` and `proto` marshaller suppliers, `RequestT` and `ResponseT`
@@ -302,9 +302,9 @@ must be protobuf message types. For string-like payloads, use a protobuf message
 `com.google.protobuf.StringValue`, or configure a custom marshaller supplier.
 
 When a server shortcut omits the request, the generated descriptor uses `com.google.protobuf.Empty`
-as the request type. When a unary server shortcut omits the response, the generated descriptor uses
-`com.google.protobuf.Empty` as the response type. Generated no-arg typed clients likewise send
-`com.google.protobuf.Empty.getDefaultInstance()` as the request payload.
+as the request type. When a unary or client-streaming server shortcut omits the response, the generated
+descriptor uses `com.google.protobuf.Empty` as the response type. Generated no-arg typed clients likewise
+send `com.google.protobuf.Empty.getDefaultInstance()` as the request payload.
 
 To inject a declarative gRPC client, inject the annotated interface using the `@RpcClient.Client` qualifier:
 

@@ -407,6 +407,75 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContent(".")
                 .addContent(method.javaMethodName())
                 .addContent("())");
+        case ITERABLE_RETURN -> addBlockingClientStreamingHandler(constructor, method, endpointAccess, true, false);
+        case ITERATOR_RETURN -> addBlockingClientStreamingHandler(constructor, method, endpointAccess, false, false);
+        case ITERABLE_EMPTY_RESPONSE -> addBlockingClientStreamingHandler(constructor, method, endpointAccess, true, true);
+        case ITERATOR_EMPTY_RESPONSE -> addBlockingClientStreamingHandler(constructor, method, endpointAccess, false, true);
+        }
+    }
+
+    private void addBlockingClientStreamingHandler(Constructor.Builder constructor,
+                                                   GrpcMethod method,
+                                                   String endpointAccess,
+                                                   boolean iterable,
+                                                   boolean emptyResponse) {
+        constructor.addContent("(")
+                .addContent(streamObserverOf(method.responseType()))
+                .addContentLine(" observer) -> {");
+        constructor.addContent("var requests = new ")
+                .addContent(arrayListOf(method.requestType()))
+                .addContentLine("();");
+        constructor.addContent("return new ")
+                .addContent(streamObserverOf(method.requestType()))
+                .addContentLine("() {");
+        constructor.addContentLine("@Override");
+        constructor.addContent("public void onNext(")
+                .addContent(method.requestType())
+                .addContentLine(" value) {");
+        constructor.addContentLine("requests.add(value);");
+        constructor.addContentLine("}");
+        constructor.addContentLine("@Override");
+        constructor.addContentLine("public void onError(Throwable t) {");
+        constructor.addContentLine("observer.onError(t);");
+        constructor.addContentLine("}");
+        constructor.addContentLine("@Override");
+        constructor.addContentLine("public void onCompleted() {");
+        if (emptyResponse) {
+            constructor.addContent(RpcServerTypes.RESPONSE_HELPER)
+                    .addContent(".complete(observer, () -> ")
+                    .addContent(endpointAccess)
+                    .addContent(".")
+                    .addContent(method.javaMethodName())
+                    .addContent("(");
+            addClientStreamingRequestsAccess(constructor, iterable);
+            constructor.addContent("), ")
+                    .addContent(RpcServerTypes.PROTO_EMPTY)
+                    .addContentLine(".getDefaultInstance());");
+        } else {
+            constructor.addContentLine("try {");
+            constructor.addContent(RpcServerTypes.RESPONSE_HELPER)
+                    .addContent(".complete(observer, ")
+                    .addContent(endpointAccess)
+                    .addContent(".")
+                    .addContent(method.javaMethodName())
+                    .addContent("(");
+            addClientStreamingRequestsAccess(constructor, iterable);
+            constructor.addContentLine("));");
+            constructor.decreaseContentPadding()
+                    .addContentLine("} catch (Throwable t) {");
+            constructor.addContentLine("observer.onError(t);");
+            constructor.addContentLine("}");
+        }
+        constructor.addContentLine("}");
+        constructor.decreaseContentPadding()
+                .addContentLine("};")
+                .addContentLine("}");
+    }
+
+    private void addClientStreamingRequestsAccess(Constructor.Builder constructor, boolean iterable) {
+        constructor.addContent("requests");
+        if (!iterable) {
+            constructor.addContent(".iterator()");
         }
     }
 
@@ -701,30 +770,48 @@ class RpcServerExtension implements RegistryCodegenExtension {
     private MethodSignature clientStreamingSignature(TypeInfo typeInfo, TypedElementInfo method) {
         String errorPrefix = MethodType.CLIENT_STREAMING.errorPrefix();
         List<TypedElementInfo> params = method.parameterArguments();
-        if (params.size() != 1) {
-            throw new CodegenException(errorPrefix + " declarative gRPC method must declare exactly one parameter "
-                                               + "(response StreamObserver): "
-                                               + typeInfo.typeName().fqName() + "." + method.signature().text(),
-                                       method.originatingElementValue());
+        if (params.size() == 1) {
+            TypeName parameterType = params.getFirst().typeName();
+            if (isStreamObserverType(parameterType) && isStreamObserverType(method.typeName())) {
+                TypeName requestType = streamObserverType(typeInfo,
+                                                          method,
+                                                          method.typeName(),
+                                                          "return type",
+                                                          errorPrefix);
+                TypeName responseType = streamObserverType(typeInfo,
+                                                           method,
+                                                           parameterType,
+                                                           "first and only parameter",
+                                                           errorPrefix);
+                return new MethodSignature(MethodShape.OBSERVER, requestType, responseType);
+            }
+
+            if ((isIteratorType(parameterType) || isIterableType(parameterType))
+                    && parameterType.typeArguments().size() == 1) {
+                TypeName requestType = parameterType.typeArguments().getFirst();
+                if (isVoidType(method.typeName())) {
+                    return new MethodSignature(isIterableType(parameterType)
+                                                       ? MethodShape.ITERABLE_EMPTY_RESPONSE
+                                                       : MethodShape.ITERATOR_EMPTY_RESPONSE,
+                                               requestType,
+                                               RpcServerTypes.PROTO_EMPTY);
+                }
+
+                TypeName responseType = completingReturnType(typeInfo, method, method.typeName(), errorPrefix);
+                return new MethodSignature(isIterableType(parameterType)
+                                                   ? MethodShape.ITERABLE_RETURN
+                                                   : MethodShape.ITERATOR_RETURN,
+                                           requestType,
+                                           responseType);
+            }
         }
 
-        TypeName requestType = streamObserverType(typeInfo,
-                                                  method,
-                                                  method.typeName(),
-                                                  "return type",
-                                                  errorPrefix);
-        TypeName parameterType = params.getFirst().typeName();
-        if (parameterType.fqName().equals(RpcServerTypes.STREAM_OBSERVER.fqName())) {
-            TypeName responseType = streamObserverType(typeInfo,
-                                                       method,
-                                                       parameterType,
-                                                       "first and only parameter",
-                                                       errorPrefix);
-            return new MethodSignature(MethodShape.OBSERVER, requestType, responseType);
-        }
-
-        throw new CodegenException(errorPrefix + " declarative gRPC method must declare "
-                                           + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer): "
+        throw new CodegenException(errorPrefix + " declarative gRPC method must declare one of "
+                                           + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer), "
+                                           + "ResponseT method(Iterable<RequestT> requests), "
+                                           + "ResponseT method(Iterator<RequestT> requests), "
+                                           + "void method(Iterable<RequestT> requests), or "
+                                           + "void method(Iterator<RequestT> requests): "
                                            + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                    method.originatingElementValue());
     }
@@ -810,6 +897,14 @@ class RpcServerExtension implements RegistryCodegenExtension {
 
     private boolean isStreamObserverType(TypeName typeName) {
         return typeName.fqName().equals(RpcServerTypes.STREAM_OBSERVER.fqName());
+    }
+
+    private boolean isIterableType(TypeName typeName) {
+        return typeName.fqName().equals(RpcServerTypes.ITERABLE.fqName());
+    }
+
+    private boolean isIteratorType(TypeName typeName) {
+        return typeName.fqName().equals(RpcServerTypes.ITERATOR.fqName());
     }
 
     private Optional<MarshallerConfig> marshaller(Set<Annotation> annotations) {
@@ -970,6 +1065,12 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .build();
     }
 
+    private TypeName arrayListOf(TypeName type) {
+        return TypeName.builder(TypeName.create(ArrayList.class))
+                .addTypeArgument(type)
+                .build();
+    }
+
     private static String grpcMethodName(TypedElementInfo method, Annotation annotation) {
         return annotation.stringValue()
                 .filter(not(String::isBlank))
@@ -1033,7 +1134,11 @@ class RpcServerExtension implements RegistryCodegenExtension {
         EMPTY_RESPONSE,
         NO_REQUEST_EMPTY_RESPONSE,
         STREAM_RETURN,
-        NO_REQUEST_STREAM_RETURN
+        NO_REQUEST_STREAM_RETURN,
+        ITERABLE_RETURN,
+        ITERATOR_RETURN,
+        ITERABLE_EMPTY_RESPONSE,
+        ITERATOR_EMPTY_RESPONSE
     }
 
     private enum MethodType {

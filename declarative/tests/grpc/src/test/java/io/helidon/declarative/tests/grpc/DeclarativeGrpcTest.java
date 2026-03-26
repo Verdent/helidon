@@ -130,7 +130,7 @@ class DeclarativeGrpcTest {
         Iterator<TextMessages.TextMessage> serverStreaming = typedClient.split(message("hello world"));
         assertThat(toTexts(serverStreaming), is(List.of("hello", "world")));
 
-        TextMessages.TextMessage clientStreaming = typedClient.join(List.of(message("hello"), message("world")).iterator());
+        TextMessages.TextMessage clientStreaming = typedClient.join(List.of(message("hello"), message("world")));
         assertThat(clientStreaming.getText(), is("hello world"));
 
         Iterator<TextMessages.TextMessage> bidirectional = typedClient.echo(List.of(message("hello"), message("world")).iterator());

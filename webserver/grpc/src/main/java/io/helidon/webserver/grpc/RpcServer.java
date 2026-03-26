@@ -207,8 +207,13 @@ public final class RpcServer {
     /**
      * Marks a client-streaming gRPC method.
      * <p>
-     * Supported method shape:
-     * {@code io.grpc.stub.StreamObserver<RequestT> method(io.grpc.stub.StreamObserver<ResponseT> observer)}.
+     * Supported method shapes:
+     * {@code io.grpc.stub.StreamObserver<RequestT> method(io.grpc.stub.StreamObserver<ResponseT> observer)},
+     * {@code ResponseT method(java.lang.Iterable<RequestT> requests)},
+     * {@code ResponseT method(java.util.Iterator<RequestT> requests)},
+     * {@code void method(java.lang.Iterable<RequestT> requests)}, and
+     * {@code void method(java.util.Iterator<RequestT> requests)}.
+     * Void methods implicitly respond with {@code com.google.protobuf.Empty}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)

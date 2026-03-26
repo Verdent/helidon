@@ -75,7 +75,7 @@ class DeclarativeGrpcCrossCuttingTest {
         TextServiceClient typedClient = typedClient();
         long initialCounter = counterValue("grpc-join-count");
 
-        TextMessages.TextMessage response = typedClient.join(List.of(message("hello"), message("world")).iterator());
+        TextMessages.TextMessage response = typedClient.join(List.of(message("hello"), message("world")));
         assertThat(response.getText(), is("hello world"));
 
         SpanData tracedMethod = exporter.spanNamed("grpc.join");

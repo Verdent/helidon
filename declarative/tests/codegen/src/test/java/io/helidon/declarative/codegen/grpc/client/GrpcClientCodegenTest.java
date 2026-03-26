@@ -109,7 +109,7 @@ class GrpcClientCodegenTest {
                             Iterator<String> split(String request);
 
                             @RpcClient.ClientStreaming("Join")
-                            String join(Iterator<String> request);
+                            String join(Iterable<String> request);
 
                             @RpcClient.Bidirectional("Echo")
                             Iterator<String> echo(Iterator<String> request);
@@ -127,7 +127,7 @@ class GrpcClientCodegenTest {
         assertThat(content, containsString("GrpcClientMethodDescriptor.serverStreaming(serviceName, \"Split\")"));
         assertThat(content, containsString("return serviceClient.serverStream(\"Split\", request);"));
         assertThat(content, containsString("GrpcClientMethodDescriptor.clientStreaming(serviceName, \"Join\")"));
-        assertThat(content, containsString("return serviceClient.clientStream(\"Join\", request);"));
+        assertThat(content, containsString("return serviceClient.clientStream(\"Join\", request.iterator());"));
         assertThat(content, containsString("GrpcClientMethodDescriptor.bidirectional(serviceName, \"Echo\")"));
         assertThat(content, containsString("return serviceClient.bidi(\"Echo\", request);"));
     }

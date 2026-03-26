@@ -20,20 +20,20 @@ import java.util.Iterator;
 
 import io.helidon.webclient.grpc.RpcClient;
 
-@RpcClient.Interceptors(TextServiceClientInterceptor.class)
+import com.google.protobuf.Empty;
+
 @RpcClient.Endpoint("${text-service.client.uri:http://localhost:8080}")
-@RpcClient.ServiceName(TextServiceGrpc.SERVICE_NAME)
-interface TextServiceClient {
-    @RpcClient.Unary("Upper")
-    @RpcClient.Interceptors(TextServiceClientUpperInterceptor.class)
-    TextMessages.TextMessage upper(TextMessages.TextMessage request);
+@RpcClient.ServiceName("ClientStreamingShapes")
+interface ClientStreamingShapesClient {
+    @RpcClient.ClientStreaming("JoinIterable")
+    TextMessages.TextMessage joinIterable(Iterable<TextMessages.TextMessage> request);
 
-    @RpcClient.ServerStreaming("Split")
-    Iterator<TextMessages.TextMessage> split(TextMessages.TextMessage request);
+    @RpcClient.ClientStreaming("JoinIterator")
+    TextMessages.TextMessage joinIterator(Iterator<TextMessages.TextMessage> request);
 
-    @RpcClient.ClientStreaming("Join")
-    TextMessages.TextMessage join(Iterable<TextMessages.TextMessage> request);
+    @RpcClient.ClientStreaming("CountIterable")
+    Empty countIterable(Iterable<TextMessages.TextMessage> request);
 
-    @RpcClient.Bidirectional("Echo")
-    Iterator<TextMessages.TextMessage> echo(Iterator<TextMessages.TextMessage> request);
+    @RpcClient.ClientStreaming("CountIterator")
+    Empty countIterator(Iterator<TextMessages.TextMessage> request);
 }

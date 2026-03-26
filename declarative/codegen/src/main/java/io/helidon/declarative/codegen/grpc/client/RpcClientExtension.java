@@ -382,6 +382,10 @@ class RpcClientExtension implements RegistryCodegenExtension {
                     if (method.parameters().isEmpty()) {
                         it.addContent(RpcClientTypes.PROTO_EMPTY)
                                 .addContent(".getDefaultInstance()");
+                    } else if (method.type() == MethodType.CLIENT_STREAMING
+                            && isIterable(method.parameters().getFirst().typeName())) {
+                        it.addContent(method.parameters().getFirst().name())
+                                .addContent(".iterator()");
                     } else {
                         it.addContent(method.parameters().getFirst().name());
                     }
@@ -595,15 +599,17 @@ class RpcClientExtension implements RegistryCodegenExtension {
         List<TypedElementInfo> parameters = method.parameterArguments();
         if (parameters.size() != 1) {
             throw new CodegenException("Declarative gRPC client streaming client method must have exactly one request"
-                                               + " iterator parameter",
+                                               + " iterator or iterable parameter",
                                        method.originatingElementValue());
         }
 
-        TypeName requestType = iteratorType(parameters.getFirst().typeName(),
-                                            method,
-                                            "Declarative gRPC client streaming client request parameter must be "
-                                                    + RpcClientTypes.ITERATOR.fqName()
-                                                    + "<RequestT>");
+        TypeName requestType = iteratorOrIterableType(parameters.getFirst().typeName(),
+                                                      method,
+                                                      "Declarative gRPC client streaming client request parameter must be "
+                                                              + RpcClientTypes.ITERATOR.fqName()
+                                                              + "<RequestT> or "
+                                                              + RpcClientTypes.ITERABLE.fqName()
+                                                              + "<RequestT>");
         TypeName responseType = method.typeName();
 
         if (voidType(responseType) || isIterator(responseType) || isStreamObserver(responseType)) {
@@ -666,6 +672,17 @@ class RpcClientExtension implements RegistryCodegenExtension {
             throw new CodegenException(message, method.originatingElementValue());
         }
         return typeName.typeArguments().getFirst();
+    }
+
+    private TypeName iteratorOrIterableType(TypeName typeName, TypedElementInfo method, String message) {
+        if ((!isIterator(typeName) && !isIterable(typeName)) || typeName.typeArguments().size() != 1) {
+            throw new CodegenException(message, method.originatingElementValue());
+        }
+        return typeName.typeArguments().getFirst();
+    }
+
+    private boolean isIterable(TypeName typeName) {
+        return typeName.fqName().equals(RpcClientTypes.ITERABLE.fqName());
     }
 
     private boolean isIterator(TypeName typeName) {

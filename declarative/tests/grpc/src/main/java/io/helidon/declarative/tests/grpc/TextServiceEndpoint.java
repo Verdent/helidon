@@ -63,29 +63,15 @@ class TextServiceEndpoint {
     @Metrics.Counted(value = "grpc-join-count", absoluteName = true)
     @Tracing.Traced(value = "grpc.join", tags = @Tracing.Tag(key = "transport", value = "grpc"),
                     kind = Span.Kind.SERVER)
-    StreamObserver<TextMessages.TextMessage> join(StreamObserver<TextMessages.TextMessage> response) {
-        return new StreamObserver<>() {
-            private final StringBuilder text = new StringBuilder();
-
-            @Override
-            public void onNext(TextMessages.TextMessage value) {
-                if (text.length() > 0) {
-                    text.append(' ');
-                }
-                text.append(value.getText());
+    TextMessages.TextMessage join(Iterable<TextMessages.TextMessage> requests) {
+        StringBuilder text = new StringBuilder();
+        for (TextMessages.TextMessage request : requests) {
+            if (text.length() > 0) {
+                text.append(' ');
             }
-
-            @Override
-            public void onError(Throwable t) {
-                response.onError(t);
-            }
-
-            @Override
-            public void onCompleted() {
-                response.onNext(message(text.toString()));
-                response.onCompleted();
-            }
-        };
+            text.append(request.getText());
+        }
+        return message(text.toString());
     }
 
     @RpcServer.Bidirectional("Echo")

@@ -423,6 +423,56 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testClientStreamingEndpointCodegenSupportsBlockingShortcutShapes() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("StreamingEndpoint.java", """
+                        package com.example;
+
+                        import java.util.Iterator;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class StreamingEndpoint {
+                            @RpcServer.ClientStreaming("JoinIterable")
+                            String joinIterable(Iterable<String> requests) {
+                                return "";
+                            }
+
+                            @RpcServer.ClientStreaming("JoinIterator")
+                            String joinIterator(Iterator<String> requests) {
+                                return "";
+                            }
+
+                            @RpcServer.ClientStreaming("CountIterable")
+                            void countIterable(Iterable<String> requests) {
+                            }
+
+                            @RpcServer.ClientStreaming("CountIterator")
+                            void countIterator(Iterator<String> requests) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/StreamingEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("requests.add(value);"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.joinIterable(requests));"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.joinIterator(requests.iterator()));"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, () -> endpoint.countIterable(requests), "
+                                                  + "Empty.getDefaultInstance())"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, () -> endpoint.countIterator("
+                                                  + "requests.iterator()), Empty.getDefaultInstance())"));
+        assertThat(content, containsString("} catch (Throwable t) {"));
+        assertThat(content, containsString("observer.onError(t);"));
+    }
+
+    @Test
     void testClientStreamingEndpointCodegenRejectsCompletableFutureParameter() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("StreamingEndpoint.java", """
@@ -445,8 +495,7 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Client streaming declarative gRPC method must declare "
-                                          + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)"));
+                   containsString("Client streaming declarative gRPC method must declare one of "));
     }
 
     @Test
@@ -472,8 +521,7 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Client streaming declarative gRPC method must declare "
-                                          + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)"));
+                   containsString("Client streaming declarative gRPC method must declare one of "));
     }
 
     @Test

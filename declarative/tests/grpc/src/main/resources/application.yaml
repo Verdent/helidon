@@ -24,6 +24,9 @@ server:
 text-service.client:
   uri: "http://localhost:${test.server.port}"
 
+unary-shapes.client:
+  uri: "http://localhost:${test.server.port}"
+
 configured-text-service:
   server:
     listener: "grpc-config"

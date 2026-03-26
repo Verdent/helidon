@@ -207,6 +207,67 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testUnaryEndpointCodegenSupportsCompletionStageResponse() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletableFuture;
+                        import java.util.concurrent.CompletionStage;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            CompletionStage<String> sayHello(String request) {
+                                return CompletableFuture.completedFuture(request.toUpperCase());
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.sayHello(request))"));
+    }
+
+    @Test
+    void testUnaryEndpointCodegenSupportsFutureResponseParameter() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletableFuture;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            void sayHello(String request, CompletableFuture<String> response) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("var response = new CompletableFuture<String>();"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, response);"));
+        assertThat(content, containsString("endpoint.sayHello(request, response);"));
+        assertThat(content, containsString("endpoint.sayHello(request, response);\n                }),"));
+    }
+
+    @Test
     void testUnaryEndpointCodegenRejectsRawFutureResponse() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
@@ -232,6 +293,33 @@ class GrpcServerCodegenTest {
                                           + "java.util.concurrent.CompletionStage<ResponseT> "
                                           + "(or java.util.concurrent.CompletableFuture<ResponseT>) "
                                           + "when not using StreamObserver"));
+    }
+
+    @Test
+    void testUnaryEndpointCodegenRejectsCompletionStageResponseParameter() {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("GreeterEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletionStage;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class GreeterEndpoint {
+                            @RpcServer.Unary("SayHello")
+                            void sayHello(String request, CompletionStage<String> response) {
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Unary declarative gRPC method must use "
+                                          + "java.util.concurrent.CompletableFuture<ResponseT> "
+                                          + "as the second parameter when not using "
+                                          + "io.grpc.stub.StreamObserver"));
     }
 
     @Test
@@ -293,6 +381,7 @@ class GrpcServerCodegenTest {
         assertThat(content, containsString("var response = new CompletableFuture<String>();"));
         assertThat(content, containsString("ResponseHelper.complete(observer, response);"));
         assertThat(content, containsString("return endpoint.join(response);"));
+        assertThat(content, containsString("return endpoint.join(response);\n                }),"));
     }
 
     @Test
@@ -496,7 +585,8 @@ class GrpcServerCodegenTest {
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
                    containsString("Unary declarative gRPC method must declare either "
-                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                          + "void method(RequestT request, StreamObserver<ResponseT> observer), "
+                                          + "void method(RequestT request, CompletableFuture<ResponseT> response), or "
                                           + "ResponseT/CompletionStage<ResponseT>/CompletableFuture<ResponseT> "
                                           + "method(RequestT request)"));
     }

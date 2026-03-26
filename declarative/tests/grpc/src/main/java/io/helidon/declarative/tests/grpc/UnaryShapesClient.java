@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) 2026 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.helidon.declarative.tests.grpc;
+
+import io.helidon.webclient.grpc.RpcClient;
+
+@RpcClient.Endpoint("${unary-shapes.client.uri:http://localhost:8080}")
+@RpcClient.ServiceName(UnaryShapesEndpoint.SERVICE_NAME)
+interface UnaryShapesClient {
+    @RpcClient.Unary("DirectUpper")
+    TextMessages.TextMessage directUpper(TextMessages.TextMessage request);
+
+    @RpcClient.Unary("StageUpper")
+    TextMessages.TextMessage stageUpper(TextMessages.TextMessage request);
+
+    @RpcClient.Unary("FutureUpper")
+    TextMessages.TextMessage futureUpper(TextMessages.TextMessage request);
+
+    @RpcClient.Unary("FutureFail")
+    TextMessages.TextMessage futureFail(TextMessages.TextMessage request);
+}

@@ -17,7 +17,6 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 import io.helidon.webserver.grpc.RpcServer;
@@ -64,7 +63,7 @@ class TextServiceEndpoint {
     @Metrics.Counted(value = "grpc-join-count", absoluteName = true)
     @Tracing.Traced(value = "grpc.join", tags = @Tracing.Tag(key = "transport", value = "grpc"),
                     kind = Span.Kind.SERVER)
-    StreamObserver<TextMessages.TextMessage> join(CompletableFuture<TextMessages.TextMessage> response) {
+    StreamObserver<TextMessages.TextMessage> join(StreamObserver<TextMessages.TextMessage> response) {
         return new StreamObserver<>() {
             private final StringBuilder text = new StringBuilder();
 
@@ -78,12 +77,13 @@ class TextServiceEndpoint {
 
             @Override
             public void onError(Throwable t) {
-                response.completeExceptionally(t);
+                response.onError(t);
             }
 
             @Override
             public void onCompleted() {
-                response.complete(message(text.toString()));
+                response.onNext(message(text.toString()));
+                response.onCompleted();
             }
         };
     }

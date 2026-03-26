@@ -17,8 +17,6 @@
 package io.helidon.declarative.tests.grpc;
 
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import io.helidon.webserver.grpc.RpcServer;
 
@@ -31,21 +29,6 @@ class UnaryShapesEndpoint {
     @RpcServer.Unary("DirectUpper")
     TextMessages.TextMessage directUpper(TextMessages.TextMessage request) {
         return upper("DIRECT", request);
-    }
-
-    @RpcServer.Unary("StageUpper")
-    CompletionStage<TextMessages.TextMessage> stageUpper(TextMessages.TextMessage request) {
-        return CompletableFuture.completedFuture(upper("STAGE", request));
-    }
-
-    @RpcServer.Unary("FutureUpper")
-    void futureUpper(TextMessages.TextMessage request, CompletableFuture<TextMessages.TextMessage> response) {
-        response.complete(upper("FUTURE", request));
-    }
-
-    @RpcServer.Unary("FutureFail")
-    void futureFail(TextMessages.TextMessage request, CompletableFuture<TextMessages.TextMessage> response) {
-        response.completeExceptionally(new IllegalStateException("future failed: " + request.getText()));
     }
 
     private static TextMessages.TextMessage upper(String prefix, TextMessages.TextMessage request) {

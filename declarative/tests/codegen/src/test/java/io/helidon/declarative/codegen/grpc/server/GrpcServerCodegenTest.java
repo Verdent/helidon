@@ -178,7 +178,7 @@ class GrpcServerCodegenTest {
     }
 
     @Test
-    void testUnaryEndpointCodegenSupportsFutureResponse() throws IOException {
+    void testUnaryEndpointCodegenRejectsCompletableFutureResponse() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
                         package com.example;
@@ -197,17 +197,15 @@ class GrpcServerCodegenTest {
                 .build()
                 .compile();
 
-        assertThat(result.success(), is(true));
-
-        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
-        assertThat(Files.exists(generated), is(true));
-
-        String content = Files.readString(generated, StandardCharsets.UTF_8);
-        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.sayHello(request))"));
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Unary declarative gRPC method must not use "
+                                          + "java.util.concurrent.CompletableFuture "
+                                          + "as a return type"));
     }
 
     @Test
-    void testUnaryEndpointCodegenSupportsCompletionStageResponse() throws IOException {
+    void testUnaryEndpointCodegenRejectsCompletionStageResponse() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
                         package com.example;
@@ -227,17 +225,15 @@ class GrpcServerCodegenTest {
                 .build()
                 .compile();
 
-        assertThat(result.success(), is(true));
-
-        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
-        assertThat(Files.exists(generated), is(true));
-
-        String content = Files.readString(generated, StandardCharsets.UTF_8);
-        assertThat(content, containsString("ResponseHelper.complete(observer, endpoint.sayHello(request))"));
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Unary declarative gRPC method must not use "
+                                          + "java.util.concurrent.CompletionStage "
+                                          + "as a return type"));
     }
 
     @Test
-    void testUnaryEndpointCodegenSupportsFutureResponseParameter() throws IOException {
+    void testUnaryEndpointCodegenRejectsCompletableFutureResponseParameter() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
                         package com.example;
@@ -255,20 +251,15 @@ class GrpcServerCodegenTest {
                 .build()
                 .compile();
 
-        assertThat(result.success(), is(true));
-
-        var generated = result.sourceOutput().resolve("com/example/GreeterEndpoint__GrpcRouteRegistration.java");
-        assertThat(Files.exists(generated), is(true));
-
-        String content = Files.readString(generated, StandardCharsets.UTF_8);
-        assertThat(content, containsString("var response = new CompletableFuture<String>();"));
-        assertThat(content, containsString("ResponseHelper.complete(observer, response);"));
-        assertThat(content, containsString("endpoint.sayHello(request, response);"));
-        assertThat(content, containsString("endpoint.sayHello(request, response);\n                }),"));
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Unary declarative gRPC method must declare either "
+                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                          + "ResponseT method(RequestT request)"));
     }
 
     @Test
-    void testUnaryEndpointCodegenRejectsRawFutureResponse() {
+    void testUnaryEndpointCodegenRejectsRawCompletionStageResponse() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("GreeterEndpoint.java", """
                         package com.example;
@@ -289,10 +280,9 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must return "
-                                          + "java.util.concurrent.CompletionStage<ResponseT> "
-                                          + "(or java.util.concurrent.CompletableFuture<ResponseT>) "
-                                          + "when not using StreamObserver"));
+                   containsString("Unary declarative gRPC method must not use "
+                                          + "java.util.concurrent.CompletionStage "
+                                          + "as a return type"));
     }
 
     @Test
@@ -316,10 +306,9 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Unary declarative gRPC method must use "
-                                          + "java.util.concurrent.CompletableFuture<ResponseT> "
-                                          + "as the second parameter when not using "
-                                          + "io.grpc.stub.StreamObserver"));
+                   containsString("Unary declarative gRPC method must declare either "
+                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                          + "ResponseT method(RequestT request)"));
     }
 
     @Test
@@ -352,7 +341,7 @@ class GrpcServerCodegenTest {
     }
 
     @Test
-    void testClientStreamingEndpointCodegenSupportsFutureResponseParameter() throws IOException {
+    void testClientStreamingEndpointCodegenRejectsCompletableFutureParameter() {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("StreamingEndpoint.java", """
                         package com.example;
@@ -372,16 +361,10 @@ class GrpcServerCodegenTest {
                 .build()
                 .compile();
 
-        assertThat(result.success(), is(true));
-
-        var generated = result.sourceOutput().resolve("com/example/StreamingEndpoint__GrpcRouteRegistration.java");
-        assertThat(Files.exists(generated), is(true));
-
-        String content = Files.readString(generated, StandardCharsets.UTF_8);
-        assertThat(content, containsString("var response = new CompletableFuture<String>();"));
-        assertThat(content, containsString("ResponseHelper.complete(observer, response);"));
-        assertThat(content, containsString("return endpoint.join(response);"));
-        assertThat(content, containsString("return endpoint.join(response);\n                }),"));
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Client streaming declarative gRPC method must declare "
+                                          + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)"));
     }
 
     @Test
@@ -407,10 +390,8 @@ class GrpcServerCodegenTest {
 
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
-                   containsString("Client streaming declarative gRPC method must use "
-                                          + "java.util.concurrent.CompletableFuture<ResponseT> "
-                                          + "as the first and only parameter when not using "
-                                          + "io.grpc.stub.StreamObserver"));
+                   containsString("Client streaming declarative gRPC method must declare "
+                                          + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)"));
     }
 
     @Test
@@ -585,9 +566,8 @@ class GrpcServerCodegenTest {
         assertThat(result.success(), is(false));
         assertThat(GrpcCodegenTestSupport.diagnostics(result),
                    containsString("Unary declarative gRPC method must declare either "
-                                          + "void method(RequestT request, StreamObserver<ResponseT> observer), "
-                                          + "void method(RequestT request, CompletableFuture<ResponseT> response), or "
-                                          + "ResponseT/CompletionStage<ResponseT>/CompletableFuture<ResponseT> "
+                                          + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                          + "ResponseT "
                                           + "method(RequestT request)"));
     }
 

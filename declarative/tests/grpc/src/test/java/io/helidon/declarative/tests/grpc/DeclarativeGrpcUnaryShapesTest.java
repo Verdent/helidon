@@ -22,14 +22,11 @@ import io.helidon.service.registry.ServiceRegistry;
 import io.helidon.webclient.grpc.RpcClient;
 import io.helidon.webserver.testing.junit5.ServerTest;
 
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(GrpcTestEnvironmentExtension.class)
 @ServerTest
@@ -45,28 +42,6 @@ class DeclarativeGrpcUnaryShapesTest {
         TextMessages.TextMessage response = typedClient().directUpper(message("hello"));
 
         assertThat(response.getText(), is("DIRECT:HELLO"));
-    }
-
-    @Test
-    void testUnaryCompletionStageReturnShape() {
-        TextMessages.TextMessage response = typedClient().stageUpper(message("hello"));
-
-        assertThat(response.getText(), is("STAGE:HELLO"));
-    }
-
-    @Test
-    void testUnaryFutureResponseParameterShape() {
-        TextMessages.TextMessage response = typedClient().futureUpper(message("hello"));
-
-        assertThat(response.getText(), is("FUTURE:HELLO"));
-    }
-
-    @Test
-    void testUnaryFutureResponseParameterFailure() {
-        StatusRuntimeException exception = assertThrows(StatusRuntimeException.class,
-                                                       () -> typedClient().futureFail(message("boom")));
-
-        assertThat(exception.getStatus().getCode(), is(Status.Code.UNKNOWN));
     }
 
     private UnaryShapesClient typedClient() {

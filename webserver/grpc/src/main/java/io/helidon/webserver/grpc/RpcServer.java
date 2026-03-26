@@ -157,8 +157,9 @@ public final class RpcServer {
     /**
      * Marks a unary gRPC method.
      * <p>
-     * Supported method shape:
-     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)}.
+     * Supported method shapes:
+     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)} and
+     * {@code ResponseT method(RequestT request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)
@@ -178,8 +179,9 @@ public final class RpcServer {
     /**
      * Marks a server-streaming gRPC method.
      * <p>
-     * Supported method shape:
-     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)}.
+     * Supported method shapes:
+     * {@code void method(RequestT request, io.grpc.stub.StreamObserver<ResponseT> observer)} and
+     * {@code java.util.stream.Stream<ResponseT> method(RequestT request)}.
      */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.CLASS)

@@ -10,7 +10,7 @@ What it demonstrates
 - declarative gRPC server registration
 - typed declarative gRPC client injection
 - all four RPC interaction styles
-- simplified unary, server-streaming, and client-streaming server method shapes with explicit functional coverage
+- simplified unary and server-streaming server method shapes with explicit functional coverage
 - service-level and method-level gRPC interceptors
 - entry-point interception, metrics, and tracing on gRPC methods
 - listener, service-name, config-key, static named-client, and default-client configuration
@@ -18,9 +18,9 @@ What it demonstrates
 Key files
 ---------
 
-- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary, streaming, and future-backed client-streaming text operations
+- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary and all streaming text operations
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract
-- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesEndpoint.java` - dedicated endpoint covering the unary shortcut forms
+- `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesEndpoint.java` - dedicated endpoint covering the direct unary shortcut form
 - `src/main/java/io/helidon/declarative/tests/grpc/UnaryShapesClient.java` - typed client for the unary shortcut endpoint
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceEndpoint.java` - endpoint using configuration placeholders
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and static named client selection
@@ -30,7 +30,7 @@ Key files
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceServerUpperInterceptor.java` - method-specific server interceptor
 - `src/main/java/io/helidon/declarative/tests/grpc/Main.java` - application bootstrap
 - `src/main/resources/application.yaml` - listener and client configuration
-- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcUnaryShapesTest.java` - explicit functional tests for the unary shortcut forms
+- `src/test/java/io/helidon/declarative/tests/grpc/DeclarativeGrpcUnaryShapesTest.java` - explicit functional tests for the direct unary shortcut form
 
 Minimal shape
 -------------
@@ -65,9 +65,9 @@ No explicit service scope is needed on the endpoint. If you do not declare one, 
 
 Supported server shapes:
 
-- `@RpcServer.Unary` supports observer-based methods, direct response return, `CompletionStage` / `CompletableFuture` response return, and `CompletableFuture<ResponseT>` response parameters
+- `@RpcServer.Unary` supports observer-based methods and direct response return
 - `@RpcServer.ServerStreaming` supports observer-based methods and `Stream<ResponseT>` return
-- `@RpcServer.ClientStreaming` supports both the explicit `StreamObserver<ResponseT>` response parameter and the simplified `CompletableFuture<ResponseT>` response parameter
+- `@RpcServer.ClientStreaming` stays on the explicit `StreamObserver<ResponseT>` response parameter
 - `@RpcServer.Bidirectional` stays on the explicit `StreamObserver` form
 
 Validation

@@ -23,13 +23,4 @@ import io.helidon.webclient.grpc.RpcClient;
 interface UnaryShapesClient {
     @RpcClient.Unary("DirectUpper")
     TextMessages.TextMessage directUpper(TextMessages.TextMessage request);
-
-    @RpcClient.Unary("StageUpper")
-    TextMessages.TextMessage stageUpper(TextMessages.TextMessage request);
-
-    @RpcClient.Unary("FutureUpper")
-    TextMessages.TextMessage futureUpper(TextMessages.TextMessage request);
-
-    @RpcClient.Unary("FutureFail")
-    TextMessages.TextMessage futureFail(TextMessages.TextMessage request);
 }

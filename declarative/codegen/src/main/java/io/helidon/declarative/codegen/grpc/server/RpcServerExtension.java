@@ -339,23 +339,6 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContent(".")
                 .addContent(method.javaMethodName())
                 .addContent("(request))");
-        case REQUEST_FUTURE_PARAMETER -> constructor.addContent("(")
-                .addContent(method.requestType())
-                .addContent(" request, ")
-                .addContent(streamObserverOf(method.responseType()))
-                .addContentLine(" observer) -> {")
-                .addContent("var response = new ")
-                .addContent(TypeName.builder(RpcServerTypes.COMPLETABLE_FUTURE)
-                                    .addTypeArgument(method.responseType())
-                                    .build())
-                .addContentLine("();")
-                .addContent(RpcServerTypes.RESPONSE_HELPER)
-                .addContentLine(".complete(observer, response);")
-                .addContent(endpointAccess)
-                .addContent(".")
-                .addContent(method.javaMethodName())
-                .addContentLine("(request, response);")
-                .addContent("}");
         case STREAM_RETURN -> constructor.addContent("(")
                 .addContent(method.requestType())
                 .addContent(" request, ")
@@ -367,22 +350,6 @@ class RpcServerExtension implements RegistryCodegenExtension {
                 .addContent(".")
                 .addContent(method.javaMethodName())
                 .addContent("(request))");
-        case FUTURE_PARAMETER -> constructor.addContent("(")
-                .addContent(streamObserverOf(method.responseType()))
-                .addContentLine(" observer) -> {")
-                .addContent("var response = new ")
-                .addContent(TypeName.builder(RpcServerTypes.COMPLETABLE_FUTURE)
-                                    .addTypeArgument(method.responseType())
-                                    .build())
-                .addContentLine("();")
-                .addContent(RpcServerTypes.RESPONSE_HELPER)
-                .addContentLine(".complete(observer, response);")
-                .addContent("return ")
-                .addContent(endpointAccess)
-                .addContent(".")
-                .addContent(method.javaMethodName())
-                .addContentLine("(response);")
-                .addContent("}");
         }
     }
 
@@ -580,15 +547,6 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                                            errorPrefix);
                 return new MethodSignature(MethodShape.OBSERVER, request.typeName(), responseType);
             }
-
-            if (isCompletionStageLike(parameterType)) {
-                TypeName responseType = completableFutureParameterType(typeInfo,
-                                                                       method,
-                                                                       parameterType,
-                                                                       "second parameter",
-                                                                       errorPrefix);
-                return new MethodSignature(MethodShape.REQUEST_FUTURE_PARAMETER, request.typeName(), responseType);
-            }
         }
 
         if (params.size() == 1 && !isVoidType(method.typeName())) {
@@ -597,10 +555,8 @@ class RpcServerExtension implements RegistryCodegenExtension {
         }
 
         throw new CodegenException(errorPrefix + " declarative gRPC method must declare either "
-                                           + "void method(RequestT request, StreamObserver<ResponseT> observer), "
-                                           + "void method(RequestT request, CompletableFuture<ResponseT> response), or "
-                                           + "ResponseT/CompletionStage<ResponseT>/CompletableFuture<ResponseT> "
-                                           + "method(RequestT request): "
+                                           + "void method(RequestT request, StreamObserver<ResponseT> observer) or "
+                                           + "ResponseT method(RequestT request): "
                                            + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                    method.originatingElementValue());
     }
@@ -633,7 +589,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
         List<TypedElementInfo> params = method.parameterArguments();
         if (params.size() != 1) {
             throw new CodegenException(errorPrefix + " declarative gRPC method must declare exactly one parameter "
-                                               + "(response StreamObserver or CompletableFuture): "
+                                               + "(response StreamObserver): "
                                                + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                        method.originatingElementValue());
         }
@@ -653,18 +609,8 @@ class RpcServerExtension implements RegistryCodegenExtension {
             return new MethodSignature(MethodShape.OBSERVER, requestType, responseType);
         }
 
-        if (isCompletionStageLike(parameterType)) {
-            TypeName responseType = completableFutureParameterType(typeInfo,
-                                                                   method,
-                                                                   parameterType,
-                                                                   "first and only parameter",
-                                                                   errorPrefix);
-            return new MethodSignature(MethodShape.FUTURE_PARAMETER, requestType, responseType);
-        }
-
-        throw new CodegenException(errorPrefix + " declarative gRPC method must declare either "
-                                           + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer) or "
-                                           + "StreamObserver<RequestT> method(CompletableFuture<ResponseT> response): "
+        throw new CodegenException(errorPrefix + " declarative gRPC method must declare "
+                                           + "StreamObserver<RequestT> method(StreamObserver<ResponseT> observer): "
                                            + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                    method.originatingElementValue());
     }
@@ -716,44 +662,16 @@ class RpcServerExtension implements RegistryCodegenExtension {
                                           TypedElementInfo method,
                                           TypeName typeName,
                                           String errorPrefix) {
-        if (isCompletionStageLike(typeName)) {
-            if (typeName.typeArguments().size() != 1) {
-                throw new CodegenException(errorPrefix + " declarative gRPC method must return "
-                                                   + RpcServerTypes.COMPLETION_STAGE.fqName()
-                                                   + "<ResponseT> (or "
-                                                   + RpcServerTypes.COMPLETABLE_FUTURE.fqName()
-                                                   + "<ResponseT>) when not using StreamObserver: "
-                                                   + typeInfo.typeName().fqName() + "." + method.signature().text(),
-                                           method.originatingElementValue());
-            }
-
-            return typeName.typeArguments().getFirst();
-        }
-
-        return typeName;
-    }
-
-    private TypeName completableFutureParameterType(TypeInfo typeInfo,
-                                                    TypedElementInfo method,
-                                                    TypeName typeName,
-                                                    String element,
-                                                    String errorPrefix) {
-        if (!typeName.fqName().equals(RpcServerTypes.COMPLETABLE_FUTURE.fqName())
-                || typeName.typeArguments().size() != 1) {
-            throw new CodegenException(errorPrefix + " declarative gRPC method must use "
-                                               + RpcServerTypes.COMPLETABLE_FUTURE.fqName()
-                                               + "<ResponseT> as the " + element + " when not using "
-                                               + RpcServerTypes.STREAM_OBSERVER.fqName() + ": "
+        if (typeName.fqName().equals(RpcServerTypes.COMPLETABLE_FUTURE.fqName())
+                || typeName.fqName().equals(RpcServerTypes.COMPLETION_STAGE.fqName())) {
+            throw new CodegenException(errorPrefix + " declarative gRPC method must not use "
+                                               + typeName.fqName()
+                                               + " as a return type: "
                                                + typeInfo.typeName().fqName() + "." + method.signature().text(),
                                        method.originatingElementValue());
         }
 
-        return typeName.typeArguments().getFirst();
-    }
-
-    private boolean isCompletionStageLike(TypeName typeName) {
-        return typeName.fqName().equals(RpcServerTypes.COMPLETION_STAGE.fqName())
-                || typeName.fqName().equals(RpcServerTypes.COMPLETABLE_FUTURE.fqName());
+        return typeName;
     }
 
     private TypeName streamResponseType(TypeInfo typeInfo,
@@ -992,9 +910,7 @@ class RpcServerExtension implements RegistryCodegenExtension {
     private enum MethodShape {
         OBSERVER,
         COMPLETING_RETURN,
-        REQUEST_FUTURE_PARAMETER,
-        STREAM_RETURN,
-        FUTURE_PARAMETER
+        STREAM_RETURN
     }
 
     private enum MethodType {

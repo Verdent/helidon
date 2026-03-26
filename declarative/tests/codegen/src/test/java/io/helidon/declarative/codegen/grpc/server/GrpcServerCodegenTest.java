@@ -264,6 +264,67 @@ class GrpcServerCodegenTest {
     }
 
     @Test
+    void testClientStreamingEndpointCodegenSupportsFutureResponseParameter() throws IOException {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("StreamingEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletableFuture;
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class StreamingEndpoint {
+                            @RpcServer.ClientStreaming("Join")
+                            StreamObserver<String> join(CompletableFuture<String> response) {
+                                return null;
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(true));
+
+        var generated = result.sourceOutput().resolve("com/example/StreamingEndpoint__GrpcRouteRegistration.java");
+        assertThat(Files.exists(generated), is(true));
+
+        String content = Files.readString(generated, StandardCharsets.UTF_8);
+        assertThat(content, containsString("var response = new CompletableFuture<String>();"));
+        assertThat(content, containsString("ResponseHelper.complete(observer, response);"));
+        assertThat(content, containsString("return endpoint.join(response);"));
+    }
+
+    @Test
+    void testClientStreamingEndpointCodegenRejectsCompletionStageParameter() {
+        var result = GrpcCodegenTestSupport.compilerBuilder()
+                .addSource("StreamingEndpoint.java", """
+                        package com.example;
+
+                        import java.util.concurrent.CompletionStage;
+                        import io.grpc.stub.StreamObserver;
+                        import io.helidon.webserver.grpc.RpcServer;
+
+                        @RpcServer.Endpoint
+                        class StreamingEndpoint {
+                            @RpcServer.ClientStreaming("Join")
+                            StreamObserver<String> join(CompletionStage<String> response) {
+                                return null;
+                            }
+                        }
+                        """)
+                .build()
+                .compile();
+
+        assertThat(result.success(), is(false));
+        assertThat(GrpcCodegenTestSupport.diagnostics(result),
+                   containsString("Client streaming declarative gRPC method must use "
+                                          + "java.util.concurrent.CompletableFuture<ResponseT> "
+                                          + "as the first and only parameter when not using "
+                                          + "io.grpc.stub.StreamObserver"));
+    }
+
+    @Test
     void testStreamingEndpointCodegen() throws IOException {
         var result = GrpcCodegenTestSupport.compilerBuilder()
                 .addSource("StreamingEndpoint.java", """

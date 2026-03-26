@@ -10,7 +10,7 @@ What it demonstrates
 - declarative gRPC server registration
 - typed declarative gRPC client injection
 - all four RPC interaction styles
-- simplified unary and server-streaming server method shapes
+- simplified unary, server-streaming, and client-streaming server method shapes
 - service-level and method-level gRPC interceptors
 - entry-point interception, metrics, and tracing on gRPC methods
 - listener, service-name, config-key, static named-client, and default-client configuration
@@ -18,7 +18,7 @@ What it demonstrates
 Key files
 ---------
 
-- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary and streaming text operations
+- `src/main/java/io/helidon/declarative/tests/grpc/TextServiceEndpoint.java` - basic endpoint covering unary, streaming, and future-backed client-streaming text operations
 - `src/main/java/io/helidon/declarative/tests/grpc/TextServiceClient.java` - typed client for the same contract
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceEndpoint.java` - endpoint using configuration placeholders
 - `src/main/java/io/helidon/declarative/tests/grpc/ConfiguredTextServiceClient.java` - client using configurable service name and static named client selection
@@ -64,7 +64,8 @@ Supported server shapes:
 
 - `@RpcServer.Unary` supports observer-based methods, direct response return, and `CompletionStage` / `CompletableFuture` response return
 - `@RpcServer.ServerStreaming` supports observer-based methods and `Stream<ResponseT>` return
-- `@RpcServer.ClientStreaming` and `@RpcServer.Bidirectional` currently stay on the explicit `StreamObserver` form
+- `@RpcServer.ClientStreaming` supports both the explicit `StreamObserver<ResponseT>` response parameter and the simplified `CompletableFuture<ResponseT>` response parameter
+- `@RpcServer.Bidirectional` stays on the explicit `StreamObserver` form
 
 Validation
 ----------

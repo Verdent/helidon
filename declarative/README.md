@@ -271,7 +271,7 @@ Server method shapes:
 - Interceptor classes must implement `io.grpc.ServerInterceptor` and be Helidon service registry services
 - `@RpcServer.Unary` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `ResponseT`, `CompletionStage<ResponseT>`, or `CompletableFuture<ResponseT>` from `method(RequestT request)`
 - `@RpcServer.ServerStreaming` - either `void method(RequestT request, StreamObserver<ResponseT> observer)` or `Stream<ResponseT> method(RequestT request)`
-- `@RpcServer.ClientStreaming` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
+- `@RpcServer.ClientStreaming` - either `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)` or `StreamObserver<RequestT> method(CompletableFuture<ResponseT> response)`
 - `@RpcServer.Bidirectional` - `StreamObserver<RequestT> method(StreamObserver<ResponseT> observer)`
 
 If no `@RpcServer.Proto` method is declared, the generated registration uses the configured service name as-is and omits
@@ -382,7 +382,9 @@ available to gRPC methods for features such as metrics and tracing.
 
 For unary methods that return a value or `CompletionStage`, the generated registration completes the observer through
 `io.helidon.grpc.core.ResponseHelper.complete(...)`. For server-streaming methods that return `Stream<ResponseT>`, it
-uses `io.helidon.grpc.core.ResponseHelper.stream(...)`.
+uses `io.helidon.grpc.core.ResponseHelper.stream(...)`. For client-streaming methods that accept
+`CompletableFuture<ResponseT>`, the generated registration creates the future, wires it to the response observer through
+`io.helidon.grpc.core.ResponseHelper.complete(...)`, and passes that future to the endpoint method.
 
 The endpoint type itself is also treated as a service registry service. If no explicit service scope is declared,
 it defaults to `@Service.Singleton`, matching the REST-style default. If needed, you can still declare

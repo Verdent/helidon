@@ -469,6 +469,40 @@ final class JsonParserStream extends JsonParserBase {
         int fnv1aHash = FNV_OFFSET_BASIS;
         int i = currentIndex + 1;
         while (true) {
+            while (i + 4 <= bufferLength) {
+                byte next = buffer[i];
+                if (next == '"') {
+                    currentIndex = i;
+                    return fnv1aHash;
+                }
+                fnv1aHash ^= next & 0xFF;
+                fnv1aHash *= FNV_PRIME;
+
+                next = buffer[i + 1];
+                if (next == '"') {
+                    currentIndex = i + 1;
+                    return fnv1aHash;
+                }
+                fnv1aHash ^= next & 0xFF;
+                fnv1aHash *= FNV_PRIME;
+
+                next = buffer[i + 2];
+                if (next == '"') {
+                    currentIndex = i + 2;
+                    return fnv1aHash;
+                }
+                fnv1aHash ^= next & 0xFF;
+                fnv1aHash *= FNV_PRIME;
+
+                next = buffer[i + 3];
+                if (next == '"') {
+                    currentIndex = i + 3;
+                    return fnv1aHash;
+                }
+                fnv1aHash ^= next & 0xFF;
+                fnv1aHash *= FNV_PRIME;
+                i += 4;
+            }
             while (i < bufferLength) {
                 b = buffer[i++] & 0xFF;
                 if (b == '"') {

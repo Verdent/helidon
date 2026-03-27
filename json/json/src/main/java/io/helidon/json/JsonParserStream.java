@@ -466,10 +466,9 @@ final class JsonParserStream extends JsonParserBase {
             throw createException("Incomplete JSON");
         }
 
+        int fnv1aHash = FNV_OFFSET_BASIS;
         int i = currentIndex + 1;
         while (true) {
-            //Based on recommended offset basis and prime values.
-            int fnv1aHash = FNV_OFFSET_BASIS;
             while (i < bufferLength) {
                 b = buffer[i++] & 0xFF;
                 if (b == '"') {
@@ -479,8 +478,14 @@ final class JsonParserStream extends JsonParserBase {
                 fnv1aHash ^= b;
                 fnv1aHash *= FNV_PRIME;
             }
+            if (finished) {
+                throw createException("Unexpected end of string value. Probably incomplete JSON");
+            }
+            // The hash already covers everything before the last buffered byte, so refill from there
+            // to avoid re-reading and re-hashing the previously scanned string chunk.
+            currentIndex = bufferLength - 1;
             fetchData();
-            i = currentIndex;
+            i = currentIndex + 1;
         }
     }
 

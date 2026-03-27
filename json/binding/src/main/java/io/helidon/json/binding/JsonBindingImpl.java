@@ -40,6 +40,7 @@ import io.helidon.json.JsonValue;
 
 final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
+    private static final int DEFAULT_STREAM_BUFFER_SIZE = 512;
     private static final byte[] NULL_BYTES = "null".getBytes(StandardCharsets.UTF_8);
     private static final char[] NULL_CHARS = "null".toCharArray();
 
@@ -241,7 +242,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(InputStream inputStream, Class<T> type) {
-        return deserialize(inputStream, 512, type);
+        return deserialize(inputStream, DEFAULT_STREAM_BUFFER_SIZE, type);
     }
 
     @Override
@@ -253,7 +254,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public <T> T deserialize(InputStream inputStream, GenericType<T> type) {
-        return deserialize(inputStream, 512, type);
+        return deserialize(inputStream, DEFAULT_STREAM_BUFFER_SIZE, type);
     }
 
     @Override

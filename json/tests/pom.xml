@@ -33,6 +33,7 @@
     <modules>
         <module>codegen</module>
         <module>binding</module>
+        <module>benchmark</module>
     </modules>
 
     <properties>

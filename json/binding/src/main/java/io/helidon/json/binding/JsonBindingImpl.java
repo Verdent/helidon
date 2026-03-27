@@ -94,23 +94,38 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
 
     @Override
     public String serialize(Object obj) {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        serialize(outputStream, obj);
-        return outputStream.toString(StandardCharsets.UTF_8);
+        return new String(serializeToBytes(obj), StandardCharsets.UTF_8);
     }
 
     @Override
     public <T> String serialize(T obj, Class<? super T> type) {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        serialize(outputStream, obj, type);
-        return outputStream.toString(StandardCharsets.UTF_8);
+        return new String(serializeToBytes(obj, type), StandardCharsets.UTF_8);
     }
 
     @Override
     public <T> String serialize(T obj, GenericType<? super T> type) {
+        return new String(serializeToBytes(obj, type), StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public byte[] serializeToBytes(Object obj) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        serialize(outputStream, obj);
+        return outputStream.toByteArray();
+    }
+
+    @Override
+    public <T> byte[] serializeToBytes(T obj, Class<? super T> type) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         serialize(outputStream, obj, type);
-        return outputStream.toString(StandardCharsets.UTF_8);
+        return outputStream.toByteArray();
+    }
+
+    @Override
+    public <T> byte[] serializeToBytes(T obj, GenericType<? super T> type) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        serialize(outputStream, obj, type);
+        return outputStream.toByteArray();
     }
 
     @Override

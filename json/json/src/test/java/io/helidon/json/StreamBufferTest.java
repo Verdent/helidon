@@ -140,6 +140,69 @@ class StreamBufferTest {
     }
 
     @Test
+    public void testStreamParserReadJsonStringWithLargeValueSpanningBufferExpansions() {
+        String content = "a".repeat(5000);
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(("\"" + content + "\"")
+                                                                            .getBytes(StandardCharsets.UTF_8));
+
+        JsonParser parser = JsonParser.create(inputStream, 16);
+
+        JsonString result = parser.readJsonString();
+        assertThat(result.value(), is(content));
+    }
+
+    @Test
+    public void testStreamParserReadStringWithLargePlainAsciiValueSpanningBufferExpansions() {
+        String content = "a".repeat(5000);
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(("\"" + content + "\"")
+                                                                            .getBytes(StandardCharsets.UTF_8));
+
+        JsonParser parser = JsonParser.create(inputStream, 16);
+
+        String result = parser.readString();
+        assertThat(result, is(content));
+    }
+
+    @Test
+    public void testStreamParserReadStringWithEscapedValueSpanningBufferExpansions() {
+        String expected = "a".repeat(3000) + "\n" + "b".repeat(2000);
+        String json = "\"" + "a".repeat(3000) + "\\n" + "b".repeat(2000) + "\"";
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
+
+        JsonParser parser = JsonParser.create(inputStream, 16);
+
+        String result = parser.readString();
+        assertThat(result, is(expected));
+    }
+
+    @Test
+    public void testStreamParserReadStringWithUtf8ValueSpanningBufferExpansions() {
+        String content = "a".repeat(3000) + "😀" + "b".repeat(2000);
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(("\"" + content + "\"")
+                                                                            .getBytes(StandardCharsets.UTF_8));
+
+        JsonParser parser = JsonParser.create(inputStream, 16);
+
+        String result = parser.readString();
+        assertThat(result, is(content));
+    }
+
+    @Test
+    public void testStreamParserReadJsonNumberWithLargeValueSpanningBufferExpansions() {
+        StringBuilder number = new StringBuilder("1");
+        for (int i = 0; i < 3999; i++) {
+            number.append((char) ('0' + ((i + 1) % 10)));
+        }
+        String value = number.toString();
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
+
+        JsonParser parser = JsonParser.create(inputStream, 16);
+
+        JsonNumber result = parser.readJsonNumber();
+        assertThat(result.bigDecimalValue(), is(new BigDecimal(value)));
+    }
+
+    @Test
     public void testStreamParserWithEmptyStream() {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(new byte[0]);
         assertThrows(JsonException.class, () -> JsonParser.create(inputStream, 10));

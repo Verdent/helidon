@@ -47,6 +47,7 @@ I have decided to leave it like this and with a duplicit code.
 final class JsonParserStream extends JsonParserBase {
 
     private static final int DEFAULT_BUFFER_SIZE = 512;
+    private static final int FAST_ASCII_STRING_LIMIT = 64;
 
     private final int configuredBufferSize;
     private final InputStream inputStream;
@@ -137,14 +138,10 @@ final class JsonParserStream extends JsonParserBase {
                     mark = Math.max(0, mark - shift);
                 }
 
-                // 2. Grow the backing array if it still cannot hold currentIndex + amount + 1 bytes.
+                // 2. Grow the backing array only when the current capacity is insufficient.
                 int required = currentIndex + amount + 1;
-                if (required > bufferLength) {
-                    // Round up to the nearest configuredBufferSize multiple to avoid many small grows.
-                    int newSize = buffer.length;
-                    while (newSize < required) {
-                        newSize += configuredBufferSize;
-                    }
+                if (required > buffer.length) {
+                    int newSize = expandedBufferSize(required);
                     byte[] newBuffer = new byte[newSize];
                     System.arraycopy(buffer, 0, newBuffer, 0, kept);
                     buffer = newBuffer;
@@ -887,6 +884,10 @@ final class JsonParserStream extends JsonParserBase {
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
+        String asciiString = tryReadAsciiString();
+        if (asciiString != null) {
+            return asciiString;
+        }
         int index = ++currentIndex;
         int readableBytes = bufferLength - currentIndex;
         int firstRun = Math.min(stringBufferLength, readableBytes);
@@ -1025,6 +1026,26 @@ final class JsonParserStream extends JsonParserBase {
         char[] newBuf = new char[stringBufferLength];
         System.arraycopy(stringBuffer, 0, newBuf, 0, stringBuffer.length);
         stringBuffer = newBuf;
+    }
+
+    private String tryReadAsciiString() {
+        int start = currentIndex + 1;
+        int limit = Math.min(bufferLength, start + FAST_ASCII_STRING_LIMIT);
+        for (int i = start; i < limit; i++) {
+            byte b = buffer[i];
+            if (b == '"') {
+                currentIndex = i;
+                return new String(buffer, start, i - start, StandardCharsets.US_ASCII);
+            }
+            if (b == '\\' || b < 0) {
+                return null;
+            }
+            if (Parsers.isControlCharacter(b)) {
+                currentIndex = i;
+                throw createException("Unescaped control character not allowed in string", b);
+            }
+        }
+        return null;
     }
 
     /**
@@ -1986,17 +2007,20 @@ final class JsonParserStream extends JsonParserBase {
     private int readUtf8CodePoint(byte currentByte) {
         int value = currentByte & 0xFF;
         if ((value & 0xE0) == 0xC0) {
-            return Parsers.decodeUtf8TwoByte(currentByte, readNextByte(), this);
+            ensure(1);
+            return Parsers.decodeUtf8TwoByte(currentByte, buffer[++currentIndex], this);
         }
         if ((value & 0xF0) == 0xE0) {
-            byte second = readNextByte();
-            byte third = readNextByte();
+            ensure(2);
+            byte second = buffer[++currentIndex];
+            byte third = buffer[++currentIndex];
             return Parsers.decodeUtf8ThreeByte(currentByte, second, third, this);
         }
         if ((value & 0xF8) == 0xF0) {
-            byte second = readNextByte();
-            byte third = readNextByte();
-            byte fourth = readNextByte();
+            ensure(3);
+            byte second = buffer[++currentIndex];
+            byte third = buffer[++currentIndex];
+            byte fourth = buffer[++currentIndex];
             return Parsers.decodeUtf8FourByte(currentByte, second, third, fourth, this);
         }
         throw createException("Invalid UTF-8 byte", currentByte);
@@ -2142,10 +2166,10 @@ final class JsonParserStream extends JsonParserBase {
             }
         } else {
             // Buffer is full of the value, need to expand
-            int newCap = buffer.length + configuredBufferSize;
+            int newCap = expandedBufferSize(buffer.length + 1);
             byte[] tmp = new byte[newCap];
             System.arraycopy(buffer, 0, tmp, 0, bufferLength); // Copy existing data
-            int lastRead = inputStream.read(tmp, bufferLength, configuredBufferSize);
+            int lastRead = inputStream.read(tmp, bufferLength, tmp.length - bufferLength);
             buffer = tmp; // Replace buffer
             if (lastRead == -1) {
                 finished = true;
@@ -2154,5 +2178,19 @@ final class JsonParserStream extends JsonParserBase {
                 finished = false;
             }
         }
+    }
+
+    private int expandedBufferSize(int requiredCapacity) {
+        int newSize = buffer.length;
+        while (newSize < requiredCapacity) {
+            int doubled = newSize << 1;
+            int grown = newSize + configuredBufferSize;
+            int candidate = Math.max(doubled, grown);
+            if (candidate <= newSize) {
+                return requiredCapacity;
+            }
+            newSize = candidate;
+        }
+        return newSize;
     }
 }

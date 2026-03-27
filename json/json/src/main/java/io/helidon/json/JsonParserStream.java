@@ -923,10 +923,6 @@ final class JsonParserStream extends JsonParserBase {
         } else if (currentByte() != '"') {
             throw createException("Expected start of string", currentByte());
         }
-        String asciiString = tryReadAsciiString();
-        if (asciiString != null) {
-            return asciiString;
-        }
         int index = ++currentIndex;
         int readableBytes = bufferLength - currentIndex;
         int firstRun = Math.min(stringBufferLength, readableBytes);
@@ -1002,23 +998,21 @@ final class JsonParserStream extends JsonParserBase {
 
     @Override
     public byte nextToken() {
-        //Optimization for faster reading data without a space
-        //No loop is used.
-        byte b = readNextByte();
-        if (!WHITESPACE_CHARS[b & 0xFF]) {
-            return b;
-        }
-        //If since space or why character was used between tokens, we should still try to optimize
-        b = readNextByte();
-        if (!WHITESPACE_CHARS[b & 0xFF]) {
-            return b;
-        }
-        //We don't know how many spaces, new lines etc is there present, lets start looping
+        int index = currentIndex + 1;
         while (true) {
-            b = readNextByte();
-            if (!WHITESPACE_CHARS[b & 0xFF]) {
-                return b;
+            for (; index < bufferLength; index++) {
+                byte b = buffer[index];
+                if (!WHITESPACE_CHARS[b & 0xFF]) {
+                    currentIndex = index;
+                    return b;
+                }
             }
+            if (finished) {
+                throw createException("Incomplete JSON data");
+            }
+            currentIndex = bufferLength - 1;
+            readMoreData();
+            index = currentIndex + 1;
         }
     }
 
@@ -1065,26 +1059,6 @@ final class JsonParserStream extends JsonParserBase {
         char[] newBuf = new char[stringBufferLength];
         System.arraycopy(stringBuffer, 0, newBuf, 0, stringBuffer.length);
         stringBuffer = newBuf;
-    }
-
-    private String tryReadAsciiString() {
-        int start = currentIndex + 1;
-        int limit = Math.min(bufferLength, start + FAST_ASCII_STRING_LIMIT);
-        for (int i = start; i < limit; i++) {
-            byte b = buffer[i];
-            if (b == '"') {
-                currentIndex = i;
-                return new String(buffer, start, i - start, StandardCharsets.US_ASCII);
-            }
-            if (b == '\\' || b < 0) {
-                return null;
-            }
-            if (Parsers.isControlCharacter(b)) {
-                currentIndex = i;
-                throw createException("Unescaped control character not allowed in string", b);
-            }
-        }
-        return null;
     }
 
     /**

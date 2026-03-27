@@ -209,7 +209,13 @@ class JsonValueParser implements JsonParser {
     @Override
     public double readDouble() {
         if (current.type() == JsonValueType.STRING) {
-            return JsonParserBase.parseQuotedSpecialDouble(this, current.asString().value());
+            String value = current.asString().value();
+            return switch (value) {
+                case "NaN" -> Double.NaN;
+                case "Infinity", "infinity" -> Double.POSITIVE_INFINITY;
+                case "-Infinity", "-infinity" -> Double.NEGATIVE_INFINITY;
+                default -> throw createException("Invalid double number");
+            };
         }
         return current.asNumber().doubleValue();
     }

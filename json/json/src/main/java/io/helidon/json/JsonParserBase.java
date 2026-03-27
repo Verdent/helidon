@@ -30,15 +30,6 @@ public abstract class JsonParserBase implements JsonParser {
     protected JsonParserBase() {
     }
 
-    static double parseQuotedSpecialDouble(JsonParser parser, String value) {
-        return switch (value) {
-            case "NaN" -> Double.NaN;
-            case "Infinity", "infinity" -> Double.POSITIVE_INFINITY;
-            case "-Infinity", "-infinity" -> Double.NEGATIVE_INFINITY;
-            default -> throw parser.createException("Invalid double number");
-        };
-    }
-
     @Override
     public JsonValue readJsonValue() {
         return switch (currentByte()) {

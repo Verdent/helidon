@@ -324,7 +324,7 @@ class JsonParserArray extends JsonParserBase {
     @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
         if (currentByte() == '"') {
-            return parseQuotedSpecialDouble(this, readString());
+            return readQuotedSpecialDouble();
         }
 
         int start = currentIndex;
@@ -504,6 +504,47 @@ class JsonParserArray extends JsonParserBase {
         }
 
         return negative ? -result : result;
+    }
+
+    private double readQuotedSpecialDouble() {
+        ensure(4);
+        int valueIndex = currentIndex + 1;
+        byte b = buffer[valueIndex];
+        if (b == 'N') {
+            if (buffer[valueIndex + 1] == 'a'
+                    && buffer[valueIndex + 2] == 'N'
+                    && buffer[valueIndex + 3] == '"') {
+                currentIndex = valueIndex + 3;
+                return Double.NaN;
+            }
+            throw createException("Invalid double number");
+        }
+        if (b == '-') {
+            ensure(10);
+            if (matchesInfinity(valueIndex + 1) && buffer[valueIndex + 9] == '"') {
+                currentIndex = valueIndex + 9;
+                return Double.NEGATIVE_INFINITY;
+            }
+            throw createException("Invalid double number");
+        }
+        ensure(9);
+        if (matchesInfinity(valueIndex) && buffer[valueIndex + 8] == '"') {
+            currentIndex = valueIndex + 8;
+            return Double.POSITIVE_INFINITY;
+        }
+        throw createException("Invalid double number");
+    }
+
+    private boolean matchesInfinity(int index) {
+        byte b = buffer[index];
+        return (b == 'I' || b == 'i')
+                && buffer[index + 1] == 'n'
+                && buffer[index + 2] == 'f'
+                && buffer[index + 3] == 'i'
+                && buffer[index + 4] == 'n'
+                && buffer[index + 5] == 'i'
+                && buffer[index + 6] == 't'
+                && buffer[index + 7] == 'y';
     }
 
     @Override

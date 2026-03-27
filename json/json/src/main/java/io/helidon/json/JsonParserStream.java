@@ -569,6 +569,10 @@ final class JsonParserStream extends JsonParserBase {
     @Override
     @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
+        if (currentByte() == '"') {
+            return parseQuotedSpecialDouble(this, readString());
+        }
+
         bufferingJsonValue = true;
         jsonValueStart = currentIndex;
 

@@ -323,6 +323,10 @@ class JsonParserArray extends JsonParserBase {
     @Override
     @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
+        if (currentByte() == '"') {
+            return parseQuotedSpecialDouble(this, readString());
+        }
+
         int start = currentIndex;
         int i = start;
 

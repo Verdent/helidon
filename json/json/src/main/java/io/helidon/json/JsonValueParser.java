@@ -203,11 +203,14 @@ class JsonValueParser implements JsonParser {
 
     @Override
     public float readFloat() {
-        return (float) current.asNumber().doubleValue();
+        return (float) readDouble();
     }
 
     @Override
     public double readDouble() {
+        if (current.type() == JsonValueType.STRING) {
+            return JsonParserBase.parseQuotedSpecialDouble(this, current.asString().value());
+        }
         return current.asNumber().doubleValue();
     }
 

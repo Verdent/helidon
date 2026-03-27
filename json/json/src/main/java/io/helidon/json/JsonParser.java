@@ -368,6 +368,8 @@ public interface JsonParser {
      * Reads a numeric value as a float.
      * <p>
      * This method expects the next token to be a number and converts it to a float.
+     * It also accepts quoted {@code NaN}, {@code Infinity}, and {@code -Infinity}
+     * values emitted by the JSON generator.
      * </p>
      *
      * @return the float value
@@ -379,6 +381,8 @@ public interface JsonParser {
      * Reads a numeric value as a double.
      * <p>
      * This method expects the next token to be a number and converts it to a double.
+     * It also accepts quoted {@code NaN}, {@code Infinity}, and {@code -Infinity}
+     * values emitted by the JSON generator.
      * </p>
      *
      * @return the double value

@@ -27,6 +27,8 @@ import io.helidon.common.buffers.Bytes;
 
 class JsonParserArray extends JsonParserBase {
 
+    private static final int FAST_ASCII_STRING_LIMIT = 64;
+
     static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     static final int FNV_PRIME = 0x01000193;
 
@@ -166,36 +168,37 @@ class JsonParserArray extends JsonParserBase {
 
     @Override
     public String readString() {
-        if (checkNull()) {
-            return null;
-        } else if (currentByte() != '"') {
-            throw createException("Expected start of string", currentByte());
+        byte current = buffer[currentIndex];
+        if (current != '"') {
+            if (current == 'n') {
+                checkNull();
+                return null;
+            }
+            throw createException("Expected start of string", current);
         }
         expectLowSurrogate = false;
-        int index = ++currentIndex;
-        int readableBytes = bufferLength - currentIndex;
-        int firstRun = Math.min(stringBufferLength, readableBytes);
         byte b;
-        int stringBuffIndex = 0;
-        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = this.buffer[index++];
+        int start = ++currentIndex;
+        int firstEnd = Math.min(bufferLength, start + FAST_ASCII_STRING_LIMIT);
+        int index = start;
+        for (; index < firstEnd; index++) {
+            b = buffer[index];
             if (b == '"') {
-                currentIndex = --index;
-                return new String(stringBuffer, 0, stringBuffIndex);
+                currentIndex = index;
+                return new String(buffer, start, index - start, StandardCharsets.ISO_8859_1);
             } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
                 //Either escaped sequence or multibyte detected
-                currentIndex = --index;
                 break;
-            } else if (Parsers.isControlCharacter(b)) {
-                currentIndex = index - 1;
+            } else if (b < 0x20) {
+                currentIndex = index;
                 throw createException("Unescaped control character not allowed in string", b);
             }
-            stringBuffer[stringBuffIndex] = (char) b;
         }
-        if (stringBuffIndex == firstRun) {
-            currentIndex = index;
+        int stringBuffIndex = index - start;
+        for (int i = 0; i < stringBuffIndex; i++) {
+            stringBuffer[i] = (char) buffer[start + i];
         }
-
+        currentIndex = index;
         if (stringBuffIndex == stringBufferLength) {
             increaseStringBuffer();
         }
@@ -209,7 +212,7 @@ class JsonParserArray extends JsonParserBase {
             } else if (b == '"') {
                 return new String(stringBuffer, 0, stringBuffIndex);
             } else if (b >= 0) {
-                if (Parsers.isControlCharacter(b)) {
+                if (b < 0x20) {
                     throw createException("Unescaped control character not allowed in string", b);
                 }
                 stringBuffer[stringBuffIndex++] = (char) b;
@@ -235,7 +238,7 @@ class JsonParserArray extends JsonParserBase {
         if (b == '\\') {
             c = processEscapedSequence();
         } else if (b >= 0) {
-            if (Parsers.isControlCharacter(b)) {
+            if (b < 0x20) {
                 throw createException("Unescaped control character not allowed in string", b);
             }
             c = (char) b;

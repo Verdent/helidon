@@ -156,6 +156,16 @@ public class MiscEdgeCasesTest {
         }
     }
 
+    @Test
+    public void testDeserializeFromInputStreamWithBufferSizeGenericType() throws IOException {
+        byte[] jsonData = "[\"a\",\"b\"]".getBytes(StandardCharsets.UTF_8);
+        try (TrackingInputStream inputStream = new TrackingInputStream(jsonData)) {
+            List<String> values = jsonBinding.deserialize(inputStream, 8, new GenericType<>() { });
+            assertThat(values, is(List.of("a", "b")));
+            assertThat(inputStream.maxRequestedLength(), is(8));
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(BindingMethod.class)
     public void testBooleanPrimitivesParameterized(BindingMethod bindingMethod) {
@@ -192,6 +202,24 @@ public class MiscEdgeCasesTest {
 
         public void setValue(String value) {
             this.value = value;
+        }
+    }
+
+    static class TrackingInputStream extends ByteArrayInputStream {
+        private int maxRequestedLength;
+
+        TrackingInputStream(byte[] data) {
+            super(data);
+        }
+
+        @Override
+        public synchronized int read(byte[] b, int off, int len) {
+            maxRequestedLength = Math.max(maxRequestedLength, len);
+            return super.read(b, off, len);
+        }
+
+        int maxRequestedLength() {
+            return maxRequestedLength;
         }
     }
 

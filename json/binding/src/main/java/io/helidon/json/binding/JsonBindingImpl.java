@@ -260,7 +260,7 @@ final class JsonBindingImpl implements JsonBinding, JsonBindingConfigurator {
     @Override
     public <T> T deserialize(InputStream inputStream, int bufferSize, GenericType<T> type) {
         JsonDeserializer<T> deserializer = deserializer(type);
-        JsonParser parser = JsonParser.create(inputStream);
+        JsonParser parser = JsonParser.create(inputStream, bufferSize);
         return Deserializers.deserialize(parser, deserializer);
     }
 

@@ -179,7 +179,7 @@ final class JsonParserStream extends JsonParserBase {
         if (b == '\\') {
             c = processEscapedSequence();
         } else if (b >= 0) {
-            if (Parsers.isControlCharacter(b)) {
+            if (b < 0x20) {
                 throw createException("Unescaped control character not allowed in string", b);
             }
             c = (char) b;
@@ -465,60 +465,60 @@ final class JsonParserStream extends JsonParserBase {
         } else if (!hasNext()) {
             throw createException("Incomplete JSON");
         }
-
         int fnv1aHash = FNV_OFFSET_BASIS;
         int i = currentIndex + 1;
+        byte[] localBuffer = buffer;
+        int localBufferLength = bufferLength;
         while (true) {
-            while (i + 4 <= bufferLength) {
-                byte next = buffer[i];
+            for (; i + 4 <= localBufferLength; i += 4) {
+                int next = localBuffer[i] & 0xFF;
                 if (next == '"') {
                     currentIndex = i;
                     return fnv1aHash;
                 }
-                fnv1aHash ^= next & 0xFF;
+                fnv1aHash ^= next;
                 fnv1aHash *= FNV_PRIME;
 
-                next = buffer[i + 1];
+                next = localBuffer[i + 1] & 0xFF;
                 if (next == '"') {
                     currentIndex = i + 1;
                     return fnv1aHash;
                 }
-                fnv1aHash ^= next & 0xFF;
+                fnv1aHash ^= next;
                 fnv1aHash *= FNV_PRIME;
 
-                next = buffer[i + 2];
+                next = localBuffer[i + 2] & 0xFF;
                 if (next == '"') {
                     currentIndex = i + 2;
                     return fnv1aHash;
                 }
-                fnv1aHash ^= next & 0xFF;
+                fnv1aHash ^= next;
                 fnv1aHash *= FNV_PRIME;
 
-                next = buffer[i + 3];
+                next = localBuffer[i + 3] & 0xFF;
                 if (next == '"') {
                     currentIndex = i + 3;
                     return fnv1aHash;
                 }
-                fnv1aHash ^= next & 0xFF;
+                fnv1aHash ^= next;
                 fnv1aHash *= FNV_PRIME;
-                i += 4;
             }
-            while (i < bufferLength) {
-                b = buffer[i++] & 0xFF;
-                if (b == '"') {
-                    currentIndex = i - 1;
+            for (; i < localBufferLength; i++) {
+                int next = localBuffer[i] & 0xFF;
+                if (next == '"') {
+                    currentIndex = i;
                     return fnv1aHash;
                 }
-                fnv1aHash ^= b;
+                fnv1aHash ^= next;
                 fnv1aHash *= FNV_PRIME;
             }
             if (finished) {
                 throw createException("Unexpected end of string value. Probably incomplete JSON");
             }
-            // The hash already covers everything before the last buffered byte, so refill from there
-            // to avoid re-reading and re-hashing the previously scanned string chunk.
-            currentIndex = bufferLength - 1;
+            currentIndex = localBufferLength - 1;
             fetchData();
+            localBuffer = buffer;
+            localBufferLength = bufferLength;
             i = currentIndex + 1;
         }
     }
@@ -978,41 +978,39 @@ final class JsonParserStream extends JsonParserBase {
     @Override
     public String readString() {
         expectLowSurrogate = false;
-        if (checkNull()) {
-            return null;
-        } else if (currentByte() != '"') {
-            throw createException("Expected start of string", currentByte());
+        byte current = buffer[currentIndex];
+        if (current != '"') {
+            if (current == 'n') {
+                checkNull();
+                return null;
+            }
+            throw createException("Expected start of string", current);
         }
-        int index = ++currentIndex;
-        int readableBytes = bufferLength - currentIndex;
-        int firstRun = Math.min(stringBufferLength, readableBytes);
         byte b;
-        int stringBuffIndex = 0;
-        for (; stringBuffIndex < firstRun; stringBuffIndex++) {
-            b = this.buffer[index++];
+        int start = ++currentIndex;
+        int firstEnd = Math.min(bufferLength, start + FAST_ASCII_STRING_LIMIT);
+        int index = start;
+        for (; index < firstEnd; index++) {
+            b = buffer[index];
             if (b == '"') {
-                currentIndex = --index;
-                return new String(stringBuffer, 0, stringBuffIndex);
-            } else if ((b ^ '\\') < 1) { //Either \ or UTF-8 byte detected
-                //Either escaped sequence or multibyte detected
-                currentIndex = --index;
+                currentIndex = index;
+                return new String(buffer, start, index - start, StandardCharsets.ISO_8859_1);
+            } else if ((b ^ '\\') < 1) {
                 break;
-            } else if (Parsers.isControlCharacter(b)) {
-                currentIndex = index - 1;
+            } else if (b < 0x20) {
+                currentIndex = index;
                 throw createException("Unescaped control character not allowed in string", b);
             }
-            stringBuffer[stringBuffIndex] = (char) b;
         }
-
-        if (stringBuffIndex == firstRun) {
-            currentIndex = index;
+        int stringBuffIndex = index - start;
+        for (int i = 0; i < stringBuffIndex; i++) {
+            stringBuffer[i] = (char) buffer[start + i];
         }
-
+        currentIndex = index;
         if (stringBuffIndex == stringBufferLength) {
             increaseStringBuffer();
         }
-
-        if (currentIndex == this.bufferLength) {
+        if (currentIndex == bufferLength) {
             if (finished) {
                 throw createException("End of the string expected. Incomplete JSON");
             }
@@ -1022,7 +1020,6 @@ final class JsonParserStream extends JsonParserBase {
                 currentIndex++;
             }
         }
-
         while (true) {
             for (; currentIndex < bufferLength; currentIndex++) {
                 b = buffer[currentIndex];
@@ -1033,7 +1030,7 @@ final class JsonParserStream extends JsonParserBase {
                 } else if (b == '"') {
                     return new String(stringBuffer, 0, stringBuffIndex);
                 } else if (b >= 0) {
-                    if (Parsers.isControlCharacter(b)) {
+                    if (b < 0x20) {
                         throw createException("Unescaped control character not allowed in string", b);
                     }
                     stringBuffer[stringBuffIndex++] = (char) b;

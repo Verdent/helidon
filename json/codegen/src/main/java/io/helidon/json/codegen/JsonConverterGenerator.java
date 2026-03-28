@@ -33,6 +33,7 @@ import io.helidon.codegen.classmodel.ClassBase;
 import io.helidon.codegen.classmodel.Executable;
 import io.helidon.codegen.classmodel.Javadoc;
 import io.helidon.codegen.classmodel.Method;
+import io.helidon.codegen.classmodel.TypeArgument;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.ElementKind;
 import io.helidon.common.types.TypeName;
@@ -114,7 +115,8 @@ class JsonConverterGenerator {
                                                                    toConfigure,
                                                                    specialPolyConverter));
         }
-
+        addGeneratedDeserializeColdPathHelpers(classBuilder);
+        addGeneratedDeserializeNullHelper(classBuilder);
         if (factory) {
             classBuilder.addMethod(method -> addConfigurationFactory(method, toConfigure, converterInfo, hasPolymorphicInfo));
             classBuilder.addMethod(method -> addTypeMethodFactory(method, converterInfo));
@@ -122,6 +124,48 @@ class JsonConverterGenerator {
             classBuilder.addMethod(method -> addConfigurationMethod(method, toConfigure, hasPolymorphicInfo));
             classBuilder.addMethod(method -> addTypeMethod(method, converterInfo));
         }
+    }
+
+    private static void addGeneratedDeserializeColdPathHelpers(ClassBase.Builder<?, ?> classBuilder) {
+        classBuilder.addMethod(method -> method.name("throwExpectedObjectStart")
+                        .accessModifier(AccessModifier.PRIVATE)
+                        .isStatic(true)
+                        .addParameter(JsonTypes.JSON_PARSER, "parser")
+                        .addParameter(TypeNames.PRIMITIVE_BYTE, "lastByte")
+                        .addContentLine("throw parser.createException(\"Expected '{' to start an object\", lastByte);"))
+                .addMethod(method -> method.name("throwExpectedKeyStart")
+                        .accessModifier(AccessModifier.PRIVATE)
+                        .isStatic(true)
+                        .addParameter(JsonTypes.JSON_PARSER, "parser")
+                        .addParameter(TypeNames.PRIMITIVE_BYTE, "lastByte")
+                        .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start\", lastByte);"))
+                .addMethod(method -> method.name("throwExpectedColon")
+                        .accessModifier(AccessModifier.PRIVATE)
+                        .isStatic(true)
+                        .addParameter(JsonTypes.JSON_PARSER, "parser")
+                        .addParameter(TypeNames.PRIMITIVE_BYTE, "lastByte")
+                        .addContentLine("throw parser.createException(\"Expected ':' to separate key and value\", lastByte);"))
+                .addMethod(method -> method.name("throwExpectedCommaOrObjectEnd")
+                        .accessModifier(AccessModifier.PRIVATE)
+                        .isStatic(true)
+                        .addParameter(JsonTypes.JSON_PARSER, "parser")
+                        .addParameter(TypeNames.PRIMITIVE_BYTE, "lastByte")
+                        .addContentLine("throw parser.createException(\"Expected ',' or '}'\", lastByte);"));
+    }
+
+    private static void addGeneratedDeserializeNullHelper(ClassBase.Builder<?, ?> classBuilder) {
+        TypeArgument typeArgument = TypeArgument.create("T");
+        TypeName deserializerType = TypeName.builder(JsonTypes.JSON_DESERIALIZER_TYPE)
+                .addTypeArgument(typeArgument)
+                .build();
+        classBuilder.addMethod(method -> method.name("deserializeNullValue")
+                .accessModifier(AccessModifier.PRIVATE)
+                .isStatic(true)
+                .addGenericArgument(typeArgument)
+                .returnType(typeArgument)
+                .addParameter(JsonTypes.JSON_PARSER, "parser")
+                .addParameter(deserializerType, "deserializer")
+                .addContentLine("return parser.checkNull() ? deserializer.deserializeNull() : deserializer.deserialize(parser);"));
     }
 
     private static void generatePolySerializeMethod(ClassBase.Builder<?, ?> classBuilder,
@@ -735,7 +779,7 @@ class JsonConverterGenerator {
                 .addContent("if (lastByte != ")
                 .addContent(BYTES)
                 .addContentLine(".BRACE_OPEN_BYTE) {")
-                .addContentLine("throw parser.createException(\"Expected '{' to start an object\", lastByte);")
+                .addContentLine("throwExpectedObjectStart(parser, lastByte);")
                 .addContentLine("}")
                 .addContentLine("lastByte = parser.nextToken();");
         createPreProcessingVariables(method, converterInfo, jsonProperties, hasCreator, creatorKind, creatorInfo, hasBuilder);
@@ -841,7 +885,7 @@ class JsonConverterGenerator {
                 .addContent("if (lastByte != ")
                 .addContent(BYTES)
                 .addContentLine(".DOUBLE_QUOTE_BYTE) {")
-                .addContentLine("throw parser.createException(\"Expected '\\\"' as a key start\", lastByte);")
+                .addContentLine("throwExpectedKeyStart(parser, lastByte);")
                 .addContentLine("}");
         Map<Integer, List<JsonProperty>> hashes = jsonProperties.stream()
                 .collect(Collectors.groupingBy(jsonProperty ->
@@ -859,7 +903,7 @@ class JsonConverterGenerator {
                 .addContent("if (lastByte != ")
                 .addContent(BYTES)
                 .addContentLine(".COLON_BYTE) {")
-                .addContentLine("throw parser.createException(\"Expected ':' to separate key and value\", lastByte);")
+                .addContentLine("throwExpectedColon(parser, lastByte);")
                 .addContentLine("}")
                 .addContentLine("parser.nextToken();");
         if (hasProperties) {
@@ -968,7 +1012,7 @@ class JsonConverterGenerator {
                 .addContentLine("break;")
                 .decreaseContentPadding()
                 .addContentLine("} else {")
-                .addContentLine("throw parser.createException(\"Expected ',' or '}'\", lastByte);")
+                .addContentLine("throwExpectedCommaOrObjectEnd(parser, lastByte);")
                 .addContentLine("}");
         method.addContentLine("}");
     }
@@ -1200,22 +1244,21 @@ class JsonConverterGenerator {
                                            boolean hasCreator,
                                            boolean hasBuilder,
                                            String reference) {
+        String deserializedValue = "parser.currentByte() == 'n' ? deserializeNullValue(parser, " + reference
+                + ") : " + reference + ".deserialize(parser)";
         if (hasCreator || (hasBuilder && !property.usedInBuilder())) {
             String deserPropertyName = property.deserializationName().orElseThrow();
             method.addContent(deserPropertyName + PROPERTY_NAME_SUFFIX + " = ")
-                    .addContentLine("parser.checkNull() ? " + reference + ".deserializeNull() : "
-                                            + reference + ".deserialize(parser);");
+                    .addContentLine(deserializedValue + ";");
         } else {
             String instanceName = hasBuilder ? "builder" : "instance";
             String writingMethod = property.setterName()
                     .map(methodName -> instanceName + "." + methodName
-                            + "(parser.checkNull() ? " + reference + ".deserializeNull() : "
-                            + reference + ".deserialize(parser));")
+                            + "(" + deserializedValue + ");")
                     .orElseGet(() -> property.fieldName()
                             .filter(it -> property.directFieldWrite())
                             .map(fieldName -> instanceName + "." + fieldName
-                                    + " = parser.checkNull() ? " + reference + ".deserializeNull() : "
-                                    + reference + ".deserialize(parser);")
+                                    + " = " + deserializedValue + ";")
                             .orElseThrow()); // No valid setter or field; unreachable due to earlier filtering.
             method.addContentLine(writingMethod);
         }

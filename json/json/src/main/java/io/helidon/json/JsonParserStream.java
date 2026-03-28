@@ -603,8 +603,68 @@ final class JsonParserStream extends JsonParserBase {
     }
 
     @Override
-    @SuppressWarnings("checkstyle:MethodLength")
     public double readDouble() {
+        byte b = currentByte();
+        if (b >= '0' && b <= '9') {
+            double result = tryReadSimplePositiveDouble();
+            if (!Double.isNaN(result)) {
+                return result;
+            }
+        } else if (b == '"') {
+            return readQuotedSpecialDouble();
+        }
+        return readDoubleSlow();
+    }
+
+    private double tryReadSimplePositiveDouble() {
+        int index = currentIndex;
+        long mantissa = 0;
+        int digits = 0;
+        int fractionDigits = 0;
+        boolean hasDecimal = false;
+        boolean hasFractionDigits = false;
+
+        while (index < bufferLength) {
+            byte b = buffer[index];
+            if (b >= '0' && b <= '9') {
+                if (digits == 17) {
+                    return Double.NaN;
+                }
+                mantissa = mantissa * 10 + (b - '0');
+                digits++;
+                if (hasDecimal) {
+                    fractionDigits++;
+                    hasFractionDigits = true;
+                }
+                index++;
+                continue;
+            }
+            if (b == '.' && !hasDecimal) {
+                hasDecimal = true;
+                index++;
+                continue;
+            }
+            if (b == 'e' || b == 'E') {
+                return Double.NaN;
+            }
+            break;
+        }
+
+        if (digits == 0 || (hasDecimal && !hasFractionDigits)) {
+            return Double.NaN;
+        }
+        if (index == bufferLength && !finished) {
+            return Double.NaN;
+        }
+
+        currentIndex = index - 1;
+        return fractionDigits == 0
+                ? mantissa
+                : mantissa / POW10_DOUBLE_CACHE[fractionDigits];
+    }
+
+    @SuppressWarnings("checkstyle:MethodLength")
+    private double readDoubleSlow() {
         if (currentByte() == '"') {
             return readQuotedSpecialDouble();
         }

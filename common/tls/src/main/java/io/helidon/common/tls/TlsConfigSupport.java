@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Oracle and/or its affiliates.
+ * Copyright (c) 2025, 2026 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,9 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.spi.TlsManagerProvider;
+import io.helidon.config.Config;
+import io.helidon.config.ConfigBuilderSupport;
 
 final class TlsConfigSupport {
     private TlsConfigSupport() {
@@ -45,6 +48,23 @@ final class TlsConfigSupport {
         @Prototype.RuntimeTypeFactoryMethod("trust")
         static List<X509Certificate> createTrust(Keys config) {
             return config.certs();
+        }
+
+        @Prototype.ConfigFactoryMethod("manager")
+        static TlsManager createManager(Config config) {
+            Config tlsConfig = config.root().get(config.key().parent());
+
+            if (!tlsConfig.get("enabled").asBoolean().orElse(true)) {
+                return new ConfiguredTlsManager();
+            }
+
+            return ConfigBuilderSupport.discoverService(tlsConfig,
+                                                        "manager",
+                                                        TlsManagerProvider.class,
+                                                        TlsManager.class,
+                                                        false,
+                                                        Optional.empty())
+                    .orElseGet(ConfiguredTlsManager::new);
         }
     }
 }

@@ -28,7 +28,6 @@ import javax.net.ssl.SSLParameters;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-import io.helidon.common.tls.spi.TlsManagerProvider;
 
 @Prototype.Blueprint(decorator = TlsConfigDecorator.class)
 @Prototype.Configured
@@ -90,8 +89,16 @@ interface TlsConfigBlueprint extends Prototype.Factory<Tls> {
      * @see ConfiguredTlsManager
      */
     @Option.Configured
-    @Option.Provider(value = TlsManagerProvider.class, discoverServices = false)
     TlsManager manager();
+
+    /**
+     * Whether to discover a TLS manager provider from the service loader when no explicit manager is configured.
+     *
+     * @return whether to discover manager services
+     */
+    @Option.Configured("manager-discover-services")
+    @Option.DefaultBoolean(false)
+    boolean managerDiscoverServices();
 
     /**
      * Explicit secure random to use.

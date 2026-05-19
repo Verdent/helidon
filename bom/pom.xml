@@ -149,6 +149,11 @@
             </dependency>
             <dependency>
                 <groupId>io.helidon.security.providers</groupId>
+                <artifactId>helidon-security-providers-oidc-next</artifactId>
+                <version>${helidon.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.helidon.security.providers</groupId>
                 <artifactId>helidon-security-providers-oidc-common</artifactId>
                 <version>${helidon.version}</version>
             </dependency>

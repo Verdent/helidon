@@ -26,9 +26,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcNextProviderTest {
+    private static final String CURRENT_PROVIDER_CONFIG_KEY = "oidc";
+    private static final String OIDC_NEXT_PACKAGE = "io.helidon.security.providers.oidc.next";
 
     @Test
     void serviceCreatesProvider() {
@@ -51,6 +54,13 @@ class OidcNextProviderTest {
         }
 
         assertThat(found, is(true));
+    }
+
+    @Test
+    void stage0KeepsNewProviderIsolatedFromCurrentProvider() {
+        assertThat(OidcNextProvider.class.getPackageName(), is(OIDC_NEXT_PACKAGE));
+        assertThat(OidcNextProviderService.PROVIDER_CONFIG_KEY, is("oidc-next"));
+        assertThat(OidcNextProviderService.PROVIDER_CONFIG_KEY, is(not(CURRENT_PROVIDER_CONFIG_KEY)));
     }
 
     @Test

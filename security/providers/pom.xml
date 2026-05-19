@@ -39,6 +39,7 @@
         <module>jwt</module>
         <module>abac</module>
         <module>oidc</module>
+        <module>oidc-next</module>
         <module>idcs-mapper</module>
         <module>oidc-common</module>
     </modules>

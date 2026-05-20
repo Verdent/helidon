@@ -22,16 +22,20 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcOutboundOrchestrator {
+    private final OidcProviderConfig config;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
 
-    private OidcOutboundOrchestrator(OidcRequestClassifier classifier, OidcResponseFactory responseFactory) {
+    private OidcOutboundOrchestrator(OidcProviderConfig config,
+                                     OidcRequestClassifier classifier,
+                                     OidcResponseFactory responseFactory) {
+        this.config = config;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
     }
 
     static OidcOutboundOrchestrator create(OidcProviderConfig config) {
-        return new OidcOutboundOrchestrator(OidcRequestClassifier.create(), OidcResponseFactory.create());
+        return new OidcOutboundOrchestrator(config, OidcRequestClassifier.create(), OidcResponseFactory.create());
     }
 
     boolean isSupported(ProviderRequest providerRequest,
@@ -61,7 +65,10 @@ final class OidcOutboundOrchestrator {
     private OidcProtocolOperation classify(ProviderRequest providerRequest,
                                            SecurityEnvironment outboundEnv,
                                            EndpointConfig outboundConfig) {
-        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest, outboundEnv, outboundConfig);
+        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest,
+                                                                               outboundEnv,
+                                                                               outboundConfig,
+                                                                               config);
         return classifier.classify(context);
     }
 }

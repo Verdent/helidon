@@ -154,8 +154,10 @@ final class OidcConfigSupport {
                         "issuer must be configured when JWT access-token validation is enabled");
                 require(endpoints.jwksUri().isPresent() || endpoints.discoveryUri().isPresent(),
                         "jwks-uri or discovery-uri must be configured when JWT access-token validation is enabled");
-                require(tokenValidation.audience().isPresent(),
-                        "token-validation.audience must be configured when JWT access-token validation is enabled");
+                if (tokenValidation.audienceValidationEnabled()) {
+                    require(tokenValidation.audience().isPresent(),
+                            "token-validation.audience must be configured when JWT access-token validation is enabled");
+                }
             }
             case INTROSPECTION -> {
                 require(endpoints.introspectionEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),

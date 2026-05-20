@@ -29,17 +29,17 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-class OidcNextProviderTest {
+class OidcProviderTest {
     private static final String CURRENT_PROVIDER_CONFIG_KEY = "oidc";
     private static final String OIDC_NEXT_PACKAGE = "io.helidon.security.providers.oidc.next";
 
     @Test
     void serviceCreatesProvider() {
-        OidcNextProviderService service = new OidcNextProviderService();
+        OidcProviderService service = new OidcProviderService();
 
         assertThat(service.providerConfigKey(), is("oidc-next"));
-        assertThat(service.providerClass() == OidcNextProvider.class, is(true));
-        assertThat(service.create(Config.empty()), instanceOf(OidcNextProvider.class));
+        assertThat(service.providerClass() == OidcProvider.class, is(true));
+        assertThat(service.create(Config.empty()), instanceOf(OidcProvider.class));
     }
 
     @Test
@@ -47,8 +47,8 @@ class OidcNextProviderTest {
         boolean found = false;
 
         for (SecurityProviderService service : ServiceLoader.load(SecurityProviderService.class)) {
-            if (OidcNextProviderService.PROVIDER_CONFIG_KEY.equals(service.providerConfigKey())) {
-                assertThat(service.providerClass() == OidcNextProvider.class, is(true));
+            if (OidcProviderService.PROVIDER_CONFIG_KEY.equals(service.providerConfigKey())) {
+                assertThat(service.providerClass() == OidcProvider.class, is(true));
                 found = true;
             }
         }
@@ -58,14 +58,14 @@ class OidcNextProviderTest {
 
     @Test
     void stage0KeepsNewProviderIsolatedFromCurrentProvider() {
-        assertThat(OidcNextProvider.class.getPackageName(), is(OIDC_NEXT_PACKAGE));
-        assertThat(OidcNextProviderService.PROVIDER_CONFIG_KEY, is("oidc-next"));
-        assertThat(OidcNextProviderService.PROVIDER_CONFIG_KEY, is(not(CURRENT_PROVIDER_CONFIG_KEY)));
+        assertThat(OidcProvider.class.getPackageName(), is(OIDC_NEXT_PACKAGE));
+        assertThat(OidcProviderService.PROVIDER_CONFIG_KEY, is("oidc-next"));
+        assertThat(OidcProviderService.PROVIDER_CONFIG_KEY, is(not(CURRENT_PROVIDER_CONFIG_KEY)));
     }
 
     @Test
     void providerAbstainsUntilFlowsAreImplemented() {
-        OidcNextProvider provider = OidcNextProvider.create();
+        OidcProvider provider = OidcProvider.create();
 
         assertThat(provider.authenticate(null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
         assertThat(provider.isOutboundSupported(null, null, null), is(false));

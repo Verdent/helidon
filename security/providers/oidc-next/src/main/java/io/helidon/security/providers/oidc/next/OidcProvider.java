@@ -32,11 +32,11 @@ import io.helidon.security.spi.OutboundSecurityProvider;
 /**
  * New OpenID Connect security provider.
  */
-public final class OidcNextProvider
-        implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcNextProviderConfig> {
-    private final OidcNextProviderConfig config;
+public final class OidcProvider
+        implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcProviderConfig> {
+    private final OidcProviderConfig config;
 
-    private OidcNextProvider(OidcNextProviderConfig config) {
+    private OidcProvider(OidcProviderConfig config) {
         this.config = Objects.requireNonNull(config);
     }
 
@@ -45,8 +45,8 @@ public final class OidcNextProvider
      *
      * @return a new builder
      */
-    public static OidcNextProviderConfig.Builder builder() {
-        return OidcNextProviderConfig.builder();
+    public static OidcProviderConfig.Builder builder() {
+        return OidcProviderConfig.builder();
     }
 
     /**
@@ -55,7 +55,7 @@ public final class OidcNextProvider
      * @param config provider configuration
      * @return new provider instance
      */
-    public static OidcNextProvider create(Config config) {
+    public static OidcProvider create(Config config) {
         return builder()
                 .config(config)
                 .build();
@@ -67,8 +67,8 @@ public final class OidcNextProvider
      * @param config provider configuration
      * @return new provider instance
      */
-    public static OidcNextProvider create(OidcNextProviderConfig config) {
-        return new OidcNextProvider(config);
+    public static OidcProvider create(OidcProviderConfig config) {
+        return new OidcProvider(config);
     }
 
     /**
@@ -77,7 +77,7 @@ public final class OidcNextProvider
      * @param consumer provider configuration builder consumer
      * @return new provider instance
      */
-    public static OidcNextProvider create(Consumer<OidcNextProviderConfig.Builder> consumer) {
+    public static OidcProvider create(Consumer<OidcProviderConfig.Builder> consumer) {
         return builder()
                 .update(consumer)
                 .build();
@@ -88,12 +88,12 @@ public final class OidcNextProvider
      *
      * @return new provider instance
      */
-    public static OidcNextProvider create() {
+    public static OidcProvider create() {
         return builder().build();
     }
 
     @Override
-    public OidcNextProviderConfig prototype() {
+    public OidcProviderConfig prototype() {
         return config;
     }
 

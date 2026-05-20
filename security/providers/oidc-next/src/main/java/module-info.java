@@ -36,6 +36,6 @@ module io.helidon.security.providers.oidc.next {
     exports io.helidon.security.providers.oidc.next;
 
     provides io.helidon.security.spi.SecurityProviderService
-            with io.helidon.security.providers.oidc.next.OidcNextProviderService;
+            with io.helidon.security.providers.oidc.next.OidcProviderService;
 
 }

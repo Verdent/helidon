@@ -23,10 +23,5 @@ public enum OidcPkceMethod {
     /**
      * SHA-256 based code challenge method.
      */
-    S256,
-
-    /**
-     * Plain code challenge method.
-     */
-    PLAIN
+    S256
 }

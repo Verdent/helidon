@@ -57,7 +57,7 @@ interface OidcAuthorizationCodeConfigBlueprint {
     List<String> scopes();
 
     /**
-     * Whether PKCE is required for Authorization Code Flow.
+     * Whether Proof Key for Code Exchange is required for Authorization Code Flow.
      *
      * @return whether PKCE is required
      */

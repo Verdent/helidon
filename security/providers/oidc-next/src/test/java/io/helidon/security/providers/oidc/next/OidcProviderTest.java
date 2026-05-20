@@ -205,7 +205,7 @@ class OidcProviderTest {
                    is("OIDC outbound request cannot be classified by protocol operation"));
     }
 
-    private static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
+    static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
         EndpointConfig.Builder endpointConfig = EndpointConfig.builder();
         if (endpointPolicy != null) {
             endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);

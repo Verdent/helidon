@@ -19,16 +19,20 @@ package io.helidon.security.providers.oidc.next;
 import io.helidon.security.AuthenticationResponse;
 
 final class OidcAuthenticationOrchestrator {
+    private final OidcProviderConfig config;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
 
-    private OidcAuthenticationOrchestrator(OidcRequestClassifier classifier, OidcResponseFactory responseFactory) {
+    private OidcAuthenticationOrchestrator(OidcProviderConfig config,
+                                           OidcRequestClassifier classifier,
+                                           OidcResponseFactory responseFactory) {
+        this.config = config;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config) {
-        return new OidcAuthenticationOrchestrator(OidcRequestClassifier.create(), OidcResponseFactory.create());
+        return new OidcAuthenticationOrchestrator(config, OidcRequestClassifier.create(), OidcResponseFactory.create());
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
@@ -36,7 +40,7 @@ final class OidcAuthenticationOrchestrator {
             return AuthenticationResponse.abstain();
         }
 
-        OidcRequestContext context = OidcRequestContext.create(providerRequest);
+        OidcRequestContext context = OidcRequestContext.create(providerRequest, config);
         OidcProtocolOperation operation = classifier.classify(context);
 
         return switch (operation) {
@@ -52,6 +56,9 @@ final class OidcAuthenticationOrchestrator {
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
         if (context.bearerTokenPresent()) {
             return responseFactory.bearerTokenValidationNotImplemented();
+        }
+        if (config.optional()) {
+            return responseFactory.optional("Bearer Token is required");
         }
         return responseFactory.missingBearerToken();
     }

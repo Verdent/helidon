@@ -28,17 +28,24 @@ final class OidcRequestContext {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final ProviderRequest providerRequest;
+    private final OidcProviderConfig config;
 
-    private OidcRequestContext(ProviderRequest providerRequest) {
+    private OidcRequestContext(ProviderRequest providerRequest, OidcProviderConfig config) {
         this.providerRequest = providerRequest;
+        this.config = config;
     }
 
-    static OidcRequestContext create(ProviderRequest providerRequest) {
-        return new OidcRequestContext(providerRequest);
+    static OidcRequestContext create(ProviderRequest providerRequest, OidcProviderConfig config) {
+        return new OidcRequestContext(providerRequest, config);
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
-        return endpointConfig().instance(OidcEndpointPolicy.class);
+        EndpointConfig endpointConfig = endpointConfig();
+        if (endpointConfig == null) {
+            return OidcConfigSupport.endpointPolicy(config);
+        }
+        return endpointConfig.instance(OidcEndpointPolicy.class)
+                .or(() -> OidcConfigSupport.endpointPolicy(config));
     }
 
     boolean bearerTokenPresent() {

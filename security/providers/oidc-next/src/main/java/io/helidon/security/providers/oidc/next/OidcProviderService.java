@@ -23,13 +23,13 @@ import io.helidon.security.spi.SecurityProviderService;
 /**
  * Service for creating the new OIDC provider from Helidon Security configuration.
  */
-public final class OidcNextProviderService implements SecurityProviderService {
+public final class OidcProviderService implements SecurityProviderService {
     static final String PROVIDER_CONFIG_KEY = "oidc-next";
 
     /**
      * Create a provider service.
      */
-    public OidcNextProviderService() {
+    public OidcProviderService() {
     }
 
     @Override
@@ -39,11 +39,11 @@ public final class OidcNextProviderService implements SecurityProviderService {
 
     @Override
     public Class<? extends SecurityProvider> providerClass() {
-        return OidcNextProvider.class;
+        return OidcProvider.class;
     }
 
     @Override
     public SecurityProvider create(Config config) {
-        return OidcNextProvider.create(config);
+        return OidcProvider.create(config);
     }
 }

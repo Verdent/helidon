@@ -66,6 +66,13 @@ final class OidcResponseFactory {
                 .build();
     }
 
+    AuthenticationResponse optional(String description) {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.ABSTAIN)
+                .description(description)
+                .build();
+    }
+
     OutboundSecurityResponse tokenPropagationNotImplemented() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)

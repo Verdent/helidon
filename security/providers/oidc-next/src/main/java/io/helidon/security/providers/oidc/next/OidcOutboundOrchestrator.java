@@ -22,22 +22,46 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcOutboundOrchestrator {
-    private OidcOutboundOrchestrator() {
+    private final OidcRequestClassifier classifier;
+    private final OidcResponseFactory responseFactory;
+
+    private OidcOutboundOrchestrator(OidcRequestClassifier classifier, OidcResponseFactory responseFactory) {
+        this.classifier = classifier;
+        this.responseFactory = responseFactory;
     }
 
     static OidcOutboundOrchestrator create(OidcProviderConfig config) {
-        return new OidcOutboundOrchestrator();
+        return new OidcOutboundOrchestrator(OidcRequestClassifier.create(), OidcResponseFactory.create());
     }
 
     boolean isSupported(ProviderRequest providerRequest,
                         SecurityEnvironment outboundEnv,
                         EndpointConfig outboundConfig) {
-        return false;
+        OidcProtocolOperation operation = classify(providerRequest, outboundEnv, outboundConfig);
+        return operation != OidcProtocolOperation.ABSTAIN;
     }
 
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig outboundConfig) {
-        return OutboundSecurityResponse.abstain();
+        OidcProtocolOperation operation = classify(providerRequest, outboundEnv, outboundConfig);
+
+        return switch (operation) {
+            case TOKEN_PROPAGATION -> responseFactory.tokenPropagationNotImplemented();
+            case CLIENT_CREDENTIALS_GRANT -> responseFactory.clientCredentialsGrantNotImplemented();
+            case AMBIGUOUS -> responseFactory.ambiguousOutboundRequest();
+            case BEARER_TOKEN_AUTHENTICATION,
+                    AUTHORIZATION_CODE_FLOW_INITIATION,
+                    AUTHORIZATION_RESPONSE,
+                    RP_INITIATED_LOGOUT,
+                    ABSTAIN -> OutboundSecurityResponse.abstain();
+        };
+    }
+
+    private OidcProtocolOperation classify(ProviderRequest providerRequest,
+                                           SecurityEnvironment outboundEnv,
+                                           EndpointConfig outboundConfig) {
+        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest, outboundEnv, outboundConfig);
+        return classifier.classify(context);
     }
 }

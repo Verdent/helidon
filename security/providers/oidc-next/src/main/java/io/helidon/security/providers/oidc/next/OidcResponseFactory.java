@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.SecurityResponse;
 
 final class OidcResponseFactory {
@@ -62,6 +63,27 @@ final class OidcResponseFactory {
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
                 .description("OIDC request cannot be classified by protocol operation")
+                .build();
+    }
+
+    OutboundSecurityResponse tokenPropagationNotImplemented() {
+        return OutboundSecurityResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .description("Token Propagation is not implemented yet")
+                .build();
+    }
+
+    OutboundSecurityResponse clientCredentialsGrantNotImplemented() {
+        return OutboundSecurityResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .description("Client Credentials Grant is not implemented yet")
+                .build();
+    }
+
+    OutboundSecurityResponse ambiguousOutboundRequest() {
+        return OutboundSecurityResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .description("OIDC outbound request cannot be classified by protocol operation")
                 .build();
     }
 }

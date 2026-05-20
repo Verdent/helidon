@@ -24,6 +24,7 @@ import java.util.ServiceLoader;
 import io.helidon.config.Config;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
@@ -147,12 +148,75 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 
+    @Test
+    void outboundWithoutPolicyAbstains() {
+        OidcProvider provider = OidcProvider.create();
+        ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
+        EndpointConfig outboundConfig = EndpointConfig.create();
+
+        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(false));
+        assertThat(provider.outboundSecurity(providerRequest, SecurityEnvironment.create(), outboundConfig).status(),
+                   is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void tokenPropagationIsClassifiedButDeferred() {
+        OidcProvider provider = OidcProvider.create();
+        ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
+        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagation());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
+                                                                      SecurityEnvironment.create(),
+                                                                      outboundConfig);
+
+        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Token Propagation is not implemented yet"));
+    }
+
+    @Test
+    void clientCredentialsGrantIsClassifiedButDeferred() {
+        OidcProvider provider = OidcProvider.create();
+        ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
+        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.clientCredentialsGrant());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
+                                                                      SecurityEnvironment.create(),
+                                                                      outboundConfig);
+
+        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant is not implemented yet"));
+    }
+
+    @Test
+    void outboundProtocolOperationAmbiguityFailsSafely() {
+        OidcProvider provider = OidcProvider.create();
+        ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
+        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
+                                                                      SecurityEnvironment.create(),
+                                                                      outboundConfig);
+
+        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""),
+                   is("OIDC outbound request cannot be classified by protocol operation"));
+    }
+
     private static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
         EndpointConfig.Builder endpointConfig = EndpointConfig.builder();
         if (endpointPolicy != null) {
             endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);
         }
         return new TestProviderRequest(endpointConfig.build(), environment);
+    }
+
+    private static EndpointConfig outboundConfig(OidcOutboundPolicy outboundPolicy) {
+        return EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class, outboundPolicy)
+                .build();
     }
 
     private static final class TestProviderRequest implements ProviderRequest {

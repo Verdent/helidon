@@ -38,6 +38,12 @@ final class OidcRequestClassifier {
                 .orElse(OidcProtocolOperation.ABSTAIN);
     }
 
+    OidcProtocolOperation classify(OidcOutboundRequestContext context) {
+        return context.outboundPolicy()
+                .map(this::classifyOutboundPolicy)
+                .orElse(OidcProtocolOperation.ABSTAIN);
+    }
+
     private OidcProtocolOperation classifyEndpointPolicy(OidcEndpointPolicy policy) {
         if (policy.bearerTokenAuthenticationEnabled() && policy.authorizationCodeFlowEnabled()) {
             return OidcProtocolOperation.AMBIGUOUS;
@@ -47,6 +53,19 @@ final class OidcRequestClassifier {
         }
         if (policy.authorizationCodeFlowEnabled()) {
             return OidcProtocolOperation.AUTHORIZATION_CODE_FLOW_INITIATION;
+        }
+        return OidcProtocolOperation.ABSTAIN;
+    }
+
+    private OidcProtocolOperation classifyOutboundPolicy(OidcOutboundPolicy policy) {
+        if (policy.tokenPropagationEnabled() && policy.clientCredentialsGrantEnabled()) {
+            return OidcProtocolOperation.AMBIGUOUS;
+        }
+        if (policy.tokenPropagationEnabled()) {
+            return OidcProtocolOperation.TOKEN_PROPAGATION;
+        }
+        if (policy.clientCredentialsGrantEnabled()) {
+            return OidcProtocolOperation.CLIENT_CREDENTIALS_GRANT;
         }
         return OidcProtocolOperation.ABSTAIN;
     }

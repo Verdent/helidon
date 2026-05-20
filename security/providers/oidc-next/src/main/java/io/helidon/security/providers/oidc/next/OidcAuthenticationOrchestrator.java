@@ -43,6 +43,7 @@ final class OidcAuthenticationOrchestrator {
             case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
             case AUTHORIZATION_CODE_FLOW_INITIATION -> responseFactory.authorizationCodeFlowNotImplemented();
             case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
+            case TOKEN_PROPAGATION, CLIENT_CREDENTIALS_GRANT -> AuthenticationResponse.abstain();
             case AMBIGUOUS -> responseFactory.ambiguousRequest();
             case ABSTAIN -> AuthenticationResponse.abstain();
         };

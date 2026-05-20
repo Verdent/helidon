@@ -35,6 +35,11 @@ final class OidcConfigSupport {
                 .flatMap(tenant -> outboundPolicy(tenant.outbound()));
     }
 
+    static Optional<OidcTokenTransportConfig> tokenTransport(OidcProviderConfig config) {
+        return defaultTenant(config)
+                .map(OidcTenantConfig::tokenTransport);
+    }
+
     private static Optional<OidcTenantConfig> defaultTenant(OidcProviderConfig config) {
         Map<String, OidcTenantConfig> tenants = config.tenants();
         if (tenants.isEmpty()) {
@@ -123,6 +128,8 @@ final class OidcConfigSupport {
                 "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow is enabled");
         require(tenant.issuer().isPresent() || endpoints.discoveryUri().isPresent(),
                 "issuer or discovery-uri must be configured when Authorization Code Flow is enabled");
+        require(authorizationCode.scopes().contains("openid"),
+                "openid scope must be configured when Authorization Code Flow is enabled");
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -135,7 +142,6 @@ final class OidcConfigSupport {
 
         OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
         require(tokenTransport.authorizationHeaderEnabled()
-                        || tokenTransport.formEncodedBodyEnabled()
                         || tokenTransport.queryParameterEnabled(),
                 "at least one Bearer Token transport must be enabled when Protected Resource is enabled");
         require(tokenValidation.method().isPresent(),
@@ -148,6 +154,8 @@ final class OidcConfigSupport {
                         "issuer must be configured when JWT access-token validation is enabled");
                 require(endpoints.jwksUri().isPresent() || endpoints.discoveryUri().isPresent(),
                         "jwks-uri or discovery-uri must be configured when JWT access-token validation is enabled");
+                require(tokenValidation.audience().isPresent(),
+                        "token-validation.audience must be configured when JWT access-token validation is enabled");
             }
             case INTROSPECTION -> {
                 require(endpoints.introspectionEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),

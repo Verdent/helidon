@@ -16,10 +16,19 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.ServiceLoader;
 
 import io.helidon.config.Config;
+import io.helidon.security.EndpointConfig;
+import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.ProviderRequest;
+import io.helidon.security.SecurityContext;
+import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.Subject;
 import io.helidon.security.spi.SecurityProviderService;
 
 import org.junit.jupiter.api.Test;
@@ -70,5 +79,129 @@ class OidcProviderTest {
         assertThat(provider.authenticate(null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
         assertThat(provider.isOutboundSupported(null, null, null), is(false));
         assertThat(provider.outboundSecurity(null, null, null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void protectedResourceMissingBearerTokenReturnsChallenge() {
+        OidcProvider provider = OidcProvider.create();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), SecurityEnvironment.create()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer")));
+    }
+
+    @Test
+    void bearerTokenEvidenceSelectsBearerTokenAuthenticationWhenBothOperationsArePossible() {
+        OidcProvider provider = OidcProvider.create();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .header("Authorization", "Bearer access-token")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(), environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Bearer Token validation is not implemented yet"));
+        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).startsWith("Bearer "), is(true));
+    }
+
+    @Test
+    void bothProtocolOperationsWithoutEvidenceFailsSafely() {
+        OidcProvider provider = OidcProvider.create();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(), SecurityEnvironment.create()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(400));
+        assertThat(response.description().orElse(""), is("OIDC request cannot be classified by protocol operation"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationIsClassifiedButDeferred() {
+        OidcProvider provider = OidcProvider.create();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.authorizationCodeFlow(), SecurityEnvironment.create()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(501));
+        assertThat(response.description().orElse(""), is("Authorization Code Flow initiation is not implemented yet"));
+        assertThat(response.responseHeaders().containsKey("Location"), is(false));
+    }
+
+    @Test
+    void authorizationResponseProcessingIsLeftToFeatureEndpoint() {
+        OidcProvider provider = OidcProvider.create();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .queryParam("code", "authorization-code")
+                .queryParam("state", "stored-state")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    private static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
+        EndpointConfig.Builder endpointConfig = EndpointConfig.builder();
+        if (endpointPolicy != null) {
+            endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);
+        }
+        return new TestProviderRequest(endpointConfig.build(), environment);
+    }
+
+    private static final class TestProviderRequest implements ProviderRequest {
+        private final EndpointConfig endpointConfig;
+        private final SecurityEnvironment environment;
+
+        private TestProviderRequest(EndpointConfig endpointConfig, SecurityEnvironment environment) {
+            this.endpointConfig = endpointConfig;
+            this.environment = environment;
+        }
+
+        @Override
+        public EndpointConfig endpointConfig() {
+            return endpointConfig;
+        }
+
+        @Override
+        public SecurityContext securityContext() {
+            return null;
+        }
+
+        @Override
+        public Optional<Subject> subject() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Subject> service() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SecurityEnvironment env() {
+            return environment;
+        }
+
+        @Override
+        public Optional<Object> getObject() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Object abacAttributeRaw(String key) {
+            return null;
+        }
+
+        @Override
+        public Collection<String> abacAttributeNames() {
+            return List.of();
+        }
     }
 }

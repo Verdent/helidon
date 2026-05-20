@@ -60,6 +60,7 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
+        assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
         assertThat(OidcPkceMethod.values().length, is(1));
         assertThat(OidcPkceMethod.values()[0], is(OidcPkceMethod.S256));
@@ -141,6 +142,41 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
+    }
+
+    @Test
+    void jwtValidationCanExplicitlyDisableAudienceValidation() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audienceValidationEnabled(false)))
+                .buildPrototype();
+
+        assertThat(tenant.protectedResource().tokenValidation().audience().isEmpty(), is(true));
+        assertThat(tenant.protectedResource().tokenValidation().audienceValidationEnabled(), is(false));
+    }
+
+    @Test
+    void audienceCanBeDisabledFromConfig() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "tenants.default.issuer", ISSUER.toString(),
+                        "tenants.default.endpoints.jwks-uri", JWKS_URI.toString(),
+                        "tenants.default.protected-resource.enabled", "true",
+                        "tenants.default.protected-resource.token-validation.method", "JWT",
+                        "tenants.default.protected-resource.token-validation.audience-validation-enabled", "false")))
+                .build();
+
+        OidcTokenValidationConfig tokenValidation = OidcProviderConfig.create(config)
+                .tenants()
+                .get("default")
+                .protectedResource()
+                .tokenValidation();
+
+        assertThat(tokenValidation.audience().isEmpty(), is(true));
+        assertThat(tokenValidation.audienceValidationEnabled(), is(false));
     }
 
     @Test
@@ -342,6 +378,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("client-credentials-grant-enabled"));
         assertThat(metadata.contains("form-encoded-body-enabled"), is(false));
         assertThat(metadata, containsString("pkce-required"));
+        assertThat(metadata, containsString("audience-validation-enabled"));
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant() {

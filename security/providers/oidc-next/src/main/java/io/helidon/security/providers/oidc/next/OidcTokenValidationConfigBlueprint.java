@@ -38,12 +38,21 @@ interface OidcTokenValidationConfigBlueprint {
     Optional<OidcTokenValidationMethod> method();
 
     /**
-     * Required access-token audience.
+     * Access-token audience expected when audience validation is required.
      *
-     * @return required audience
+     * @return expected audience
      */
     @Option.Configured
     Optional<String> audience();
+
+    /**
+     * Whether access-token audience validation is enabled.
+     *
+     * @return whether access-token audience validation is enabled
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean audienceValidationEnabled();
 
     /**
      * Allowed JWS algorithms for JWT access tokens.

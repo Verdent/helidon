@@ -16,6 +16,10 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Map;
+import java.util.Optional;
+
+import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
@@ -24,8 +28,52 @@ import io.helidon.security.spi.SecurityProvider;
 /**
  * Configuration of the new OIDC security provider.
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcConfigSupport.ProviderDecorator.class)
 @Prototype.Configured(value = OidcProviderService.PROVIDER_CONFIG_KEY, root = false)
 @Prototype.Provides({SecurityProvider.class, AuthenticationProvider.class, OutboundSecurityProvider.class})
 interface OidcProviderConfigBlueprint extends Prototype.Factory<OidcProvider> {
+
+    /**
+     * Provider name used by Helidon Security.
+     *
+     * @return provider name
+     */
+    @Option.Configured
+    @Option.Default(OidcProviderService.PROVIDER_CONFIG_KEY)
+    String providerName();
+
+    /**
+     * Whether authentication failures may be treated as optional by the provider.
+     *
+     * @return whether authentication is optional
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(false)
+    boolean optional();
+
+    /**
+     * Default tenant id.
+     *
+     * @return default tenant id
+     */
+    @Option.Configured
+    Optional<String> defaultTenant();
+
+    /**
+     * Tenant resolution configuration.
+     *
+     * @return tenant resolution configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcTenantResolutionConfig tenantResolution();
+
+    /**
+     * Configured tenants keyed by tenant id.
+     *
+     * @return tenants
+     */
+    @Option.Configured
+    @Option.Singular("tenant")
+    Map<String, OidcTenantConfig> tenants();
 }

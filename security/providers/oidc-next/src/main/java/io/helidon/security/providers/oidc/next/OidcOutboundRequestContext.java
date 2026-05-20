@@ -26,26 +26,31 @@ final class OidcOutboundRequestContext {
     private final ProviderRequest providerRequest;
     private final SecurityEnvironment outboundEnvironment;
     private final EndpointConfig outboundConfig;
+    private final OidcProviderConfig config;
 
     private OidcOutboundRequestContext(ProviderRequest providerRequest,
                                        SecurityEnvironment outboundEnvironment,
-                                       EndpointConfig outboundConfig) {
+                                       EndpointConfig outboundConfig,
+                                       OidcProviderConfig config) {
         this.providerRequest = providerRequest;
         this.outboundEnvironment = outboundEnvironment;
         this.outboundConfig = outboundConfig;
+        this.config = config;
     }
 
     static OidcOutboundRequestContext create(ProviderRequest providerRequest,
                                              SecurityEnvironment outboundEnvironment,
-                                             EndpointConfig outboundConfig) {
-        return new OidcOutboundRequestContext(providerRequest, outboundEnvironment, outboundConfig);
+                                             EndpointConfig outboundConfig,
+                                             OidcProviderConfig config) {
+        return new OidcOutboundRequestContext(providerRequest, outboundEnvironment, outboundConfig, config);
     }
 
     Optional<OidcOutboundPolicy> outboundPolicy() {
         if (outboundConfig == null) {
-            return Optional.empty();
+            return OidcConfigSupport.outboundPolicy(config);
         }
-        return outboundConfig.instance(OidcOutboundPolicy.class);
+        return outboundConfig.instance(OidcOutboundPolicy.class)
+                .or(() -> OidcConfigSupport.outboundPolicy(config));
     }
 
     ProviderRequest providerRequest() {

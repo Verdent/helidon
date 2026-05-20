@@ -25,6 +25,7 @@ import io.helidon.security.SecurityEnvironment;
 
 final class OidcRequestContext {
     private static final String AUTHORIZATION = "Authorization";
+    private static final String ACCESS_TOKEN = "access_token";
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final ProviderRequest providerRequest;
@@ -49,6 +50,17 @@ final class OidcRequestContext {
     }
 
     boolean bearerTokenPresent() {
+        OidcTokenTransportConfig tokenTransport = tokenTransport();
+        return (tokenTransport.authorizationHeaderEnabled() && bearerTokenHeaderPresent())
+                || (tokenTransport.queryParameterEnabled() && accessTokenQueryParameterPresent());
+    }
+
+    boolean authorizationResponsePresent() {
+        return environment().queryParams().contains("state")
+                && (environment().queryParams().contains("code") || environment().queryParams().contains("error"));
+    }
+
+    private boolean bearerTokenHeaderPresent() {
         List<String> values = environment().headers().getOrDefault(AUTHORIZATION, List.of());
         for (String value : values) {
             if (value.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())
@@ -59,9 +71,17 @@ final class OidcRequestContext {
         return false;
     }
 
-    boolean authorizationResponsePresent() {
-        return environment().queryParams().contains("state")
-                && (environment().queryParams().contains("code") || environment().queryParams().contains("error"));
+    private boolean accessTokenQueryParameterPresent() {
+        return environment().queryParams()
+                .first(ACCESS_TOKEN)
+                .asOptional()
+                .filter(token -> !token.isBlank())
+                .isPresent();
+    }
+
+    private OidcTokenTransportConfig tokenTransport() {
+        return OidcConfigSupport.tokenTransport(config)
+                .orElseGet(OidcTokenTransportConfig::create);
     }
 
     private EndpointConfig endpointConfig() {

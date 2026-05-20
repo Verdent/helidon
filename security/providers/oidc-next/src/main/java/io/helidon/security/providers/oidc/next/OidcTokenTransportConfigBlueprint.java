@@ -35,15 +35,6 @@ interface OidcTokenTransportConfigBlueprint {
     boolean authorizationHeaderEnabled();
 
     /**
-     * Whether form-encoded body transport is accepted for Bearer Token transport.
-     *
-     * @return whether form-encoded body transport is enabled
-     */
-    @Option.Configured
-    @Option.DefaultBoolean(false)
-    boolean formEncodedBodyEnabled();
-
-    /**
      * Whether URI query parameter transport is accepted for Bearer Token transport.
      *
      * @return whether query parameter transport is enabled

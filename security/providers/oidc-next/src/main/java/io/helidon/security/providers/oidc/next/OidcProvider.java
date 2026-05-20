@@ -35,9 +35,13 @@ import io.helidon.security.spi.OutboundSecurityProvider;
 public final class OidcProvider
         implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcProviderConfig> {
     private final OidcProviderConfig config;
+    private final OidcAuthenticationOrchestrator authentication;
+    private final OidcOutboundOrchestrator outbound;
 
     private OidcProvider(OidcProviderConfig config) {
         this.config = Objects.requireNonNull(config);
+        this.authentication = OidcAuthenticationOrchestrator.create(config);
+        this.outbound = OidcOutboundOrchestrator.create(config);
     }
 
     /**
@@ -99,20 +103,20 @@ public final class OidcProvider
 
     @Override
     public AuthenticationResponse authenticate(ProviderRequest providerRequest) {
-        return AuthenticationResponse.abstain();
+        return authentication.authenticate(providerRequest);
     }
 
     @Override
     public boolean isOutboundSupported(ProviderRequest providerRequest,
                                        SecurityEnvironment outboundEnv,
                                        EndpointConfig outboundConfig) {
-        return false;
+        return outbound.isSupported(providerRequest, outboundEnv, outboundConfig);
     }
 
     @Override
     public OutboundSecurityResponse outboundSecurity(ProviderRequest providerRequest,
                                                      SecurityEnvironment outboundEnv,
                                                      EndpointConfig outboundConfig) {
-        return OutboundSecurityResponse.abstain();
+        return outbound.secure(providerRequest, outboundEnv, outboundConfig);
     }
 }

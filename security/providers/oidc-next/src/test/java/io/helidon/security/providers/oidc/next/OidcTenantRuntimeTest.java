@@ -102,6 +102,38 @@ class OidcTenantRuntimeTest {
     }
 
     @Test
+    void tenantResolutionUsesConfiguredStrategyOrder() {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
+                .tenantResolution(it -> it.headerName("X-Tenant")
+                        .pathSegment(1)
+                        .hostTemplate("{tenant}.example.com"))
+                .putTenant("header", OidcTenantConfig.create())
+                .putTenant("path", OidcTenantConfig.create())
+                .putTenant("host", OidcTenantConfig.create())
+                .buildPrototype());
+
+        OidcTenantContext headerContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                 .header("X-Tenant", "header")
+                                                                                 .path("/tenants/path/resource")
+                                                                                 .targetUri(URI.create("https://host.example.com"))
+                                                                                 .build()))
+                .orElseThrow();
+        OidcTenantContext pathContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                               .path("/tenants/path/resource")
+                                                                               .targetUri(URI.create("https://host.example.com"))
+                                                                               .build()))
+                .orElseThrow();
+        OidcTenantContext hostContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                               .targetUri(URI.create("https://host.example.com"))
+                                                                               .build()))
+                .orElseThrow();
+
+        assertThat(headerContext.tenantId(), is("header"));
+        assertThat(pathContext.tenantId(), is("path"));
+        assertThat(hostContext.tenantId(), is("host"));
+    }
+
+    @Test
     void requestSpecificUnknownTenantDoesNotFallBackToDefaultTenant() {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
                 .defaultTenant("default")
@@ -128,6 +160,29 @@ class OidcTenantRuntimeTest {
                                                             .build()));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void customPoliciesRequireResolvedTenantContext() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .defaultTenant("default")
+                .tenantResolution(it -> it.headerName("X-Tenant"))
+                .putTenant("default", protectedResourceTenant())
+                .putTenant("api", protectedResourceTenant())
+                .buildPrototype());
+        ProviderRequest request = request(OidcEndpointPolicy.protectedResource(),
+                                          SecurityEnvironment.builder()
+                                                  .header("X-Tenant", "missing")
+                                                  .header("Authorization", "Bearer access-token")
+                                                  .build());
+        EndpointConfig outboundConfig = EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .build();
+
+        assertThat(provider.authenticate(request).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+        assertThat(provider.isOutboundSupported(request, SecurityEnvironment.create(), outboundConfig), is(false));
+        assertThat(provider.outboundSecurity(request, SecurityEnvironment.create(), outboundConfig).status(),
+                   is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 
     @Test
@@ -190,5 +245,9 @@ class OidcTenantRuntimeTest {
 
     private static ProviderRequest request(SecurityEnvironment environment) {
         return OidcProviderTest.request(null, environment);
+    }
+
+    private static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
+        return OidcProviderTest.request(endpointPolicy, environment);
     }
 }

@@ -84,7 +84,7 @@ class OidcProviderTest {
 
     @Test
     void protectedResourceMissingBearerTokenReturnsChallenge() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
 
         AuthenticationResponse response = provider.authenticate(
                 request(OidcEndpointPolicy.protectedResource(), SecurityEnvironment.create()));
@@ -96,7 +96,7 @@ class OidcProviderTest {
 
     @Test
     void bearerTokenEvidenceSelectsBearerTokenAuthenticationWhenBothOperationsArePossible() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .header("Authorization", "Bearer access-token")
                 .build();
@@ -112,7 +112,7 @@ class OidcProviderTest {
 
     @Test
     void bothProtocolOperationsWithoutEvidenceFailsSafely() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
 
         AuthenticationResponse response = provider.authenticate(
                 request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(), SecurityEnvironment.create()));
@@ -124,7 +124,7 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowInitiationIsClassifiedButDeferred() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
 
         AuthenticationResponse response = provider.authenticate(
                 request(OidcEndpointPolicy.authorizationCodeFlow(), SecurityEnvironment.create()));
@@ -161,7 +161,7 @@ class OidcProviderTest {
 
     @Test
     void tokenPropagationIsClassifiedButDeferred() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagation());
 
@@ -176,7 +176,7 @@ class OidcProviderTest {
 
     @Test
     void clientCredentialsGrantIsClassifiedButDeferred() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.clientCredentialsGrant());
 
@@ -191,7 +191,7 @@ class OidcProviderTest {
 
     @Test
     void outboundProtocolOperationAmbiguityFailsSafely() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
 
@@ -217,6 +217,12 @@ class OidcProviderTest {
         return EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, outboundPolicy)
                 .build();
+    }
+
+    private static OidcProvider providerWithTenant() {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", OidcTenantConfig.create())
+                                           .buildPrototype());
     }
 
     private static final class TestProviderRequest implements ProviderRequest {

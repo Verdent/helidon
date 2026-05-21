@@ -63,6 +63,17 @@ interface OidcTenantConfigBlueprint {
     Optional<String> clientSecret();
 
     /**
+     * Token Endpoint client authentication method.
+     * <p>
+     * When omitted, the provider uses {@link OidcClientAuthenticationMethod#CLIENT_SECRET_BASIC} if
+     * {@link #clientSecret()} is configured, otherwise {@link OidcClientAuthenticationMethod#NONE}.
+     *
+     * @return Token Endpoint client authentication method
+     */
+    @Option.Configured("token-endpoint-auth-method")
+    Optional<OidcClientAuthenticationMethod> tokenEndpointAuthenticationMethod();
+
+    /**
      * OpenID Provider endpoint and discovery settings.
      *
      * @return endpoint configuration

@@ -41,6 +41,7 @@ class OidcProviderConfigTest {
     private static final URI DISCOVERY_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final String AUDIENCE = "api://default";
 
@@ -403,7 +404,7 @@ class OidcProviderConfigTest {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
-                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
@@ -414,11 +415,54 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowRejectsInsecureAuthorizationEndpoint() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-endpoint-uri must use https"));
+    }
+
+    @Test
+    void endpointTlsRequirementCanBeDisabledForAuthorizationEndpoint() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsAuthorizationEndpointWithFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize#fragment"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-endpoint-uri must not include a fragment"));
+    }
+
+    @Test
     void authorizationCodeFlowCanExplicitlyDisablePkce() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
-                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)

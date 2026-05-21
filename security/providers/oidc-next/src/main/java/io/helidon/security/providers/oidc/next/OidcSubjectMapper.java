@@ -47,7 +47,17 @@ final class OidcSubjectMapper {
         return providerProfile;
     }
 
-    Subject map(OidcValidatedJwt validatedToken) {
+    Subject map(OidcValidatedAccessToken validatedToken) {
+        if (validatedToken instanceof OidcValidatedJwt validatedJwt) {
+            return mapJwt(validatedJwt);
+        }
+        if (validatedToken instanceof OidcValidatedIntrospection validatedIntrospection) {
+            return mapIntrospection(validatedIntrospection);
+        }
+        throw new IllegalArgumentException("Unsupported validated access token type: " + validatedToken.getClass());
+    }
+
+    private Subject mapJwt(OidcValidatedJwt validatedToken) {
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
         String subject = jwt.subject().orElseThrow();
@@ -75,7 +85,7 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
-    Subject map(OidcValidatedIntrospection validatedToken) {
+    private Subject mapIntrospection(OidcValidatedIntrospection validatedToken) {
         String principalId = validatedToken.principalId().orElseThrow();
         Principal.Builder principalBuilder = Principal.builder()
                 .name(validatedToken.principalName().orElse(principalId))

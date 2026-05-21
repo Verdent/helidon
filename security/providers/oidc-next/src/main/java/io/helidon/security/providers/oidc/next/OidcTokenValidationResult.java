@@ -19,27 +19,20 @@ package io.helidon.security.providers.oidc.next;
 import java.util.Optional;
 
 final class OidcTokenValidationResult {
-    private final OidcValidatedJwt validatedJwt;
-    private final OidcValidatedIntrospection validatedIntrospection;
+    private final OidcValidatedAccessToken validatedToken;
     private final String errorDescription;
     private final Throwable cause;
 
-    private OidcTokenValidationResult(OidcValidatedJwt validatedJwt,
-                                      OidcValidatedIntrospection validatedIntrospection,
+    private OidcTokenValidationResult(OidcValidatedAccessToken validatedToken,
                                       String errorDescription,
                                       Throwable cause) {
-        this.validatedJwt = validatedJwt;
-        this.validatedIntrospection = validatedIntrospection;
+        this.validatedToken = validatedToken;
         this.errorDescription = errorDescription;
         this.cause = cause;
     }
 
-    static OidcTokenValidationResult success(OidcValidatedJwt validatedJwt) {
-        return new OidcTokenValidationResult(validatedJwt, null, null, null);
-    }
-
-    static OidcTokenValidationResult success(OidcValidatedIntrospection validatedIntrospection) {
-        return new OidcTokenValidationResult(null, validatedIntrospection, null, null);
+    static OidcTokenValidationResult success(OidcValidatedAccessToken validatedToken) {
+        return new OidcTokenValidationResult(validatedToken, null, null);
     }
 
     static OidcTokenValidationResult failure(String errorDescription) {
@@ -47,19 +40,15 @@ final class OidcTokenValidationResult {
     }
 
     static OidcTokenValidationResult failure(String errorDescription, Throwable cause) {
-        return new OidcTokenValidationResult(null, null, errorDescription, cause);
+        return new OidcTokenValidationResult(null, errorDescription, cause);
     }
 
     boolean succeeded() {
-        return validatedJwt != null || validatedIntrospection != null;
+        return validatedToken != null;
     }
 
-    Optional<OidcValidatedJwt> validatedJwt() {
-        return Optional.ofNullable(validatedJwt);
-    }
-
-    Optional<OidcValidatedIntrospection> validatedIntrospection() {
-        return Optional.ofNullable(validatedIntrospection);
+    Optional<OidcValidatedAccessToken> validatedToken() {
+        return Optional.ofNullable(validatedToken);
     }
 
     Optional<String> errorDescription() {

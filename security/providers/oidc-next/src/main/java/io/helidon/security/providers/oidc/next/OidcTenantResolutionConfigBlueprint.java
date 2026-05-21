@@ -44,6 +44,14 @@ interface OidcTenantResolutionConfigBlueprint {
     Optional<Integer> pathSegment();
 
     /**
+     * Request path template containing the tenant id as a single segment.
+     *
+     * @return tenant path template
+     */
+    @Option.Configured
+    Optional<String> pathTemplate();
+
+    /**
      * Host template containing the tenant id.
      *
      * @return tenant host template

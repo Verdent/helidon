@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
@@ -98,20 +100,30 @@ final class OidcConfigSupport {
             implements Prototype.BuilderDecorator<OidcTenantResolutionConfig.BuilderBase<?, ?>> {
         @Override
         public void decorate(OidcTenantResolutionConfig.BuilderBase<?, ?> target) {
-            target.headerName().ifPresent(headerName -> require(!headerName.isBlank() && headerName.equals(headerName.strip()),
-                                                                "tenant-resolution.header-name must not be blank or padded"));
-            target.pathSegment().ifPresent(pathSegment -> require(pathSegment >= 0,
-                                                                  "tenant-resolution.path-segment must not be negative"));
+            target.headerName()
+                    .filter(headerName -> headerName.isBlank() || !headerName.equals(headerName.strip()))
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException("tenant-resolution.header-name must not be blank or padded");
+                    });
+            target.pathSegment()
+                    .filter(pathSegment -> pathSegment < 0)
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException("tenant-resolution.path-segment must not be negative");
+                    });
             target.pathTemplate().ifPresent(pathTemplate -> {
-                require(!pathTemplate.isBlank() && pathTemplate.equals(pathTemplate.strip()),
-                        "tenant-resolution.path-template must not be blank or padded");
+                if (pathTemplate.isBlank() || !pathTemplate.equals(pathTemplate.strip())) {
+                    throw new IllegalArgumentException("tenant-resolution.path-template must not be blank or padded");
+                }
                 validateSingleTenantVariable(pathTemplate, "tenant-resolution.path-template");
-                require(pathTemplateSegments(pathTemplate).contains(TENANT_VARIABLE),
-                        "tenant-resolution.path-template must contain {tenant} as a complete path segment");
+                if (!pathTemplateSegments(pathTemplate).contains(TENANT_VARIABLE)) {
+                    throw new IllegalArgumentException(
+                            "tenant-resolution.path-template must contain {tenant} as a complete path segment");
+                }
             });
             target.hostTemplate().ifPresent(hostTemplate -> {
-                require(!hostTemplate.isBlank() && hostTemplate.equals(hostTemplate.strip()),
-                        "tenant-resolution.host-template must not be blank or padded");
+                if (hostTemplate.isBlank() || !hostTemplate.equals(hostTemplate.strip())) {
+                    throw new IllegalArgumentException("tenant-resolution.host-template must not be blank or padded");
+                }
                 validateSingleTenantVariable(hostTemplate, "tenant-resolution.host-template");
             });
         }
@@ -119,13 +131,14 @@ final class OidcConfigSupport {
 
     private static void validateSingleTenantVariable(String template, String configKey) {
         int variableIndex = template.indexOf(TENANT_VARIABLE);
-        require(variableIndex != -1, configKey + " must contain exactly one {tenant} placeholder");
-        require(template.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) == -1,
-                configKey + " must contain exactly one {tenant} placeholder");
+        if (variableIndex == -1
+                || template.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) != -1) {
+            throw new IllegalArgumentException(configKey + " must contain exactly one {tenant} placeholder");
+        }
     }
 
-    private static java.util.List<String> pathTemplateSegments(String pathTemplate) {
-        return java.util.Arrays.stream(pathTemplate.split("/"))
+    private static List<String> pathTemplateSegments(String pathTemplate) {
+        return Arrays.stream(pathTemplate.split("/"))
                 .filter(segment -> !segment.isEmpty())
                 .toList();
     }
@@ -137,17 +150,37 @@ final class OidcConfigSupport {
             return;
         }
 
-        require(tenant.clientId().isPresent(), "client-id must be configured when Authorization Code Flow is enabled");
-        require(authorizationCode.redirectionEndpointUri().isPresent(),
-                "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled");
-        require(endpoints.authorizationEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),
-                "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow is enabled");
-        require(endpoints.tokenEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),
-                "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow is enabled");
-        require(tenant.issuer().isPresent() || endpoints.discoveryUri().isPresent(),
-                "issuer or discovery-uri must be configured when Authorization Code Flow is enabled");
-        require(authorizationCode.scopes().contains("openid"),
-                "openid scope must be configured when Authorization Code Flow is enabled");
+        /*
+         * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
+         * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+         * Quotes: "MUST contain the `openid` scope value";
+         * "OAuth 2.0 Client Identifier valid at the Authorization Server";
+         * "Redirection URI to which the response will be sent".
+         */
+        tenant.clientId()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-id must be configured when Authorization Code Flow is enabled"));
+        authorizationCode.redirectionEndpointUri()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
+        endpoints.authorizationEndpointUri()
+                .or(() -> endpoints.discoveryUri())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
+                                + "is enabled"));
+        endpoints.tokenEndpointUri()
+                .or(() -> endpoints.discoveryUri())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
+                                + "is enabled"));
+        tenant.issuer()
+                .or(() -> endpoints.discoveryUri())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "issuer or discovery-uri must be configured when Authorization Code Flow is enabled"));
+        if (!authorizationCode.scopes().contains("openid")) {
+            throw new IllegalArgumentException(
+                    "openid scope must be configured when Authorization Code Flow is enabled");
+        }
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -159,65 +192,96 @@ final class OidcConfigSupport {
         }
 
         OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
-        require(tokenTransport.authorizationHeaderEnabled()
-                        || tokenTransport.queryParameterEnabled(),
-                "at least one Bearer Token transport must be enabled when Protected Resource is enabled");
-        require(tokenValidation.method().isPresent(),
-                "token-validation.method must be configured when Protected Resource is enabled");
+        if (!tokenTransport.authorizationHeaderEnabled() && !tokenTransport.queryParameterEnabled()) {
+            throw new IllegalArgumentException(
+                    "at least one Bearer Token transport must be enabled when Protected Resource is enabled");
+        }
+        OidcTokenValidationMethod method = tokenValidation.method()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "token-validation.method must be configured when Protected Resource is enabled"));
 
-        tokenValidation.method().ifPresent(method -> {
-            switch (method) {
-            case JWT -> {
-                require(tenant.issuer().isPresent(),
-                        "issuer must be configured when JWT access-token validation is enabled");
-                require(endpoints.jwksUri().isPresent(),
-                        "jwks-uri must be configured when JWT access-token validation is enabled");
-                endpoints.jwksUri().ifPresent(OidcJwkSetLoader::validateJwkSetUri);
-                if (tokenValidation.audienceValidationEnabled()) {
-                    require(tokenValidation.audience().isPresent(),
-                            "token-validation.audience must be configured when JWT access-token validation is enabled");
-                }
+        switch (method) {
+        case JWT -> {
+            tenant.issuer()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "issuer must be configured when JWT access-token validation is enabled"));
+            endpoints.jwksUri()
+                    .map(jwksUri -> {
+                        OidcJwkSetLoader.validateJwkSetUri(jwksUri);
+                        return jwksUri;
+                    })
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "jwks-uri must be configured when JWT access-token validation is enabled"));
+            if (tokenValidation.audienceValidationEnabled()) {
+                /*
+                 * Spec: RFC 7519, 4.1.3 "aud" (Audience) Claim
+                 * https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.3
+                 * Quote: "then the JWT MUST be rejected".
+                 */
+                tokenValidation.audience()
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "token-validation.audience must be configured when JWT access-token validation "
+                                        + "is enabled"));
             }
-            case INTROSPECTION -> {
-                require(endpoints.introspectionEndpointUri().isPresent(),
-                        "introspection-endpoint-uri must be configured when introspection is enabled");
-                endpoints.introspectionEndpointUri()
-                        .ifPresent(OidcIntrospectionAccessTokenValidator::validateIntrospectionEndpointUri);
-                require(tenant.clientId().isPresent(),
-                        "client-id must be configured when introspection is enabled");
-                require(tenant.clientSecret().isPresent(),
-                        "client-secret must be configured when introspection is enabled");
-                if (tokenValidation.audienceValidationEnabled()) {
-                    require(tokenValidation.audience().isPresent(),
-                            "token-validation.audience must be configured when introspection is enabled");
-                }
+        }
+        case INTROSPECTION -> {
+            /*
+             * Spec: RFC 7662, 2.1 Introspection Request
+             * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.1
+             * Quote: "MUST also require some form of authorization".
+             */
+            endpoints.introspectionEndpointUri()
+                    .map(introspectionEndpointUri -> {
+                        OidcIntrospectionAccessTokenValidator
+                                .validateIntrospectionEndpointUri(introspectionEndpointUri);
+                        return introspectionEndpointUri;
+                    })
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "introspection-endpoint-uri must be configured when introspection is enabled"));
+            tenant.clientId()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "client-id must be configured when introspection is enabled"));
+            tenant.clientSecret()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "client-secret must be configured when introspection is enabled"));
+            if (tokenValidation.audienceValidationEnabled()) {
+                tokenValidation.audience()
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "token-validation.audience must be configured when introspection is enabled"));
             }
-            default -> throw new IllegalStateException("Unexpected token validation method: " + method);
-            }
-        });
+        }
+        default -> throw new IllegalStateException("Unexpected token validation method: " + method);
+        }
     }
 
     private static void validateOutbound(OidcTenantConfig.BuilderBase<?, ?> tenant,
                                          OidcOutboundConfig outbound,
                                          OidcEndpointConfig endpoints) {
-        require(!(outbound.tokenPropagationEnabled() && outbound.clientCredentialsGrantEnabled()),
-                "Token Propagation and Client Credentials Grant cannot both be enabled without target selection");
+        if (outbound.tokenPropagationEnabled() && outbound.clientCredentialsGrantEnabled()) {
+            throw new IllegalArgumentException(
+                    "Token Propagation and Client Credentials Grant cannot both be enabled without target selection");
+        }
 
         if (!outbound.clientCredentialsGrantEnabled()) {
             return;
         }
 
-        require(tenant.clientId().isPresent(),
-                "client-id must be configured when Client Credentials Grant is enabled");
-        require(tenant.clientSecret().isPresent(),
-                "client-secret must be configured when Client Credentials Grant is enabled");
-        require(endpoints.tokenEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),
-                "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant is enabled");
-    }
-
-    private static void require(boolean expression, String message) {
-        if (!expression) {
-            throw new IllegalArgumentException(message);
-        }
+        /*
+         * Spec: RFC 6749, 4.4 Client Credentials Grant and 4.4.2 Access Token Request
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
+         * Quotes: "MUST only be used by confidential clients"; "client MUST authenticate".
+         */
+        tenant.clientId()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-id must be configured when Client Credentials Grant is enabled"));
+        tenant.clientSecret()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-secret must be configured when Client Credentials Grant is enabled"));
+        endpoints.tokenEndpointUri()
+                .or(() -> endpoints.discoveryUri())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant "
+                                + "is enabled"));
     }
 }

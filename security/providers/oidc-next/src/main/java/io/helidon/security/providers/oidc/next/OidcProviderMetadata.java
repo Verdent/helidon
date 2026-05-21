@@ -122,13 +122,16 @@ final class OidcProviderMetadata {
     }
 
     private void validateDiscoveredIssuer(OidcProviderMetadata discoveredMetadata) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 4.3 OpenID Provider Configuration Validation
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation
+         * Quotes: "`issuer` REQUIRED"; "Issuer value returned MUST be identical to the Issuer URL".
+         */
         URI discoveredIssuer = discoveredMetadata.issuer()
                 .orElseThrow(() -> new IllegalArgumentException("discovered issuer must be present"));
-        if (issuer.isEmpty()) {
-            return;
-        }
-        if (!issuer.get().equals(discoveredIssuer)) {
-            throw new IllegalArgumentException("discovered issuer must match configured issuer");
-        }
+        issuer.filter(configuredIssuer -> !configuredIssuer.equals(discoveredIssuer))
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException("discovered issuer must match configured issuer");
+                });
     }
 }

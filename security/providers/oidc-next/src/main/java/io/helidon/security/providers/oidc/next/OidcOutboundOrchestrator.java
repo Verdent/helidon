@@ -45,14 +45,14 @@ final class OidcOutboundOrchestrator {
     boolean isSupported(ProviderRequest providerRequest,
                         SecurityEnvironment outboundEnv,
                         EndpointConfig outboundConfig) {
-        Optional<OidcTenantConfig> tenantConfig = tenantRuntimeRegistry.tenantConfig(providerRequest);
-        if (tenantConfig.isEmpty()) {
-            return false;
-        }
-        if (outboundConfig != null && outboundConfig.instance(OidcOutboundPolicy.class).isPresent()) {
-            return true;
-        }
-        return OidcConfigSupport.outboundPolicy(tenantConfig.get()).isPresent();
+        return tenantRuntimeRegistry.tenantConfig(providerRequest)
+                .map(tenantConfig -> {
+                    if (outboundConfig != null && outboundConfig.instance(OidcOutboundPolicy.class).isPresent()) {
+                        return true;
+                    }
+                    return OidcConfigSupport.outboundPolicy(tenantConfig).isPresent();
+                })
+                .orElse(false);
     }
 
     OutboundSecurityResponse secure(ProviderRequest providerRequest,

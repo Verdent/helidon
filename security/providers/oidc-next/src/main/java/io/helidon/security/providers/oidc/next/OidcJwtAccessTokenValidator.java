@@ -67,7 +67,9 @@ final class OidcJwtAccessTokenValidator {
             return OidcTokenValidationResult.failure("Bearer Token signature keys are unavailable", e);
         }
 
-        Optional<String> expectedIssuer = tenantContext.metadata().issuer().map(Object::toString);
+        Optional<String> expectedIssuer = tenantContext.metadata()
+                .issuer()
+                .map(Object::toString);
         if (expectedIssuer.isEmpty()) {
             return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
         }
@@ -76,7 +78,7 @@ final class OidcJwtAccessTokenValidator {
             return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
         }
 
-        Errors claimErrors = claimValidator(policy, expectedIssuer.get(), expectedAudience).validate(jwt);
+        Errors claimErrors = claimValidator(policy, expectedIssuer.orElseThrow(), expectedAudience).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcTokenValidationResult.failure("Bearer Token JWT claims are invalid");
         }
@@ -121,7 +123,7 @@ final class OidcJwtAccessTokenValidator {
                     }
                 }, "sub");
         if (policy.audienceValidationEnabled()) {
-            builder.addAudienceValidator(expectedAudience.orElseThrow());
+            expectedAudience.ifPresent(builder::addAudienceValidator);
         }
         return builder.build();
     }

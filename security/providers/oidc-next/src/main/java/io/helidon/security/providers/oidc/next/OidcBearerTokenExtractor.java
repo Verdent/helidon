@@ -69,13 +69,15 @@ final class OidcBearerTokenExtractor {
             if (token.isEmpty()) {
                 continue;
             }
-            if (malformedToken(token.get())) {
+            String bearerToken = token.orElseThrow();
+            if (malformedToken(bearerToken)) {
                 return OidcBearerTokenExtractionResult.invalidRequest("Malformed Bearer Token in Authorization header");
             }
-            tokens.add(token.get());
+            tokens.add(bearerToken);
         }
         if (tokens.size() > 1) {
-            return OidcBearerTokenExtractionResult.invalidRequest("Multiple Bearer Tokens found in Authorization header");
+            return OidcBearerTokenExtractionResult.invalidRequest(
+                    "Multiple Bearer Tokens found in Authorization header");
         }
         return tokens.stream()
                 .findFirst()
@@ -113,7 +115,8 @@ final class OidcBearerTokenExtractor {
             return OidcBearerTokenExtractionResult.empty();
         }
         List<String> tokens = queryParams.all(ACCESS_TOKEN);
-        int accessTokenOccurrences = queryParameterOccurrenceCount(rawQuery.orElseGet(queryParams::rawValue), ACCESS_TOKEN);
+        int accessTokenOccurrences = queryParameterOccurrenceCount(rawQuery.orElseGet(queryParams::rawValue),
+                                                                   ACCESS_TOKEN);
         if (tokens.size() > 1 || accessTokenOccurrences > 1) {
             return OidcBearerTokenExtractionResult.invalidRequest("Multiple Bearer Tokens found in query parameter");
         }

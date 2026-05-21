@@ -32,27 +32,20 @@ import io.helidon.webclient.api.WebClient;
 final class OidcEndpointClient {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-    private final String tenantId;
     private final OidcTenantConfig tenantConfig;
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
 
-    private OidcEndpointClient(String tenantId,
-                               OidcTenantConfig tenantConfig,
+    private OidcEndpointClient(OidcTenantConfig tenantConfig,
                                OidcProviderMetadata metadata,
                                WebClient webClient) {
-        this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.metadata = metadata;
         this.webClient = webClient;
     }
 
-    static OidcEndpointClient create(String tenantId, OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        return new OidcEndpointClient(tenantId, tenantConfig, metadata, WebClient.create());
-    }
-
-    String tenantId() {
-        return tenantId;
+    static OidcEndpointClient create(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        return new OidcEndpointClient(tenantConfig, metadata, WebClient.create());
     }
 
     Optional<URI> authorizationEndpointUri() {

@@ -49,7 +49,7 @@ final class OidcRequestContext {
             return Optional.empty();
         }
 
-        EndpointConfig endpointConfig = endpointConfig();
+        EndpointConfig endpointConfig = providerRequest.endpointConfig();
         if (endpointConfig == null) {
             return tenantContext.flatMap(OidcTenantContext::endpointPolicy);
         }
@@ -138,23 +138,16 @@ final class OidcRequestContext {
             bearerTokenExtractionResult = OidcBearerTokenExtractionResult.empty();
             return bearerTokenExtractionResult;
         }
-        bearerTokenExtractionResult = OidcBearerTokenExtractor.extract(environment(), tokenTransport());
+        OidcTokenTransportConfig tokenTransport = tenantContext
+                .map(OidcTenantContext::tokenTransport)
+                .orElseGet(OidcTokenTransportConfig::create);
+        bearerTokenExtractionResult = OidcBearerTokenExtractor.extract(environment(), tokenTransport);
         return bearerTokenExtractionResult;
     }
 
     boolean authorizationResponsePresent() {
         return environment().queryParams().contains("state")
                 && (environment().queryParams().contains("code") || environment().queryParams().contains("error"));
-    }
-
-    private OidcTokenTransportConfig tokenTransport() {
-        return tenantContext
-                .map(OidcTenantContext::tokenTransport)
-                .orElseGet(OidcTokenTransportConfig::create);
-    }
-
-    private EndpointConfig endpointConfig() {
-        return providerRequest.endpointConfig();
     }
 
 }

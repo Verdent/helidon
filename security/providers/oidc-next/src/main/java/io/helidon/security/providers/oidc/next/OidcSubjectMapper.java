@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Arrays;
+
 import io.helidon.json.JsonObject;
 import io.helidon.security.Grant;
 import io.helidon.security.Principal;
@@ -55,6 +57,33 @@ final class OidcSubjectMapper {
             return mapIntrospection(validatedIntrospection);
         }
         throw new IllegalArgumentException("Unsupported validated access token type: " + validatedToken.getClass());
+    }
+
+    Subject map(OidcLocalAuthenticationResult authenticationResult) {
+        Jwt idToken = authenticationResult.idToken().jwt();
+        String subject = idToken.subject().orElseThrow();
+        Principal principal = principal(idToken, subject);
+
+        TokenCredential.Builder credentialBuilder = TokenCredential.builder()
+                .token(authenticationResult.accessToken());
+        idToken.issuer().ifPresent(credentialBuilder::issuer);
+        authenticationResult.accessTokenExpiresAt().ifPresent(credentialBuilder::expTime);
+
+        Subject.Builder subjectBuilder = Subject.builder()
+                .principal(principal)
+                .addPublicCredential(TokenCredential.class, credentialBuilder.build());
+
+        idToken.userGroups()
+                .ifPresent(groups -> groups.forEach(group -> subjectBuilder.addGrant(Role.create(group))));
+        authenticationResult.scope()
+                .stream()
+                .flatMap(scope -> Arrays.stream(scope.split(" ")))
+                .filter(scope -> !scope.isBlank())
+                .forEach(scope -> subjectBuilder.addGrant(Grant.builder()
+                                                          .name(scope)
+                                                          .type("scope")
+                                                          .build()));
+        return subjectBuilder.build();
     }
 
     private Subject mapJwt(OidcValidatedJwt validatedToken) {

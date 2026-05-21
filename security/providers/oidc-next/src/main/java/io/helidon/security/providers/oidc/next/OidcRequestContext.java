@@ -16,8 +16,13 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import io.helidon.http.HeaderNames;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
@@ -26,6 +31,7 @@ final class OidcRequestContext {
     private final ProviderRequest providerRequest;
     private final Optional<OidcTenantContext> tenantContext;
     private OidcBearerTokenExtractionResult bearerTokenExtractionResult;
+    private Map<String, List<String>> cookies;
 
     private OidcRequestContext(ProviderRequest providerRequest,
                                OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
@@ -75,6 +81,53 @@ final class OidcRequestContext {
 
     SecurityEnvironment environment() {
         return providerRequest.env();
+    }
+
+    List<String> cookieValues(String name) {
+        return cookies().getOrDefault(name, List.of());
+    }
+
+    private Map<String, List<String>> cookies() {
+        if (cookies != null) {
+            return cookies;
+        }
+        Map<String, List<String>> parsedCookies = new LinkedHashMap<>();
+        for (String cookieHeaderValue : headerValues(HeaderNames.COOKIE.defaultCase())) {
+            parseCookieHeader(cookieHeaderValue, parsedCookies);
+        }
+        cookies = Map.copyOf(parsedCookies);
+        return cookies;
+    }
+
+    private List<String> headerValues(String name) {
+        List<String> exact = environment().headers().get(name);
+        if (exact != null) {
+            return exact;
+        }
+        List<String> values = new ArrayList<>();
+        environment().headers()
+                .forEach((headerName, headerValues) -> {
+                    if (name.equalsIgnoreCase(headerName)) {
+                        values.addAll(headerValues);
+                    }
+                });
+        return values;
+    }
+
+    private void parseCookieHeader(String headerValue, Map<String, List<String>> result) {
+        for (String token : headerValue.split(";")) {
+            int valueStart = token.indexOf('=');
+            if (valueStart <= 0) {
+                continue;
+            }
+            String name = token.substring(0, valueStart).trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            String value = token.substring(valueStart + 1).trim();
+            result.computeIfAbsent(name, ignored -> new ArrayList<>(1))
+                    .add(value);
+        }
     }
 
     private OidcBearerTokenExtractionResult bearerTokenExtractionResult() {

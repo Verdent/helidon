@@ -1,0 +1,134 @@
+/*
+ * Copyright (c) 2026 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.helidon.security.providers.oidc.next;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
+
+final class OidcLocalAuthenticationResult {
+    private final String tenantId;
+    private final OidcValidatedIdToken idToken;
+    private final String accessToken;
+    private final String tokenType;
+    private final String refreshToken;
+    private final String scope;
+    private final Instant createdAt;
+    private final Instant expiresAt;
+    private final Instant accessTokenExpiresAt;
+
+    private OidcLocalAuthenticationResult(String tenantId,
+                                          OidcValidatedIdToken idToken,
+                                          String accessToken,
+                                          String tokenType,
+                                          String refreshToken,
+                                          String scope,
+                                          Instant createdAt,
+                                          Instant expiresAt,
+                                          Instant accessTokenExpiresAt) {
+        this.tenantId = tenantId;
+        this.idToken = idToken;
+        this.accessToken = accessToken;
+        this.tokenType = tokenType;
+        this.refreshToken = refreshToken;
+        this.scope = scope;
+        this.createdAt = createdAt;
+        this.expiresAt = expiresAt;
+        this.accessTokenExpiresAt = accessTokenExpiresAt;
+    }
+
+    static OidcLocalAuthenticationResult create(String tenantId,
+                                                OidcTokenResponse tokenResponse,
+                                                OidcValidatedIdToken idToken,
+                                                Instant createdAt,
+                                                Duration maxLifetime) {
+        Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
+        Instant maxExpiresAt = createdAt.plus(maxLifetime);
+        return create(tenantId,
+                      idToken,
+                      tokenResponse.accessToken(),
+                      tokenResponse.tokenType(),
+                      tokenResponse.refreshToken().orElse(null),
+                      tokenResponse.scope().orElse(null),
+                      createdAt,
+                      earliest(idTokenExpiresAt, maxExpiresAt),
+                      tokenResponse.expiresIn().map(createdAt::plusSeconds).orElse(null));
+    }
+
+    static OidcLocalAuthenticationResult create(String tenantId,
+                                                OidcValidatedIdToken idToken,
+                                                String accessToken,
+                                                String tokenType,
+                                                String refreshToken,
+                                                String scope,
+                                                Instant createdAt,
+                                                Instant expiresAt,
+                                                Instant accessTokenExpiresAt) {
+        return new OidcLocalAuthenticationResult(tenantId,
+                                                 idToken,
+                                                 accessToken,
+                                                 tokenType,
+                                                 refreshToken,
+                                                 scope,
+                                                 createdAt,
+                                                 expiresAt,
+                                                 accessTokenExpiresAt);
+    }
+
+    String tenantId() {
+        return tenantId;
+    }
+
+    OidcValidatedIdToken idToken() {
+        return idToken;
+    }
+
+    String accessToken() {
+        return accessToken;
+    }
+
+    String tokenType() {
+        return tokenType;
+    }
+
+    Optional<String> refreshToken() {
+        return Optional.ofNullable(refreshToken);
+    }
+
+    Optional<String> scope() {
+        return Optional.ofNullable(scope);
+    }
+
+    Instant createdAt() {
+        return createdAt;
+    }
+
+    Instant expiresAt() {
+        return expiresAt;
+    }
+
+    Optional<Instant> accessTokenExpiresAt() {
+        return Optional.ofNullable(accessTokenExpiresAt);
+    }
+
+    private static Instant earliest(Instant first, Instant second) {
+        if (first.isBefore(second)) {
+            return first;
+        }
+        return second;
+    }
+}

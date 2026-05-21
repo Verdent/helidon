@@ -29,8 +29,9 @@ final class OidcConfigSupport {
     private OidcConfigSupport() {
     }
 
-    private static Optional<OidcEndpointPolicy> endpointPolicy(OidcProtectedResourceConfig protectedResource,
-                                                               OidcAuthorizationCodeConfig authorizationCode) {
+    static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant) {
+        OidcProtectedResourceConfig protectedResource = tenant.protectedResource();
+        OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode();
         boolean bearerTokenAuthentication = protectedResource.enabled();
         boolean authorizationCodeFlow = authorizationCode.enabled();
 
@@ -46,11 +47,8 @@ final class OidcConfigSupport {
         return Optional.empty();
     }
 
-    static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant) {
-        return endpointPolicy(tenant.protectedResource(), tenant.authorizationCode());
-    }
-
-    private static Optional<OidcOutboundPolicy> outboundPolicy(OidcOutboundConfig outbound) {
+    static Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenant) {
+        OidcOutboundConfig outbound = tenant.outbound();
         boolean tokenPropagation = outbound.tokenPropagationEnabled();
         boolean clientCredentialsGrant = outbound.clientCredentialsGrantEnabled();
 
@@ -64,10 +62,6 @@ final class OidcConfigSupport {
             return Optional.of(OidcOutboundPolicy.clientCredentialsGrant());
         }
         return Optional.empty();
-    }
-
-    static Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenant) {
-        return outboundPolicy(tenant.outbound());
     }
 
     static final class ProviderDecorator implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {

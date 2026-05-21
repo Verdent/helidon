@@ -58,7 +58,9 @@ final class OidcOutboundOrchestrator {
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig outboundConfig) {
-        OidcOutboundRequestContext context = requestContext(providerRequest, outboundEnv, outboundConfig);
+        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest,
+                                                                               outboundConfig,
+                                                                               tenantRuntimeRegistry);
         if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
             return responseFactory.tenantUnavailableForOutbound(context.tenantContext().orElseThrow());
         }
@@ -76,14 +78,5 @@ final class OidcOutboundOrchestrator {
                     RP_INITIATED_LOGOUT,
                     ABSTAIN -> OutboundSecurityResponse.abstain();
         };
-    }
-
-    private OidcOutboundRequestContext requestContext(ProviderRequest providerRequest,
-                                                      SecurityEnvironment outboundEnv,
-                                                      EndpointConfig outboundConfig) {
-        return OidcOutboundRequestContext.create(providerRequest,
-                                                outboundEnv,
-                                                outboundConfig,
-                                                tenantRuntimeRegistry);
     }
 }

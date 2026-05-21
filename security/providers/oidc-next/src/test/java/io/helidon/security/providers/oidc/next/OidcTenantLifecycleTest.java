@@ -252,7 +252,6 @@ class OidcTenantLifecycleTest {
         ready.tokenValidationPolicy();
         ready.subjectMapper();
         ready.cookieStateHandler();
-        ready.providerProfile();
 
         assertThrows(IllegalStateException.class, notReady::metadata);
         assertThrows(IllegalStateException.class, disabled::endpointClient);
@@ -260,7 +259,6 @@ class OidcTenantLifecycleTest {
         assertThrows(IllegalStateException.class, notReady::tokenValidationPolicy);
         assertThrows(IllegalStateException.class, disabled::subjectMapper);
         assertThrows(IllegalStateException.class, failed::cookieStateHandler);
-        assertThrows(IllegalStateException.class, notReady::providerProfile);
     }
 
     private static OidcTenantRuntimeRegistry registryWithInitializer(

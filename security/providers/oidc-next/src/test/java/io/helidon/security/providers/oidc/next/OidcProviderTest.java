@@ -17,13 +17,16 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.function.Consumer;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
+import io.helidon.http.SetCookie;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.OutboundSecurityResponse;
@@ -44,6 +47,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 class OidcProviderTest {
     private static final String CURRENT_PROVIDER_CONFIG_KEY = "oidc";
     private static final String OIDC_NEXT_PACKAGE = "io.helidon.security.providers.oidc.next";
+    private static final URI ISSUER = URI.create("https://issuer.example");
+    private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
+    private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI ORIGINAL_URI = URI.create("https://rp.example/resource?name=value");
 
     @Test
     void serviceCreatesProvider() {
@@ -242,16 +250,83 @@ class OidcProviderTest {
     }
 
     @Test
-    void authorizationCodeFlowInitiationIsClassifiedButDeferred() {
-        OidcProvider provider = providerWithTenant();
+    void authorizationCodeFlowInitiationRedirectsToAuthorizationEndpoint() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
 
         AuthenticationResponse response = provider.authenticate(
-                request(OidcEndpointPolicy.authorizationCodeFlow(), SecurityEnvironment.create()));
+                request(null, environment));
 
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.statusCode().orElse(-1), is(501));
-        assertThat(response.description().orElse(""), is("Authorization Code Flow initiation is not implemented yet"));
-        assertThat(response.responseHeaders().containsKey("Location"), is(false));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        assertThat(response.statusCode().orElse(-1), is(303));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        assertThat(location.getScheme(), is("https"));
+        assertThat(location.getHost(), is("issuer.example"));
+        assertThat(location.getPath(), is("/authorize"));
+
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("response_type"), is("code"));
+        assertThat(query.get("client_id"), is("client-id"));
+        assertThat(query.get("redirect_uri"), is(REDIRECTION_ENDPOINT_URI.toString()));
+        assertThat(query.get("scope"), is("openid profile"));
+        assertThat(query.contains("state"), is(true));
+        assertThat(query.contains("nonce"), is(true));
+        assertThat(query.get("code_challenge_method"), is("S256"));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.tenantId(), is("default"));
+        assertThat(state.state(), is(query.get("state")));
+        assertThat(state.nonce(), is(query.get("nonce")));
+        assertThat(state.originalUri(), is(ORIGINAL_URI));
+        assertThat(state.redirectionEndpointUri(), is(REDIRECTION_ENDPOINT_URI));
+        assertThat(state.pkceVerifier().isPresent(), is(true));
+        assertThat(query.get("code_challenge"),
+                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
+                                                                     OidcPkceMethod.S256)));
+    }
+
+    @Test
+    void authorizationCodeFlowCanDisablePkce() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false));
+        OidcProvider provider = provider(tenant);
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .build()));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.contains("code_challenge"), is(false));
+        assertThat(query.contains("code_challenge_method"), is(false));
+        assertThat(authenticationRequestState(response, tenant).pkceVerifier().isEmpty(), is(true));
+    }
+
+    @Test
+    void authenticationRequestStateCookieIsProtectedAndScoped() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .build()));
+
+        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").get(0));
+        assertThat(cookie.name(), is("__Host-helidon-oidc-state"));
+        assertThat(cookie.value().startsWith("v1."), is(true));
+        assertThat(cookie.path().orElse(""), is("/"));
+        assertThat(cookie.httpOnly(), is(true));
+        assertThat(cookie.secure(), is(true));
+        assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
+        assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(300L));
+        assertThat(authenticationRequestState(response, tenant).expiresAt().isAfter(Instant.now()), is(true));
     }
 
     @Test
@@ -339,17 +414,47 @@ class OidcProviderTest {
     }
 
     private static OidcProvider providerWithTenant() {
-        return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", OidcTenantConfig.create())
-                                           .buildPrototype());
+        return provider(OidcTenantConfig.create());
     }
 
     private static OidcProvider providerWithQueryParameterTransport() {
+        return provider(OidcTenantConfig.builder()
+                                .tokenTransport(it -> it.queryParameterEnabled(true))
+                                .buildPrototype());
+    }
+
+    private static OidcProvider provider(OidcTenantConfig tenant) {
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", OidcTenantConfig.builder()
-                                                   .tokenTransport(it -> it.queryParameterEnabled(true))
-                                                   .buildPrototype())
+                                           .putTenant("default", tenant)
                                            .buildPrototype());
+    }
+
+    private static OidcTenantConfig authorizationCodeTenant() {
+        return authorizationCodeTenant(it -> { });
+    }
+
+    private static OidcTenantConfig authorizationCodeTenant(Consumer<OidcAuthorizationCodeConfig.Builder> customizer) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> {
+                    it.enabled(true)
+                            .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                            .scopes(List.of("openid", "profile"));
+                    customizer.accept(it);
+                })
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
+    private static OidcAuthenticationRequestState authenticationRequestState(AuthenticationResponse response,
+                                                                             OidcTenantConfig tenant) {
+        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").get(0));
+        return OidcCookieStateHandler.create(tenant)
+                .readAuthenticationRequestState(cookie.value(), Instant.now())
+                .orElseThrow();
     }
 
     private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {

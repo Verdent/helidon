@@ -29,18 +29,21 @@ final class OidcAuthenticationOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
+    private final OidcAuthenticationRequestFactory authenticationRequestFactory;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcRequestClassifier classifier,
                                            OidcResponseFactory responseFactory,
+                                           OidcAuthenticationRequestFactory authenticationRequestFactory,
                                            Map<OidcTokenValidationMethod, OidcAccessTokenValidator>
                                                    accessTokenValidators) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
+        this.authenticationRequestFactory = authenticationRequestFactory;
         this.accessTokenValidators = accessTokenValidators;
     }
 
@@ -50,6 +53,7 @@ final class OidcAuthenticationOrchestrator {
                                                   tenantRuntimeRegistry,
                                                   OidcRequestClassifier.create(),
                                                   OidcResponseFactory.create(),
+                                                  OidcAuthenticationRequestFactory.create(),
                                                   accessTokenValidators());
     }
 
@@ -69,7 +73,8 @@ final class OidcAuthenticationOrchestrator {
             case BEARER_TOKEN_INVALID_REQUEST -> responseFactory.invalidBearerTokenRequest(
                     context.bearerTokenErrorDescription());
             case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
-            case AUTHORIZATION_CODE_FLOW_INITIATION -> responseFactory.authorizationCodeFlowNotImplemented();
+            case AUTHORIZATION_CODE_FLOW_INITIATION -> responseFactory.authorizationCodeFlowInitiated(
+                    authenticationRequestFactory.create(context));
             case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
             case TOKEN_PROPAGATION, CLIENT_CREDENTIALS_GRANT -> AuthenticationResponse.abstain();
             case AMBIGUOUS -> responseFactory.ambiguousRequest();

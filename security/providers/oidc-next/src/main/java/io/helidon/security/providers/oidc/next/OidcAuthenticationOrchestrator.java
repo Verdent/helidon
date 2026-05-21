@@ -77,19 +77,32 @@ final class OidcAuthenticationOrchestrator {
             case AUTHORIZATION_CODE_FLOW_INITIATION -> authenticateAuthorizationCodeFlow(context);
             case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
             case TOKEN_PROPAGATION, CLIENT_CREDENTIALS_GRANT -> AuthenticationResponse.abstain();
-            case AMBIGUOUS -> responseFactory.ambiguousRequest();
+            case AMBIGUOUS -> authenticateAmbiguous(context);
             case ABSTAIN -> AuthenticationResponse.abstain();
         };
     }
 
     private AuthenticationResponse authenticateAuthorizationCodeFlow(OidcRequestContext context) {
-        Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context);
+        Optional<AuthenticationResponse> localAuthenticationResult = authenticateLocalAuthenticationResult(context);
         if (localAuthenticationResult.isPresent()) {
-            OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-            return AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                          .map(localAuthenticationResult.orElseThrow()));
+            return localAuthenticationResult.orElseThrow();
         }
         return responseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context));
+    }
+
+    private AuthenticationResponse authenticateAmbiguous(OidcRequestContext context) {
+        return authenticateLocalAuthenticationResult(context)
+                .orElseGet(responseFactory::ambiguousRequest);
+    }
+
+    private Optional<AuthenticationResponse> authenticateLocalAuthenticationResult(OidcRequestContext context) {
+        Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context);
+        if (localAuthenticationResult.isEmpty()) {
+            return Optional.empty();
+        }
+        OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
+        return Optional.of(AuthenticationResponse.success(tenantContext.subjectMapper()
+                                                                  .map(localAuthenticationResult.orElseThrow())));
     }
 
     private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context) {

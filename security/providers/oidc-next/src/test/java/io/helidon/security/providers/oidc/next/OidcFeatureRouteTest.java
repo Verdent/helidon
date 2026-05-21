@@ -27,9 +27,15 @@ import io.helidon.http.HeaderValues;
 import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.Grant;
+import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.SecurityResponse;
+import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
@@ -56,6 +62,8 @@ class OidcFeatureRouteTest {
     private static final String CLIENT_ID = "client-id";
     private static final String CLIENT_SECRET = "client-secret";
     private static final String SUBJECT = "user1-id";
+    private static final String USERNAME = "user1";
+    private static final String EMAIL = "user1@example.org";
     private static final String STATE = "stored-state";
     private static final String NONCE = "nonce";
     private static final String PKCE_VERIFIER = "pkce-verifier";
@@ -131,6 +139,7 @@ class OidcFeatureRouteTest {
             URI callbackUri = callbackUri(rpServer);
             OidcTenantConfig tenant = tenantConfig(serverUri);
             SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+            Instant beforeCallback = Instant.now();
 
             try (HttpClientResponse response = WebClient.builder()
                     .baseUri(rpBaseUri(rpServer))
@@ -157,6 +166,32 @@ class OidcFeatureRouteTest {
                                                                          + "=")
                                            && cookie.contains("Expires=")),
                            is(true));
+
+                SetCookie localAuthenticationCookie = SetCookie.parse(cookies.stream()
+                        .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
+                        .findFirst()
+                        .orElseThrow());
+                AuthenticationResponse authentication = OidcProvider.create(providerConfig(serverUri))
+                        .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                                .targetUri(URI.create("https://rp.example/resource"))
+                                .header(HeaderNames.COOKIE.defaultCase(),
+                                        localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                                .build()));
+
+                assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                Subject subject = authentication.user().orElseThrow();
+                assertThat(subject.principal().id(), is(SUBJECT));
+                assertThat(subject.principal().getName(), is(USERNAME));
+                assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
+                assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                           is(List.of("openid", "profile")));
+
+                TokenCredential credential = subject.publicCredential(TokenCredential.class).orElseThrow();
+                assertThat(credential.token(), is("access-token"));
+                assertThat(credential.getIssuer().orElse(""), is(ISSUER.toString()));
+                Instant accessTokenExpiresAt = credential.getExpTime().orElseThrow();
+                assertThat(!accessTokenExpiresAt.isBefore(beforeCallback.plusSeconds(600)), is(true));
+                assertThat(!accessTokenExpiresAt.isAfter(Instant.now().plusSeconds(600)), is(true));
             }
         } finally {
             rpServer.stop();
@@ -207,7 +242,8 @@ class OidcFeatureRouteTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI))
+                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }
@@ -222,7 +258,8 @@ class OidcFeatureRouteTest {
                         .jwksUri(openIdProviderUri.resolve("jwks"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI))
+                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }
@@ -237,6 +274,7 @@ class OidcFeatureRouteTest {
                 .set("access_token", "access-token")
                 .set("token_type", "Bearer")
                 .set("id_token", idToken)
+                .set("expires_in", 600)
                 .build();
     }
 
@@ -284,6 +322,8 @@ class OidcFeatureRouteTest {
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
                 .addAudience(CLIENT_ID)
                 .nonce(nonce)
+                .preferredUsername(USERNAME)
+                .email(EMAIL)
                 .build();
         return SignedJwt.sign(jwt, signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();

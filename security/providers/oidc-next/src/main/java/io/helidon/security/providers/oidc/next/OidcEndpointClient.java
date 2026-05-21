@@ -48,30 +48,10 @@ final class OidcEndpointClient {
         return new OidcEndpointClient(tenantConfig, metadata, WebClient.create());
     }
 
-    Optional<URI> authorizationEndpointUri() {
-        return metadata.authorizationEndpointUri();
-    }
-
-    Optional<URI> tokenEndpointUri() {
-        return metadata.tokenEndpointUri();
-    }
-
-    Optional<URI> introspectionEndpointUri() {
-        return metadata.introspectionEndpointUri();
-    }
-
-    Optional<URI> userInfoEndpointUri() {
-        return metadata.userInfoEndpointUri();
-    }
-
-    Optional<URI> endSessionEndpointUri() {
-        return metadata.endSessionEndpointUri();
-    }
-
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
                                                       URI redirectionEndpointUri,
                                                       Optional<String> pkceVerifier) {
-        Optional<URI> endpointUri = tokenEndpointUri();
+        Optional<URI> endpointUri = metadata.tokenEndpointUri();
         if (endpointUri.isEmpty()) {
             return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
         }

@@ -25,21 +25,13 @@ import io.helidon.security.SecurityEnvironment;
 
 final class OidcOutboundOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
-    private final OidcRequestClassifier classifier;
-    private final OidcResponseFactory responseFactory;
 
-    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry,
-                                     OidcRequestClassifier classifier,
-                                     OidcResponseFactory responseFactory) {
+    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
-        this.classifier = classifier;
-        this.responseFactory = responseFactory;
     }
 
     static OidcOutboundOrchestrator create(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcOutboundOrchestrator(tenantRuntimeRegistry,
-                                            OidcRequestClassifier.create(),
-                                            OidcResponseFactory.create());
+        return new OidcOutboundOrchestrator(tenantRuntimeRegistry);
     }
 
     boolean isSupported(ProviderRequest providerRequest,
@@ -60,7 +52,7 @@ final class OidcOutboundOrchestrator {
                                     EndpointConfig outboundConfig) {
         Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
         if (tenantContext.filter(it -> !it.ready()).isPresent()) {
-            return responseFactory.tenantUnavailableForOutbound(tenantContext.orElseThrow());
+            return OidcResponseFactory.tenantUnavailableForOutbound(tenantContext.orElseThrow());
         }
 
         Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
@@ -72,12 +64,12 @@ final class OidcOutboundOrchestrator {
                     return outboundConfig.instance(OidcOutboundPolicy.class)
                             .or(readyTenant::outboundPolicy);
                 });
-        OidcProtocolOperation operation = classifier.classify(outboundPolicy);
+        OidcProtocolOperation operation = OidcRequestClassifier.classify(outboundPolicy);
 
         return switch (operation) {
-            case TOKEN_PROPAGATION -> responseFactory.tokenPropagationNotImplemented();
-            case CLIENT_CREDENTIALS_GRANT -> responseFactory.clientCredentialsGrantNotImplemented();
-            case AMBIGUOUS -> responseFactory.ambiguousOutboundRequest();
+            case TOKEN_PROPAGATION -> OidcResponseFactory.tokenPropagationNotImplemented();
+            case CLIENT_CREDENTIALS_GRANT -> OidcResponseFactory.clientCredentialsGrantNotImplemented();
+            case AMBIGUOUS -> OidcResponseFactory.ambiguousOutboundRequest();
             case BEARER_TOKEN_INVALID_REQUEST,
                     BEARER_TOKEN_AUTHENTICATION,
                     AUTHORIZATION_CODE_FLOW_INITIATION,

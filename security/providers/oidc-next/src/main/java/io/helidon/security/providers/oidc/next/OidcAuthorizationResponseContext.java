@@ -24,20 +24,15 @@ import java.util.Objects;
 
 import io.helidon.common.uri.UriQuery;
 
-final class OidcAuthorizationResponseContext {
-    private final UriQuery parameters;
-    private final Map<String, List<String>> cookies;
-    private final URI redirectionEndpointUri;
-    private final Instant now;
-
-    private OidcAuthorizationResponseContext(UriQuery parameters,
-                                             Map<String, List<String>> cookies,
-                                             URI redirectionEndpointUri,
-                                             Instant now) {
-        this.parameters = Objects.requireNonNull(parameters);
-        this.cookies = Map.copyOf(Objects.requireNonNull(cookies));
-        this.redirectionEndpointUri = Objects.requireNonNull(redirectionEndpointUri);
-        this.now = Objects.requireNonNull(now);
+record OidcAuthorizationResponseContext(UriQuery parameters,
+                                        Map<String, List<String>> cookies,
+                                        URI redirectionEndpointUri,
+                                        Instant now) {
+    OidcAuthorizationResponseContext {
+        parameters = Objects.requireNonNull(parameters);
+        cookies = Map.copyOf(Objects.requireNonNull(cookies));
+        redirectionEndpointUri = Objects.requireNonNull(redirectionEndpointUri);
+        now = Objects.requireNonNull(now);
     }
 
     static OidcAuthorizationResponseContext create(UriQuery parameters,
@@ -45,21 +40,5 @@ final class OidcAuthorizationResponseContext {
                                                    URI redirectionEndpointUri,
                                                    Instant now) {
         return new OidcAuthorizationResponseContext(parameters, cookies, redirectionEndpointUri, now);
-    }
-
-    UriQuery parameters() {
-        return parameters;
-    }
-
-    Map<String, List<String>> cookies() {
-        return cookies;
-    }
-
-    URI redirectionEndpointUri() {
-        return redirectionEndpointUri;
-    }
-
-    Instant now() {
-        return now;
     }
 }

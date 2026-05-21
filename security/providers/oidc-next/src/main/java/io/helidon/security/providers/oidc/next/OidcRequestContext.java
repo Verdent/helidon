@@ -92,26 +92,12 @@ final class OidcRequestContext {
             return cookies;
         }
         Map<String, List<String>> parsedCookies = new LinkedHashMap<>();
-        for (String cookieHeaderValue : headerValues(HeaderNames.COOKIE.defaultCase())) {
+        for (String cookieHeaderValue : environment().headers()
+                .getOrDefault(HeaderNames.COOKIE.defaultCase(), List.of())) {
             parseCookieHeader(cookieHeaderValue, parsedCookies);
         }
         cookies = Map.copyOf(parsedCookies);
         return cookies;
-    }
-
-    private List<String> headerValues(String name) {
-        List<String> exact = environment().headers().get(name);
-        if (exact != null) {
-            return exact;
-        }
-        List<String> values = new ArrayList<>();
-        environment().headers()
-                .forEach((headerName, headerValues) -> {
-                    if (name.equalsIgnoreCase(headerName)) {
-                        values.addAll(headerValues);
-                    }
-                });
-        return values;
     }
 
     private void parseCookieHeader(String headerValue, Map<String, List<String>> result) {

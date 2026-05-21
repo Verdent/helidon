@@ -69,11 +69,7 @@ final class OidcCookieStateHandler {
     }
 
     SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
-        return SetCookie.builder(cookieConfig.authenticationRequestCookieName(), protect(toJson(state).toString()))
-                .path("/")
-                .httpOnly(true)
-                .secure(true)
-                .sameSite(SetCookie.SameSite.LAX)
+        return cookieBuilder(cookieConfig.authenticationRequestCookieName(), protect(toJson(state).toString()))
                 .maxAge(cookieConfig.authenticationRequestLifetime())
                 .build();
     }
@@ -83,32 +79,29 @@ final class OidcCookieStateHandler {
         if (maxAge.isNegative()) {
             maxAge = Duration.ZERO;
         }
-        return SetCookie.builder(cookieConfig.localAuthenticationCookieName(), protect(toJson(result).toString()))
-                .path("/")
-                .httpOnly(true)
-                .secure(true)
-                .sameSite(SetCookie.SameSite.LAX)
+        return cookieBuilder(cookieConfig.localAuthenticationCookieName(), protect(toJson(result).toString()))
                 .maxAge(maxAge)
                 .build();
     }
 
     SetCookie removeLocalAuthenticationResultCookie() {
-        return SetCookie.builder(cookieConfig.localAuthenticationCookieName(), "")
-                .path("/")
-                .httpOnly(true)
-                .secure(true)
-                .sameSite(SetCookie.SameSite.LAX)
-                .maxAge(Duration.ZERO)
-                .expires(Instant.EPOCH)
-                .build();
+        return removeCookie(cookieConfig.localAuthenticationCookieName());
     }
 
     SetCookie removeAuthenticationRequestCookie() {
-        return SetCookie.builder(cookieConfig.authenticationRequestCookieName(), "")
+        return removeCookie(cookieConfig.authenticationRequestCookieName());
+    }
+
+    private SetCookie.Builder cookieBuilder(String name, String value) {
+        return SetCookie.builder(name, value)
                 .path("/")
                 .httpOnly(true)
                 .secure(true)
-                .sameSite(SetCookie.SameSite.LAX)
+                .sameSite(SetCookie.SameSite.LAX);
+    }
+
+    private SetCookie removeCookie(String name) {
+        return cookieBuilder(name, "")
                 .maxAge(Duration.ZERO)
                 .expires(Instant.EPOCH)
                 .build();

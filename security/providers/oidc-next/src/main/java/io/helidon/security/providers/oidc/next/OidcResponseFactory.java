@@ -28,11 +28,7 @@ final class OidcResponseFactory {
     private OidcResponseFactory() {
     }
 
-    static OidcResponseFactory create() {
-        return new OidcResponseFactory();
-    }
-
-    AuthenticationResponse missingBearerToken() {
+    static AuthenticationResponse missingBearerToken() {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
@@ -41,7 +37,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse bearerTokenValidationNotImplemented() {
+    static AuthenticationResponse bearerTokenValidationNotImplemented() {
         String description = "Bearer Token validation is not implemented yet";
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
@@ -51,7 +47,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse invalidBearerToken(String description) {
+    static AuthenticationResponse invalidBearerToken(String description) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
@@ -60,7 +56,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
+    static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
                 .statusCode(Status.SEE_OTHER_303.code())
@@ -70,7 +66,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse ambiguousRequest() {
+    static AuthenticationResponse ambiguousRequest() {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
@@ -78,7 +74,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse invalidBearerTokenRequest(String description) {
+    static AuthenticationResponse invalidBearerTokenRequest(String description) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
@@ -87,14 +83,14 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse optional(String description) {
+    static AuthenticationResponse optional(String description) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.ABSTAIN)
                 .description(description)
                 .build();
     }
 
-    AuthenticationResponse tenantUnavailable(OidcTenantContext tenantContext) {
+    static AuthenticationResponse tenantUnavailable(OidcTenantContext tenantContext) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(503)
@@ -102,35 +98,35 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    OutboundSecurityResponse tokenPropagationNotImplemented() {
+    static OutboundSecurityResponse tokenPropagationNotImplemented() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description("Token Propagation is not implemented yet")
                 .build();
     }
 
-    OutboundSecurityResponse clientCredentialsGrantNotImplemented() {
+    static OutboundSecurityResponse clientCredentialsGrantNotImplemented() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description("Client Credentials Grant is not implemented yet")
                 .build();
     }
 
-    OutboundSecurityResponse ambiguousOutboundRequest() {
+    static OutboundSecurityResponse ambiguousOutboundRequest() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description("OIDC outbound request cannot be classified by protocol operation")
                 .build();
     }
 
-    OutboundSecurityResponse tenantUnavailableForOutbound(OidcTenantContext tenantContext) {
+    static OutboundSecurityResponse tenantUnavailableForOutbound(OidcTenantContext tenantContext) {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description(tenantUnavailableDescription(tenantContext))
                 .build();
     }
 
-    private String tenantUnavailableDescription(OidcTenantContext tenantContext) {
+    private static String tenantUnavailableDescription(OidcTenantContext tenantContext) {
         return switch (tenantContext.state()) {
             case NOT_READY -> "OIDC tenant is not ready: " + tenantContext.tenantId();
             case DISABLED -> "OIDC tenant is disabled: " + tenantContext.tenantId();
@@ -139,12 +135,12 @@ final class OidcResponseFactory {
         };
     }
 
-    private String bearerChallenge(String error, String description) {
+    private static String bearerChallenge(String error, String description) {
         return "Bearer error=\"" + quotedString(error)
                 + "\", error_description=\"" + quotedString(description) + "\"";
     }
 
-    private String quotedString(String value) {
+    private static String quotedString(String value) {
         return value.replace("\\", "\\\\")
                 .replace("\"", "\\\"");
     }

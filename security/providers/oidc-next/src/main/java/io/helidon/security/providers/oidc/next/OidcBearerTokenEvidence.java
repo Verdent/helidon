@@ -16,14 +16,24 @@
 
 package io.helidon.security.providers.oidc.next;
 
-enum OidcProtocolOperation {
-    BEARER_TOKEN_INVALID_REQUEST,
-    BEARER_TOKEN_AUTHENTICATION,
-    AUTHORIZATION_CODE_FLOW_INITIATION,
-    AUTHORIZATION_RESPONSE,
-    RP_INITIATED_LOGOUT,
-    TOKEN_PROPAGATION,
-    CLIENT_CREDENTIALS_GRANT,
-    AMBIGUOUS,
-    ABSTAIN
+final class OidcBearerTokenEvidence {
+    private final String token;
+    private final OidcBearerTokenSource source;
+
+    private OidcBearerTokenEvidence(String token, OidcBearerTokenSource source) {
+        this.token = token;
+        this.source = source;
+    }
+
+    static OidcBearerTokenEvidence create(String token, OidcBearerTokenSource source) {
+        return new OidcBearerTokenEvidence(token, source);
+    }
+
+    String token() {
+        return token;
+    }
+
+    OidcBearerTokenSource source() {
+        return source;
+    }
 }

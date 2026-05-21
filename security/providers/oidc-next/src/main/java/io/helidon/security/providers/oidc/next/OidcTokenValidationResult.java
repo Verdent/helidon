@@ -20,19 +20,26 @@ import java.util.Optional;
 
 final class OidcTokenValidationResult {
     private final OidcValidatedJwt validatedJwt;
+    private final OidcValidatedIntrospection validatedIntrospection;
     private final String errorDescription;
     private final Throwable cause;
 
     private OidcTokenValidationResult(OidcValidatedJwt validatedJwt,
+                                      OidcValidatedIntrospection validatedIntrospection,
                                       String errorDescription,
                                       Throwable cause) {
         this.validatedJwt = validatedJwt;
+        this.validatedIntrospection = validatedIntrospection;
         this.errorDescription = errorDescription;
         this.cause = cause;
     }
 
     static OidcTokenValidationResult success(OidcValidatedJwt validatedJwt) {
-        return new OidcTokenValidationResult(validatedJwt, null, null);
+        return new OidcTokenValidationResult(validatedJwt, null, null, null);
+    }
+
+    static OidcTokenValidationResult success(OidcValidatedIntrospection validatedIntrospection) {
+        return new OidcTokenValidationResult(null, validatedIntrospection, null, null);
     }
 
     static OidcTokenValidationResult failure(String errorDescription) {
@@ -40,15 +47,19 @@ final class OidcTokenValidationResult {
     }
 
     static OidcTokenValidationResult failure(String errorDescription, Throwable cause) {
-        return new OidcTokenValidationResult(null, errorDescription, cause);
+        return new OidcTokenValidationResult(null, null, errorDescription, cause);
     }
 
     boolean succeeded() {
-        return validatedJwt != null;
+        return validatedJwt != null || validatedIntrospection != null;
     }
 
     Optional<OidcValidatedJwt> validatedJwt() {
         return Optional.ofNullable(validatedJwt);
+    }
+
+    Optional<OidcValidatedIntrospection> validatedIntrospection() {
+        return Optional.ofNullable(validatedIntrospection);
     }
 
     Optional<String> errorDescription() {

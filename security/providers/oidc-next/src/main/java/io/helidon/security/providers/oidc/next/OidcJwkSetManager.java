@@ -17,29 +17,51 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.security.jwt.jwk.JwkKeys;
 
 final class OidcJwkSetManager {
-    private static final Duration UNKNOWN_KEY_ID_REFRESH_INTERVAL = Duration.ofMinutes(5);
+    private static final int UNKNOWN_KEY_ID_REFRESH_ATTEMPT_LIMIT = 64;
+
+    static final Duration UNKNOWN_KEY_ID_REFRESH_INTERVAL = Duration.ofMinutes(5);
 
     private final String tenantId;
     private final OidcProviderMetadata metadata;
     private final OidcJwkSetLoader jwkSetLoader;
+    private final Clock clock;
     private volatile JwkKeys cachedJwkKeys;
-    private Instant lastUnknownKeyIdRefreshAttempt;
+    private volatile Instant lastJwkSetLoad;
+    private boolean unknownKeyIdRefreshInProgress;
+    private final Map<String, Instant> unknownKeyIdRefreshAttempts =
+            new LinkedHashMap<>() {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Instant> eldest) {
+                    return size() > UNKNOWN_KEY_ID_REFRESH_ATTEMPT_LIMIT;
+                }
+            };
 
-    private OidcJwkSetManager(String tenantId, OidcProviderMetadata metadata, OidcJwkSetLoader jwkSetLoader) {
+    private OidcJwkSetManager(String tenantId,
+                              OidcProviderMetadata metadata,
+                              OidcJwkSetLoader jwkSetLoader,
+                              Clock clock) {
         this.tenantId = tenantId;
         this.metadata = metadata;
         this.jwkSetLoader = jwkSetLoader;
+        this.clock = clock;
     }
 
     static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata) {
-        return new OidcJwkSetManager(tenantId, metadata, OidcJwkSetLoader.create());
+        return create(tenantId, metadata, Clock.systemUTC());
+    }
+
+    static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata, Clock clock) {
+        return new OidcJwkSetManager(tenantId, metadata, OidcJwkSetLoader.create(), clock);
     }
 
     String tenantId() {
@@ -50,7 +72,7 @@ final class OidcJwkSetManager {
         return metadata.jwkSetUri();
     }
 
-    synchronized JwkKeys jwkKeys() {
+    JwkKeys jwkKeys() {
         JwkKeys current = cachedJwkKeys;
         if (current != null) {
             return current;
@@ -59,17 +81,22 @@ final class OidcJwkSetManager {
         return refreshJwkKeys();
     }
 
-    synchronized JwkKeys jwkKeys(Optional<String> keyId) {
-        JwkKeys current = cachedJwkKeys;
-        if (current == null) {
-            current = refreshJwkKeys();
-        }
+    JwkKeys jwkKeys(Optional<String> keyId) {
+        JwkKeys current = jwkKeys();
         JwkKeys availableKeys = current;
         Optional<String> unknownKeyId = keyId.filter(kid -> availableKeys.forKeyId(kid).isEmpty());
-        if (unknownKeyId.isEmpty() || !unknownKeyIdRefreshAllowed(Instant.now())) {
+        if (unknownKeyId.isEmpty()) {
             return current;
         }
-        return refreshJwkKeys();
+        String unknownKey = unknownKeyId.orElseThrow();
+        if (!beginUnknownKeyIdRefresh(unknownKey)) {
+            return current;
+        }
+        try {
+            return refreshJwkKeys(unknownKey);
+        } finally {
+            completeUnknownKeyIdRefresh();
+        }
     }
 
     private JwkKeys loadJwkKeys() {
@@ -84,16 +111,42 @@ final class OidcJwkSetManager {
 
     private JwkKeys refreshJwkKeys() {
         JwkKeys loaded = loadJwkKeys();
-        cachedJwkKeys = loaded;
+        cacheJwkKeys(loaded, true);
         return loaded;
     }
 
-    private boolean unknownKeyIdRefreshAllowed(Instant now) {
-        if (lastUnknownKeyIdRefreshAttempt == null
-                || !now.isBefore(lastUnknownKeyIdRefreshAttempt.plus(UNKNOWN_KEY_ID_REFRESH_INTERVAL))) {
-            lastUnknownKeyIdRefreshAttempt = now;
-            return true;
+    private JwkKeys refreshJwkKeys(String expectedKeyId) {
+        JwkKeys loaded = loadJwkKeys();
+        cacheJwkKeys(loaded, loaded.forKeyId(expectedKeyId).isPresent());
+        return loaded;
+    }
+
+    private synchronized void cacheJwkKeys(JwkKeys loaded, boolean updateLoadTime) {
+        cachedJwkKeys = loaded;
+        if (updateLoadTime) {
+            lastJwkSetLoad = clock.instant();
         }
-        return false;
+    }
+
+    private synchronized boolean beginUnknownKeyIdRefresh(String keyId) {
+        if (unknownKeyIdRefreshInProgress) {
+            return false;
+        }
+        Instant lastLoad = lastJwkSetLoad;
+        Instant now = clock.instant();
+        if (lastLoad == null || now.isBefore(lastLoad.plus(UNKNOWN_KEY_ID_REFRESH_INTERVAL))) {
+            return false;
+        }
+        Instant lastAttempt = unknownKeyIdRefreshAttempts.get(keyId);
+        if (lastAttempt != null && now.isBefore(lastAttempt.plus(UNKNOWN_KEY_ID_REFRESH_INTERVAL))) {
+            return false;
+        }
+        unknownKeyIdRefreshAttempts.put(keyId, now);
+        unknownKeyIdRefreshInProgress = true;
+        return true;
+    }
+
+    private synchronized void completeUnknownKeyIdRefresh() {
+        unknownKeyIdRefreshInProgress = false;
     }
 }

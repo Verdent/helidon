@@ -22,6 +22,7 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
@@ -75,13 +76,25 @@ final class OidcCookieStateHandler {
                 .build();
     }
 
+    SetCookie removeAuthenticationRequestCookie() {
+        return SetCookie.builder(cookieConfig.authenticationRequestCookieName(), "")
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .sameSite(SetCookie.SameSite.LAX)
+                .maxAge(Duration.ZERO)
+                .expires(Instant.EPOCH)
+                .build();
+    }
+
     Optional<OidcAuthenticationRequestState> readAuthenticationRequestState(String cookieValue, Instant now) {
+        return decodeAuthenticationRequestState(cookieValue)
+                .filter(state -> !now.isAfter(state.expiresAt()));
+    }
+
+    Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
-            OidcAuthenticationRequestState state = fromJson(JsonParser.create(unprotect(cookieValue)).readJsonObject());
-            if (now.isAfter(state.expiresAt())) {
-                return Optional.empty();
-            }
-            return Optional.of(state);
+            return Optional.of(fromJson(JsonParser.create(unprotect(cookieValue)).readJsonObject()));
         } catch (RuntimeException e) {
             return Optional.empty();
         }

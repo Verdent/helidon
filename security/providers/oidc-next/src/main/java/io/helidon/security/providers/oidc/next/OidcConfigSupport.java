@@ -184,6 +184,10 @@ final class OidcConfigSupport {
             throw new IllegalArgumentException(
                     "openid scope must be configured when Authorization Code Flow is enabled");
         }
+        tenant.cookies()
+                .encryptionSecret()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,

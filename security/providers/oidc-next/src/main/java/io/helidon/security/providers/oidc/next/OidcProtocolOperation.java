@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 enum OidcProtocolOperation {
+    BEARER_TOKEN_INVALID_REQUEST,
     BEARER_TOKEN_AUTHENTICATION,
     AUTHORIZATION_CODE_FLOW_INITIATION,
     AUTHORIZATION_RESPONSE,

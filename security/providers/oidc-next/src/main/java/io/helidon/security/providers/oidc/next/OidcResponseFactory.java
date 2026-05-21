@@ -40,13 +40,12 @@ final class OidcResponseFactory {
     }
 
     AuthenticationResponse bearerTokenValidationNotImplemented() {
-        String challenge = "Bearer error=\"invalid_token\", "
-                + "error_description=\"Bearer Token validation is not implemented yet\"";
+        String description = "Bearer Token validation is not implemented yet";
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
-                .description("Bearer Token validation is not implemented yet")
-                .responseHeader(WWW_AUTHENTICATE, challenge)
+                .description(description)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_token", description))
                 .build();
     }
 
@@ -63,6 +62,15 @@ final class OidcResponseFactory {
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
                 .description("OIDC request cannot be classified by protocol operation")
+                .build();
+    }
+
+    AuthenticationResponse invalidBearerTokenRequest(String description) {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(400)
+                .description(description)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_request", description))
                 .build();
     }
 
@@ -116,5 +124,15 @@ final class OidcResponseFactory {
             case FAILED -> "OIDC tenant initialization failed: " + tenantContext.tenantId();
             case READY -> "OIDC tenant is ready: " + tenantContext.tenantId();
         };
+    }
+
+    private String bearerChallenge(String error, String description) {
+        return "Bearer error=\"" + quotedString(error)
+                + "\", error_description=\"" + quotedString(description) + "\"";
+    }
+
+    private String quotedString(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"");
     }
 }

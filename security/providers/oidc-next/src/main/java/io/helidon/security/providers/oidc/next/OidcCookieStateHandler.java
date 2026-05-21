@@ -16,17 +16,45 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Optional;
 
-final class OidcCookieStateHandler {
-    private final OidcCookieConfig cookieConfig;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
-    private OidcCookieStateHandler(OidcCookieConfig cookieConfig) {
+import io.helidon.http.SetCookie;
+import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
+
+final class OidcCookieStateHandler {
+    private static final String AUTHENTICATION_REQUEST_COOKIE_VERSION = "v1";
+    private static final int AES_GCM_KEY_BYTES = 32;
+    private static final int AES_GCM_TAG_BITS = 128;
+    private static final int AES_GCM_IV_BYTES = 12;
+
+    private final OidcCookieConfig cookieConfig;
+    private final byte[] encryptionKey;
+    private final SecureRandom secureRandom;
+
+    private OidcCookieStateHandler(OidcCookieConfig cookieConfig, byte[] encryptionKey, SecureRandom secureRandom) {
         this.cookieConfig = cookieConfig;
+        this.encryptionKey = encryptionKey;
+        this.secureRandom = secureRandom;
     }
 
     static OidcCookieStateHandler create(OidcTenantConfig tenantConfig) {
-        return new OidcCookieStateHandler(tenantConfig.cookies());
+        return new OidcCookieStateHandler(tenantConfig.cookies(),
+                                          encryptionKey(tenantConfig.cookies()),
+                                          new SecureRandom());
     }
 
     OidcCookieConfig cookieConfig() {
@@ -35,5 +63,120 @@ final class OidcCookieStateHandler {
 
     Optional<String> encryptionSecret() {
         return cookieConfig.encryptionSecret();
+    }
+
+    SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
+        return SetCookie.builder(cookieConfig.authenticationRequestCookieName(), protect(toJson(state).toString()))
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .sameSite(SetCookie.SameSite.LAX)
+                .maxAge(cookieConfig.authenticationRequestLifetime())
+                .build();
+    }
+
+    Optional<OidcAuthenticationRequestState> readAuthenticationRequestState(String cookieValue, Instant now) {
+        try {
+            OidcAuthenticationRequestState state = fromJson(JsonParser.create(unprotect(cookieValue)).readJsonObject());
+            if (now.isAfter(state.expiresAt())) {
+                return Optional.empty();
+            }
+            return Optional.of(state);
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    private JsonObject toJson(OidcAuthenticationRequestState state) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("tenant_id", state.tenantId())
+                .set("state", state.state())
+                .set("nonce", state.nonce())
+                .set("original_uri", state.originalUri().toString())
+                .set("redirection_endpoint_uri", state.redirectionEndpointUri().toString())
+                .set("created_at", state.createdAt().toString())
+                .set("expires_at", state.expiresAt().toString());
+        state.pkceVerifier().ifPresent(pkceVerifier -> builder.set("pkce_verifier", pkceVerifier));
+        return builder.build();
+    }
+
+    private OidcAuthenticationRequestState fromJson(JsonObject json) {
+        return OidcAuthenticationRequestState.create(
+                json.stringValue("tenant_id").orElseThrow(),
+                json.stringValue("state").orElseThrow(),
+                json.stringValue("nonce").orElseThrow(),
+                json.stringValue("pkce_verifier").orElse(null),
+                URI.create(json.stringValue("original_uri").orElseThrow()),
+                URI.create(json.stringValue("redirection_endpoint_uri").orElseThrow()),
+                Instant.parse(json.stringValue("created_at").orElseThrow()),
+                Instant.parse(json.stringValue("expires_at").orElseThrow()));
+    }
+
+    private String protect(String value) {
+        byte[] iv = new byte[AES_GCM_IV_BYTES];
+        secureRandom.nextBytes(iv);
+        try {
+            byte[] ciphertext = cipher(Cipher.ENCRYPT_MODE, iv).doFinal(value.getBytes(StandardCharsets.UTF_8));
+            return AUTHENTICATION_REQUEST_COOKIE_VERSION + "."
+                    + encode(iv) + "."
+                    + encode(ciphertext);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to protect Authentication Request state", e);
+        }
+    }
+
+    private String unprotect(String value) {
+        String[] parts = value.split("\\.");
+        if (parts.length != 3 || !AUTHENTICATION_REQUEST_COOKIE_VERSION.equals(parts[0])) {
+            throw new IllegalArgumentException("Unsupported Authentication Request cookie format");
+        }
+        byte[] iv = decode(parts[1]);
+        byte[] ciphertext = decode(parts[2]);
+        try {
+            byte[] plaintext = cipher(Cipher.DECRYPT_MODE, iv).doFinal(ciphertext);
+            return new String(plaintext, StandardCharsets.UTF_8);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException("Failed to read Authentication Request state", e);
+        }
+    }
+
+    private Cipher cipher(int mode, byte[] iv) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(mode, new SecretKeySpec(encryptionKey, "AES"), new GCMParameterSpec(AES_GCM_TAG_BITS, iv));
+            return cipher;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to initialize Authentication Request state protection", e);
+        }
+    }
+
+    private static byte[] encryptionKey(OidcCookieConfig cookieConfig) {
+        return cookieConfig.encryptionSecret()
+                .map(secret -> sha256(secret.getBytes(StandardCharsets.UTF_8)))
+                .orElseGet(OidcCookieStateHandler::randomKey);
+    }
+
+    private static byte[] randomKey() {
+        byte[] bytes = new byte[AES_GCM_KEY_BYTES];
+        new SecureRandom().nextBytes(bytes);
+        return bytes;
+    }
+
+    private static byte[] sha256(byte[] value) {
+        try {
+            return Arrays.copyOf(MessageDigest.getInstance("SHA-256").digest(value), AES_GCM_KEY_BYTES);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
+    private static String encode(byte[] value) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value);
+    }
+
+    private static byte[] decode(String value) {
+        return Base64.getUrlDecoder().decode(value);
     }
 }

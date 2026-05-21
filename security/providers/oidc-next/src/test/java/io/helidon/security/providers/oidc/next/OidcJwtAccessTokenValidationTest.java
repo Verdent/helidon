@@ -17,10 +17,16 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -47,6 +53,7 @@ import io.helidon.webserver.testing.junit5.SetUpRoute;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -58,6 +65,7 @@ class OidcJwtAccessTokenValidationTest {
     private static final String SUBJECT = "user1-id";
     private static final String USERNAME = "user1";
     private static final URI MISSING_JWKS_URI = URI.create("file:///tmp/oidc-next-missing-jwks.json");
+    private static final Instant TEST_INSTANT = Instant.parse("2026-05-21T00:00:00Z");
     private static final AtomicInteger remoteJwkSetRequests = new AtomicInteger();
     private static final AtomicReference<Queue<String>> remoteJwkSetResponses =
             new AtomicReference<>(new ArrayDeque<>());
@@ -67,6 +75,8 @@ class OidcJwtAccessTokenValidationTest {
     private static String verifyJwkSet;
 
     private URI remoteJwksUri;
+    @TempDir
+    private Path tempDir;
 
     @BeforeAll
     static void initClass() throws Exception {
@@ -135,28 +145,60 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
-    void unknownKeyIdRefreshesRemoteJwkSet() {
+    void unknownKeyIdRefreshesJwkSetAfterInterval() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void unknownKeyIdRefreshIsRateLimited() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
+
+        manager.jwkKeys();
+        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void staleUnknownKeyIdRefreshDoesNotRateLimitDifferentKeyId() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
+
+        manager.jwkKeys();
+        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void coldUnknownKeyIdDoesNotFetchRemoteJwkSetTwice() {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of(emptyJwkSet(), verifyJwkSet)));
         String token = signedToken(it -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
 
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(remoteJwkSetRequests.get(), is(2));
-    }
-
-    @Test
-    void unknownKeyIdRefreshIsRateLimited() {
-        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(emptyJwkSet(), emptyJwkSet(), verifyJwkSet)));
-        OidcProvider provider = provider(true, true, remoteJwksUri);
-        String token = signedToken(it -> { });
-
-        AuthenticationResponse firstResponse = authenticate(provider, token);
-        AuthenticationResponse secondResponse = authenticate(provider, token);
-
-        assertInvalidToken(firstResponse, "Bearer Token signature is invalid");
-        assertInvalidToken(secondResponse, "Bearer Token signature is invalid");
-        assertThat(remoteJwkSetRequests.get(), is(2));
+        assertInvalidToken(response, "Bearer Token signature is invalid");
+        assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
     @Test
@@ -283,6 +325,19 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void knownKeyIdWithInvalidSignatureDoesNotRefreshRemoteJwkSet() {
+        String token = signedToken(it -> { });
+        int signatureStart = token.lastIndexOf('.') + 1;
+        char replacement = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
+        String tampered = token.substring(0, signatureStart) + replacement + token.substring(signatureStart + 1);
+
+        AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), tampered);
+
+        assertInvalidToken(response, "Bearer Token signature is invalid");
+        assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
     void missingSubjectIsRejected() {
         String token = signedToken(it -> it.subject(null));
 
@@ -343,6 +398,18 @@ class OidcJwtAccessTokenValidationTest {
                                            .buildPrototype());
     }
 
+    private static OidcJwkSetManager jwkSetManager(URI jwksUri, Clock clock) {
+        OidcProviderMetadata metadata = OidcProviderMetadata.create(Optional.of(ISSUER),
+                                                                    Optional.empty(),
+                                                                    Optional.empty(),
+                                                                    Optional.empty(),
+                                                                    Optional.of(jwksUri),
+                                                                    Optional.empty(),
+                                                                    Optional.empty(),
+                                                                    Optional.empty());
+        return OidcJwkSetManager.create("default", metadata, clock);
+    }
+
     private static String signedToken(Consumer<Jwt.Builder> customizer) {
         return signedToken(JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", customizer);
     }
@@ -387,5 +454,38 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.description().orElse(""), is(description));
         assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
                    is("Bearer error=\"invalid_token\", error_description=\"" + description + "\""));
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant instant;
+        private final ZoneId zone;
+
+        private MutableClock(Instant instant, ZoneId zone) {
+            this.instant = instant;
+            this.zone = zone;
+        }
+
+        static MutableClock create(Instant instant) {
+            return new MutableClock(instant, ZoneId.of("UTC"));
+        }
+
+        void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new MutableClock(instant, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }

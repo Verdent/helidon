@@ -29,27 +29,34 @@ final class OidcRequestContext {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final ProviderRequest providerRequest;
-    private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
 
-    private OidcRequestContext(ProviderRequest providerRequest, OidcProviderConfig config) {
+    private OidcRequestContext(ProviderRequest providerRequest,
+                               OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.providerRequest = providerRequest;
-        this.config = config;
+        this.tenantRuntimeRegistry = tenantRuntimeRegistry;
     }
 
-    static OidcRequestContext create(ProviderRequest providerRequest, OidcProviderConfig config) {
-        return new OidcRequestContext(providerRequest, config);
+    static OidcRequestContext create(ProviderRequest providerRequest,
+                                     OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        return new OidcRequestContext(providerRequest, tenantRuntimeRegistry);
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
         EndpointConfig endpointConfig = endpointConfig();
         if (endpointConfig == null) {
-            return OidcConfigSupport.endpointPolicy(config);
+            return tenantContext()
+                    .flatMap(OidcTenantContext::endpointPolicy);
         }
         return endpointConfig.instance(OidcEndpointPolicy.class)
-                .or(() -> OidcConfigSupport.endpointPolicy(config));
+                .or(() -> tenantContext()
+                        .flatMap(OidcTenantContext::endpointPolicy));
     }
 
     boolean bearerTokenPresent() {
+        if (endpointPolicy().filter(OidcEndpointPolicy::bearerTokenAuthenticationEnabled).isEmpty()) {
+            return false;
+        }
         OidcTokenTransportConfig tokenTransport = tokenTransport();
         return (tokenTransport.authorizationHeaderEnabled() && bearerTokenHeaderPresent())
                 || (tokenTransport.queryParameterEnabled() && accessTokenQueryParameterPresent());
@@ -80,8 +87,13 @@ final class OidcRequestContext {
     }
 
     private OidcTokenTransportConfig tokenTransport() {
-        return OidcConfigSupport.tokenTransport(config)
+        return tenantContext()
+                .map(OidcTenantContext::tokenTransport)
                 .orElseGet(OidcTokenTransportConfig::create);
+    }
+
+    private Optional<OidcTenantContext> tenantContext() {
+        return tenantRuntimeRegistry.tenantContext(providerRequest);
     }
 
     private EndpointConfig endpointConfig() {

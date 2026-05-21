@@ -20,19 +20,26 @@ import io.helidon.security.AuthenticationResponse;
 
 final class OidcAuthenticationOrchestrator {
     private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
+                                           OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcRequestClassifier classifier,
                                            OidcResponseFactory responseFactory) {
         this.config = config;
+        this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
     }
 
-    static OidcAuthenticationOrchestrator create(OidcProviderConfig config) {
-        return new OidcAuthenticationOrchestrator(config, OidcRequestClassifier.create(), OidcResponseFactory.create());
+    static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
+                                                 OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        return new OidcAuthenticationOrchestrator(config,
+                                                  tenantRuntimeRegistry,
+                                                  OidcRequestClassifier.create(),
+                                                  OidcResponseFactory.create());
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
@@ -40,7 +47,7 @@ final class OidcAuthenticationOrchestrator {
             return AuthenticationResponse.abstain();
         }
 
-        OidcRequestContext context = OidcRequestContext.create(providerRequest, config);
+        OidcRequestContext context = OidcRequestContext.create(providerRequest, tenantRuntimeRegistry);
         OidcProtocolOperation operation = classifier.classify(context);
 
         return switch (operation) {

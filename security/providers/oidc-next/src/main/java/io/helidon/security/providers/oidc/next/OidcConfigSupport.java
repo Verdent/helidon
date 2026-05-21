@@ -16,43 +16,12 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
 
 final class OidcConfigSupport {
     private OidcConfigSupport() {
-    }
-
-    static Optional<OidcEndpointPolicy> endpointPolicy(OidcProviderConfig config) {
-        return defaultTenant(config)
-                .flatMap(tenant -> endpointPolicy(tenant.protectedResource(), tenant.authorizationCode()));
-    }
-
-    static Optional<OidcOutboundPolicy> outboundPolicy(OidcProviderConfig config) {
-        return defaultTenant(config)
-                .flatMap(tenant -> outboundPolicy(tenant.outbound()));
-    }
-
-    static Optional<OidcTokenTransportConfig> tokenTransport(OidcProviderConfig config) {
-        return defaultTenant(config)
-                .map(OidcTenantConfig::tokenTransport);
-    }
-
-    private static Optional<OidcTenantConfig> defaultTenant(OidcProviderConfig config) {
-        Map<String, OidcTenantConfig> tenants = config.tenants();
-        if (tenants.isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<String> defaultTenant = config.defaultTenant();
-        if (defaultTenant.isPresent()) {
-            return Optional.ofNullable(tenants.get(defaultTenant.get()));
-        }
-        if (tenants.size() == 1) {
-            return Optional.of(tenants.values().iterator().next());
-        }
-        return Optional.empty();
     }
 
     private static Optional<OidcEndpointPolicy> endpointPolicy(OidcProtectedResourceConfig protectedResource,
@@ -72,6 +41,10 @@ final class OidcConfigSupport {
         return Optional.empty();
     }
 
+    static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant) {
+        return endpointPolicy(tenant.protectedResource(), tenant.authorizationCode());
+    }
+
     private static Optional<OidcOutboundPolicy> outboundPolicy(OidcOutboundConfig outbound) {
         boolean tokenPropagation = outbound.tokenPropagationEnabled();
         boolean clientCredentialsGrant = outbound.clientCredentialsGrantEnabled();
@@ -86,6 +59,10 @@ final class OidcConfigSupport {
             return Optional.of(OidcOutboundPolicy.clientCredentialsGrant());
         }
         return Optional.empty();
+    }
+
+    static Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenant) {
+        return outboundPolicy(tenant.outbound());
     }
 
     static final class ProviderDecorator implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {

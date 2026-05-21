@@ -39,7 +39,7 @@ import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.common.TokenCredential;
-import io.helidon.webserver.http.HttpRules;
+import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
 import io.helidon.webserver.testing.junit5.ServerTest;
@@ -65,19 +65,16 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static String responseBody;
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
-    private final URI introspectionEndpointUri;
-
-    OidcIntrospectionAccessTokenValidationTest(URI serverUri) {
-        this.introspectionEndpointUri = serverUri.resolve("introspect");
-    }
+    private URI introspectionEndpointUri;
 
     @SetUpRoute
-    static void routing(HttpRules rules) {
-        rules.post("/introspect", OidcIntrospectionAccessTokenValidationTest::handleIntrospection);
+    static void routing(HttpRouting.Builder routing) {
+        routing.post("/introspect", OidcIntrospectionAccessTokenValidationTest::handleIntrospection);
     }
 
     @BeforeEach
-    void setUp() {
+    void setUp(URI serverUri) {
+        introspectionEndpointUri = serverUri.resolve("introspect");
         responseStatus = 200;
         responseBody = validResponse(it -> { }).toString();
         RECORDED_REQUEST.set(null);
@@ -303,11 +300,14 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                    .issuer(ISSUER)
                                                    .clientId(CLIENT_ID)
                                                    .clientSecret(CLIENT_SECRET)
-                                                   .endpoints(it -> it.introspectionEndpointUri(introspectionEndpointUri))
+                                                   .endpoints(it -> it
+                                                           .introspectionEndpointUri(introspectionEndpointUri))
                                                    .protectedResource(it -> it.enabled(true)
                                                            .tokenValidation(validation -> {
-                                                               validation.method(OidcTokenValidationMethod.INTROSPECTION)
-                                                                       .audienceValidationEnabled(audienceValidationEnabled);
+                                                               validation
+                                                                       .method(OidcTokenValidationMethod.INTROSPECTION)
+                                                                       .audienceValidationEnabled(
+                                                                               audienceValidationEnabled);
                                                                if (audienceConfigured) {
                                                                    validation.audience(AUDIENCE);
                                                                }
@@ -338,8 +338,10 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     private static String basicAuthorization() {
+        byte[] credentials = (formEncode(CLIENT_ID) + ":" + formEncode(CLIENT_SECRET))
+                .getBytes(StandardCharsets.UTF_8);
         return "Basic " + Base64.getEncoder()
-                .encodeToString((formEncode(CLIENT_ID) + ":" + formEncode(CLIENT_SECRET)).getBytes(StandardCharsets.UTF_8));
+                .encodeToString(credentials);
     }
 
     private static String formEncode(String value) {

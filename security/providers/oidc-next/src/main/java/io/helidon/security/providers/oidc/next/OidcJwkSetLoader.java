@@ -48,6 +48,12 @@ final class OidcJwkSetLoader {
     }
 
     static void validateJwkSetUri(URI uri) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "which MUST use the `https` scheme".
+         * The `file` scheme is Helidon local/offline key-loading support, not a spec exception.
+         */
         String scheme = uri.getScheme();
         if (scheme == null) {
             throw new IllegalArgumentException("jwks-uri must use https or file scheme");

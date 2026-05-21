@@ -17,9 +17,9 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.security.ProviderRequest;
 
@@ -64,23 +64,21 @@ final class OidcTenantRuntimeRegistry {
             return Optional.of(existing);
         }
 
-        Optional<OidcTenantConfig> tenantConfig = tenantConfigResolver.tenantConfig(tenantId);
-        if (tenantConfig.isEmpty()) {
-            return Optional.empty();
-        }
+        return tenantConfigResolver.tenantConfig(tenantId)
+                .map(tenantConfig -> {
+                    AtomicReference<OidcTenantContext> resolvedContext = new AtomicReference<>();
+                    contexts.compute(tenantId, (id, cached) -> {
+                        if (cached != null) {
+                            resolvedContext.set(cached);
+                            return cached;
+                        }
 
-        AtomicReference<OidcTenantContext> resolvedContext = new AtomicReference<>();
-        contexts.compute(tenantId, (id, cached) -> {
-            if (cached != null) {
-                resolvedContext.set(cached);
-                return cached;
-            }
-
-            OidcTenantContext created = tenantContextFactory.create(id, tenantConfig.get());
-            resolvedContext.set(created);
-            return created.cacheable() ? created : null;
-        });
-        return Optional.of(resolvedContext.get());
+                        OidcTenantContext created = tenantContextFactory.create(id, tenantConfig);
+                        resolvedContext.set(created);
+                        return created.cacheable() ? created : null;
+                    });
+                    return resolvedContext.get();
+                });
     }
 
     int cachedTenantCount() {

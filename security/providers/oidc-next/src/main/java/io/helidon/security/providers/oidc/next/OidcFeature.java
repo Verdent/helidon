@@ -107,10 +107,9 @@ public final class OidcFeature implements HttpFeature {
         OidcTenantContext tenantContext = result.tenantContext().orElseThrow();
         OidcAuthenticationRequestState state = result.authenticationRequestState().orElseThrow();
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
-                .exchangeAuthorizationCode(OidcAuthorizationCodeTokenRequest.create(
-                        result.authorizationCode().orElseThrow(),
-                        state.redirectionEndpointUri(),
-                        state.pkceVerifier().orElse(null)));
+                .exchangeAuthorizationCode(result.authorizationCode().orElseThrow(),
+                                           state.redirectionEndpointUri(),
+                                           state.pkceVerifier());
         if (tokenResult.succeeded()) {
             OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
             OidcIdTokenValidationResult idTokenResult = idTokenValidator.validate(

@@ -55,8 +55,8 @@ final class OidcIdTokenValidator {
             return OidcIdTokenValidationResult.failure("ID Token JWT payload is invalid", e);
         }
 
-        OidcTokenValidationPolicy policy = tenantContext.tokenValidationPolicy();
-        Errors headerErrors = headerValidator(policy.allowedAlgorithms()).validate(jwt);
+        OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
+        Errors headerErrors = headerValidator(tokenValidation.allowedAlgorithms()).validate(jwt);
         if (!headerErrors.isValid()) {
             return OidcIdTokenValidationResult.failure("ID Token JWS header is invalid");
         }
@@ -84,7 +84,7 @@ final class OidcIdTokenValidator {
             return OidcIdTokenValidationResult.failure("ID Token validation is not configured");
         }
 
-        Errors claimErrors = claimValidator(policy,
+        Errors claimErrors = claimValidator(tokenValidation,
                                             expectedIssuer.orElseThrow(),
                                             clientId.orElseThrow(),
                                             authenticationRequestState.nonce()).validate(jwt);
@@ -109,7 +109,7 @@ final class OidcIdTokenValidator {
                 .build();
     }
 
-    private JwtValidator claimValidator(OidcTokenValidationPolicy policy,
+    private JwtValidator claimValidator(OidcTokenValidationConfig tokenValidation,
                                         String expectedIssuer,
                                         String clientId,
                                         String expectedNonce) {
@@ -126,9 +126,9 @@ final class OidcIdTokenValidator {
          */
         Instant now = Instant.now();
         return JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()).mandatory(true))
-                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()))
+                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
+                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
+                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)
                 .addValidator((jwt, collector) -> {

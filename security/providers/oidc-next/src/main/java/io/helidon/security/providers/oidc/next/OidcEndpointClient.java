@@ -68,7 +68,9 @@ final class OidcEndpointClient {
         return metadata.endSessionEndpointUri();
     }
 
-    OidcTokenEndpointResult exchangeAuthorizationCode(OidcAuthorizationCodeTokenRequest tokenRequest) {
+    OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
+                                                      URI redirectionEndpointUri,
+                                                      Optional<String> pkceVerifier) {
         Optional<URI> endpointUri = tokenEndpointUri();
         if (endpointUri.isEmpty()) {
             return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
@@ -82,9 +84,9 @@ final class OidcEndpointClient {
          */
         Parameters.Builder form = Parameters.builder("oidc-token-endpoint-form")
                 .add("grant_type", "authorization_code")
-                .add("code", tokenRequest.authorizationCode())
-                .add("redirect_uri", tokenRequest.redirectionEndpointUri().toString());
-        tokenRequest.pkceVerifier().ifPresent(verifier -> {
+                .add("code", authorizationCode)
+                .add("redirect_uri", redirectionEndpointUri.toString());
+        pkceVerifier.ifPresent(verifier -> {
             /*
              * Spec: RFC 7636, 4.5 Client Sends the Authorization Code and the Code Verifier to the Token Endpoint
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.5

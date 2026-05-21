@@ -35,10 +35,8 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        OidcBearerTokenEvidence evidence = result.evidence().orElseThrow();
         assertThat(result.invalidRequest(), is(false));
-        assertThat(evidence.token(), is("access-token"));
-        assertThat(evidence.source(), is(OidcBearerTokenSource.AUTHORIZATION_HEADER));
+        assertThat(result.bearerToken().orElseThrow(), is("access-token"));
     }
 
     @Test
@@ -51,7 +49,7 @@ class OidcBearerTokenExtractorTest {
                         .authorizationHeaderEnabled(false)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(false));
     }
 
@@ -65,10 +63,8 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        OidcBearerTokenEvidence evidence = result.evidence().orElseThrow();
         assertThat(result.invalidRequest(), is(false));
-        assertThat(evidence.token(), is("access-token"));
-        assertThat(evidence.source(), is(OidcBearerTokenSource.QUERY_PARAMETER));
+        assertThat(result.bearerToken().orElseThrow(), is("access-token"));
     }
 
     @Test
@@ -79,7 +75,7 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(false));
     }
 
@@ -94,7 +90,7 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Token credential sources found"));
     }
@@ -107,7 +103,7 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in Authorization header"));
     }
@@ -122,7 +118,7 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
     }
@@ -135,7 +131,7 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
@@ -148,7 +144,7 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
@@ -161,7 +157,7 @@ class OidcBearerTokenExtractorTest {
                         .build(),
                 OidcTokenTransportConfig.create());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
@@ -176,7 +172,7 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in query parameter"));
     }
@@ -191,17 +187,17 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in query parameter"));
     }
 
     @Test
     void rejectsBareQueryParameterBearerTokenWithAnotherQueryToken() {
-        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.accessTokenQueryParameterEvidence(
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.accessTokenQueryParameterBearerToken(
                 UriQuery.create("access_token&access_token=access-token"));
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
     }
@@ -216,7 +212,7 @@ class OidcBearerTokenExtractorTest {
                         .queryParameterEnabled(true)
                         .buildPrototype());
 
-        assertThat(result.evidence().isEmpty(), is(true));
+        assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in query parameter"));
     }

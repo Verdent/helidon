@@ -62,11 +62,11 @@ final class OidcRequestContext {
     }
 
     boolean bearerTokenPresent() {
-        return bearerTokenEvidence().isPresent();
+        return bearerToken().isPresent();
     }
 
-    Optional<OidcBearerTokenEvidence> bearerTokenEvidence() {
-        return bearerTokenExtractionResult().evidence();
+    Optional<String> bearerToken() {
+        return bearerTokenExtractionResult().bearerToken();
     }
 
     boolean bearerTokenInvalidRequest() {

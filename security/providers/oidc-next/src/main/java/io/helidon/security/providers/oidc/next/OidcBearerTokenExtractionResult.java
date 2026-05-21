@@ -21,11 +21,11 @@ import java.util.Optional;
 final class OidcBearerTokenExtractionResult {
     private static final OidcBearerTokenExtractionResult EMPTY = new OidcBearerTokenExtractionResult(null, null);
 
-    private final OidcBearerTokenEvidence evidence;
+    private final String bearerToken;
     private final String errorDescription;
 
-    private OidcBearerTokenExtractionResult(OidcBearerTokenEvidence evidence, String errorDescription) {
-        this.evidence = evidence;
+    private OidcBearerTokenExtractionResult(String bearerToken, String errorDescription) {
+        this.bearerToken = bearerToken;
         this.errorDescription = errorDescription;
     }
 
@@ -33,16 +33,16 @@ final class OidcBearerTokenExtractionResult {
         return EMPTY;
     }
 
-    static OidcBearerTokenExtractionResult evidence(OidcBearerTokenEvidence evidence) {
-        return new OidcBearerTokenExtractionResult(evidence, null);
+    static OidcBearerTokenExtractionResult bearerToken(String bearerToken) {
+        return new OidcBearerTokenExtractionResult(bearerToken, null);
     }
 
     static OidcBearerTokenExtractionResult invalidRequest(String errorDescription) {
         return new OidcBearerTokenExtractionResult(null, errorDescription);
     }
 
-    Optional<OidcBearerTokenEvidence> evidence() {
-        return Optional.ofNullable(evidence);
+    Optional<String> bearerToken() {
+        return Optional.ofNullable(bearerToken);
     }
 
     boolean invalidRequest() {

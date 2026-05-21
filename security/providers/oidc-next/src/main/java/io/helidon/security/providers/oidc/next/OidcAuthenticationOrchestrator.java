@@ -125,30 +125,29 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
-        Optional<OidcBearerTokenEvidence> evidence = context.bearerTokenEvidence();
-        if (evidence.isEmpty()) {
+        Optional<String> bearerToken = context.bearerToken();
+        if (bearerToken.isEmpty()) {
             if (config.optional()) {
                 return responseFactory.optional("Bearer Token is required");
             }
             return responseFactory.missingBearerToken();
         }
 
-        OidcBearerTokenEvidence bearerTokenEvidence = evidence.orElseThrow();
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-        OidcAccessTokenValidator validator = tenantContext.tokenValidationPolicy()
+        OidcAccessTokenValidator validator = tenantContext.tokenValidation()
                 .method()
                 .map(accessTokenValidators::get)
                 .orElse(null);
         if (validator == null) {
             return responseFactory.bearerTokenValidationNotImplemented();
         }
-        return authenticateBearerToken(bearerTokenEvidence, tenantContext, validator);
+        return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator);
     }
 
-    private AuthenticationResponse authenticateBearerToken(OidcBearerTokenEvidence evidence,
+    private AuthenticationResponse authenticateBearerToken(String bearerToken,
                                                           OidcTenantContext tenantContext,
                                                           OidcAccessTokenValidator validator) {
-        OidcTokenValidationResult validationResult = validator.validate(evidence.token(), tenantContext);
+        OidcTokenValidationResult validationResult = validator.validate(bearerToken, tenantContext);
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(tenantContext.subjectMapper()
                                                           .map(validationResult.validatedToken().orElseThrow()));

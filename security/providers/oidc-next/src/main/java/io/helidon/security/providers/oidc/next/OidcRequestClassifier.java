@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
 final class OidcRequestClassifier {
     private OidcRequestClassifier() {
     }
@@ -42,8 +44,8 @@ final class OidcRequestClassifier {
                 .orElse(OidcProtocolOperation.ABSTAIN);
     }
 
-    OidcProtocolOperation classify(OidcOutboundRequestContext context) {
-        return context.outboundPolicy()
+    OidcProtocolOperation classify(Optional<OidcOutboundPolicy> outboundPolicy) {
+        return outboundPolicy
                 .map(this::classifyOutboundPolicy)
                 .orElse(OidcProtocolOperation.ABSTAIN);
     }

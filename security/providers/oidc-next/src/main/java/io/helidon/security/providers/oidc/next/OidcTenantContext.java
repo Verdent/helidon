@@ -40,7 +40,7 @@ final class OidcTenantContext {
             this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
             this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
             this.metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
-            this.endpointClient = OidcEndpointClient.create(tenantId, metadata);
+            this.endpointClient = OidcEndpointClient.create(tenantId, tenantConfig, metadata);
             this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
             this.tokenValidationPolicy = OidcTokenValidationPolicy.create(tenantConfig);
             this.providerProfile = OidcProviderProfile.generic();

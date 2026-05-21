@@ -171,11 +171,13 @@ final class OidcConfigSupport {
                         "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         authorizationEndpointUri.ifPresent(uri -> validateAuthorizationEndpointUri(uri, endpoints.tlsRequired()));
-        endpoints.tokenEndpointUri()
+        Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
+        tokenEndpointUri
                 .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
+        tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
         tenant.issuer()
                 .or(endpoints::discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -278,11 +280,13 @@ final class OidcConfigSupport {
         tenant.clientSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-secret must be configured when Client Credentials Grant is enabled"));
-        endpoints.tokenEndpointUri()
+        Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
+        tokenEndpointUri
                 .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant "
                                 + "is enabled"));
+        tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
     }
 
     private static void validateAuthorizationEndpointUri(URI uri, boolean tlsRequired) {
@@ -306,6 +310,16 @@ final class OidcConfigSupport {
          * Quote: "This URL MUST use the `https` scheme".
          */
         validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
+    }
+
+    private static void validateTokenEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: RFC 6749, 3.2 Token Endpoint
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2
+         * Quotes: "The authorization server MUST require the use of TLS"; "MUST NOT include a fragment component".
+         */
+        validateHttpsEndpointUri("token-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("token-endpoint-uri", uri);
     }
 
     private static void validateIntrospectionEndpointUri(URI uri, boolean tlsRequired) {

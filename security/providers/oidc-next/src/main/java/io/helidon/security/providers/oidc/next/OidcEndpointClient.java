@@ -17,19 +17,38 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 
-final class OidcEndpointClient {
-    private final String tenantId;
-    private final OidcProviderMetadata metadata;
+import io.helidon.common.parameters.Parameters;
+import io.helidon.http.HeaderNames;
+import io.helidon.http.HeaderValues;
+import io.helidon.http.Status;
+import io.helidon.json.JsonObject;
+import io.helidon.webclient.api.HttpClientRequest;
+import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
 
-    private OidcEndpointClient(String tenantId, OidcProviderMetadata metadata) {
+final class OidcEndpointClient {
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+
+    private final String tenantId;
+    private final OidcTenantConfig tenantConfig;
+    private final OidcProviderMetadata metadata;
+    private final WebClient webClient;
+
+    private OidcEndpointClient(String tenantId,
+                               OidcTenantConfig tenantConfig,
+                               OidcProviderMetadata metadata,
+                               WebClient webClient) {
         this.tenantId = tenantId;
+        this.tenantConfig = tenantConfig;
         this.metadata = metadata;
+        this.webClient = webClient;
     }
 
-    static OidcEndpointClient create(String tenantId, OidcProviderMetadata metadata) {
-        return new OidcEndpointClient(tenantId, metadata);
+    static OidcEndpointClient create(String tenantId, OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        return new OidcEndpointClient(tenantId, tenantConfig, metadata, WebClient.create());
     }
 
     String tenantId() {
@@ -54,5 +73,64 @@ final class OidcEndpointClient {
 
     Optional<URI> endSessionEndpointUri() {
         return metadata.endSessionEndpointUri();
+    }
+
+    OidcTokenEndpointResult exchangeAuthorizationCode(OidcAuthorizationCodeTokenRequest tokenRequest) {
+        Optional<URI> endpointUri = tokenEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
+        }
+
+        /*
+         * Spec: RFC 6749, 4.1.3 Access Token Request
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.3
+         * Quotes: "The client makes a request to the token endpoint"; "using the `application/x-www-form-urlencoded`
+         * format"; "`grant_type` REQUIRED"; "`code` REQUIRED"; "`redirect_uri` REQUIRED".
+         */
+        Parameters.Builder form = Parameters.builder("oidc-token-endpoint-form")
+                .add("grant_type", "authorization_code")
+                .add("code", tokenRequest.authorizationCode())
+                .add("redirect_uri", tokenRequest.redirectionEndpointUri().toString());
+        tokenRequest.pkceVerifier().ifPresent(verifier -> {
+            /*
+             * Spec: RFC 7636, 4.5 Client Sends the Authorization Code and the Code Verifier to the Token Endpoint
+             * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.5
+             * Quote: "The client sends the authorization code as well as the `code_verifier`".
+             */
+            form.add("code_verifier", verifier);
+        });
+
+        HttpClientRequest request = webClient.post()
+                .uri(endpointUri.orElseThrow())
+                .readTimeout(REQUEST_TIMEOUT)
+                .header(HeaderValues.ACCEPT_JSON)
+                .header(HeaderValues.CACHE_NO_CACHE)
+                .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
+        OidcClientAuthenticationSupport.applyTokenEndpointAuthentication(tenantConfig, form, request);
+
+        try (HttpClientResponse response = request.submit(form.build())) {
+            if (response.status().family() == Status.Family.SUCCESSFUL) {
+                return success(response);
+            }
+            return error(response);
+        } catch (RuntimeException e) {
+            return OidcTokenEndpointResult.failure("Token Endpoint is unavailable", e);
+        }
+    }
+
+    private OidcTokenEndpointResult success(HttpClientResponse response) {
+        try {
+            return OidcTokenEndpointResult.success(OidcTokenResponse.fromJson(response.as(JsonObject.class)));
+        } catch (RuntimeException e) {
+            return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
+        }
+    }
+
+    private OidcTokenEndpointResult error(HttpClientResponse response) {
+        try {
+            return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
+        } catch (RuntimeException e) {
+            return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
+        }
     }
 }

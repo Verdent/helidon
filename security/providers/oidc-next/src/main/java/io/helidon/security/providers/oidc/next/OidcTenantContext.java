@@ -30,7 +30,6 @@ final class OidcTenantContext {
     private final OidcTokenValidationPolicy tokenValidationPolicy;
     private final OidcSubjectMapper subjectMapper;
     private final OidcCookieStateHandler cookieStateHandler;
-    private final OidcProviderProfile providerProfile;
 
     private OidcTenantContext(String tenantId,
                               OidcTenantConfig tenantConfig,
@@ -43,11 +42,10 @@ final class OidcTenantContext {
             this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
             this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
             this.metadata = readyMetadata;
-            this.endpointClient = OidcEndpointClient.create(tenantId, tenantConfig, metadata);
+            this.endpointClient = OidcEndpointClient.create(tenantConfig, metadata);
             this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
             this.tokenValidationPolicy = OidcTokenValidationPolicy.create(tenantConfig);
-            this.providerProfile = OidcProviderProfile.generic();
-            this.subjectMapper = OidcSubjectMapper.create(tenantId, providerProfile);
+            this.subjectMapper = OidcSubjectMapper.create();
             this.cookieStateHandler = OidcCookieStateHandler.create(tenantConfig);
         } else {
             this.endpointPolicy = Optional.empty();
@@ -58,7 +56,6 @@ final class OidcTenantContext {
             this.tokenValidationPolicy = null;
             this.subjectMapper = null;
             this.cookieStateHandler = null;
-            this.providerProfile = null;
         }
     }
 
@@ -130,11 +127,6 @@ final class OidcTenantContext {
     OidcCookieStateHandler cookieStateHandler() {
         requireReady();
         return cookieStateHandler;
-    }
-
-    OidcProviderProfile providerProfile() {
-        requireReady();
-        return providerProfile;
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {

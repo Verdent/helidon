@@ -64,10 +64,6 @@ final class OidcJwkSetManager {
         return new OidcJwkSetManager(tenantId, metadata, OidcJwkSetLoader.create(), clock);
     }
 
-    String tenantId() {
-        return tenantId;
-    }
-
     Optional<URI> jwkSetUri() {
         return metadata.jwkSetUri();
     }

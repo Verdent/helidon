@@ -29,24 +29,11 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcSubjectMapper {
-    private final String tenantId;
-    private final OidcProviderProfile providerProfile;
-
-    private OidcSubjectMapper(String tenantId, OidcProviderProfile providerProfile) {
-        this.tenantId = tenantId;
-        this.providerProfile = providerProfile;
+    private OidcSubjectMapper() {
     }
 
-    static OidcSubjectMapper create(String tenantId, OidcProviderProfile providerProfile) {
-        return new OidcSubjectMapper(tenantId, providerProfile);
-    }
-
-    String tenantId() {
-        return tenantId;
-    }
-
-    OidcProviderProfile providerProfile() {
-        return providerProfile;
+    static OidcSubjectMapper create() {
+        return new OidcSubjectMapper();
     }
 
     Subject map(OidcValidatedAccessToken validatedToken) {

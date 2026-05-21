@@ -70,10 +70,7 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(context.endpointClient().endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(JWK_SET_URI)));
         assertThat(context.tokenValidationPolicy().method().isEmpty(), is(true));
-        assertThat(context.subjectMapper().tenantId(), is("tenant"));
-        assertThat(context.subjectMapper().providerProfile(), is(context.providerProfile()));
         assertThat(context.cookieStateHandler().cookieConfig(), is(context.tenantConfig().cookies()));
-        assertThat(context.providerProfile().id(), is("generic"));
     }
 
     @Test

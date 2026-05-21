@@ -83,10 +83,10 @@ class OidcProviderMetadataDiscoveryTest {
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
         assertThat(context.metadata().discoveryUri(), is(Optional.of(issuer.resolve("/.well-known/openid-configuration"))));
-        assertThat(context.endpointClient().authorizationEndpointUri(), is(Optional.of(authorizationEndpointUri)));
-        assertThat(context.endpointClient().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
+        assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(authorizationEndpointUri)));
+        assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
-        assertThat(context.endpointClient().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
+        assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
     }
 
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {

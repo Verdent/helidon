@@ -19,7 +19,6 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.Optional;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
@@ -60,11 +59,10 @@ final class OidcClientAuthenticationSupport {
 
     static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(OidcTenantConfig tenantConfig) {
         return tenantConfig.tokenEndpointAuthenticationMethod()
-                .or(() -> Optional.of(tenantConfig.clientSecret()
-                                               .isPresent()
-                                               ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
-                                               : OidcClientAuthenticationMethod.NONE))
-                .orElseThrow();
+                .orElseGet(() -> tenantConfig.clientSecret()
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
     }
 
     static String basicAuthorization(String clientId, String clientSecret) {

@@ -32,11 +32,7 @@ final class OidcSubjectMapper {
     private OidcSubjectMapper() {
     }
 
-    static OidcSubjectMapper create() {
-        return new OidcSubjectMapper();
-    }
-
-    Subject map(OidcValidatedAccessToken validatedToken) {
+    static Subject map(OidcValidatedAccessToken validatedToken) {
         if (validatedToken instanceof OidcValidatedJwt validatedJwt) {
             return mapJwt(validatedJwt);
         }
@@ -46,7 +42,7 @@ final class OidcSubjectMapper {
         throw new IllegalArgumentException("Unsupported validated access token type: " + validatedToken.getClass());
     }
 
-    Subject map(OidcLocalAuthenticationResult authenticationResult) {
+    static Subject map(OidcLocalAuthenticationResult authenticationResult) {
         Jwt idToken = authenticationResult.idToken().jwt();
         String subject = idToken.subject().orElseThrow();
         Principal principal = principal(idToken, subject);
@@ -73,7 +69,7 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
-    private Subject mapJwt(OidcValidatedJwt validatedToken) {
+    private static Subject mapJwt(OidcValidatedJwt validatedToken) {
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
         String subject = jwt.subject().orElseThrow();
@@ -101,7 +97,7 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
-    private Subject mapIntrospection(OidcValidatedIntrospection validatedToken) {
+    private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken) {
         String principalId = validatedToken.principalId().orElseThrow();
         Principal.Builder principalBuilder = Principal.builder()
                 .name(validatedToken.principalName().orElse(principalId))
@@ -134,7 +130,7 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
-    private Principal principal(Jwt jwt, String subject) {
+    private static Principal principal(Jwt jwt, String subject) {
         String name = jwt.preferredUsername()
                 .orElse(subject);
         Principal.Builder builder = Principal.builder()

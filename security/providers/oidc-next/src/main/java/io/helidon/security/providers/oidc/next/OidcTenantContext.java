@@ -27,7 +27,6 @@ final class OidcTenantContext {
     private final OidcProviderMetadata metadata;
     private final OidcEndpointClient endpointClient;
     private final OidcJwkSetManager jwkSetManager;
-    private final OidcSubjectMapper subjectMapper;
     private final OidcCookieStateHandler cookieStateHandler;
 
     private OidcTenantContext(String tenantId,
@@ -43,7 +42,6 @@ final class OidcTenantContext {
             this.metadata = readyMetadata;
             this.endpointClient = OidcEndpointClient.create(tenantConfig, metadata);
             this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
-            this.subjectMapper = OidcSubjectMapper.create();
             this.cookieStateHandler = OidcCookieStateHandler.create(tenantConfig);
         } else {
             this.endpointPolicy = Optional.empty();
@@ -51,7 +49,6 @@ final class OidcTenantContext {
             this.metadata = null;
             this.endpointClient = null;
             this.jwkSetManager = null;
-            this.subjectMapper = null;
             this.cookieStateHandler = null;
         }
     }
@@ -114,11 +111,6 @@ final class OidcTenantContext {
     OidcTokenValidationConfig tokenValidation() {
         requireReady();
         return tenantConfig.protectedResource().tokenValidation();
-    }
-
-    OidcSubjectMapper subjectMapper() {
-        requireReady();
-        return subjectMapper;
     }
 
     OidcCookieStateHandler cookieStateHandler() {

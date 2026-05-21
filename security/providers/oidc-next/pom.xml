@@ -63,6 +63,10 @@
             <artifactId>helidon-json</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.http.media</groupId>
+            <artifactId>helidon-http-media-json</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.security.providers</groupId>
             <artifactId>helidon-security-providers-common</artifactId>
         </dependency>

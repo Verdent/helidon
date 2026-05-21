@@ -239,7 +239,21 @@ class OidcProviderConfigTest {
                                 .audience(AUDIENCE)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("https or file"));
+        assertThat(thrown.getMessage(), containsString("jwks-uri must use https"));
+    }
+
+    @Test
+    void endpointTlsRequirementCanBeDisabledForJwksUri() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(URI.create("file:///tmp/oidc-next-jwks.json"))
+                        .tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
     }
 
     @Test
@@ -348,6 +362,21 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void endpointTlsRequirementCanBeDisabledForIntrospection() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.introspectionEndpointUri(URI.create("http://issuer.example/introspect"))
+                        .tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience("api://default")))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
     void authorizationCodeFlowRequiresRedirectionEndpointAndClient() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -401,6 +430,18 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowCanUseDiscoveryUriDerivedFromIssuer() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().discoveryUri().isEmpty(), is(true));
+    }
+
+    @Test
     void protectedResourceRequiresUsableTokenTransport() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -439,10 +480,11 @@ class OidcProviderConfigTest {
 
     @Test
     void defaultTenantMustReferenceConfiguredTenant() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .defaultTenant("missing")
-                .putTenant("default", jwtProtectedResourceTenant())
-                .buildPrototype());
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.builder()
+                                                               .defaultTenant("missing")
+                                                               .putTenant("default", jwtProtectedResourceTenant())
+                                                               .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("default-tenant"));
     }
@@ -518,6 +560,7 @@ class OidcProviderConfigTest {
         assertThat(metadata.contains("form-encoded-body-enabled"), is(false));
         assertThat(metadata, containsString("pkce-required"));
         assertThat(metadata, containsString("audience-validation-enabled"));
+        assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("path-template"));
     }
 
@@ -525,7 +568,8 @@ class OidcProviderConfigTest {
         return jwtProtectedResourceTenant(it -> { });
     }
 
-    private static OidcTenantConfig jwtProtectedResourceTenant(Consumer<OidcTokenTransportConfig.Builder> tokenTransport) {
+    private static OidcTenantConfig jwtProtectedResourceTenant(
+            Consumer<OidcTokenTransportConfig.Builder> tokenTransport) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")

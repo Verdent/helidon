@@ -88,8 +88,7 @@ public final class OidcFeature implements HttpFeature {
                                                         Instant.now()));
         result.stateCookies().forEach(response.headers()::addCookie);
         if (result.stateValidated()) {
-            response.status(Status.NOT_IMPLEMENTED_501)
-                    .send("Token Endpoint exchange is not implemented yet");
+            processTokenEndpointExchange(result, response);
             return;
         }
         if (result.authorizationError()) {
@@ -99,6 +98,28 @@ public final class OidcFeature implements HttpFeature {
         }
         response.status(Status.BAD_REQUEST_400)
                 .send("Authorization Response is invalid");
+    }
+
+    private void processTokenEndpointExchange(OidcAuthorizationResponseResult result, ServerResponse response) {
+        OidcTenantContext tenantContext = result.tenantContext().orElseThrow();
+        OidcAuthenticationRequestState state = result.authenticationRequestState().orElseThrow();
+        OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
+                .exchangeAuthorizationCode(OidcAuthorizationCodeTokenRequest.create(
+                        result.authorizationCode().orElseThrow(),
+                        state.redirectionEndpointUri(),
+                        state.pkceVerifier().orElse(null)));
+        if (tokenResult.succeeded()) {
+            response.status(Status.NOT_IMPLEMENTED_501)
+                    .send("ID Token validation is not implemented yet");
+            return;
+        }
+        if (tokenResult.errorResponse()) {
+            response.status(Status.BAD_GATEWAY_502)
+                    .send("Token Endpoint returned an Error Response");
+            return;
+        }
+        response.status(Status.BAD_GATEWAY_502)
+                .send("Token Endpoint exchange failed");
     }
 
     private static String path(URI uri) {

@@ -460,6 +460,52 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowRejectsInsecureTokenEndpoint() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(URI.create("http://issuer.example/token")))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+    }
+
+    @Test
+    void endpointTlsRequirementCanBeDisabledForTokenEndpoint() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsTokenEndpointWithFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(URI.create("https://issuer.example/token#fragment")))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must not include a fragment"));
+    }
+
+    @Test
     void authorizationCodeFlowRejectsAuthorizationEndpointWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

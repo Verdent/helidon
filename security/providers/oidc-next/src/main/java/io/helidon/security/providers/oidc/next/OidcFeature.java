@@ -35,10 +35,12 @@ import io.helidon.webserver.http.ServerResponse;
 public final class OidcFeature implements HttpFeature {
     private final OidcProviderConfig config;
     private final OidcAuthorizationResponseProcessor authorizationResponseProcessor;
+    private final OidcIdTokenValidator idTokenValidator;
 
     private OidcFeature(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.config = Objects.requireNonNull(config);
         this.authorizationResponseProcessor = OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry);
+        this.idTokenValidator = OidcIdTokenValidator.create();
     }
 
     /**
@@ -109,8 +111,17 @@ public final class OidcFeature implements HttpFeature {
                         state.redirectionEndpointUri(),
                         state.pkceVerifier().orElse(null)));
         if (tokenResult.succeeded()) {
+            OidcIdTokenValidationResult idTokenResult = idTokenValidator.validate(
+                    tokenResult.tokenResponse().orElseThrow().idToken(),
+                    tenantContext,
+                    state);
+            if (!idTokenResult.succeeded()) {
+                response.status(Status.BAD_GATEWAY_502)
+                        .send("ID Token is invalid");
+                return;
+            }
             response.status(Status.NOT_IMPLEMENTED_501)
-                    .send("ID Token validation is not implemented yet");
+                    .send("Local authentication result storage is not implemented yet");
             return;
         }
         if (tokenResult.errorResponse()) {

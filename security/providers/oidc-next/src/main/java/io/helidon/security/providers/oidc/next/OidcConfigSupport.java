@@ -21,6 +21,8 @@ import java.util.Optional;
 import io.helidon.builder.api.Prototype;
 
 final class OidcConfigSupport {
+    private static final String TENANT_VARIABLE = "{tenant}";
+
     private OidcConfigSupport() {
     }
 
@@ -86,6 +88,26 @@ final class OidcConfigSupport {
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
+        }
+    }
+
+    static final class TenantResolutionDecorator
+            implements Prototype.BuilderDecorator<OidcTenantResolutionConfig.BuilderBase<?, ?>> {
+        @Override
+        public void decorate(OidcTenantResolutionConfig.BuilderBase<?, ?> target) {
+            target.headerName().ifPresent(headerName -> require(!headerName.isBlank() && headerName.equals(headerName.strip()),
+                                                                "tenant-resolution.header-name must not be blank or padded"));
+            target.pathSegment().ifPresent(pathSegment -> require(pathSegment >= 0,
+                                                                  "tenant-resolution.path-segment must not be negative"));
+            target.hostTemplate().ifPresent(hostTemplate -> {
+                require(!hostTemplate.isBlank() && hostTemplate.equals(hostTemplate.strip()),
+                        "tenant-resolution.host-template must not be blank or padded");
+                int variableIndex = hostTemplate.indexOf(TENANT_VARIABLE);
+                require(variableIndex != -1,
+                        "tenant-resolution.host-template must contain exactly one {tenant} placeholder");
+                require(hostTemplate.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) == -1,
+                        "tenant-resolution.host-template must contain exactly one {tenant} placeholder");
+            });
         }
     }
 

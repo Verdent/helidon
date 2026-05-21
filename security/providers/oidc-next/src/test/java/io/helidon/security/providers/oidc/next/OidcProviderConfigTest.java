@@ -107,6 +107,44 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void tenantResolutionConfigRejectsInvalidValues() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantResolutionConfig.builder()
+                                                               .headerName(" ")
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("header-name"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .pathSegment(-1)
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("path-segment"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .hostTemplate(" ")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("host-template"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .hostTemplate("example.com")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("{tenant}"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .hostTemplate("{tenant}.{tenant}.example.com")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("{tenant}"));
+    }
+
+    @Test
     void protectedResourceRequiresValidationMethod() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

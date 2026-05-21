@@ -26,7 +26,7 @@ final class OidcOutboundRequestContext {
     private final ProviderRequest providerRequest;
     private final SecurityEnvironment outboundEnvironment;
     private final EndpointConfig outboundConfig;
-    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
+    private final Optional<OidcTenantContext> tenantContext;
 
     private OidcOutboundRequestContext(ProviderRequest providerRequest,
                                        SecurityEnvironment outboundEnvironment,
@@ -35,7 +35,7 @@ final class OidcOutboundRequestContext {
         this.providerRequest = providerRequest;
         this.outboundEnvironment = outboundEnvironment;
         this.outboundConfig = outboundConfig;
-        this.tenantRuntimeRegistry = tenantRuntimeRegistry;
+        this.tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
     }
 
     static OidcOutboundRequestContext create(ProviderRequest providerRequest,
@@ -49,13 +49,15 @@ final class OidcOutboundRequestContext {
     }
 
     Optional<OidcOutboundPolicy> outboundPolicy() {
+        if (tenantContext.isEmpty()) {
+            return Optional.empty();
+        }
+
         if (outboundConfig == null) {
-            return tenantRuntimeRegistry.tenantContext(providerRequest)
-                    .flatMap(OidcTenantContext::outboundPolicy);
+            return tenantContext.flatMap(OidcTenantContext::outboundPolicy);
         }
         return outboundConfig.instance(OidcOutboundPolicy.class)
-                .or(() -> tenantRuntimeRegistry.tenantContext(providerRequest)
-                        .flatMap(OidcTenantContext::outboundPolicy));
+                .or(() -> tenantContext.flatMap(OidcTenantContext::outboundPolicy));
     }
 
     ProviderRequest providerRequest() {

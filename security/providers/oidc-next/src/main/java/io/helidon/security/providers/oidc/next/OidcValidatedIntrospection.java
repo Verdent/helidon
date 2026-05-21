@@ -113,15 +113,19 @@ final class OidcValidatedIntrospection {
     }
 
     private static Optional<String> stringClaim(JsonObject claims, String claimName) {
-        Optional<JsonValue> value = claims.value(claimName);
-        if (value.isEmpty()) {
-            return Optional.empty();
-        }
-        JsonValue jsonValue = value.get();
-        if (jsonValue.type() == JsonValueType.STRING) {
-            return Optional.of(jsonValue.asString().value());
-        }
-        throw new IllegalArgumentException("Claim " + claimName + " must be a string");
+        /*
+         * Specs: RFC 6749, 2.2 Client Identifier; RFC 7662, 2.2 Introspection Response
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-2.2
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
+         * Quotes: "client identifier is a case-sensitive string"; "String representing the issuer".
+         */
+        return claims.value(claimName)
+                .map(jsonValue -> {
+                    if (jsonValue.type() == JsonValueType.STRING) {
+                        return jsonValue.asString().value();
+                    }
+                    throw new IllegalArgumentException("Claim " + claimName + " must be a string");
+                });
     }
 
     private Optional<Instant> instantClaim(String claimName) {
@@ -139,23 +143,27 @@ final class OidcValidatedIntrospection {
     }
 
     private static List<String> stringListClaim(JsonObject claims, String claimName) {
-        Optional<JsonValue> value = claims.value(claimName);
-        if (value.isEmpty()) {
-            return List.of();
-        }
-        JsonValue jsonValue = value.get();
-        if (jsonValue.type() == JsonValueType.STRING) {
-            return List.of(jsonValue.asString().value());
-        }
-        if (jsonValue.type() == JsonValueType.ARRAY) {
-            return jsonValue.asArray()
-                    .values()
-                    .stream()
-                    .map(JsonValue::asString)
-                    .map(JsonString::value)
-                    .toList();
-        }
-        throw new IllegalArgumentException("Claim " + claimName + " must be a string or string array");
+        /*
+         * Spec: RFC 7662, 2.2 Introspection Response
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
+         * Quote: "string identifier or list".
+         */
+        return claims.value(claimName)
+                .map(jsonValue -> {
+                    if (jsonValue.type() == JsonValueType.STRING) {
+                        return List.of(jsonValue.asString().value());
+                    }
+                    if (jsonValue.type() == JsonValueType.ARRAY) {
+                        return jsonValue.asArray()
+                                .values()
+                                .stream()
+                                .map(JsonValue::asString)
+                                .map(JsonString::value)
+                                .toList();
+                    }
+                    throw new IllegalArgumentException("Claim " + claimName + " must be a string or string array");
+                })
+                .orElseGet(List::of);
     }
 
     private static List<String> scopes(JsonObject claims) {

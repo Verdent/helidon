@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.security.AuthenticationResponse;
@@ -27,21 +29,19 @@ final class OidcAuthenticationOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
-    private final OidcJwtAccessTokenValidator jwtAccessTokenValidator;
-    private final OidcIntrospectionAccessTokenValidator introspectionAccessTokenValidator;
+    private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcRequestClassifier classifier,
                                            OidcResponseFactory responseFactory,
-                                           OidcJwtAccessTokenValidator jwtAccessTokenValidator,
-                                           OidcIntrospectionAccessTokenValidator introspectionAccessTokenValidator) {
+                                           Map<OidcTokenValidationMethod, OidcAccessTokenValidator>
+                                                   accessTokenValidators) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
-        this.jwtAccessTokenValidator = jwtAccessTokenValidator;
-        this.introspectionAccessTokenValidator = introspectionAccessTokenValidator;
+        this.accessTokenValidators = accessTokenValidators;
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
@@ -50,8 +50,7 @@ final class OidcAuthenticationOrchestrator {
                                                   tenantRuntimeRegistry,
                                                   OidcRequestClassifier.create(),
                                                   OidcResponseFactory.create(),
-                                                  OidcJwtAccessTokenValidator.create(),
-                                                  OidcIntrospectionAccessTokenValidator.create());
+                                                  accessTokenValidators());
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
@@ -89,23 +88,23 @@ final class OidcAuthenticationOrchestrator {
 
         OidcBearerTokenEvidence bearerTokenEvidence = evidence.orElseThrow();
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-        if (tenantContext.tokenValidationPolicy().method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()) {
-            return authenticateJwtBearerToken(bearerTokenEvidence, tenantContext);
+        OidcAccessTokenValidator validator = tenantContext.tokenValidationPolicy()
+                .method()
+                .map(accessTokenValidators::get)
+                .orElse(null);
+        if (validator == null) {
+            return responseFactory.bearerTokenValidationNotImplemented();
         }
-        if (tenantContext.tokenValidationPolicy().method()
-                .filter(OidcTokenValidationMethod.INTROSPECTION::equals)
-                .isPresent()) {
-            return authenticateIntrospectionBearerToken(bearerTokenEvidence, tenantContext);
-        }
-        return responseFactory.bearerTokenValidationNotImplemented();
+        return authenticateBearerToken(bearerTokenEvidence, tenantContext, validator);
     }
 
-    private AuthenticationResponse authenticateJwtBearerToken(OidcBearerTokenEvidence evidence,
-                                                             OidcTenantContext tenantContext) {
-        OidcTokenValidationResult validationResult = jwtAccessTokenValidator.validate(evidence.token(), tenantContext);
+    private AuthenticationResponse authenticateBearerToken(OidcBearerTokenEvidence evidence,
+                                                          OidcTenantContext tenantContext,
+                                                          OidcAccessTokenValidator validator) {
+        OidcTokenValidationResult validationResult = validator.validate(evidence.token(), tenantContext);
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                          .map(validationResult.validatedJwt().orElseThrow()));
+                                                          .map(validationResult.validatedToken().orElseThrow()));
         }
         validationResult.cause()
                 .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
@@ -116,21 +115,18 @@ final class OidcAuthenticationOrchestrator {
         return responseFactory.invalidBearerToken(errorDescription);
     }
 
-    private AuthenticationResponse authenticateIntrospectionBearerToken(OidcBearerTokenEvidence evidence,
-                                                                        OidcTenantContext tenantContext) {
-        OidcTokenValidationResult validationResult = introspectionAccessTokenValidator.validate(evidence.token(),
-                                                                                                tenantContext);
-        if (validationResult.succeeded()) {
-            OidcValidatedIntrospection validatedToken = validationResult.validatedIntrospection().orElseThrow();
-            return AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                          .map(validatedToken));
+    private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {
+        EnumMap<OidcTokenValidationMethod, OidcAccessTokenValidator> validators =
+                new EnumMap<>(OidcTokenValidationMethod.class);
+        addAccessTokenValidator(validators, OidcJwtAccessTokenValidator.create());
+        addAccessTokenValidator(validators, OidcIntrospectionAccessTokenValidator.create());
+        return Map.copyOf(validators);
+    }
+
+    private static void addAccessTokenValidator(Map<OidcTokenValidationMethod, OidcAccessTokenValidator> validators,
+                                                OidcAccessTokenValidator validator) {
+        if (validators.put(validator.method(), validator) != null) {
+            throw new IllegalStateException("Duplicate access token validator for method: " + validator.method());
         }
-        validationResult.cause()
-                .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
-                                                validationResult.errorDescription()
-                                                        .orElse("Bearer Token validation failed"),
-                                                cause));
-        String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
-        return responseFactory.invalidBearerToken(errorDescription);
     }
 }

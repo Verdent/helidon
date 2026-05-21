@@ -27,7 +27,7 @@ import io.helidon.security.jwt.JwtScope;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.security.jwt.SignedJwt;
 
-final class OidcJwtAccessTokenValidator {
+final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     private static final List<String> ALLOWED_ACCESS_TOKEN_TYPES = List.of("at+jwt", "application/at+jwt");
 
     private OidcJwtAccessTokenValidator() {
@@ -37,7 +37,13 @@ final class OidcJwtAccessTokenValidator {
         return new OidcJwtAccessTokenValidator();
     }
 
-    OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
+    @Override
+    public OidcTokenValidationMethod method() {
+        return OidcTokenValidationMethod.JWT;
+    }
+
+    @Override
+    public OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);

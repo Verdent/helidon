@@ -65,7 +65,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         }
 
         try {
-            Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys());
+            Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
                 return OidcTokenValidationResult.failure("Bearer Token signature is invalid");
             }

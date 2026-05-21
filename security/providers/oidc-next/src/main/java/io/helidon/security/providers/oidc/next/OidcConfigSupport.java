@@ -179,12 +179,18 @@ final class OidcConfigSupport {
                 }
             }
             case INTROSPECTION -> {
-                require(endpoints.introspectionEndpointUri().isPresent() || endpoints.discoveryUri().isPresent(),
-                        "introspection-endpoint-uri or discovery-uri must be configured when introspection is enabled");
+                require(endpoints.introspectionEndpointUri().isPresent(),
+                        "introspection-endpoint-uri must be configured when introspection is enabled");
+                endpoints.introspectionEndpointUri()
+                        .ifPresent(OidcIntrospectionAccessTokenValidator::validateIntrospectionEndpointUri);
                 require(tenant.clientId().isPresent(),
                         "client-id must be configured when introspection is enabled");
                 require(tenant.clientSecret().isPresent(),
                         "client-secret must be configured when introspection is enabled");
+                if (tokenValidation.audienceValidationEnabled()) {
+                    require(tokenValidation.audience().isPresent(),
+                            "token-validation.audience must be configured when introspection is enabled");
+                }
             }
             default -> throw new IllegalStateException("Unexpected token validation method: " + method);
             }

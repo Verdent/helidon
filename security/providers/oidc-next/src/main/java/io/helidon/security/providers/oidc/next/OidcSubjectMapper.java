@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import io.helidon.json.JsonObject;
 import io.helidon.security.Grant;
 import io.helidon.security.Principal;
 import io.helidon.security.Role;
@@ -71,6 +72,39 @@ final class OidcSubjectMapper {
                                                                                  .name(scope)
                                                                                  .type("scope")
                                                                                  .build())));
+        return subjectBuilder.build();
+    }
+
+    Subject map(OidcValidatedIntrospection validatedToken) {
+        String principalId = validatedToken.principalId().orElseThrow();
+        Principal.Builder principalBuilder = Principal.builder()
+                .name(validatedToken.principalName().orElse(principalId))
+                .id(principalId);
+
+        validatedToken.claims()
+                .keysAsStrings()
+                .forEach(key -> validatedToken.claims()
+                        .value(key)
+                        .ifPresent(value -> principalBuilder.addAttribute(key, JwtUtil.toObject(value))));
+
+        TokenCredential.Builder credentialBuilder = TokenCredential.builder()
+                .token(validatedToken.rawToken());
+        validatedToken.issueTime().ifPresent(credentialBuilder::issueTime);
+        validatedToken.expirationTime().ifPresent(credentialBuilder::expTime);
+        validatedToken.issuer().ifPresent(credentialBuilder::issuer);
+        credentialBuilder.addToken(JsonObject.class, validatedToken.claims());
+
+        Subject.Builder subjectBuilder = Subject.builder()
+                .principal(principalBuilder.build())
+                .addPublicCredential(TokenCredential.class, credentialBuilder.build());
+
+        validatedToken.groups()
+                .forEach(group -> subjectBuilder.addGrant(Role.create(group)));
+        validatedToken.scopes()
+                .forEach(scope -> subjectBuilder.addGrant(Grant.builder()
+                                                        .name(scope)
+                                                        .type("scope")
+                                                        .build()));
         return subjectBuilder.build();
     }
 

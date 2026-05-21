@@ -30,12 +30,14 @@ module io.helidon.security.providers.oidc.next {
     requires static io.helidon.config.metadata;
 
     requires io.helidon.builder.api;
+    requires io.helidon.common.parameters;
     requires io.helidon.common.uri;
     requires transitive io.helidon.config;
     requires transitive io.helidon.security;
     requires io.helidon.json;
     requires io.helidon.security.jwt;
     requires io.helidon.security.providers.common;
+    requires io.helidon.webclient;
 
     exports io.helidon.security.providers.oidc.next;
 

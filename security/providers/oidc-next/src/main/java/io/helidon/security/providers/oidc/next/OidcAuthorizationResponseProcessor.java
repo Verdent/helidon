@@ -226,33 +226,11 @@ final class OidcAuthorizationResponseProcessor {
         return value == null ? null : value.toLowerCase(Locale.ROOT);
     }
 
-    private static final class StoredAuthenticationRequestState {
-        private final OidcTenantContext tenantContext;
-        private final OidcAuthenticationRequestState state;
-
-        private StoredAuthenticationRequestState(OidcTenantContext tenantContext, OidcAuthenticationRequestState state) {
-            this.tenantContext = tenantContext;
-            this.state = state;
-        }
-
-        private OidcTenantContext tenantContext() {
-            return tenantContext;
-        }
-
-        private OidcAuthenticationRequestState state() {
-            return state;
-        }
+    private record StoredAuthenticationRequestState(OidcTenantContext tenantContext,
+                                                    OidcAuthenticationRequestState state) {
     }
 
-    private static final class ParameterValue {
-        private final String value;
-        private final boolean valid;
-
-        private ParameterValue(String value, boolean valid) {
-            this.value = value;
-            this.valid = valid;
-        }
-
+    private record ParameterValue(String value, boolean valid) {
         private static ParameterValue present(String value) {
             return new ParameterValue(value, true);
         }
@@ -267,10 +245,6 @@ final class OidcAuthorizationResponseProcessor {
 
         private boolean invalid() {
             return !valid;
-        }
-
-        private String value() {
-            return value;
         }
     }
 }

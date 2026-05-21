@@ -28,22 +28,16 @@ final class OidcAuthenticationOrchestrator {
 
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
-    private final OidcRequestClassifier classifier;
-    private final OidcResponseFactory responseFactory;
     private final OidcAuthenticationRequestFactory authenticationRequestFactory;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
-                                           OidcRequestClassifier classifier,
-                                           OidcResponseFactory responseFactory,
                                            OidcAuthenticationRequestFactory authenticationRequestFactory,
                                            Map<OidcTokenValidationMethod, OidcAccessTokenValidator>
                                                    accessTokenValidators) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
-        this.classifier = classifier;
-        this.responseFactory = responseFactory;
         this.authenticationRequestFactory = authenticationRequestFactory;
         this.accessTokenValidators = accessTokenValidators;
     }
@@ -52,8 +46,6 @@ final class OidcAuthenticationOrchestrator {
                                                  OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         return new OidcAuthenticationOrchestrator(config,
                                                   tenantRuntimeRegistry,
-                                                  OidcRequestClassifier.create(),
-                                                  OidcResponseFactory.create(),
                                                   OidcAuthenticationRequestFactory.create(),
                                                   accessTokenValidators());
     }
@@ -65,13 +57,13 @@ final class OidcAuthenticationOrchestrator {
 
         OidcRequestContext context = OidcRequestContext.create(providerRequest, tenantRuntimeRegistry);
         if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
-            return responseFactory.tenantUnavailable(context.tenantContext().orElseThrow());
+            return OidcResponseFactory.tenantUnavailable(context.tenantContext().orElseThrow());
         }
 
-        OidcProtocolOperation operation = classifier.classify(context);
+        OidcProtocolOperation operation = OidcRequestClassifier.classify(context);
 
         return switch (operation) {
-            case BEARER_TOKEN_INVALID_REQUEST -> responseFactory.invalidBearerTokenRequest(
+            case BEARER_TOKEN_INVALID_REQUEST -> OidcResponseFactory.invalidBearerTokenRequest(
                     context.bearerTokenErrorDescription());
             case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
             case AUTHORIZATION_CODE_FLOW_INITIATION -> authenticateAuthorizationCodeFlow(context);
@@ -87,12 +79,12 @@ final class OidcAuthenticationOrchestrator {
         if (localAuthenticationResult.isPresent()) {
             return localAuthenticationResult.orElseThrow();
         }
-        return responseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context));
+        return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context));
     }
 
     private AuthenticationResponse authenticateAmbiguous(OidcRequestContext context) {
         return authenticateLocalAuthenticationResult(context)
-                .orElseGet(responseFactory::ambiguousRequest);
+                .orElseGet(OidcResponseFactory::ambiguousRequest);
     }
 
     private Optional<AuthenticationResponse> authenticateLocalAuthenticationResult(OidcRequestContext context) {
@@ -100,9 +92,8 @@ final class OidcAuthenticationOrchestrator {
         if (localAuthenticationResult.isEmpty()) {
             return Optional.empty();
         }
-        OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-        return Optional.of(AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                                  .map(localAuthenticationResult.orElseThrow())));
+        return Optional.of(AuthenticationResponse.success(
+                OidcSubjectMapper.map(localAuthenticationResult.orElseThrow())));
     }
 
     private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context) {
@@ -128,20 +119,19 @@ final class OidcAuthenticationOrchestrator {
         Optional<String> bearerToken = context.bearerToken();
         if (bearerToken.isEmpty()) {
             if (config.optional()) {
-                return responseFactory.optional("Bearer Token is required");
+                return OidcResponseFactory.optional("Bearer Token is required");
             }
-            return responseFactory.missingBearerToken();
+            return OidcResponseFactory.missingBearerToken();
         }
 
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-        OidcAccessTokenValidator validator = tenantContext.tokenValidation()
+        Optional<OidcAccessTokenValidator> validator = tenantContext.tokenValidation()
                 .method()
-                .map(accessTokenValidators::get)
-                .orElse(null);
-        if (validator == null) {
-            return responseFactory.bearerTokenValidationNotImplemented();
+                .map(accessTokenValidators::get);
+        if (validator.isEmpty()) {
+            return OidcResponseFactory.bearerTokenValidationNotImplemented();
         }
-        return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator);
+        return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator.orElseThrow());
     }
 
     private AuthenticationResponse authenticateBearerToken(String bearerToken,
@@ -149,8 +139,8 @@ final class OidcAuthenticationOrchestrator {
                                                           OidcAccessTokenValidator validator) {
         OidcTokenValidationResult validationResult = validator.validate(bearerToken, tenantContext);
         if (validationResult.succeeded()) {
-            return AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                          .map(validationResult.validatedToken().orElseThrow()));
+            return AuthenticationResponse.success(
+                    OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow()));
         }
         validationResult.cause()
                 .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
@@ -158,7 +148,7 @@ final class OidcAuthenticationOrchestrator {
                                                         .orElse("Bearer Token validation failed"),
                                                 cause));
         String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
-        return responseFactory.invalidBearerToken(errorDescription);
+        return OidcResponseFactory.invalidBearerToken(errorDescription);
     }
 
     private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {

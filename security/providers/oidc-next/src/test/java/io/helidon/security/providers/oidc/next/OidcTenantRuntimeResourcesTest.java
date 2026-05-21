@@ -63,11 +63,10 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(context.metadata().issuer(), is(Optional.of(ISSUER)));
         assertThat(context.metadata().discoveryUri(), is(Optional.of(DISCOVERY_URI)));
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
-        assertThat(context.endpointClient().authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
-        assertThat(context.endpointClient().tokenEndpointUri(), is(Optional.of(TOKEN_ENDPOINT_URI)));
-        assertThat(context.endpointClient().introspectionEndpointUri(), is(Optional.of(INTROSPECTION_ENDPOINT_URI)));
-        assertThat(context.endpointClient().userInfoEndpointUri(), is(Optional.of(USER_INFO_ENDPOINT_URI)));
-        assertThat(context.endpointClient().endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
+        assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(TOKEN_ENDPOINT_URI)));
+        assertThat(context.metadata().introspectionEndpointUri(), is(Optional.of(INTROSPECTION_ENDPOINT_URI)));
+        assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(USER_INFO_ENDPOINT_URI)));
+        assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(JWK_SET_URI)));
         assertThat(context.tokenValidation().method().isEmpty(), is(true));
         assertThat(context.cookieStateHandler().cookieConfig(), is(context.tenantConfig().cookies()));

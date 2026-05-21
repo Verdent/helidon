@@ -51,7 +51,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
 
     @Override
     public OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
-        Optional<URI> endpointUri = tenantContext.endpointClient().introspectionEndpointUri();
+        Optional<URI> endpointUri = tenantContext.metadata().introspectionEndpointUri();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         Optional<String> clientId = tenantConfig.clientId();
         Optional<String> clientSecret = tenantConfig.clientSecret();

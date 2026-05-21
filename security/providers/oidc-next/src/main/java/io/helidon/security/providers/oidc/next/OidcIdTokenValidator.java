@@ -121,12 +121,13 @@ final class OidcIdTokenValidator {
          * "If the ID Token contains multiple audiences, the Client SHOULD verify that an azp Claim is present";
          * "If an azp (authorized party) Claim is present, the Client SHOULD verify that its client_id is the Claim
          * Value"; "The current time MUST be before the time represented by the exp Claim";
-         * "If a nonce value was sent in the Authentication Request, a nonce Claim MUST be present and its value checked".
+         * "iat REQUIRED. Time at which the JWT was issued"; "If a nonce value was sent in the Authentication Request,
+         * a nonce Claim MUST be present and its value checked".
          */
         Instant now = Instant.now();
         return JwtValidator.builder()
                 .addExpirationValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()))
+                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()).mandatory(true))
                 .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)

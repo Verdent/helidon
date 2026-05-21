@@ -167,6 +167,15 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void missingIssueTimeIsRejected() {
+        String idToken = signedIdToken(it -> it.issueTime(null));
+
+        OidcIdTokenValidationResult result = validate(idToken);
+
+        assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
         String idToken = signedIdToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", it -> { });
 

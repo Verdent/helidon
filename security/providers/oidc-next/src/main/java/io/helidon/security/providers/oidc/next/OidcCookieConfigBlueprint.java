@@ -38,6 +38,15 @@ interface OidcCookieConfigBlueprint {
     String authenticationRequestCookieName();
 
     /**
+     * Local authentication result cookie name.
+     *
+     * @return local authentication result cookie name
+     */
+    @Option.Configured
+    @Option.Default("__Host-helidon-oidc-auth")
+    String localAuthenticationCookieName();
+
+    /**
      * Authentication Request state lifetime.
      *
      * @return Authentication Request state lifetime
@@ -45,6 +54,15 @@ interface OidcCookieConfigBlueprint {
     @Option.Configured
     @Option.Default("PT5M")
     Duration authenticationRequestLifetime();
+
+    /**
+     * Maximum local authentication result lifetime.
+     *
+     * @return maximum local authentication result lifetime
+     */
+    @Option.Configured
+    @Option.Default("PT1H")
+    Duration localAuthenticationLifetime();
 
     /**
      * Cookie encryption secret.

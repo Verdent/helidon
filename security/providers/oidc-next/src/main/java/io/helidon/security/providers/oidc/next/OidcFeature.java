@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import io.helidon.config.Config;
+import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
@@ -111,8 +112,9 @@ public final class OidcFeature implements HttpFeature {
                         state.redirectionEndpointUri(),
                         state.pkceVerifier().orElse(null)));
         if (tokenResult.succeeded()) {
+            OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
             OidcIdTokenValidationResult idTokenResult = idTokenValidator.validate(
-                    tokenResult.tokenResponse().orElseThrow().idToken(),
+                    tokenResponse.idToken(),
                     tenantContext,
                     state);
             if (!idTokenResult.succeeded()) {
@@ -120,8 +122,18 @@ public final class OidcFeature implements HttpFeature {
                         .send("ID Token is invalid");
                 return;
             }
-            response.status(Status.NOT_IMPLEMENTED_501)
-                    .send("Local authentication result storage is not implemented yet");
+            OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.create(
+                    tenantContext.tenantId(),
+                    tokenResponse,
+                    idTokenResult.validatedToken().orElseThrow(),
+                    Instant.now(),
+                    tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
+            response.headers()
+                    .addCookie(tenantContext.cookieStateHandler()
+                                       .createLocalAuthenticationResultCookie(localAuthenticationResult));
+            response.status(Status.SEE_OTHER_303);
+            response.headers().add(HeaderNames.LOCATION, state.originalUri().toString());
+            response.send();
             return;
         }
         if (tokenResult.errorResponse()) {

@@ -129,18 +129,34 @@ class OidcFeatureRouteTest {
         WebServer rpServer = redirectionEndpointServer(serverUri);
         try {
             URI callbackUri = callbackUri(rpServer);
-            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenantConfig(serverUri));
+            OidcTenantConfig tenant = tenantConfig(serverUri);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
 
             try (HttpClientResponse response = WebClient.builder()
                     .baseUri(rpBaseUri(rpServer))
                     .build()
                     .get("/oidc/callback")
+                    .followRedirects(false)
                     .queryParam("code", "authorization-code")
                     .queryParam("state", STATE)
                     .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
                     .request()) {
-                assertThat(response.status(), is(Status.NOT_IMPLEMENTED_501));
-                assertThat(response.as(String.class), is("Local authentication result storage is not implemented yet"));
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(response.headers().first(HeaderNames.LOCATION).orElse(""),
+                           is("https://rp.example/resource"));
+
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.stream()
+                                   .anyMatch(cookie -> cookie.startsWith(tenant.cookies()
+                                                                                 .localAuthenticationCookieName()
+                                                                         + "=")),
+                           is(true));
+                assertThat(cookies.stream()
+                                   .anyMatch(cookie -> cookie.startsWith(tenant.cookies()
+                                                                                 .authenticationRequestCookieName()
+                                                                         + "=")
+                                           && cookie.contains("Expires=")),
+                           is(true));
             }
         } finally {
             rpServer.stop();

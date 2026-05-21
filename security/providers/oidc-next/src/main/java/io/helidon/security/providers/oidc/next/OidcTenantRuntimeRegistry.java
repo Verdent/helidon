@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -25,17 +26,26 @@ import io.helidon.security.ProviderRequest;
 final class OidcTenantRuntimeRegistry {
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantConfigResolver tenantConfigResolver;
+    private final OidcTenantContextFactory tenantContextFactory;
     private final ConcurrentMap<String, OidcTenantContext> contexts = new ConcurrentHashMap<>();
 
     private OidcTenantRuntimeRegistry(OidcTenantResolver tenantResolver,
-                                      OidcTenantConfigResolver tenantConfigResolver) {
+                                      OidcTenantConfigResolver tenantConfigResolver,
+                                      OidcTenantContextFactory tenantContextFactory) {
         this.tenantResolver = tenantResolver;
         this.tenantConfigResolver = tenantConfigResolver;
+        this.tenantContextFactory = tenantContextFactory;
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
+        return create(config, OidcTenantContextFactory.create());
+    }
+
+    static OidcTenantRuntimeRegistry create(OidcProviderConfig config,
+                                            OidcTenantContextFactory tenantContextFactory) {
         return new OidcTenantRuntimeRegistry(OidcTenantResolver.create(config),
-                                             OidcTenantConfigResolver.create(config));
+                                             OidcTenantConfigResolver.create(config),
+                                             tenantContextFactory);
     }
 
     Optional<OidcTenantContext> tenantContext(ProviderRequest request) {
@@ -43,13 +53,34 @@ final class OidcTenantRuntimeRegistry {
                 .flatMap(this::tenantContext);
     }
 
+    Optional<OidcTenantConfig> tenantConfig(ProviderRequest request) {
+        return tenantResolver.tenantId(request)
+                .flatMap(tenantConfigResolver::tenantConfig);
+    }
+
     Optional<OidcTenantContext> tenantContext(String tenantId) {
+        OidcTenantContext existing = contexts.get(tenantId);
+        if (existing != null) {
+            return Optional.of(existing);
+        }
+
         Optional<OidcTenantConfig> tenantConfig = tenantConfigResolver.tenantConfig(tenantId);
         if (tenantConfig.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(contexts.computeIfAbsent(tenantId,
-                                                    id -> OidcTenantContext.ready(id, tenantConfig.get())));
+
+        AtomicReference<OidcTenantContext> resolvedContext = new AtomicReference<>();
+        contexts.compute(tenantId, (id, cached) -> {
+            if (cached != null) {
+                resolvedContext.set(cached);
+                return cached;
+            }
+
+            OidcTenantContext created = tenantContextFactory.create(id, tenantConfig.get());
+            resolvedContext.set(created);
+            return created.cacheable() ? created : null;
+        });
+        return Optional.of(resolvedContext.get());
     }
 
     int cachedTenantCount() {

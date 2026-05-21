@@ -48,6 +48,10 @@ final class OidcAuthenticationOrchestrator {
         }
 
         OidcRequestContext context = OidcRequestContext.create(providerRequest, tenantRuntimeRegistry);
+        if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
+            return responseFactory.tenantUnavailable(context.tenantContext().orElseThrow());
+        }
+
         OidcProtocolOperation operation = classifier.classify(context);
 
         return switch (operation) {

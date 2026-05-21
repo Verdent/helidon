@@ -366,11 +366,10 @@ final class OidcConfigSupport {
                                                             boolean confidentialClientRequired,
                                                             String operation) {
         OidcClientAuthenticationMethod method = tenant.tokenEndpointAuthenticationMethod()
-                .or(() -> Optional.of(tenant.clientSecret()
-                                               .isPresent()
-                                               ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
-                                               : OidcClientAuthenticationMethod.NONE))
-                .orElseThrow();
+                .orElseGet(() -> tenant.clientSecret()
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
         switch (method) {
         case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> tenant.clientSecret()
                 .orElseThrow(() -> new IllegalArgumentException(

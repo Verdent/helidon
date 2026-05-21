@@ -19,31 +19,8 @@ package io.helidon.security.providers.oidc.next;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 
-final class OidcValidatedJwt implements OidcValidatedAccessToken {
-    private final String rawToken;
-    private final SignedJwt signedJwt;
-    private final Jwt jwt;
-
-    private OidcValidatedJwt(String rawToken, SignedJwt signedJwt, Jwt jwt) {
-        this.rawToken = rawToken;
-        this.signedJwt = signedJwt;
-        this.jwt = jwt;
-    }
-
+record OidcValidatedJwt(String rawToken, SignedJwt signedJwt, Jwt jwt) implements OidcValidatedAccessToken {
     static OidcValidatedJwt create(String rawToken, SignedJwt signedJwt, Jwt jwt) {
         return new OidcValidatedJwt(rawToken, signedJwt, jwt);
-    }
-
-    @Override
-    public String rawToken() {
-        return rawToken;
-    }
-
-    SignedJwt signedJwt() {
-        return signedJwt;
-    }
-
-    Jwt jwt() {
-        return jwt;
     }
 }

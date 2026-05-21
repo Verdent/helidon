@@ -22,11 +22,7 @@ final class OidcRequestClassifier {
     private OidcRequestClassifier() {
     }
 
-    static OidcRequestClassifier create() {
-        return new OidcRequestClassifier();
-    }
-
-    OidcProtocolOperation classify(OidcRequestContext context) {
+    static OidcProtocolOperation classify(OidcRequestContext context) {
         if (context.bearerTokenInvalidRequest()) {
             return OidcProtocolOperation.BEARER_TOKEN_INVALID_REQUEST;
         }
@@ -40,17 +36,17 @@ final class OidcRequestClassifier {
         }
 
         return context.endpointPolicy()
-                .map(this::classifyEndpointPolicy)
+                .map(OidcRequestClassifier::classifyEndpointPolicy)
                 .orElse(OidcProtocolOperation.ABSTAIN);
     }
 
-    OidcProtocolOperation classify(Optional<OidcOutboundPolicy> outboundPolicy) {
+    static OidcProtocolOperation classify(Optional<OidcOutboundPolicy> outboundPolicy) {
         return outboundPolicy
-                .map(this::classifyOutboundPolicy)
+                .map(OidcRequestClassifier::classifyOutboundPolicy)
                 .orElse(OidcProtocolOperation.ABSTAIN);
     }
 
-    private OidcProtocolOperation classifyEndpointPolicy(OidcEndpointPolicy policy) {
+    private static OidcProtocolOperation classifyEndpointPolicy(OidcEndpointPolicy policy) {
         if (policy.bearerTokenAuthenticationEnabled() && policy.authorizationCodeFlowEnabled()) {
             return OidcProtocolOperation.AMBIGUOUS;
         }
@@ -63,7 +59,7 @@ final class OidcRequestClassifier {
         return OidcProtocolOperation.ABSTAIN;
     }
 
-    private OidcProtocolOperation classifyOutboundPolicy(OidcOutboundPolicy policy) {
+    private static OidcProtocolOperation classifyOutboundPolicy(OidcOutboundPolicy policy) {
         if (policy.tokenPropagationEnabled() && policy.clientCredentialsGrantEnabled()) {
             return OidcProtocolOperation.AMBIGUOUS;
         }

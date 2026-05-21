@@ -24,6 +24,9 @@ final class OidcTenantContext {
     private final OidcTenantState state;
     private final Optional<OidcEndpointPolicy> endpointPolicy;
     private final Optional<OidcOutboundPolicy> outboundPolicy;
+    private final OidcProviderMetadata metadata;
+    private final OidcEndpointClient endpointClient;
+    private final OidcJwkSetManager jwkSetManager;
 
     private OidcTenantContext(String tenantId, OidcTenantConfig tenantConfig, OidcTenantState state) {
         this.tenantId = tenantId;
@@ -31,6 +34,9 @@ final class OidcTenantContext {
         this.state = state;
         this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
         this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
+        this.metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
+        this.endpointClient = OidcEndpointClient.create(tenantId, metadata);
+        this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
@@ -47,6 +53,18 @@ final class OidcTenantContext {
 
     OidcTenantState state() {
         return state;
+    }
+
+    OidcProviderMetadata metadata() {
+        return metadata;
+    }
+
+    OidcEndpointClient endpointClient() {
+        return endpointClient;
+    }
+
+    OidcJwkSetManager jwkSetManager() {
+        return jwkSetManager;
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {

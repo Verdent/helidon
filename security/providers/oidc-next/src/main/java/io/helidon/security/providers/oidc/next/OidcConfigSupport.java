@@ -170,8 +170,9 @@ final class OidcConfigSupport {
             case JWT -> {
                 require(tenant.issuer().isPresent(),
                         "issuer must be configured when JWT access-token validation is enabled");
-                require(endpoints.jwksUri().isPresent() || endpoints.discoveryUri().isPresent(),
-                        "jwks-uri or discovery-uri must be configured when JWT access-token validation is enabled");
+                require(endpoints.jwksUri().isPresent(),
+                        "jwks-uri must be configured when JWT access-token validation is enabled");
+                endpoints.jwksUri().ifPresent(OidcJwkSetLoader::validateJwkSetUri);
                 if (tokenValidation.audienceValidationEnabled()) {
                     require(tokenValidation.audience().isPresent(),
                             "token-validation.audience must be configured when JWT access-token validation is enabled");

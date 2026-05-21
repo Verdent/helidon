@@ -159,20 +159,13 @@ class OidcTenantRuntimeResourcesTest {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
                                                            .issuer(ISSUER)
                                                            .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
-                                                           .protectedResource(it -> it.enabled(true)
-                                                                   .tokenValidation(validation -> validation
-                                                                           .method(OidcTokenValidationMethod.JWT)
-                                                                           .audience(AUDIENCE)))
                                                            .buildPrototype());
 
         assertThat(context.state(), is(OidcTenantState.READY));
         assertThat(context.metadata().discoveryUri(), is(Optional.of(DISCOVERY_URI)));
         assertThat(context.metadata().jwkSetUri(), is(Optional.empty()));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.empty()));
-        assertThat(context.tokenValidationPolicy().method(), is(Optional.of(OidcTokenValidationMethod.JWT)));
-        assertThat(context.tokenValidationPolicy().audienceValidationEnabled(), is(true));
-        assertThat(context.tokenValidationPolicy().audience(), is(Optional.of(AUDIENCE)));
-        assertThat(context.tokenValidationPolicy().allowedAlgorithms(), is(java.util.List.of("RS256")));
+        assertThat(context.tokenValidationPolicy().method().isEmpty(), is(true));
     }
 
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {

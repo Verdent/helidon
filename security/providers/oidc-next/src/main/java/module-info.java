@@ -33,6 +33,9 @@ module io.helidon.security.providers.oidc.next {
     requires io.helidon.common.uri;
     requires transitive io.helidon.config;
     requires transitive io.helidon.security;
+    requires io.helidon.json;
+    requires io.helidon.security.jwt;
+    requires io.helidon.security.providers.common;
 
     exports io.helidon.security.providers.oidc.next;
 

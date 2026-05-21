@@ -16,22 +16,29 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
 import io.helidon.security.AuthenticationResponse;
 
 final class OidcAuthenticationOrchestrator {
+    private static final System.Logger LOGGER = System.getLogger(OidcAuthenticationOrchestrator.class.getName());
+
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
+    private final OidcJwtAccessTokenValidator jwtAccessTokenValidator;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcRequestClassifier classifier,
-                                           OidcResponseFactory responseFactory) {
+                                           OidcResponseFactory responseFactory,
+                                           OidcJwtAccessTokenValidator jwtAccessTokenValidator) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
+        this.jwtAccessTokenValidator = jwtAccessTokenValidator;
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
@@ -39,7 +46,8 @@ final class OidcAuthenticationOrchestrator {
         return new OidcAuthenticationOrchestrator(config,
                                                   tenantRuntimeRegistry,
                                                   OidcRequestClassifier.create(),
-                                                  OidcResponseFactory.create());
+                                                  OidcResponseFactory.create(),
+                                                  OidcJwtAccessTokenValidator.create());
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
@@ -67,12 +75,32 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
-        if (context.bearerTokenEvidence().isPresent()) {
+        Optional<OidcBearerTokenEvidence> evidence = context.bearerTokenEvidence();
+        if (evidence.isPresent()) {
+            OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
+            if (tenantContext.tokenValidationPolicy().method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()) {
+                return authenticateJwtBearerToken(evidence.get(), tenantContext);
+            }
             return responseFactory.bearerTokenValidationNotImplemented();
         }
         if (config.optional()) {
             return responseFactory.optional("Bearer Token is required");
         }
         return responseFactory.missingBearerToken();
+    }
+
+    private AuthenticationResponse authenticateJwtBearerToken(OidcBearerTokenEvidence evidence,
+                                                             OidcTenantContext tenantContext) {
+        OidcTokenValidationResult validationResult = jwtAccessTokenValidator.validate(evidence.token(), tenantContext);
+        if (validationResult.succeeded()) {
+            return AuthenticationResponse.success(tenantContext.subjectMapper()
+                                                          .map(validationResult.validatedJwt().orElseThrow()));
+        }
+        validationResult.cause()
+                .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
+                                                validationResult.errorDescription()
+                                                        .orElse("Bearer Token validation failed"),
+                                                cause));
+        return responseFactory.invalidBearerToken(validationResult.errorDescription().orElse("Bearer Token is invalid"));
     }
 }

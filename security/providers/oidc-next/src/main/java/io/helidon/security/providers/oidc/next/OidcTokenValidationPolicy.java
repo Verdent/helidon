@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,5 +45,9 @@ final class OidcTokenValidationPolicy {
 
     List<String> allowedAlgorithms() {
         return tokenValidation.allowedAlgorithms();
+    }
+
+    Duration clockSkew() {
+        return tokenValidation.clockSkew();
     }
 }

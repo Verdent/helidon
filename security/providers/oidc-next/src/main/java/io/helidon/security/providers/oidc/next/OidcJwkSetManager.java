@@ -19,17 +19,22 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.util.Optional;
 
+import io.helidon.security.jwt.jwk.JwkKeys;
+
 final class OidcJwkSetManager {
     private final String tenantId;
     private final OidcProviderMetadata metadata;
+    private final OidcJwkSetLoader jwkSetLoader;
+    private volatile JwkKeys cachedJwkKeys;
 
-    private OidcJwkSetManager(String tenantId, OidcProviderMetadata metadata) {
+    private OidcJwkSetManager(String tenantId, OidcProviderMetadata metadata, OidcJwkSetLoader jwkSetLoader) {
         this.tenantId = tenantId;
         this.metadata = metadata;
+        this.jwkSetLoader = jwkSetLoader;
     }
 
     static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata) {
-        return new OidcJwkSetManager(tenantId, metadata);
+        return new OidcJwkSetManager(tenantId, metadata, OidcJwkSetLoader.create());
     }
 
     String tenantId() {
@@ -38,5 +43,26 @@ final class OidcJwkSetManager {
 
     Optional<URI> jwkSetUri() {
         return metadata.jwkSetUri();
+    }
+
+    synchronized JwkKeys jwkKeys() {
+        JwkKeys current = cachedJwkKeys;
+        if (current != null) {
+            return current;
+        }
+
+        JwkKeys loaded = loadJwkKeys();
+        cachedJwkKeys = loaded;
+        return loaded;
+    }
+
+    private JwkKeys loadJwkKeys() {
+        URI uri = jwkSetUri()
+                .orElseThrow(() -> new IllegalStateException("JWK Set URI is not configured for tenant: " + tenantId));
+        try {
+            return jwkSetLoader.load(uri);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to load JWK Set for tenant: " + tenantId, e);
+        }
     }
 }

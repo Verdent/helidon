@@ -89,7 +89,7 @@ class OidcProviderConfigTest {
                         "tenants.default.issuer", ISSUER.toString(),
                         "tenants.default.client-id", "client-id",
                         "tenants.default.client-secret", "client-secret-value",
-                        "tenants.default.endpoints.discovery-uri", DISCOVERY_URI.toString(),
+                        "tenants.default.endpoints.jwks-uri", JWKS_URI.toString(),
                         "tenants.default.protected-resource.enabled", "true",
                         "tenants.default.protected-resource.token-validation.method", "JWT",
                         "tenants.default.protected-resource.token-validation.audience", AUDIENCE)))
@@ -101,7 +101,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
-        assertThat(tenant.endpoints().discoveryUri().orElseThrow(), is(DISCOVERY_URI));
+        assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.protectedResource().enabled(), is(true));
         assertThat(tenant.protectedResource().tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
@@ -194,7 +194,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void jwtValidationRequiresIssuerAndJwksOrDiscovery() {
+    void jwtValidationRequiresIssuerAndJwks() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .protectedResource(it -> it.enabled(true)
                         .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
@@ -212,12 +212,34 @@ class OidcProviderConfigTest {
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
+                .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("jwks-uri"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.enabled(true)
                         .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
+    }
+
+    @Test
+    void jwtValidationRequiresSecureJwksUriScheme() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(URI.create("http://issuer.example/jwks")))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("https or file"));
     }
 
     @Test
@@ -371,7 +393,7 @@ class OidcProviderConfigTest {
                                                                                    .build()));
 
         assertThat(headerResponse.description().orElse(""), is("Bearer Token is required"));
-        assertThat(queryResponse.description().orElse(""), is("Bearer Token validation is not implemented yet"));
+        assertThat(queryResponse.description().orElse(""), is("Bearer Token is not a valid signed JWT"));
     }
 
     @Test

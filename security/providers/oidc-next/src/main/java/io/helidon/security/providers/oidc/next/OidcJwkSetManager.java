@@ -17,15 +17,20 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 import io.helidon.security.jwt.jwk.JwkKeys;
 
 final class OidcJwkSetManager {
+    private static final Duration UNKNOWN_KEY_ID_REFRESH_INTERVAL = Duration.ofMinutes(5);
+
     private final String tenantId;
     private final OidcProviderMetadata metadata;
     private final OidcJwkSetLoader jwkSetLoader;
     private volatile JwkKeys cachedJwkKeys;
+    private Instant lastUnknownKeyIdRefreshAttempt;
 
     private OidcJwkSetManager(String tenantId, OidcProviderMetadata metadata, OidcJwkSetLoader jwkSetLoader) {
         this.tenantId = tenantId;
@@ -51,9 +56,20 @@ final class OidcJwkSetManager {
             return current;
         }
 
-        JwkKeys loaded = loadJwkKeys();
-        cachedJwkKeys = loaded;
-        return loaded;
+        return refreshJwkKeys();
+    }
+
+    synchronized JwkKeys jwkKeys(Optional<String> keyId) {
+        JwkKeys current = cachedJwkKeys;
+        if (current == null) {
+            current = refreshJwkKeys();
+        }
+        JwkKeys availableKeys = current;
+        Optional<String> unknownKeyId = keyId.filter(kid -> availableKeys.forKeyId(kid).isEmpty());
+        if (unknownKeyId.isEmpty() || !unknownKeyIdRefreshAllowed(Instant.now())) {
+            return current;
+        }
+        return refreshJwkKeys();
     }
 
     private JwkKeys loadJwkKeys() {
@@ -64,5 +80,20 @@ final class OidcJwkSetManager {
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to load JWK Set for tenant: " + tenantId, e);
         }
+    }
+
+    private JwkKeys refreshJwkKeys() {
+        JwkKeys loaded = loadJwkKeys();
+        cachedJwkKeys = loaded;
+        return loaded;
+    }
+
+    private boolean unknownKeyIdRefreshAllowed(Instant now) {
+        if (lastUnknownKeyIdRefreshAttempt == null
+                || !now.isBefore(lastUnknownKeyIdRefreshAttempt.plus(UNKNOWN_KEY_ID_REFRESH_INTERVAL))) {
+            lastUnknownKeyIdRefreshAttempt = now;
+            return true;
+        }
+        return false;
     }
 }

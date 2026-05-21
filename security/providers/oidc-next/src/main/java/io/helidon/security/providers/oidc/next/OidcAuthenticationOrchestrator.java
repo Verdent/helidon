@@ -80,22 +80,24 @@ final class OidcAuthenticationOrchestrator {
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
         Optional<OidcBearerTokenEvidence> evidence = context.bearerTokenEvidence();
-        if (evidence.isPresent()) {
-            OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
-            if (tenantContext.tokenValidationPolicy().method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()) {
-                return authenticateJwtBearerToken(evidence.get(), tenantContext);
+        if (evidence.isEmpty()) {
+            if (config.optional()) {
+                return responseFactory.optional("Bearer Token is required");
             }
-            if (tenantContext.tokenValidationPolicy().method()
-                    .filter(OidcTokenValidationMethod.INTROSPECTION::equals)
-                    .isPresent()) {
-                return authenticateIntrospectionBearerToken(evidence.get(), tenantContext);
-            }
-            return responseFactory.bearerTokenValidationNotImplemented();
+            return responseFactory.missingBearerToken();
         }
-        if (config.optional()) {
-            return responseFactory.optional("Bearer Token is required");
+
+        OidcBearerTokenEvidence bearerTokenEvidence = evidence.orElseThrow();
+        OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
+        if (tenantContext.tokenValidationPolicy().method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()) {
+            return authenticateJwtBearerToken(bearerTokenEvidence, tenantContext);
         }
-        return responseFactory.missingBearerToken();
+        if (tenantContext.tokenValidationPolicy().method()
+                .filter(OidcTokenValidationMethod.INTROSPECTION::equals)
+                .isPresent()) {
+            return authenticateIntrospectionBearerToken(bearerTokenEvidence, tenantContext);
+        }
+        return responseFactory.bearerTokenValidationNotImplemented();
     }
 
     private AuthenticationResponse authenticateJwtBearerToken(OidcBearerTokenEvidence evidence,
@@ -110,21 +112,25 @@ final class OidcAuthenticationOrchestrator {
                                                 validationResult.errorDescription()
                                                         .orElse("Bearer Token validation failed"),
                                                 cause));
-        return responseFactory.invalidBearerToken(validationResult.errorDescription().orElse("Bearer Token is invalid"));
+        String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
+        return responseFactory.invalidBearerToken(errorDescription);
     }
 
     private AuthenticationResponse authenticateIntrospectionBearerToken(OidcBearerTokenEvidence evidence,
                                                                         OidcTenantContext tenantContext) {
-        OidcTokenValidationResult validationResult = introspectionAccessTokenValidator.validate(evidence.token(), tenantContext);
+        OidcTokenValidationResult validationResult = introspectionAccessTokenValidator.validate(evidence.token(),
+                                                                                                tenantContext);
         if (validationResult.succeeded()) {
+            OidcValidatedIntrospection validatedToken = validationResult.validatedIntrospection().orElseThrow();
             return AuthenticationResponse.success(tenantContext.subjectMapper()
-                                                          .map(validationResult.validatedIntrospection().orElseThrow()));
+                                                          .map(validatedToken));
         }
         validationResult.cause()
                 .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
                                                 validationResult.errorDescription()
                                                         .orElse("Bearer Token validation failed"),
                                                 cause));
-        return responseFactory.invalidBearerToken(validationResult.errorDescription().orElse("Bearer Token is invalid"));
+        String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
+        return responseFactory.invalidBearerToken(errorDescription);
     }
 }

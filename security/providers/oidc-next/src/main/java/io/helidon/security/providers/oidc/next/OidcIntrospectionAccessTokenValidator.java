@@ -16,8 +16,10 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +52,12 @@ final class OidcIntrospectionAccessTokenValidator {
     }
 
     static void validateIntrospectionEndpointUri(URI uri) {
+        /*
+         * Spec: RFC 7662, 2 Introspection Endpoint
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2
+         * Quote: "MUST be protected by a transport-layer security mechanism".
+         * The `http` loopback allowance is Helidon local/test support, not a spec exception.
+         */
         String scheme = uri.getScheme();
         if ("https".equalsIgnoreCase(scheme)) {
             return;
@@ -57,23 +65,23 @@ final class OidcIntrospectionAccessTokenValidator {
         if ("http".equalsIgnoreCase(scheme) && isLoopback(uri)) {
             return;
         }
-        throw new IllegalArgumentException("introspection-endpoint-uri must use https, except for http loopback endpoints");
+        throw new IllegalArgumentException(
+                "introspection-endpoint-uri must use https, except for http loopback endpoints: " + uri);
     }
 
     OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
-        URI endpointUri = tenantContext.endpointClient().introspectionEndpointUri().orElse(null);
-        if (endpointUri == null) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection is not configured");
-        }
-
+        Optional<URI> endpointUri = tenantContext.endpointClient().introspectionEndpointUri();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         Optional<String> clientId = tenantConfig.clientId();
         Optional<String> clientSecret = tenantConfig.clientSecret();
-        if (clientId.isEmpty() || clientSecret.isEmpty()) {
+        if (endpointUri.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
             return OidcTokenValidationResult.failure("Bearer Token introspection is not configured");
         }
 
-        try (HttpClientResponse response = request(endpointUri, token, clientId.get(), clientSecret.get())) {
+        try (HttpClientResponse response = request(endpointUri.orElseThrow(),
+                                                   token,
+                                                   clientId.orElseThrow(),
+                                                   clientSecret.orElseThrow())) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
                 if (response.status().code() >= 500) {
                     return OidcTokenValidationResult.failure("Bearer Token introspection endpoint is unavailable");
@@ -102,7 +110,7 @@ final class OidcIntrospectionAccessTokenValidator {
             if (active.isEmpty()) {
                 return OidcTokenValidationResult.failure("Bearer Token introspection response is invalid");
             }
-            if (!active.get()) {
+            if (!active.orElseThrow()) {
                 return OidcTokenValidationResult.failure("Bearer Token introspection response is inactive");
             }
 
@@ -133,7 +141,7 @@ final class OidcIntrospectionAccessTokenValidator {
                 .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()));
         expectedIssuer.ifPresent(issuer -> builder.addIssuerValidator(issuer, false));
         if (policy.audienceValidationEnabled()) {
-            builder.addAudienceValidator(expectedAudience.orElseThrow());
+            expectedAudience.ifPresent(builder::addAudienceValidator);
         }
         Errors claimErrors = builder.build().validate(validated.jwt());
         if (!claimErrors.isValid()) {
@@ -181,9 +189,20 @@ final class OidcIntrospectionAccessTokenValidator {
             return false;
         }
         String normalizedHost = host.toLowerCase(Locale.ROOT);
-        return "localhost".equals(normalizedHost)
-                || "127.0.0.1".equals(normalizedHost)
-                || "::1".equals(normalizedHost)
-                || "[::1]".equals(normalizedHost);
+        if ("localhost".equals(normalizedHost)) {
+            return true;
+        }
+        try {
+            return InetAddress.getByName(unbracketIpv6Literal(normalizedHost)).isLoopbackAddress();
+        } catch (UnknownHostException e) {
+            return false;
+        }
+    }
+
+    private static String unbracketIpv6Literal(String host) {
+        if (host.startsWith("[") && host.endsWith("]")) {
+            return host.substring(1, host.length() - 1);
+        }
+        return host;
     }
 }

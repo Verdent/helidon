@@ -73,6 +73,10 @@ final class OidcRequestContext {
                 .orElse("Bearer Token request is invalid");
     }
 
+    SecurityEnvironment environment() {
+        return providerRequest.env();
+    }
+
     private OidcBearerTokenExtractionResult bearerTokenExtractionResult() {
         if (bearerTokenExtractionResult != null) {
             return bearerTokenExtractionResult;
@@ -100,7 +104,4 @@ final class OidcRequestContext {
         return providerRequest.endpointConfig();
     }
 
-    private SecurityEnvironment environment() {
-        return providerRequest.env();
-    }
 }

@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import io.helidon.http.HeaderNames;
+import io.helidon.http.Status;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.SecurityResponse;
@@ -58,11 +60,13 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    AuthenticationResponse authorizationCodeFlowNotImplemented() {
+    AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
         return AuthenticationResponse.builder()
-                .status(SecurityResponse.SecurityStatus.FAILURE)
-                .statusCode(501)
-                .description("Authorization Code Flow initiation is not implemented yet")
+                .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
+                .statusCode(Status.SEE_OTHER_303.code())
+                .description("Redirecting to OpenID Provider Authorization Endpoint")
+                .responseHeader(HeaderNames.LOCATION.defaultCase(), request.authorizationUri().toString())
+                .responseHeader(HeaderNames.SET_COOKIE.defaultCase(), request.stateCookie())
                 .build();
     }
 

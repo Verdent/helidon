@@ -28,17 +28,20 @@ final class OidcAuthenticationOrchestrator {
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
     private final OidcJwtAccessTokenValidator jwtAccessTokenValidator;
+    private final OidcIntrospectionAccessTokenValidator introspectionAccessTokenValidator;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcRequestClassifier classifier,
                                            OidcResponseFactory responseFactory,
-                                           OidcJwtAccessTokenValidator jwtAccessTokenValidator) {
+                                           OidcJwtAccessTokenValidator jwtAccessTokenValidator,
+                                           OidcIntrospectionAccessTokenValidator introspectionAccessTokenValidator) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
         this.jwtAccessTokenValidator = jwtAccessTokenValidator;
+        this.introspectionAccessTokenValidator = introspectionAccessTokenValidator;
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
@@ -47,7 +50,8 @@ final class OidcAuthenticationOrchestrator {
                                                   tenantRuntimeRegistry,
                                                   OidcRequestClassifier.create(),
                                                   OidcResponseFactory.create(),
-                                                  OidcJwtAccessTokenValidator.create());
+                                                  OidcJwtAccessTokenValidator.create(),
+                                                  OidcIntrospectionAccessTokenValidator.create());
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
@@ -81,6 +85,11 @@ final class OidcAuthenticationOrchestrator {
             if (tenantContext.tokenValidationPolicy().method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()) {
                 return authenticateJwtBearerToken(evidence.get(), tenantContext);
             }
+            if (tenantContext.tokenValidationPolicy().method()
+                    .filter(OidcTokenValidationMethod.INTROSPECTION::equals)
+                    .isPresent()) {
+                return authenticateIntrospectionBearerToken(evidence.get(), tenantContext);
+            }
             return responseFactory.bearerTokenValidationNotImplemented();
         }
         if (config.optional()) {
@@ -95,6 +104,21 @@ final class OidcAuthenticationOrchestrator {
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(tenantContext.subjectMapper()
                                                           .map(validationResult.validatedJwt().orElseThrow()));
+        }
+        validationResult.cause()
+                .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
+                                                validationResult.errorDescription()
+                                                        .orElse("Bearer Token validation failed"),
+                                                cause));
+        return responseFactory.invalidBearerToken(validationResult.errorDescription().orElse("Bearer Token is invalid"));
+    }
+
+    private AuthenticationResponse authenticateIntrospectionBearerToken(OidcBearerTokenEvidence evidence,
+                                                                        OidcTenantContext tenantContext) {
+        OidcTokenValidationResult validationResult = introspectionAccessTokenValidator.validate(evidence.token(), tenantContext);
+        if (validationResult.succeeded()) {
+            return AuthenticationResponse.success(tenantContext.subjectMapper()
+                                                          .map(validationResult.validatedIntrospection().orElseThrow()));
         }
         validationResult.cause()
                 .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,

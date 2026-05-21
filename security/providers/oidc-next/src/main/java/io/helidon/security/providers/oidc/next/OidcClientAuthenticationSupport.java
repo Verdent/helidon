@@ -33,18 +33,38 @@ final class OidcClientAuthenticationSupport {
                                                  Parameters.Builder form,
                                                  HttpClientRequest request) {
         String clientId = tenantConfig.clientId().orElseThrow();
-        Optional<String> clientSecret = tenantConfig.clientSecret();
-        if (clientSecret.isPresent()) {
-            request.header(HeaderNames.AUTHORIZATION, basicAuthorization(clientId, clientSecret.orElseThrow()));
-            return;
+        switch (tokenEndpointAuthenticationMethod(tenantConfig)) {
+        case CLIENT_SECRET_BASIC -> request.header(HeaderNames.AUTHORIZATION,
+                                                  basicAuthorization(clientId, requireClientSecret(tenantConfig)));
+        case CLIENT_SECRET_POST -> {
+            /*
+             * Spec: RFC 6749, 2.3.1 Client Password
+             * https://www.rfc-editor.org/rfc/rfc6749.html#section-2.3.1
+             * Quote: "including the client credentials in the request-body".
+             */
+            form.add("client_id", clientId)
+                    .add("client_secret", requireClientSecret(tenantConfig));
         }
+        case NONE -> {
+            /*
+             * Spec: RFC 6749, 3.2.1 Client Authentication
+             * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2.1
+             * Quote: "MUST send its `client_id`".
+             */
+            form.add("client_id", clientId);
+        }
+        default -> throw new IllegalStateException("Unexpected client authentication method: "
+                                                           + tokenEndpointAuthenticationMethod(tenantConfig));
+        }
+    }
 
-        /*
-         * Spec: RFC 6749, 3.2.1 Client Authentication
-         * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2.1
-         * Quote: "MUST send its `client_id`".
-         */
-        form.add("client_id", clientId);
+    static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(OidcTenantConfig tenantConfig) {
+        return tenantConfig.tokenEndpointAuthenticationMethod()
+                .or(() -> Optional.of(tenantConfig.clientSecret()
+                                               .isPresent()
+                                               ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                                               : OidcClientAuthenticationMethod.NONE))
+                .orElseThrow();
     }
 
     static String basicAuthorization(String clientId, String clientSecret) {
@@ -60,5 +80,12 @@ final class OidcClientAuthenticationSupport {
 
     private static String formEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static String requireClientSecret(OidcTenantConfig tenantConfig) {
+        return tenantConfig.clientSecret()
+                .orElseThrow(() -> new IllegalArgumentException("client-secret must be configured for "
+                                                                        + tokenEndpointAuthenticationMethod(tenantConfig)
+                                                                        + " Token Endpoint authentication"));
     }
 }

@@ -34,7 +34,7 @@ import io.helidon.security.jwt.JwtValidator;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
-final class OidcIntrospectionAccessTokenValidator {
+final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
     private final WebClient webClient;
@@ -47,7 +47,13 @@ final class OidcIntrospectionAccessTokenValidator {
         return new OidcIntrospectionAccessTokenValidator(WebClient.create());
     }
 
-    OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
+    @Override
+    public OidcTokenValidationMethod method() {
+        return OidcTokenValidationMethod.INTROSPECTION;
+    }
+
+    @Override
+    public OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
         Optional<URI> endpointUri = tenantContext.endpointClient().introspectionEndpointUri();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         Optional<String> clientId = tenantConfig.clientId();

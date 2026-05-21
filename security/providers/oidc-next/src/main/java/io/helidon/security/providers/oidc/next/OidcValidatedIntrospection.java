@@ -28,7 +28,7 @@ import io.helidon.json.JsonValue;
 import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.Jwt;
 
-final class OidcValidatedIntrospection {
+final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
     private final String rawToken;
     private final JsonObject claims;
     private final Jwt jwt;
@@ -43,7 +43,8 @@ final class OidcValidatedIntrospection {
         return new OidcValidatedIntrospection(rawToken, claims);
     }
 
-    String rawToken() {
+    @Override
+    public String rawToken() {
         return rawToken;
     }
 

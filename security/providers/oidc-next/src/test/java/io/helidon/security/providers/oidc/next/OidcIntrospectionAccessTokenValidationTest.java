@@ -301,7 +301,8 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                    .clientId(CLIENT_ID)
                                                    .clientSecret(CLIENT_SECRET)
                                                    .endpoints(it -> it
-                                                           .introspectionEndpointUri(introspectionEndpointUri))
+                                                           .introspectionEndpointUri(introspectionEndpointUri)
+                                                           .tlsRequired(false))
                                                    .protectedResource(it -> it.enabled(true)
                                                            .tokenValidation(validation -> {
                                                                validation

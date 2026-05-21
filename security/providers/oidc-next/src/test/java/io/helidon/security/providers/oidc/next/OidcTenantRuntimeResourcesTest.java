@@ -42,6 +42,9 @@ class OidcTenantRuntimeResourcesTest {
     private static final URI DISCOVERED_INTROSPECTION_ENDPOINT_URI = URI.create("https://discovered.example/introspect");
     private static final URI DISCOVERED_USER_INFO_ENDPOINT_URI = URI.create("https://discovered.example/userinfo");
     private static final URI DISCOVERED_END_SESSION_ENDPOINT_URI = URI.create("https://discovered.example/logout");
+    private static final URI PATH_ISSUER = URI.create("https://issuer.example/tenant-a/");
+    private static final URI PATH_ISSUER_DISCOVERY_URI =
+            URI.create("https://issuer.example/tenant-a/.well-known/openid-configuration");
     private static final String AUDIENCE = "api://default";
 
     @Test
@@ -166,6 +169,16 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(context.metadata().jwkSetUri(), is(Optional.empty()));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.empty()));
         assertThat(context.tokenValidationPolicy().method().isEmpty(), is(true));
+    }
+
+    @Test
+    void discoveryUriDefaultsFromIssuer() {
+        OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
+                                                           .issuer(PATH_ISSUER)
+                                                           .buildPrototype());
+
+        assertThat(context.metadata().issuer(), is(Optional.of(PATH_ISSUER)));
+        assertThat(context.metadata().discoveryUri(), is(Optional.of(PATH_ISSUER_DISCOVERY_URI)));
     }
 
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {

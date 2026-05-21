@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -164,17 +165,17 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
         endpoints.authorizationEndpointUri()
-                .or(() -> endpoints.discoveryUri())
+                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         endpoints.tokenEndpointUri()
-                .or(() -> endpoints.discoveryUri())
+                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         tenant.issuer()
-                .or(() -> endpoints.discoveryUri())
+                .or(endpoints::discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "issuer or discovery-uri must be configured when Authorization Code Flow is enabled"));
         if (!authorizationCode.scopes().contains("openid")) {
@@ -205,13 +206,10 @@ final class OidcConfigSupport {
             tenant.issuer()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "issuer must be configured when JWT access-token validation is enabled"));
-            endpoints.jwksUri()
-                    .map(jwksUri -> {
-                        OidcJwkSetLoader.validateJwkSetUri(jwksUri);
-                        return jwksUri;
-                    })
+            URI jwksUri = endpoints.jwksUri()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "jwks-uri must be configured when JWT access-token validation is enabled"));
+            validateJwksUri(jwksUri, endpoints.tlsRequired());
             if (tokenValidation.audienceValidationEnabled()) {
                 /*
                  * Spec: RFC 7519, 4.1.3 "aud" (Audience) Claim
@@ -230,14 +228,10 @@ final class OidcConfigSupport {
              * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.1
              * Quote: "MUST also require some form of authorization".
              */
-            endpoints.introspectionEndpointUri()
-                    .map(introspectionEndpointUri -> {
-                        OidcIntrospectionAccessTokenValidator
-                                .validateIntrospectionEndpointUri(introspectionEndpointUri);
-                        return introspectionEndpointUri;
-                    })
+            URI introspectionEndpointUri = endpoints.introspectionEndpointUri()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "introspection-endpoint-uri must be configured when introspection is enabled"));
+            validateIntrospectionEndpointUri(introspectionEndpointUri, endpoints.tlsRequired());
             tenant.clientId()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "client-id must be configured when introspection is enabled"));
@@ -279,9 +273,50 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-secret must be configured when Client Credentials Grant is enabled"));
         endpoints.tokenEndpointUri()
-                .or(() -> endpoints.discoveryUri())
+                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant "
                                 + "is enabled"));
+    }
+
+    private static void validateJwksUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "This URL MUST use the `https` scheme".
+         */
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            throw new IllegalArgumentException("jwks-uri must define a URI scheme");
+        }
+        if ("https".equalsIgnoreCase(scheme)) {
+            return;
+        }
+        if (!tlsRequired && ("http".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme))) {
+            return;
+        }
+        throw new IllegalArgumentException(
+                "jwks-uri must use https unless endpoints.tls-required is disabled: " + uri);
+    }
+
+    private static void validateIntrospectionEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: RFC 7662, 2 Introspection Endpoint
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2
+         * Quote: "MUST be protected by a transport-layer security mechanism".
+         */
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            throw new IllegalArgumentException("introspection-endpoint-uri must define a URI scheme");
+        }
+        if ("https".equalsIgnoreCase(scheme)) {
+            return;
+        }
+        if (!tlsRequired && "http".equalsIgnoreCase(scheme)) {
+            return;
+        }
+        throw new IllegalArgumentException(
+                "introspection-endpoint-uri must use https unless endpoints.tls-required is disabled: "
+                        + uri);
     }
 }

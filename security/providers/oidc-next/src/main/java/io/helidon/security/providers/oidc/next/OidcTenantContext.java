@@ -32,15 +32,35 @@ final class OidcTenantContext {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.state = state;
-        this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
-        this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
-        this.metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
-        this.endpointClient = OidcEndpointClient.create(tenantId, metadata);
-        this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
+        if (state == OidcTenantState.READY) {
+            this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
+            this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
+            this.metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
+            this.endpointClient = OidcEndpointClient.create(tenantId, metadata);
+            this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
+        } else {
+            this.endpointPolicy = Optional.empty();
+            this.outboundPolicy = Optional.empty();
+            this.metadata = null;
+            this.endpointClient = null;
+            this.jwkSetManager = null;
+        }
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
         return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY);
+    }
+
+    static OidcTenantContext notReady(String tenantId, OidcTenantConfig tenantConfig) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY);
+    }
+
+    static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED);
+    }
+
+    static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED);
     }
 
     String tenantId() {
@@ -55,27 +75,50 @@ final class OidcTenantContext {
         return state;
     }
 
+    boolean ready() {
+        return state == OidcTenantState.READY;
+    }
+
+    boolean cacheable() {
+        return state != OidcTenantState.NOT_READY;
+    }
+
     OidcProviderMetadata metadata() {
+        requireReady();
         return metadata;
     }
 
     OidcEndpointClient endpointClient() {
+        requireReady();
         return endpointClient;
     }
 
     OidcJwkSetManager jwkSetManager() {
+        requireReady();
         return jwkSetManager;
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
+        if (!ready()) {
+            return Optional.empty();
+        }
         return endpointPolicy;
     }
 
     Optional<OidcOutboundPolicy> outboundPolicy() {
+        if (!ready()) {
+            return Optional.empty();
+        }
         return outboundPolicy;
     }
 
     OidcTokenTransportConfig tokenTransport() {
         return tenantConfig.tokenTransport();
+    }
+
+    private void requireReady() {
+        if (!ready()) {
+            throw new IllegalStateException("OIDC tenant runtime resources are available only when tenant is ready");
+        }
     }
 }

@@ -43,7 +43,7 @@ final class OidcRequestContext {
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
-        if (tenantContext.isEmpty()) {
+        if (tenantContext.filter(OidcTenantContext::ready).isEmpty()) {
             return Optional.empty();
         }
 
@@ -53,6 +53,10 @@ final class OidcRequestContext {
         }
         return endpointConfig.instance(OidcEndpointPolicy.class)
                 .or(() -> tenantContext.flatMap(OidcTenantContext::endpointPolicy));
+    }
+
+    Optional<OidcTenantContext> tenantContext() {
+        return tenantContext;
     }
 
     boolean bearerTokenPresent() {

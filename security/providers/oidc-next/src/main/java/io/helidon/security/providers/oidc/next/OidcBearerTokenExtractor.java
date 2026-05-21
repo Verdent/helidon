@@ -35,33 +35,33 @@ final class OidcBearerTokenExtractor {
 
     static OidcBearerTokenExtractionResult extract(SecurityEnvironment environment,
                                                    OidcTokenTransportConfig tokenTransport) {
-        List<OidcBearerTokenEvidence> evidence = new ArrayList<>();
+        List<String> bearerTokens = new ArrayList<>();
         if (tokenTransport.authorizationHeaderEnabled()) {
-            OidcBearerTokenExtractionResult headerEvidence = authorizationHeaderEvidence(environment);
-            if (headerEvidence.invalidRequest()) {
-                return headerEvidence;
+            OidcBearerTokenExtractionResult headerToken = authorizationHeaderBearerToken(environment);
+            if (headerToken.invalidRequest()) {
+                return headerToken;
             }
-            headerEvidence.evidence().ifPresent(evidence::add);
+            headerToken.bearerToken().ifPresent(bearerTokens::add);
         }
         if (tokenTransport.queryParameterEnabled()) {
-            OidcBearerTokenExtractionResult queryEvidence = accessTokenQueryParameterEvidence(environment.queryParams(),
-                                                                                              rawQuery(environment));
-            if (queryEvidence.invalidRequest()) {
-                return queryEvidence;
+            OidcBearerTokenExtractionResult queryToken = accessTokenQueryParameterBearerToken(environment.queryParams(),
+                                                                                             rawQuery(environment));
+            if (queryToken.invalidRequest()) {
+                return queryToken;
             }
-            queryEvidence.evidence().ifPresent(evidence::add);
+            queryToken.bearerToken().ifPresent(bearerTokens::add);
         }
 
-        if (evidence.size() > 1) {
+        if (bearerTokens.size() > 1) {
             return OidcBearerTokenExtractionResult.invalidRequest("Multiple Bearer Token credential sources found");
         }
-        return evidence.stream()
+        return bearerTokens.stream()
                 .findFirst()
-                .map(OidcBearerTokenExtractionResult::evidence)
+                .map(OidcBearerTokenExtractionResult::bearerToken)
                 .orElseGet(OidcBearerTokenExtractionResult::empty);
     }
 
-    private static OidcBearerTokenExtractionResult authorizationHeaderEvidence(SecurityEnvironment environment) {
+    private static OidcBearerTokenExtractionResult authorizationHeaderBearerToken(SecurityEnvironment environment) {
         List<String> tokens = new ArrayList<>();
         List<String> values = environment.headers().getOrDefault(AUTHORIZATION, List.of());
         for (String value : values) {
@@ -81,8 +81,7 @@ final class OidcBearerTokenExtractor {
         }
         return tokens.stream()
                 .findFirst()
-                .map(token -> OidcBearerTokenEvidence.create(token, OidcBearerTokenSource.AUTHORIZATION_HEADER))
-                .map(OidcBearerTokenExtractionResult::evidence)
+                .map(OidcBearerTokenExtractionResult::bearerToken)
                 .orElseGet(OidcBearerTokenExtractionResult::empty);
     }
 
@@ -105,12 +104,12 @@ final class OidcBearerTokenExtractor {
         return Optional.of(trimmed.substring(tokenStart));
     }
 
-    static OidcBearerTokenExtractionResult accessTokenQueryParameterEvidence(UriQuery queryParams) {
-        return accessTokenQueryParameterEvidence(queryParams, Optional.empty());
+    static OidcBearerTokenExtractionResult accessTokenQueryParameterBearerToken(UriQuery queryParams) {
+        return accessTokenQueryParameterBearerToken(queryParams, Optional.empty());
     }
 
-    private static OidcBearerTokenExtractionResult accessTokenQueryParameterEvidence(UriQuery queryParams,
-                                                                                    Optional<String> rawQuery) {
+    private static OidcBearerTokenExtractionResult accessTokenQueryParameterBearerToken(UriQuery queryParams,
+                                                                                       Optional<String> rawQuery) {
         if (!queryParams.contains(ACCESS_TOKEN)) {
             return OidcBearerTokenExtractionResult.empty();
         }
@@ -127,8 +126,7 @@ final class OidcBearerTokenExtractor {
         if (malformedToken(token)) {
             return OidcBearerTokenExtractionResult.invalidRequest("Malformed Bearer Token in query parameter");
         }
-        return OidcBearerTokenExtractionResult.evidence(
-                OidcBearerTokenEvidence.create(token, OidcBearerTokenSource.QUERY_PARAMETER));
+        return OidcBearerTokenExtractionResult.bearerToken(token);
     }
 
     private static Optional<String> rawQuery(SecurityEnvironment environment) {

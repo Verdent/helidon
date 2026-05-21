@@ -249,14 +249,14 @@ class OidcTenantLifecycleTest {
         ready.metadata();
         ready.endpointClient();
         ready.jwkSetManager();
-        ready.tokenValidationPolicy();
+        ready.tokenValidation();
         ready.subjectMapper();
         ready.cookieStateHandler();
 
         assertThrows(IllegalStateException.class, notReady::metadata);
         assertThrows(IllegalStateException.class, disabled::endpointClient);
         assertThrows(IllegalStateException.class, failed::jwkSetManager);
-        assertThrows(IllegalStateException.class, notReady::tokenValidationPolicy);
+        assertThrows(IllegalStateException.class, notReady::tokenValidation);
         assertThrows(IllegalStateException.class, disabled::subjectMapper);
         assertThrows(IllegalStateException.class, failed::cookieStateHandler);
     }

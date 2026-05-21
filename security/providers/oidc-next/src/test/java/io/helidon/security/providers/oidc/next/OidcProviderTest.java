@@ -127,7 +127,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void bearerTokenEvidenceSelectsBearerTokenAuthenticationWhenBothOperationsArePossible() {
+    void bearerTokenSelectsBearerTokenAuthenticationWhenBothOperationsArePossible() {
         OidcProvider provider = providerWithTenant();
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .header("Authorization", "Bearer access-token")

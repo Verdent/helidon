@@ -69,7 +69,7 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(context.endpointClient().userInfoEndpointUri(), is(Optional.of(USER_INFO_ENDPOINT_URI)));
         assertThat(context.endpointClient().endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(JWK_SET_URI)));
-        assertThat(context.tokenValidationPolicy().method().isEmpty(), is(true));
+        assertThat(context.tokenValidation().method().isEmpty(), is(true));
         assertThat(context.cookieStateHandler().cookieConfig(), is(context.tenantConfig().cookies()));
     }
 
@@ -165,7 +165,7 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(context.metadata().discoveryUri(), is(Optional.of(DISCOVERY_URI)));
         assertThat(context.metadata().jwkSetUri(), is(Optional.empty()));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.empty()));
-        assertThat(context.tokenValidationPolicy().method().isEmpty(), is(true));
+        assertThat(context.tokenValidation().method().isEmpty(), is(true));
     }
 
     @Test

@@ -58,14 +58,21 @@ final class OidcOutboundOrchestrator {
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig outboundConfig) {
-        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest,
-                                                                               outboundConfig,
-                                                                               tenantRuntimeRegistry);
-        if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
-            return responseFactory.tenantUnavailableForOutbound(context.tenantContext().orElseThrow());
+        Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
+        if (tenantContext.filter(it -> !it.ready()).isPresent()) {
+            return responseFactory.tenantUnavailableForOutbound(tenantContext.orElseThrow());
         }
 
-        OidcProtocolOperation operation = classifier.classify(context);
+        Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
+                .filter(OidcTenantContext::ready)
+                .flatMap(readyTenant -> {
+                    if (outboundConfig == null) {
+                        return readyTenant.outboundPolicy();
+                    }
+                    return outboundConfig.instance(OidcOutboundPolicy.class)
+                            .or(readyTenant::outboundPolicy);
+                });
+        OidcProtocolOperation operation = classifier.classify(outboundPolicy);
 
         return switch (operation) {
             case TOKEN_PROPAGATION -> responseFactory.tokenPropagationNotImplemented();

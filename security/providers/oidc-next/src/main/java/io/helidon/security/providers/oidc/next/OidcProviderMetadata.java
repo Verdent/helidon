@@ -50,7 +50,7 @@ final class OidcProviderMetadata {
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
         OidcEndpointConfig endpoints = tenantConfig.endpoints();
         return create(tenantConfig.issuer(),
-                      endpoints.discoveryUri(),
+                      discoveryUri(tenantConfig.issuer(), endpoints),
                       endpoints.authorizationEndpointUri(),
                       endpoints.tokenEndpointUri(),
                       endpoints.jwksUri(),
@@ -119,6 +119,25 @@ final class OidcProviderMetadata {
 
     Optional<URI> endSessionEndpointUri() {
         return endSessionEndpointUri;
+    }
+
+    static Optional<URI> discoveryUri(Optional<URI> issuer, OidcEndpointConfig endpoints) {
+        return endpoints.discoveryUri()
+                .or(() -> issuer.map(OidcProviderMetadata::discoveryUri));
+    }
+
+    private static URI discoveryUri(URI issuer) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+         * Quotes: "concatenating the string `/.well-known/openid-configuration` to the Issuer";
+         * "any terminating `/` MUST be removed before appending".
+         */
+        String issuerValue = issuer.toString();
+        while (issuerValue.endsWith("/")) {
+            issuerValue = issuerValue.substring(0, issuerValue.length() - 1);
+        }
+        return URI.create(issuerValue + "/.well-known/openid-configuration");
     }
 
     private void validateDiscoveredIssuer(OidcProviderMetadata discoveredMetadata) {

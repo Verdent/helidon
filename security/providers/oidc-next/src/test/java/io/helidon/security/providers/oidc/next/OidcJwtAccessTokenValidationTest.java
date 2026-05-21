@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.http.HeaderValues;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -35,13 +36,18 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webserver.http.HttpRouting;
+import io.helidon.webserver.testing.junit5.ServerTest;
+import io.helidon.webserver.testing.junit5.SetUpRoute;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+@ServerTest
 class OidcJwtAccessTokenValidationTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final String AUDIENCE = "api://default";
@@ -51,15 +57,30 @@ class OidcJwtAccessTokenValidationTest {
 
     private static JwkKeys signKeys;
     private static URI jwksUri;
+    private static String verifyJwkSet;
+
+    private URI remoteJwksUri;
 
     @BeforeAll
     static void initClass() throws Exception {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
                 .build();
+        verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
         jwksUri = OidcJwtAccessTokenValidationTest.class.getClassLoader()
                 .getResource("oidc-next-verify-jwk.json")
                 .toURI();
+    }
+
+    @SetUpRoute
+    static void routing(HttpRouting.Builder routing) {
+        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(verifyJwkSet));
+    }
+
+    @BeforeEach
+    void setUp(URI serverUri) {
+        remoteJwksUri = serverUri.resolve("jwks");
     }
 
     @Test
@@ -88,6 +109,15 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(credential.getExpTime().isPresent(), is(true));
         assertThat(credential.getTokenInstance(Jwt.class).isPresent(), is(true));
         assertThat(credential.getTokenInstance(SignedJwt.class).isPresent(), is(true));
+    }
+
+    @Test
+    void remoteJwksEndpointAuthenticatesSubject() {
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
     @Test
@@ -259,11 +289,13 @@ class OidcJwtAccessTokenValidationTest {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", OidcTenantConfig.builder()
                                                    .issuer(ISSUER)
-                                                   .endpoints(it -> it.jwksUri(jwksUri))
+                                                   .endpoints(it -> it.jwksUri(jwksUri)
+                                                           .tlsRequired(false))
                                                    .protectedResource(it -> it.enabled(true)
                                                            .tokenValidation(validation -> {
                                                                validation.method(OidcTokenValidationMethod.JWT)
-                                                                       .audienceValidationEnabled(audienceValidationEnabled);
+                                                                       .audienceValidationEnabled(
+                                                                               audienceValidationEnabled);
                                                                if (audienceConfigured) {
                                                                    validation.audience(AUDIENCE);
                                                                }

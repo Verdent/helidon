@@ -16,15 +16,12 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.Locale;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -33,7 +30,6 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
-import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
@@ -49,24 +45,6 @@ final class OidcIntrospectionAccessTokenValidator {
 
     static OidcIntrospectionAccessTokenValidator create() {
         return new OidcIntrospectionAccessTokenValidator(WebClient.create());
-    }
-
-    static void validateIntrospectionEndpointUri(URI uri) {
-        /*
-         * Spec: RFC 7662, 2 Introspection Endpoint
-         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2
-         * Quote: "MUST be protected by a transport-layer security mechanism".
-         * The `http` loopback allowance is Helidon local/test support, not a spec exception.
-         */
-        String scheme = uri.getScheme();
-        if ("https".equalsIgnoreCase(scheme)) {
-            return;
-        }
-        if ("http".equalsIgnoreCase(scheme) && isLoopback(uri)) {
-            return;
-        }
-        throw new IllegalArgumentException(
-                "introspection-endpoint-uri must use https, except for http loopback endpoints: " + uri);
     }
 
     OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
@@ -100,7 +78,7 @@ final class OidcIntrospectionAccessTokenValidator {
                                                        HttpClientResponse response) {
         JsonObject jsonObject;
         try {
-            jsonObject = JsonParser.create(response.inputStream()).readJsonObject();
+            jsonObject = response.as(JsonObject.class);
         } catch (RuntimeException e) {
             return OidcTokenValidationResult.failure("Bearer Token introspection response is invalid", e);
         }
@@ -183,26 +161,4 @@ final class OidcIntrospectionAccessTokenValidator {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static boolean isLoopback(URI uri) {
-        String host = uri.getHost();
-        if (host == null) {
-            return false;
-        }
-        String normalizedHost = host.toLowerCase(Locale.ROOT);
-        if ("localhost".equals(normalizedHost)) {
-            return true;
-        }
-        try {
-            return InetAddress.getByName(unbracketIpv6Literal(normalizedHost)).isLoopbackAddress();
-        } catch (UnknownHostException e) {
-            return false;
-        }
-    }
-
-    private static String unbracketIpv6Literal(String host) {
-        if (host.startsWith("[") && host.endsWith("]")) {
-            return host.substring(1, host.length() - 1);
-        }
-        return host;
-    }
 }

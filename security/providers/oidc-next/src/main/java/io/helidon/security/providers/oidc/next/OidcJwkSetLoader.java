@@ -19,55 +19,69 @@ package io.helidon.security.providers.oidc.next;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.URLConnection;
-import java.util.Locale;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 
+import io.helidon.http.HeaderValues;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetLoader {
-    private static final int JWK_SET_CONNECT_TIMEOUT_MILLIS = 10_000;
-    private static final int JWK_SET_READ_TIMEOUT_MILLIS = 10_000;
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-    private OidcJwkSetLoader() {
+    private final WebClient webClient;
+
+    private OidcJwkSetLoader(WebClient webClient) {
+        this.webClient = webClient;
     }
 
     static OidcJwkSetLoader create() {
-        return new OidcJwkSetLoader();
+        return new OidcJwkSetLoader(WebClient.create());
     }
 
     JwkKeys load(URI uri) {
-        validateJwkSetUri(uri);
+        JsonObject jsonObject = loadJson(uri);
+        return JwkKeys.create(jsonObject);
+    }
+
+    private JsonObject loadJson(URI uri) {
+        String scheme = uri.getScheme();
+        if ("file".equalsIgnoreCase(scheme)) {
+            return loadFile(uri);
+        }
+        if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+            return loadRemote(uri);
+        }
+        throw new IllegalStateException("Unsupported JWK Set URI scheme: " + uri);
+    }
+
+    private JsonObject loadFile(URI uri) {
         try (InputStream inputStream = inputStream(uri)) {
-            JsonObject jsonObject = JsonParser.create(inputStream).readJsonObject();
-            return JwkKeys.create(jsonObject);
+            return JsonParser.create(inputStream).readJsonObject();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load JWK Set", e);
         }
     }
 
-    static void validateJwkSetUri(URI uri) {
-        /*
-         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
-         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "which MUST use the `https` scheme".
-         * The `file` scheme is Helidon local/offline key-loading support, not a spec exception.
-         */
-        String scheme = uri.getScheme();
-        if (scheme == null) {
-            throw new IllegalArgumentException("jwks-uri must use https or file scheme");
-        }
-        String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
-        if (!"https".equals(normalizedScheme) && !"file".equals(normalizedScheme)) {
-            throw new IllegalArgumentException("jwks-uri must use https or file scheme");
-        }
+    private InputStream inputStream(URI uri) throws IOException {
+        return Files.newInputStream(Path.of(uri));
     }
 
-    private InputStream inputStream(URI uri) throws IOException {
-        URLConnection connection = uri.toURL().openConnection();
-        connection.setConnectTimeout(JWK_SET_CONNECT_TIMEOUT_MILLIS);
-        connection.setReadTimeout(JWK_SET_READ_TIMEOUT_MILLIS);
-        return connection.getInputStream();
+    private JsonObject loadRemote(URI uri) {
+        try (HttpClientResponse response = webClient.get()
+                .uri(uri)
+                .readTimeout(REQUEST_TIMEOUT)
+                .header(HeaderValues.ACCEPT_JSON)
+                .request()) {
+            if (response.status().family() != Status.Family.SUCCESSFUL) {
+                throw new IllegalStateException("JWK Set endpoint returned status: " + response.status());
+            }
+            return response.as(JsonObject.class);
+        }
     }
 }

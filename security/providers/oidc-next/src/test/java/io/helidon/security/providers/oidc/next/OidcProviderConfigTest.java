@@ -47,6 +47,7 @@ class OidcProviderConfigTest {
     @Test
     void defaultsAreSecureAndSpecFirst() {
         OidcProviderConfig providerConfig = OidcProviderConfig.create();
+        OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
@@ -54,6 +55,7 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
+        assertThat(tenantConfig.enabled(), is(true));
         assertThat(authorizationCode.enabled(), is(false));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.pkceRequired(), is(true));
@@ -104,6 +106,21 @@ class OidcProviderConfigTest {
         assertThat(tenant.protectedResource().tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(tenant.protectedResource().tokenValidation().audience().orElse(""), is(AUDIENCE));
+    }
+
+    @Test
+    void disabledTenantCanKeepIncompleteFlowConfiguration() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .enabled(false)
+                .protectedResource(it -> it.enabled(true))
+                .authorizationCode(it -> it.enabled(true))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+
+        assertThat(tenant.enabled(), is(false));
+        assertThat(tenant.protectedResource().enabled(), is(true));
+        assertThat(tenant.authorizationCode().enabled(), is(true));
+        assertThat(tenant.outbound().clientCredentialsGrantEnabled(), is(true));
     }
 
     @Test

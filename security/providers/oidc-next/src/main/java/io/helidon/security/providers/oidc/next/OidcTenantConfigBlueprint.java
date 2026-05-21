@@ -29,6 +29,15 @@ import io.helidon.builder.api.Prototype;
 @Prototype.Configured
 interface OidcTenantConfigBlueprint {
     /**
+     * Whether this tenant is enabled.
+     *
+     * @return whether this tenant is enabled
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean enabled();
+
+    /**
      * Issuer Identifier expected for this tenant.
      *
      * @return issuer identifier

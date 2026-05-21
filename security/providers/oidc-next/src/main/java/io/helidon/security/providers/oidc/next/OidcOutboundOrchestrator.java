@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
@@ -43,14 +45,25 @@ final class OidcOutboundOrchestrator {
     boolean isSupported(ProviderRequest providerRequest,
                         SecurityEnvironment outboundEnv,
                         EndpointConfig outboundConfig) {
-        OidcProtocolOperation operation = classify(providerRequest, outboundEnv, outboundConfig);
-        return operation != OidcProtocolOperation.ABSTAIN;
+        Optional<OidcTenantConfig> tenantConfig = tenantRuntimeRegistry.tenantConfig(providerRequest);
+        if (tenantConfig.isEmpty()) {
+            return false;
+        }
+        if (outboundConfig != null && outboundConfig.instance(OidcOutboundPolicy.class).isPresent()) {
+            return true;
+        }
+        return OidcConfigSupport.outboundPolicy(tenantConfig.get()).isPresent();
     }
 
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig outboundConfig) {
-        OidcProtocolOperation operation = classify(providerRequest, outboundEnv, outboundConfig);
+        OidcOutboundRequestContext context = requestContext(providerRequest, outboundEnv, outboundConfig);
+        if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
+            return responseFactory.tenantUnavailableForOutbound(context.tenantContext().orElseThrow());
+        }
+
+        OidcProtocolOperation operation = classifier.classify(context);
 
         return switch (operation) {
             case TOKEN_PROPAGATION -> responseFactory.tokenPropagationNotImplemented();
@@ -64,13 +77,12 @@ final class OidcOutboundOrchestrator {
         };
     }
 
-    private OidcProtocolOperation classify(ProviderRequest providerRequest,
-                                           SecurityEnvironment outboundEnv,
-                                           EndpointConfig outboundConfig) {
-        OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest,
-                                                                               outboundEnv,
-                                                                               outboundConfig,
-                                                                               tenantRuntimeRegistry);
-        return classifier.classify(context);
+    private OidcOutboundRequestContext requestContext(ProviderRequest providerRequest,
+                                                      SecurityEnvironment outboundEnv,
+                                                      EndpointConfig outboundConfig) {
+        return OidcOutboundRequestContext.create(providerRequest,
+                                                outboundEnv,
+                                                outboundConfig,
+                                                tenantRuntimeRegistry);
     }
 }

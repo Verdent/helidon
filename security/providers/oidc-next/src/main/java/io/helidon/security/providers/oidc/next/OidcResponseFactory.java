@@ -73,6 +73,14 @@ final class OidcResponseFactory {
                 .build();
     }
 
+    AuthenticationResponse tenantUnavailable(OidcTenantContext tenantContext) {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(503)
+                .description(tenantUnavailableDescription(tenantContext))
+                .build();
+    }
+
     OutboundSecurityResponse tokenPropagationNotImplemented() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
@@ -92,5 +100,21 @@ final class OidcResponseFactory {
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description("OIDC outbound request cannot be classified by protocol operation")
                 .build();
+    }
+
+    OutboundSecurityResponse tenantUnavailableForOutbound(OidcTenantContext tenantContext) {
+        return OutboundSecurityResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .description(tenantUnavailableDescription(tenantContext))
+                .build();
+    }
+
+    private String tenantUnavailableDescription(OidcTenantContext tenantContext) {
+        return switch (tenantContext.state()) {
+            case NOT_READY -> "OIDC tenant is not ready: " + tenantContext.tenantId();
+            case DISABLED -> "OIDC tenant is disabled: " + tenantContext.tenantId();
+            case FAILED -> "OIDC tenant initialization failed: " + tenantContext.tenantId();
+            case READY -> "OIDC tenant is ready: " + tenantContext.tenantId();
+        };
     }
 }

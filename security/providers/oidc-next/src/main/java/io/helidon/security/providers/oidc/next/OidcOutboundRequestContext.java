@@ -49,7 +49,7 @@ final class OidcOutboundRequestContext {
     }
 
     Optional<OidcOutboundPolicy> outboundPolicy() {
-        if (tenantContext.isEmpty()) {
+        if (tenantContext.filter(OidcTenantContext::ready).isEmpty()) {
             return Optional.empty();
         }
 
@@ -58,6 +58,10 @@ final class OidcOutboundRequestContext {
         }
         return outboundConfig.instance(OidcOutboundPolicy.class)
                 .or(() -> tenantContext.flatMap(OidcTenantContext::outboundPolicy));
+    }
+
+    Optional<OidcTenantContext> tenantContext() {
+        return tenantContext;
     }
 
     ProviderRequest providerRequest() {

@@ -409,9 +409,24 @@ class OidcProviderConfigTest {
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("email")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("openid scope"));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresCookieEncryptionSecret() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("cookies.encryption-secret"));
     }
 
     @Test
@@ -438,6 +453,7 @@ class OidcProviderConfigTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
@@ -467,6 +483,7 @@ class OidcProviderConfigTest {
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceRequired(false))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
         assertThat(tenant.authorizationCode().pkceRequired(), is(false));
@@ -480,6 +497,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .authorizationCode(it -> it.enabled(true)
                         .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().discoveryUri().isEmpty(), is(true));

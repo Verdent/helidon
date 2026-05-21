@@ -29,12 +29,12 @@ final class OidcRequestContext {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final ProviderRequest providerRequest;
-    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
+    private final Optional<OidcTenantContext> tenantContext;
 
     private OidcRequestContext(ProviderRequest providerRequest,
                                OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.providerRequest = providerRequest;
-        this.tenantRuntimeRegistry = tenantRuntimeRegistry;
+        this.tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
     }
 
     static OidcRequestContext create(ProviderRequest providerRequest,
@@ -43,14 +43,16 @@ final class OidcRequestContext {
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
+        if (tenantContext.isEmpty()) {
+            return Optional.empty();
+        }
+
         EndpointConfig endpointConfig = endpointConfig();
         if (endpointConfig == null) {
-            return tenantContext()
-                    .flatMap(OidcTenantContext::endpointPolicy);
+            return tenantContext.flatMap(OidcTenantContext::endpointPolicy);
         }
         return endpointConfig.instance(OidcEndpointPolicy.class)
-                .or(() -> tenantContext()
-                        .flatMap(OidcTenantContext::endpointPolicy));
+                .or(() -> tenantContext.flatMap(OidcTenantContext::endpointPolicy));
     }
 
     boolean bearerTokenPresent() {
@@ -87,13 +89,9 @@ final class OidcRequestContext {
     }
 
     private OidcTokenTransportConfig tokenTransport() {
-        return tenantContext()
+        return tenantContext
                 .map(OidcTenantContext::tokenTransport)
                 .orElseGet(OidcTokenTransportConfig::create);
-    }
-
-    private Optional<OidcTenantContext> tenantContext() {
-        return tenantRuntimeRegistry.tenantContext(providerRequest);
     }
 
     private EndpointConfig endpointConfig() {

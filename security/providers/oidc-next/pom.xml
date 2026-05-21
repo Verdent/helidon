@@ -51,6 +51,18 @@
             <artifactId>helidon-security</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.security</groupId>
+            <artifactId>helidon-security-jwt</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.json</groupId>
+            <artifactId>helidon-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.security.providers</groupId>
+            <artifactId>helidon-security-providers-common</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.config.metadata</groupId>
             <artifactId>helidon-config-metadata</artifactId>
             <optional>true</optional>

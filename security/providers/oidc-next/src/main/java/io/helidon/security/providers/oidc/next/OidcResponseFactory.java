@@ -49,6 +49,15 @@ final class OidcResponseFactory {
                 .build();
     }
 
+    AuthenticationResponse invalidBearerToken(String description) {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(401)
+                .description(description)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_token", description))
+                .build();
+    }
+
     AuthenticationResponse authorizationCodeFlowNotImplemented() {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)

@@ -16,6 +16,15 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import io.helidon.security.Grant;
+import io.helidon.security.Principal;
+import io.helidon.security.Role;
+import io.helidon.security.Subject;
+import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.JwtUtil;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.providers.common.TokenCredential;
+
 final class OidcSubjectMapper {
     private final String tenantId;
     private final OidcProviderProfile providerProfile;
@@ -35,5 +44,51 @@ final class OidcSubjectMapper {
 
     OidcProviderProfile providerProfile() {
         return providerProfile;
+    }
+
+    Subject map(OidcValidatedJwt validatedToken) {
+        Jwt jwt = validatedToken.jwt();
+        SignedJwt signedJwt = validatedToken.signedJwt();
+        String subject = jwt.subject().orElseThrow();
+        Principal principal = principal(jwt, subject);
+
+        TokenCredential.Builder credentialBuilder = TokenCredential.builder()
+                .token(validatedToken.rawToken());
+        jwt.issueTime().ifPresent(credentialBuilder::issueTime);
+        jwt.expirationTime().ifPresent(credentialBuilder::expTime);
+        jwt.issuer().ifPresent(credentialBuilder::issuer);
+        credentialBuilder.addToken(Jwt.class, jwt);
+        credentialBuilder.addToken(SignedJwt.class, signedJwt);
+
+        Subject.Builder subjectBuilder = Subject.builder()
+                .principal(principal)
+                .addPublicCredential(TokenCredential.class, credentialBuilder.build());
+
+        jwt.userGroups()
+                .ifPresent(groups -> groups.forEach(group -> subjectBuilder.addGrant(Role.create(group))));
+        jwt.scopes()
+                .ifPresent(scopes -> scopes.forEach(scope -> subjectBuilder.addGrant(Grant.builder()
+                                                                                 .name(scope)
+                                                                                 .type("scope")
+                                                                                 .build())));
+        return subjectBuilder.build();
+    }
+
+    private Principal principal(Jwt jwt, String subject) {
+        String name = jwt.preferredUsername()
+                .orElse(subject);
+        Principal.Builder builder = Principal.builder()
+                .name(name)
+                .id(subject);
+
+        jwt.payloadClaimsJson()
+                .forEach((key, jsonValue) -> builder.addAttribute(key, JwtUtil.toObject(jsonValue)));
+        jwt.email().ifPresent(value -> builder.addAttribute("email", value));
+        jwt.emailVerified().ifPresent(value -> builder.addAttribute("email_verified", value));
+        jwt.locale().ifPresent(value -> builder.addAttribute("locale", value));
+        jwt.familyName().ifPresent(value -> builder.addAttribute("family_name", value));
+        jwt.givenName().ifPresent(value -> builder.addAttribute("given_name", value));
+        jwt.fullName().ifPresent(value -> builder.addAttribute("full_name", value));
+        return builder.build();
     }
 }

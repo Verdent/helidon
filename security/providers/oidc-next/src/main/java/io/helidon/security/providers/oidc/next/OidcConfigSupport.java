@@ -85,6 +85,9 @@ final class OidcConfigSupport {
     static final class TenantDecorator implements Prototype.BuilderDecorator<OidcTenantConfig.BuilderBase<?, ?>> {
         @Override
         public void decorate(OidcTenantConfig.BuilderBase<?, ?> target) {
+            if (!target.enabled()) {
+                return;
+            }
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());

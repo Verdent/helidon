@@ -164,11 +164,13 @@ final class OidcConfigSupport {
         authorizationCode.redirectionEndpointUri()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
-        endpoints.authorizationEndpointUri()
+        Optional<URI> authorizationEndpointUri = endpoints.authorizationEndpointUri();
+        authorizationEndpointUri
                 .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
+        authorizationEndpointUri.ifPresent(uri -> validateAuthorizationEndpointUri(uri, endpoints.tlsRequired()));
         endpoints.tokenEndpointUri()
                 .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -279,24 +281,27 @@ final class OidcConfigSupport {
                                 + "is enabled"));
     }
 
+    private static void validateAuthorizationEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "This URL MUST use the `https` scheme".
+         *
+         * Spec: RFC 6749, 3.1 Authorization Endpoint
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1
+         * Quote: "The endpoint URI MUST NOT include a fragment component".
+         */
+        validateHttpsEndpointUri("authorization-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("authorization-endpoint-uri", uri);
+    }
+
     private static void validateJwksUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
          * Quote: "This URL MUST use the `https` scheme".
          */
-        String scheme = uri.getScheme();
-        if (scheme == null) {
-            throw new IllegalArgumentException("jwks-uri must define a URI scheme");
-        }
-        if ("https".equalsIgnoreCase(scheme)) {
-            return;
-        }
-        if (!tlsRequired && ("http".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme))) {
-            return;
-        }
-        throw new IllegalArgumentException(
-                "jwks-uri must use https unless endpoints.tls-required is disabled: " + uri);
+        validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
     }
 
     private static void validateIntrospectionEndpointUri(URI uri, boolean tlsRequired) {
@@ -305,18 +310,27 @@ final class OidcConfigSupport {
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2
          * Quote: "MUST be protected by a transport-layer security mechanism".
          */
+        validateHttpsEndpointUri("introspection-endpoint-uri", uri, tlsRequired, false);
+    }
+
+    private static void validateHttpsEndpointUri(String configKey, URI uri, boolean tlsRequired, boolean fileAllowed) {
         String scheme = uri.getScheme();
         if (scheme == null) {
-            throw new IllegalArgumentException("introspection-endpoint-uri must define a URI scheme");
+            throw new IllegalArgumentException(configKey + " must define a URI scheme");
         }
         if ("https".equalsIgnoreCase(scheme)) {
             return;
         }
-        if (!tlsRequired && "http".equalsIgnoreCase(scheme)) {
+        if (!tlsRequired && ("http".equalsIgnoreCase(scheme) || fileAllowed && "file".equalsIgnoreCase(scheme))) {
             return;
         }
         throw new IllegalArgumentException(
-                "introspection-endpoint-uri must use https unless endpoints.tls-required is disabled: "
-                        + uri);
+                configKey + " must use https unless endpoints.tls-required is disabled: " + uri);
+    }
+
+    private static void validateNoFragment(String configKey, URI uri) {
+        if (uri.getRawFragment() != null) {
+            throw new IllegalArgumentException(configKey + " must not include a fragment component: " + uri);
+        }
     }
 }

@@ -109,6 +109,22 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void clientSecretPostSendsCredentialsInForm() {
+        OidcTokenEndpointResult result = exchange(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST),
+                                                  PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("authorization_code"),
+                                                       "code", List.of(AUTHORIZATION_CODE),
+                                                       "redirect_uri", List.of(REDIRECTION_ENDPOINT_URI.toString()),
+                                                       "code_verifier", List.of(PKCE_VERIFIER),
+                                                       "client_id", List.of(CLIENT_ID),
+                                                       "client_secret", List.of(CLIENT_SECRET))));
+    }
+
+    @Test
     void tokenEndpointErrorResponseIsParsed() {
         responseStatus = 400;
         responseBody = JsonObject.builder()
@@ -172,20 +188,29 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private OidcTenantConfig confidentialTenant() {
-        return tenant(true);
+        return tenant(true, null);
+    }
+
+    private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method) {
+        return tenant(true, method);
     }
 
     private OidcTenantConfig publicTenant() {
-        return tenant(false);
+        return tenant(false, OidcClientAuthenticationMethod.NONE);
     }
 
-    private OidcTenantConfig tenant(boolean clientSecret) {
+    private OidcTenantConfig tenant(boolean clientSecret, OidcClientAuthenticationMethod method) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId(CLIENT_ID)
                 .update(builder -> {
                     if (clientSecret) {
                         builder.clientSecret(CLIENT_SECRET);
+                    }
+                })
+                .update(builder -> {
+                    if (method != null) {
+                        builder.tokenEndpointAuthenticationMethod(method);
                     }
                 })
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)

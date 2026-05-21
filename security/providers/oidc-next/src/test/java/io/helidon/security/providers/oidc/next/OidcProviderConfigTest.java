@@ -537,6 +537,41 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowCanUseClientSecretPostTokenEndpointAuthentication() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(tenant.tokenEndpointAuthenticationMethod()
+                           .orElseThrow(),
+                   is(OidcClientAuthenticationMethod.CLIENT_SECRET_POST));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresClientSecretForSecretTokenEndpointAuthentication() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-secret"));
+    }
+
+    @Test
     void authorizationCodeFlowCanUseDiscoveryUriDerivedFromIssuer() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -620,6 +655,14 @@ class OidcProviderConfigTest {
                 .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype());
 
+        assertThat(thrown.getMessage(), containsString("Token Endpoint authentication"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype());
+
         assertThat(thrown.getMessage(), containsString("client-secret"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
@@ -669,6 +712,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("pkce-required"));
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));
+        assertThat(metadata, containsString("token-endpoint-auth-method"));
         assertThat(metadata, containsString("path-template"));
     }
 

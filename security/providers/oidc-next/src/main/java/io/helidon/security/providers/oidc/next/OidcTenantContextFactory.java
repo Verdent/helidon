@@ -26,7 +26,7 @@ final class OidcTenantContextFactory {
     }
 
     static OidcTenantContextFactory create() {
-        return create(OidcTenantContext::ready);
+        return create(defaultInitializer(OidcProviderMetadataLoader.create()));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -39,6 +39,34 @@ final class OidcTenantContextFactory {
         }
         return Objects.requireNonNull(initializer.initialize(tenantId, tenantConfig),
                                       "Tenant initializer must return a context");
+    }
+
+    private static TenantInitializer defaultInitializer(OidcProviderMetadataLoader metadataLoader) {
+        return (tenantId, tenantConfig) -> {
+            try {
+                OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
+                OidcProviderMetadata metadata = needsDiscovery(tenantConfig, staticMetadata)
+                        ? metadataLoader.load(staticMetadata)
+                        : staticMetadata;
+                return OidcTenantContext.ready(tenantId, tenantConfig, metadata);
+            } catch (RuntimeException e) {
+                return OidcTenantContext.failed(tenantId, tenantConfig);
+            }
+        };
+    }
+
+    private static boolean needsDiscovery(OidcTenantConfig tenantConfig, OidcProviderMetadata staticMetadata) {
+        if (staticMetadata.discoveryUri().isEmpty()) {
+            return false;
+        }
+        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode();
+        if (authorizationCode.enabled()
+                && (staticMetadata.authorizationEndpointUri().isEmpty()
+                || staticMetadata.tokenEndpointUri().isEmpty())) {
+            return true;
+        }
+        return tenantConfig.outbound().clientCredentialsGrantEnabled()
+                && staticMetadata.tokenEndpointUri().isEmpty();
     }
 
     @FunctionalInterface

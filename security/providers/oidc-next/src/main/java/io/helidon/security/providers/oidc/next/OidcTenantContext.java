@@ -32,14 +32,17 @@ final class OidcTenantContext {
     private final OidcCookieStateHandler cookieStateHandler;
     private final OidcProviderProfile providerProfile;
 
-    private OidcTenantContext(String tenantId, OidcTenantConfig tenantConfig, OidcTenantState state) {
+    private OidcTenantContext(String tenantId,
+                              OidcTenantConfig tenantConfig,
+                              OidcTenantState state,
+                              OidcProviderMetadata readyMetadata) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.state = state;
         if (state == OidcTenantState.READY) {
             this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
             this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
-            this.metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
+            this.metadata = readyMetadata;
             this.endpointClient = OidcEndpointClient.create(tenantId, tenantConfig, metadata);
             this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
             this.tokenValidationPolicy = OidcTokenValidationPolicy.create(tenantConfig);
@@ -60,19 +63,23 @@ final class OidcTenantContext {
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY);
+        return ready(tenantId, tenantConfig, OidcProviderMetadata.fromStaticConfig(tenantConfig));
+    }
+
+    static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata);
     }
 
     static OidcTenantContext notReady(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null);
     }
 
     static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null);
     }
 
     static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null);
     }
 
     String tenantId() {

@@ -69,7 +69,8 @@ final class OidcOutboundOrchestrator {
             case TOKEN_PROPAGATION -> responseFactory.tokenPropagationNotImplemented();
             case CLIENT_CREDENTIALS_GRANT -> responseFactory.clientCredentialsGrantNotImplemented();
             case AMBIGUOUS -> responseFactory.ambiguousOutboundRequest();
-            case BEARER_TOKEN_AUTHENTICATION,
+            case BEARER_TOKEN_INVALID_REQUEST,
+                    BEARER_TOKEN_AUTHENTICATION,
                     AUTHORIZATION_CODE_FLOW_INITIATION,
                     AUTHORIZATION_RESPONSE,
                     RP_INITIATED_LOGOUT,

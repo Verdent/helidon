@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.List;
 import java.util.Optional;
 
 import io.helidon.security.EndpointConfig;
@@ -24,12 +23,9 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcRequestContext {
-    private static final String AUTHORIZATION = "Authorization";
-    private static final String ACCESS_TOKEN = "access_token";
-    private static final String BEARER_PREFIX = "Bearer ";
-
     private final ProviderRequest providerRequest;
     private final Optional<OidcTenantContext> tenantContext;
+    private OidcBearerTokenExtractionResult bearerTokenExtractionResult;
 
     private OidcRequestContext(ProviderRequest providerRequest,
                                OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
@@ -60,36 +56,38 @@ final class OidcRequestContext {
     }
 
     boolean bearerTokenPresent() {
-        if (endpointPolicy().filter(OidcEndpointPolicy::bearerTokenAuthenticationEnabled).isEmpty()) {
-            return false;
+        return bearerTokenEvidence().isPresent();
+    }
+
+    Optional<OidcBearerTokenEvidence> bearerTokenEvidence() {
+        return bearerTokenExtractionResult().evidence();
+    }
+
+    boolean bearerTokenInvalidRequest() {
+        return bearerTokenExtractionResult().invalidRequest();
+    }
+
+    String bearerTokenErrorDescription() {
+        return bearerTokenExtractionResult()
+                .errorDescription()
+                .orElse("Bearer Token request is invalid");
+    }
+
+    private OidcBearerTokenExtractionResult bearerTokenExtractionResult() {
+        if (bearerTokenExtractionResult != null) {
+            return bearerTokenExtractionResult;
         }
-        OidcTokenTransportConfig tokenTransport = tokenTransport();
-        return (tokenTransport.authorizationHeaderEnabled() && bearerTokenHeaderPresent())
-                || (tokenTransport.queryParameterEnabled() && accessTokenQueryParameterPresent());
+        if (endpointPolicy().filter(OidcEndpointPolicy::bearerTokenAuthenticationEnabled).isEmpty()) {
+            bearerTokenExtractionResult = OidcBearerTokenExtractionResult.empty();
+            return bearerTokenExtractionResult;
+        }
+        bearerTokenExtractionResult = OidcBearerTokenExtractor.extract(environment(), tokenTransport());
+        return bearerTokenExtractionResult;
     }
 
     boolean authorizationResponsePresent() {
         return environment().queryParams().contains("state")
                 && (environment().queryParams().contains("code") || environment().queryParams().contains("error"));
-    }
-
-    private boolean bearerTokenHeaderPresent() {
-        List<String> values = environment().headers().getOrDefault(AUTHORIZATION, List.of());
-        for (String value : values) {
-            if (value.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())
-                    && value.length() > BEARER_PREFIX.length()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean accessTokenQueryParameterPresent() {
-        return environment().queryParams()
-                .first(ACCESS_TOKEN)
-                .asOptional()
-                .filter(token -> !token.isBlank())
-                .isPresent();
     }
 
     private OidcTokenTransportConfig tokenTransport() {

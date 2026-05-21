@@ -25,6 +25,10 @@ final class OidcRequestClassifier {
     }
 
     OidcProtocolOperation classify(OidcRequestContext context) {
+        if (context.bearerTokenInvalidRequest()) {
+            return OidcProtocolOperation.BEARER_TOKEN_INVALID_REQUEST;
+        }
+
         if (context.bearerTokenPresent()) {
             return OidcProtocolOperation.BEARER_TOKEN_AUTHENTICATION;
         }

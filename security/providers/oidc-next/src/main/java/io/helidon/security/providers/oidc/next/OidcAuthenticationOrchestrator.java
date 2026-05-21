@@ -55,6 +55,8 @@ final class OidcAuthenticationOrchestrator {
         OidcProtocolOperation operation = classifier.classify(context);
 
         return switch (operation) {
+            case BEARER_TOKEN_INVALID_REQUEST -> responseFactory.invalidBearerTokenRequest(
+                    context.bearerTokenErrorDescription());
             case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
             case AUTHORIZATION_CODE_FLOW_INITIATION -> responseFactory.authorizationCodeFlowNotImplemented();
             case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
@@ -65,7 +67,7 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
-        if (context.bearerTokenPresent()) {
+        if (context.bearerTokenEvidence().isPresent()) {
             return responseFactory.bearerTokenValidationNotImplemented();
         }
         if (config.optional()) {

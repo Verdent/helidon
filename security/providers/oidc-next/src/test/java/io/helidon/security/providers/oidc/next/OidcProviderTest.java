@@ -16,11 +16,13 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.ServiceLoader;
 
+import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
@@ -108,6 +110,123 @@ class OidcProviderTest {
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token validation is not implemented yet"));
         assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).startsWith("Bearer "), is(true));
+    }
+
+    @Test
+    void invalidBearerTokenRequestFailsSafely() {
+        OidcProvider provider = providerWithQueryParameterTransport();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .header("Authorization", "Bearer header-token")
+                .queryParam("access_token", "query-token")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Multiple Bearer Token credential sources found");
+    }
+
+    @Test
+    void multipleAuthorizationHeaderBearerTokensFailSafely() {
+        OidcProvider provider = providerWithTenant();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .header("Authorization", List.of("Bearer first-token", "Bearer second-token"))
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Multiple Bearer Tokens found in Authorization header");
+    }
+
+    @Test
+    void multipleQueryParameterBearerTokensFailSafely() {
+        OidcProvider provider = providerWithQueryParameterTransport();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .queryParam("access_token", List.of("first-token", "second-token"))
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Multiple Bearer Tokens found in query parameter");
+    }
+
+    @Test
+    void malformedQueryParameterBearerTokenFailsSafely() {
+        OidcProvider provider = providerWithQueryParameterTransport();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .queryParam("access_token", " ")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Malformed Bearer Token in query parameter");
+    }
+
+    @Test
+    void bareQueryParameterBearerTokenFailsSafely() {
+        OidcProvider provider = providerWithQueryParameterTransport();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .queryParams(UriQuery.create("access_token"))
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Malformed Bearer Token in query parameter");
+    }
+
+    @Test
+    void bareQueryParameterWithAnotherBearerTokenFailsSafely() {
+        OidcProvider provider = providerWithQueryParameterTransport();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource?access_token&access_token=access-token"))
+                .queryParams(UriQuery.create("access_token&access_token=access-token"))
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Multiple Bearer Tokens found in query parameter");
+    }
+
+    @Test
+    void disabledTransportCredentialIsIgnoredWhenEnabledTransportHasBearerToken() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                  .putTenant("default", OidcTenantConfig.builder()
+                                                          .tokenTransport(it -> it.authorizationHeaderEnabled(false)
+                                                                  .queryParameterEnabled(true))
+                                                          .buildPrototype())
+                                                  .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .header("Authorization", "Bearer disabled-header-token")
+                .queryParam("access_token", "query-token")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Bearer Token validation is not implemented yet"));
+    }
+
+    @Test
+    void malformedBearerTokenFailsEvenWhenProviderIsOptional() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                  .optional(true)
+                                                  .putTenant("default", OidcTenantConfig.create())
+                                                  .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .header("Authorization", "Bearer ")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Malformed Bearer Token in Authorization header");
     }
 
     @Test
@@ -223,6 +342,21 @@ class OidcProviderTest {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", OidcTenantConfig.create())
                                            .buildPrototype());
+    }
+
+    private static OidcProvider providerWithQueryParameterTransport() {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", OidcTenantConfig.builder()
+                                                   .tokenTransport(it -> it.queryParameterEnabled(true))
+                                                   .buildPrototype())
+                                           .buildPrototype());
+    }
+
+    private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(400));
+        assertThat(response.description().orElse(""), is(description));
+        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).contains("invalid_request"), is(true));
     }
 
     private static final class TestProviderRequest implements ProviderRequest {

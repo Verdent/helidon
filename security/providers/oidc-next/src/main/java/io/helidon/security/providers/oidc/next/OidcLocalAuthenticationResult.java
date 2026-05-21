@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 final class OidcLocalAuthenticationResult {
@@ -56,6 +57,15 @@ final class OidcLocalAuthenticationResult {
                                                 OidcValidatedIdToken idToken,
                                                 Instant createdAt,
                                                 Duration maxLifetime) {
+        return create(tenantId, tokenResponse, idToken, List.of(), createdAt, maxLifetime);
+    }
+
+    static OidcLocalAuthenticationResult create(String tenantId,
+                                                OidcTokenResponse tokenResponse,
+                                                OidcValidatedIdToken idToken,
+                                                List<String> requestedScopes,
+                                                Instant createdAt,
+                                                Duration maxLifetime) {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
         Instant maxExpiresAt = createdAt.plus(maxLifetime);
         return create(tenantId,
@@ -63,7 +73,7 @@ final class OidcLocalAuthenticationResult {
                       tokenResponse.accessToken(),
                       tokenResponse.tokenType(),
                       tokenResponse.refreshToken().orElse(null),
-                      tokenResponse.scope().orElse(null),
+                      tokenResponse.scope().or(() -> requestedScope(requestedScopes)).orElse(null),
                       createdAt,
                       earliest(idTokenExpiresAt, maxExpiresAt),
                       tokenResponse.expiresIn().map(createdAt::plusSeconds).orElse(null));
@@ -130,5 +140,18 @@ final class OidcLocalAuthenticationResult {
             return first;
         }
         return second;
+    }
+
+    private static Optional<String> requestedScope(List<String> requestedScopes) {
+        /*
+         * Spec: RFC 6749, 5.1 Successful Response
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1
+         * Quote: "`scope` OPTIONAL, if identical to the scope requested by the client".
+         */
+        String scope = String.join(" ", requestedScopes);
+        if (scope.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(scope);
     }
 }

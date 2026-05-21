@@ -17,7 +17,9 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +30,7 @@ import io.helidon.common.configurable.Resource;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
+import io.helidon.json.JsonObject;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
@@ -411,6 +414,82 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationResultCookieAuthenticatesCombinedProtectedResourceAndCodeFlowPolicy() {
+        OidcTenantConfig tenant = authorizationCodeAndProtectedResourceTenant();
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(SUBJECT));
+    }
+
+    @Test
+    void invalidLocalAuthenticationResultCookiesStartAuthenticationRequest() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie validCookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+        SetCookie expiredCookie = localAuthenticationCookie(tenant, "default", now.minusSeconds(3600), now.minusSeconds(1));
+        SetCookie wrongTenantCookie = localAuthenticationCookie(tenant, "other", now, now.plusSeconds(3600));
+
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                expiredCookie.name() + "=" + expiredCookie.value()))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                validCookie.name() + "=" + tamperCookieValue(validCookie.value())))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                wrongTenantCookie.name() + "=" + wrongTenantCookie.value()))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                validCookie.name() + "=" + validCookie.value() + "; "
+                        + validCookie.name() + "=" + validCookie.value()))));
+    }
+
+    @Test
+    void localAuthenticationResultLifetimeUsesConfiguredLifetimeWhenShorterThanIdToken() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        String idToken = signedIdToken(it -> it.expirationTime(now.plusSeconds(3600)));
+        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(
+                "default",
+                tokenResponse(idToken, 600L, null),
+                validatedIdToken(idToken),
+                List.of("openid", "profile"),
+                now,
+                Duration.ofSeconds(300));
+
+        assertThat(result.expiresAt(), is(now.plusSeconds(300)));
+        assertThat(result.accessTokenExpiresAt().orElseThrow(), is(now.plusSeconds(600)));
+        assertThat(result.scope().orElse(""), is("openid profile"));
+    }
+
+    @Test
+    void localAuthenticationResultLifetimeUsesIdTokenExpirationWhenShorterThanConfiguredLifetime() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        String idToken = signedIdToken(it -> it.expirationTime(now.plusSeconds(120)));
+        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(
+                "default",
+                tokenResponse(idToken, null, "openid"),
+                validatedIdToken(idToken),
+                List.of("openid", "profile"),
+                now,
+                Duration.ofSeconds(3600));
+
+        assertThat(result.expiresAt(), is(now.plusSeconds(120)));
+        assertThat(OidcCookieStateHandler.create(tenant)
+                           .createLocalAuthenticationResultCookie(result)
+                           .maxAge()
+                           .orElseThrow()
+                           .getSeconds(),
+                   is(120L));
+    }
+
+    @Test
     void authorizationResponseProcessingIsLeftToFeatureEndpoint() {
         OidcProvider provider = OidcProvider.create();
         SecurityEnvironment environment = SecurityEnvironment.builder()
@@ -530,6 +609,50 @@ class OidcProviderTest {
                 .buildPrototype();
     }
 
+    private static OidcTenantConfig authorizationCodeAndProtectedResourceTenant() {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(URI.create("https://issuer.example/jwks")))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       String tenantId,
+                                                       Instant createdAt,
+                                                       Instant expiresAt) {
+        String idToken = signedIdToken(it -> it.email("user1@example.org")
+                .preferredUsername(USERNAME));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        return OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        tenantId,
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        createdAt,
+                        expiresAt,
+                        createdAt.plusSeconds(600)));
+    }
+
+    private static SecurityEnvironment environmentWithCookie(String cookieHeader) {
+        return SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .header("Cookie", cookieHeader)
+                .build();
+    }
+
     private static OidcAuthenticationRequestState authenticationRequestState(AuthenticationResponse response,
                                                                              OidcTenantConfig tenant) {
         SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").get(0));
@@ -561,6 +684,31 @@ class OidcProviderTest {
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static OidcValidatedIdToken validatedIdToken(String idToken) {
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        return OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt());
+    }
+
+    private static OidcTokenResponse tokenResponse(String idToken, Long expiresIn, String scope) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("access_token", "access-token")
+                .set("token_type", "Bearer")
+                .set("id_token", idToken);
+        if (expiresIn != null) {
+            builder.set("expires_in", expiresIn);
+        }
+        if (scope != null) {
+            builder.set("scope", scope);
+        }
+        return OidcTokenResponse.fromJson(builder.build());
+    }
+
+    private static void assertAuthenticationRequestStarted(AuthenticationResponse response) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        assertThat(response.statusCode().orElse(-1), is(303));
+        assertThat(response.responseHeaders().get("Location").getFirst(), containsString("/authorize"));
     }
 
     private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {

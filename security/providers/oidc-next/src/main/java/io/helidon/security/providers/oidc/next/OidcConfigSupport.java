@@ -161,23 +161,28 @@ final class OidcConfigSupport {
         tenant.clientId()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-id must be configured when Authorization Code Flow is enabled"));
+        validateTokenEndpointAuthentication(tenant, false, "Authorization Code Flow");
         authorizationCode.redirectionEndpointUri()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
         Optional<URI> authorizationEndpointUri = endpoints.authorizationEndpointUri();
+        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
         authorizationEndpointUri
-                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
+                .or(() -> discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         authorizationEndpointUri.ifPresent(uri -> validateAuthorizationEndpointUri(uri, endpoints.tlsRequired()));
         Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
         tokenEndpointUri
-                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
+                .or(() -> discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
+        if (authorizationEndpointUri.isEmpty() || tokenEndpointUri.isEmpty()) {
+            discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+        }
         tenant.issuer()
                 .or(endpoints::discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -277,16 +282,18 @@ final class OidcConfigSupport {
         tenant.clientId()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-id must be configured when Client Credentials Grant is enabled"));
-        tenant.clientSecret()
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "client-secret must be configured when Client Credentials Grant is enabled"));
+        validateTokenEndpointAuthentication(tenant, true, "Client Credentials Grant");
+        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
         Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
         tokenEndpointUri
-                .or(() -> OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints))
+                .or(() -> discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant "
                                 + "is enabled"));
         tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
+        if (tokenEndpointUri.isEmpty()) {
+            discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+        }
     }
 
     private static void validateAuthorizationEndpointUri(URI uri, boolean tlsRequired) {
@@ -310,6 +317,15 @@ final class OidcConfigSupport {
          * Quote: "This URL MUST use the `https` scheme".
          */
         validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
+    }
+
+    private static void validateDiscoveryUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "This URL MUST use the `https` scheme".
+         */
+        validateHttpsEndpointUri("discovery-uri", uri, tlsRequired, false);
     }
 
     private static void validateTokenEndpointUri(URI uri, boolean tlsRequired) {
@@ -349,6 +365,30 @@ final class OidcConfigSupport {
     private static void validateNoFragment(String configKey, URI uri) {
         if (uri.getRawFragment() != null) {
             throw new IllegalArgumentException(configKey + " must not include a fragment component: " + uri);
+        }
+    }
+
+    private static void validateTokenEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                                            boolean confidentialClientRequired,
+                                                            String operation) {
+        OidcClientAuthenticationMethod method = tenant.tokenEndpointAuthenticationMethod()
+                .or(() -> Optional.of(tenant.clientSecret()
+                                               .isPresent()
+                                               ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                                               : OidcClientAuthenticationMethod.NONE))
+                .orElseThrow();
+        switch (method) {
+        case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> tenant.clientSecret()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-secret must be configured for " + method
+                                + " Token Endpoint authentication when " + operation + " is enabled"));
+        case NONE -> {
+            if (confidentialClientRequired) {
+                throw new IllegalArgumentException(
+                        "Token Endpoint authentication cannot be NONE when " + operation + " is enabled");
+            }
+        }
+        default -> throw new IllegalStateException("Unexpected client authentication method: " + method);
         }
     }
 }

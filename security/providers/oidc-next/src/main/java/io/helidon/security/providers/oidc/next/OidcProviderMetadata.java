@@ -19,6 +19,8 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.util.Optional;
 
+import io.helidon.json.JsonObject;
+
 final class OidcProviderMetadata {
     private final Optional<URI> issuer;
     private final Optional<URI> discoveryUri;
@@ -75,6 +77,17 @@ final class OidcProviderMetadata {
                                         introspectionEndpointUri,
                                         userInfoEndpointUri,
                                         endSessionEndpointUri);
+    }
+
+    static OidcProviderMetadata fromDiscoveredJson(JsonObject json) {
+        return create(uriValue(json, "issuer"),
+                      Optional.empty(),
+                      uriValue(json, "authorization_endpoint"),
+                      uriValue(json, "token_endpoint"),
+                      uriValue(json, "jwks_uri"),
+                      uriValue(json, "introspection_endpoint"),
+                      uriValue(json, "userinfo_endpoint"),
+                      uriValue(json, "end_session_endpoint"));
     }
 
     OidcProviderMetadata mergeDiscovered(OidcProviderMetadata discoveredMetadata) {
@@ -138,6 +151,11 @@ final class OidcProviderMetadata {
             issuerValue = issuerValue.substring(0, issuerValue.length() - 1);
         }
         return URI.create(issuerValue + "/.well-known/openid-configuration");
+    }
+
+    private static Optional<URI> uriValue(JsonObject json, String name) {
+        return json.stringValue(name)
+                .map(URI::create);
     }
 
     private void validateDiscoveredIssuer(OidcProviderMetadata discoveredMetadata) {

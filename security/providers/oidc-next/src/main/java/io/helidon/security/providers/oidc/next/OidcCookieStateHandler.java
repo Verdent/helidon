@@ -35,9 +35,11 @@ import javax.crypto.spec.SecretKeySpec;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
+import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.SignedJwt;
 
 final class OidcCookieStateHandler {
-    private static final String AUTHENTICATION_REQUEST_COOKIE_VERSION = "v1";
+    private static final String PROTECTED_COOKIE_VERSION = "v1";
     private static final int AES_GCM_KEY_BYTES = 32;
     private static final int AES_GCM_TAG_BITS = 128;
     private static final int AES_GCM_IV_BYTES = 12;
@@ -76,6 +78,31 @@ final class OidcCookieStateHandler {
                 .build();
     }
 
+    SetCookie createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult result) {
+        Duration maxAge = Duration.between(result.createdAt(), result.expiresAt());
+        if (maxAge.isNegative()) {
+            maxAge = Duration.ZERO;
+        }
+        return SetCookie.builder(cookieConfig.localAuthenticationCookieName(), protect(toJson(result).toString()))
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .sameSite(SetCookie.SameSite.LAX)
+                .maxAge(maxAge)
+                .build();
+    }
+
+    SetCookie removeLocalAuthenticationResultCookie() {
+        return SetCookie.builder(cookieConfig.localAuthenticationCookieName(), "")
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .sameSite(SetCookie.SameSite.LAX)
+                .maxAge(Duration.ZERO)
+                .expires(Instant.EPOCH)
+                .build();
+    }
+
     SetCookie removeAuthenticationRequestCookie() {
         return SetCookie.builder(cookieConfig.authenticationRequestCookieName(), "")
                 .path("/")
@@ -92,9 +119,23 @@ final class OidcCookieStateHandler {
                 .filter(state -> !now.isAfter(state.expiresAt()));
     }
 
+    Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(String cookieValue, Instant now) {
+        return decodeLocalAuthenticationResult(cookieValue)
+                .filter(result -> !now.isAfter(result.expiresAt()));
+    }
+
     Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
             return Optional.of(fromJson(JsonParser.create(unprotect(cookieValue)).readJsonObject()));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue) {
+        try {
+            return Optional.of(localAuthenticationResultFromJson(JsonParser.create(unprotect(cookieValue))
+                                                                      .readJsonObject()));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -113,6 +154,22 @@ final class OidcCookieStateHandler {
         return builder.build();
     }
 
+    private JsonObject toJson(OidcLocalAuthenticationResult result) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("tenant_id", result.tenantId())
+                .set("id_token", result.idToken().rawToken())
+                .set("access_token", result.accessToken())
+                .set("token_type", result.tokenType())
+                .set("created_at", result.createdAt().toString())
+                .set("expires_at", result.expiresAt().toString());
+        result.refreshToken().ifPresent(refreshToken -> builder.set("refresh_token", refreshToken));
+        result.scope().ifPresent(scope -> builder.set("scope", scope));
+        result.accessTokenExpiresAt()
+                .ifPresent(accessTokenExpiresAt -> builder.set("access_token_expires_at",
+                                                               accessTokenExpiresAt.toString()));
+        return builder.build();
+    }
+
     private OidcAuthenticationRequestState fromJson(JsonObject json) {
         return OidcAuthenticationRequestState.create(
                 json.stringValue("tenant_id").orElseThrow(),
@@ -125,23 +182,40 @@ final class OidcCookieStateHandler {
                 Instant.parse(json.stringValue("expires_at").orElseThrow()));
     }
 
+    private OidcLocalAuthenticationResult localAuthenticationResultFromJson(JsonObject json) {
+        String rawIdToken = json.stringValue("id_token").orElseThrow();
+        SignedJwt signedJwt = SignedJwt.parseToken(rawIdToken);
+        Jwt jwt = signedJwt.getJwt();
+        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, signedJwt, jwt);
+        return OidcLocalAuthenticationResult.create(
+                json.stringValue("tenant_id").orElseThrow(),
+                idToken,
+                json.stringValue("access_token").orElseThrow(),
+                json.stringValue("token_type").orElseThrow(),
+                json.stringValue("refresh_token").orElse(null),
+                json.stringValue("scope").orElse(null),
+                Instant.parse(json.stringValue("created_at").orElseThrow()),
+                Instant.parse(json.stringValue("expires_at").orElseThrow()),
+                json.stringValue("access_token_expires_at").map(Instant::parse).orElse(null));
+    }
+
     private String protect(String value) {
         byte[] iv = new byte[AES_GCM_IV_BYTES];
         secureRandom.nextBytes(iv);
         try {
             byte[] ciphertext = cipher(Cipher.ENCRYPT_MODE, iv).doFinal(value.getBytes(StandardCharsets.UTF_8));
-            return AUTHENTICATION_REQUEST_COOKIE_VERSION + "."
+            return PROTECTED_COOKIE_VERSION + "."
                     + encode(iv) + "."
                     + encode(ciphertext);
         } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to protect Authentication Request state", e);
+            throw new IllegalStateException("Failed to protect OIDC cookie state", e);
         }
     }
 
     private String unprotect(String value) {
         String[] parts = value.split("\\.");
-        if (parts.length != 3 || !AUTHENTICATION_REQUEST_COOKIE_VERSION.equals(parts[0])) {
-            throw new IllegalArgumentException("Unsupported Authentication Request cookie format");
+        if (parts.length != 3 || !PROTECTED_COOKIE_VERSION.equals(parts[0])) {
+            throw new IllegalArgumentException("Unsupported OIDC cookie format");
         }
         byte[] iv = decode(parts[1]);
         byte[] ciphertext = decode(parts[2]);
@@ -149,7 +223,7 @@ final class OidcCookieStateHandler {
             byte[] plaintext = cipher(Cipher.DECRYPT_MODE, iv).doFinal(ciphertext);
             return new String(plaintext, StandardCharsets.UTF_8);
         } catch (GeneralSecurityException e) {
-            throw new IllegalArgumentException("Failed to read Authentication Request state", e);
+            throw new IllegalArgumentException("Failed to read OIDC cookie state", e);
         }
     }
 
@@ -159,7 +233,7 @@ final class OidcCookieStateHandler {
             cipher.init(mode, new SecretKeySpec(encryptionKey, "AES"), new GCMParameterSpec(AES_GCM_TAG_BITS, iv));
             return cipher;
         } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to initialize Authentication Request state protection", e);
+            throw new IllegalStateException("Failed to initialize OIDC cookie state protection", e);
         }
     }
 

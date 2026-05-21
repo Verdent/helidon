@@ -52,6 +52,7 @@ class OidcProviderConfigTest {
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
+        OidcCookieConfig cookies = OidcCookieConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -65,6 +66,8 @@ class OidcProviderConfigTest {
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
         assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
+        assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
         assertThat(OidcPkceMethod.values().length, is(1));
         assertThat(OidcPkceMethod.values()[0], is(OidcPkceMethod.S256));
     }

@@ -20,30 +20,22 @@ import java.util.Optional;
 
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.ProviderRequest;
-import io.helidon.security.SecurityEnvironment;
 
 final class OidcOutboundRequestContext {
-    private final ProviderRequest providerRequest;
-    private final SecurityEnvironment outboundEnvironment;
     private final EndpointConfig outboundConfig;
     private final Optional<OidcTenantContext> tenantContext;
 
     private OidcOutboundRequestContext(ProviderRequest providerRequest,
-                                       SecurityEnvironment outboundEnvironment,
                                        EndpointConfig outboundConfig,
                                        OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        this.providerRequest = providerRequest;
-        this.outboundEnvironment = outboundEnvironment;
         this.outboundConfig = outboundConfig;
         this.tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
     }
 
     static OidcOutboundRequestContext create(ProviderRequest providerRequest,
-                                             SecurityEnvironment outboundEnvironment,
                                              EndpointConfig outboundConfig,
                                              OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         return new OidcOutboundRequestContext(providerRequest,
-                                              outboundEnvironment,
                                               outboundConfig,
                                               tenantRuntimeRegistry);
     }
@@ -62,13 +54,5 @@ final class OidcOutboundRequestContext {
 
     Optional<OidcTenantContext> tenantContext() {
         return tenantContext;
-    }
-
-    ProviderRequest providerRequest() {
-        return providerRequest;
-    }
-
-    SecurityEnvironment outboundEnvironment() {
-        return outboundEnvironment;
     }
 }

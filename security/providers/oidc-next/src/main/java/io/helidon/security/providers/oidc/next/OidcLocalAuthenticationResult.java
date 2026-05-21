@@ -68,6 +68,7 @@ final class OidcLocalAuthenticationResult {
                                                 Duration maxLifetime) {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
         Instant maxExpiresAt = createdAt.plus(maxLifetime);
+        Instant expiresAt = idTokenExpiresAt.isBefore(maxExpiresAt) ? idTokenExpiresAt : maxExpiresAt;
         return create(tenantId,
                       idToken,
                       tokenResponse.accessToken(),
@@ -75,7 +76,7 @@ final class OidcLocalAuthenticationResult {
                       tokenResponse.refreshToken().orElse(null),
                       tokenResponse.scope().or(() -> requestedScope(requestedScopes)).orElse(null),
                       createdAt,
-                      earliest(idTokenExpiresAt, maxExpiresAt),
+                      expiresAt,
                       tokenResponse.expiresIn().map(createdAt::plusSeconds).orElse(null));
     }
 
@@ -133,13 +134,6 @@ final class OidcLocalAuthenticationResult {
 
     Optional<Instant> accessTokenExpiresAt() {
         return Optional.ofNullable(accessTokenExpiresAt);
-    }
-
-    private static Instant earliest(Instant first, Instant second) {
-        if (first.isBefore(second)) {
-            return first;
-        }
-        return second;
     }
 
     private static Optional<String> requestedScope(List<String> requestedScopes) {

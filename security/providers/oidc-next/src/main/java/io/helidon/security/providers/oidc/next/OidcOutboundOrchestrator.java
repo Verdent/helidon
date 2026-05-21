@@ -22,20 +22,22 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcOutboundOrchestrator {
-    private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcRequestClassifier classifier;
     private final OidcResponseFactory responseFactory;
 
-    private OidcOutboundOrchestrator(OidcProviderConfig config,
+    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                      OidcRequestClassifier classifier,
                                      OidcResponseFactory responseFactory) {
-        this.config = config;
+        this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.classifier = classifier;
         this.responseFactory = responseFactory;
     }
 
-    static OidcOutboundOrchestrator create(OidcProviderConfig config) {
-        return new OidcOutboundOrchestrator(config, OidcRequestClassifier.create(), OidcResponseFactory.create());
+    static OidcOutboundOrchestrator create(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        return new OidcOutboundOrchestrator(tenantRuntimeRegistry,
+                                            OidcRequestClassifier.create(),
+                                            OidcResponseFactory.create());
     }
 
     boolean isSupported(ProviderRequest providerRequest,
@@ -68,7 +70,7 @@ final class OidcOutboundOrchestrator {
         OidcOutboundRequestContext context = OidcOutboundRequestContext.create(providerRequest,
                                                                                outboundEnv,
                                                                                outboundConfig,
-                                                                               config);
+                                                                               tenantRuntimeRegistry);
         return classifier.classify(context);
     }
 }

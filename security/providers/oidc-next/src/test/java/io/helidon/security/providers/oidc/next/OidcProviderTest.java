@@ -39,6 +39,7 @@ import io.helidon.security.spi.SecurityProviderService;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
@@ -326,7 +327,16 @@ class OidcProviderTest {
         assertThat(cookie.secure(), is(true));
         assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
         assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(300L));
-        assertThat(authenticationRequestState(response, tenant).expiresAt().isAfter(Instant.now()), is(true));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.expiresAt().isAfter(Instant.now()), is(true));
+        assertThat(cookie.value(), not(containsString(state.state())));
+        assertThat(cookie.value(), not(containsString(state.nonce())));
+        assertThat(cookie.value(), not(containsString(state.pkceVerifier().orElseThrow())));
+        assertThat(OidcCookieStateHandler.create(tenant)
+                           .readAuthenticationRequestState(tamperCookieValue(cookie.value()), Instant.now())
+                           .isEmpty(),
+                   is(true));
     }
 
     @Test
@@ -455,6 +465,11 @@ class OidcProviderTest {
         return OidcCookieStateHandler.create(tenant)
                 .readAuthenticationRequestState(cookie.value(), Instant.now())
                 .orElseThrow();
+    }
+
+    private static String tamperCookieValue(String value) {
+        char last = value.charAt(value.length() - 1);
+        return value.substring(0, value.length() - 1) + (last == 'A' ? 'B' : 'A');
     }
 
     private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {

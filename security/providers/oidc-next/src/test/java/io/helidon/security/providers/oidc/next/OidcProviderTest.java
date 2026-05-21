@@ -24,19 +24,26 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.Grant;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
+import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.spi.SecurityProviderService;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
@@ -53,6 +60,17 @@ class OidcProviderTest {
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI ORIGINAL_URI = URI.create("https://rp.example/resource?name=value");
+    private static final String SUBJECT = "user1-id";
+    private static final String USERNAME = "user1";
+
+    private static JwkKeys signKeys;
+
+    @BeforeAll
+    static void initClass() {
+        signKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+    }
 
     @Test
     void serviceCreatesProvider() {
@@ -340,6 +358,59 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationResultCookieAuthenticatesSubjectFromIdToken() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        String idToken = signedIdToken(it -> it.email("user1@example.org")
+                .preferredUsername(USERNAME));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        Instant now = Instant.now();
+        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        now,
+                        now.plusSeconds(3600),
+                        now.plusSeconds(600)));
+        assertThat(cookie.name(), is("__Host-helidon-oidc-auth"));
+        assertThat(cookie.value(), not(containsString(idToken)));
+        assertThat(cookie.value(), not(containsString("access-token")));
+        assertThat(cookie.value(), not(containsString("refresh-token")));
+        assertThat(cookie.path().orElse(""), is("/"));
+        assertThat(cookie.httpOnly(), is(true));
+        assertThat(cookie.secure(), is(true));
+        assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
+        assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(3600L));
+        assertThat(OidcCookieStateHandler.create(tenant)
+                           .readLocalAuthenticationResult(tamperCookieValue(cookie.value()), now)
+                           .isEmpty(),
+                   is(true));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().getName(), is(USERNAME));
+        assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
+        assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("openid", "profile")));
+
+        TokenCredential credential = subject.publicCredential(TokenCredential.class).orElseThrow();
+        assertThat(credential.token(), is("access-token"));
+        assertThat(credential.getIssuer().orElse(""), is(ISSUER.toString()));
+        assertThat(credential.getExpTime().orElseThrow(), is(now.plusSeconds(600)));
+    }
+
+    @Test
     void authorizationResponseProcessingIsLeftToFeatureEndpoint() {
         OidcProvider provider = OidcProvider.create();
         SecurityEnvironment environment = SecurityEnvironment.builder()
@@ -468,8 +539,28 @@ class OidcProviderTest {
     }
 
     private static String tamperCookieValue(String value) {
-        char last = value.charAt(value.length() - 1);
-        return value.substring(0, value.length() - 1) + (last == 'A' ? 'B' : 'A');
+        int ciphertextStart = value.indexOf('.', value.indexOf('.') + 1) + 1;
+        char firstCiphertextChar = value.charAt(ciphertextStart);
+        return value.substring(0, ciphertextStart)
+                + (firstCiphertextChar == 'A' ? 'B' : 'A')
+                + value.substring(ciphertextStart + 1);
+    }
+
+    private static String signedIdToken(Consumer<Jwt.Builder> customizer) {
+        Instant now = Instant.now();
+        Jwt.Builder builder = Jwt.builder()
+                .type("JWT")
+                .subject(SUBJECT)
+                .issuer(ISSUER.toString())
+                .algorithm("RS256")
+                .keyId("verify-rsa")
+                .issueTime(now)
+                .expirationTime(now.plusSeconds(3600))
+                .addAudience("client-id")
+                .nonce("nonce");
+        customizer.accept(builder);
+        return SignedJwt.sign(builder.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
+                .tokenContent();
     }
 
     private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {

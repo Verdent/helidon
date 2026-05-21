@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -73,13 +74,41 @@ final class OidcAuthenticationOrchestrator {
             case BEARER_TOKEN_INVALID_REQUEST -> responseFactory.invalidBearerTokenRequest(
                     context.bearerTokenErrorDescription());
             case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
-            case AUTHORIZATION_CODE_FLOW_INITIATION -> responseFactory.authorizationCodeFlowInitiated(
-                    authenticationRequestFactory.create(context));
+            case AUTHORIZATION_CODE_FLOW_INITIATION -> authenticateAuthorizationCodeFlow(context);
             case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
             case TOKEN_PROPAGATION, CLIENT_CREDENTIALS_GRANT -> AuthenticationResponse.abstain();
             case AMBIGUOUS -> responseFactory.ambiguousRequest();
             case ABSTAIN -> AuthenticationResponse.abstain();
         };
+    }
+
+    private AuthenticationResponse authenticateAuthorizationCodeFlow(OidcRequestContext context) {
+        Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context);
+        if (localAuthenticationResult.isPresent()) {
+            OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
+            return AuthenticationResponse.success(tenantContext.subjectMapper()
+                                                          .map(localAuthenticationResult.orElseThrow()));
+        }
+        return responseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context));
+    }
+
+    private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context) {
+        Optional<OidcTenantContext> tenantContext = context.tenantContext()
+                .filter(OidcTenantContext::ready);
+        if (tenantContext.isEmpty()) {
+            return Optional.empty();
+        }
+        OidcTenantContext readyTenant = tenantContext.orElseThrow();
+        String cookieName = readyTenant.cookieStateHandler()
+                .cookieConfig()
+                .localAuthenticationCookieName();
+        List<String> cookieValues = context.cookieValues(cookieName);
+        if (cookieValues.size() != 1) {
+            return Optional.empty();
+        }
+        return readyTenant.cookieStateHandler()
+                .readLocalAuthenticationResult(cookieValues.get(0), context.environment().time().toInstant())
+                .filter(result -> readyTenant.tenantId().equals(result.tenantId()));
     }
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {

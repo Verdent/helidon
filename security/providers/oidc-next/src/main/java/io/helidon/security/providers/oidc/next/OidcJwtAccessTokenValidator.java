@@ -58,8 +58,8 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             return OidcTokenValidationResult.failure("Bearer Token JWT payload is invalid", e);
         }
 
-        OidcTokenValidationPolicy policy = tenantContext.tokenValidationPolicy();
-        Errors headerErrors = headerValidator(policy.allowedAlgorithms()).validate(jwt);
+        OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
+        Errors headerErrors = headerValidator(tokenValidation.allowedAlgorithms()).validate(jwt);
         if (!headerErrors.isValid()) {
             return OidcTokenValidationResult.failure("Bearer Token JWS header is invalid");
         }
@@ -79,12 +79,14 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         if (expectedIssuer.isEmpty()) {
             return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
         }
-        Optional<String> expectedAudience = policy.audience();
-        if (policy.audienceValidationEnabled() && expectedAudience.isEmpty()) {
+        Optional<String> expectedAudience = tokenValidation.audience();
+        if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
             return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
         }
 
-        Errors claimErrors = claimValidator(policy, expectedIssuer.orElseThrow(), expectedAudience).validate(jwt);
+        Errors claimErrors = claimValidator(tokenValidation,
+                                            expectedIssuer.orElseThrow(),
+                                            expectedAudience).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcTokenValidationResult.failure("Bearer Token JWT claims are invalid");
         }
@@ -114,21 +116,21 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                 .build();
     }
 
-    private JwtValidator claimValidator(OidcTokenValidationPolicy policy,
+    private JwtValidator claimValidator(OidcTokenValidationConfig tokenValidation,
                                         String expectedIssuer,
                                         Optional<String> expectedAudience) {
         Instant now = Instant.now();
         JwtValidator.Builder builder = JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()))
-                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(policy.clockSkew()))
+                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
+                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
+                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addValidator((jwt, collector) -> {
                     if (jwt.subject().filter(subject -> !subject.isBlank()).isEmpty()) {
                         collector.fatal(jwt, "JWT subject claim is mandatory");
                     }
                 }, "sub");
-        if (policy.audienceValidationEnabled()) {
+        if (tokenValidation.audienceValidationEnabled()) {
             expectedAudience.ifPresent(builder::addAudienceValidator);
         }
         return builder.build();

@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.parameters.Parameters;
@@ -182,9 +183,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private OidcTokenEndpointResult exchange(OidcTenantConfig tenantConfig, String pkceVerifier) {
         return OidcTenantContext.ready("default", tenantConfig)
                 .endpointClient()
-                .exchangeAuthorizationCode(OidcAuthorizationCodeTokenRequest.create(AUTHORIZATION_CODE,
-                                                                                    REDIRECTION_ENDPOINT_URI,
-                                                                                    pkceVerifier));
+                .exchangeAuthorizationCode(AUTHORIZATION_CODE,
+                                           REDIRECTION_ENDPOINT_URI,
+                                           Optional.ofNullable(pkceVerifier));
     }
 
     private OidcTenantConfig confidentialTenant() {

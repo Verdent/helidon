@@ -45,6 +45,7 @@ final class OidcTenantResolver {
             SecurityEnvironment environment = request.env();
             Optional<String> tenantId = headerTenantId(environment)
                     .or(() -> pathTenantId(environment))
+                    .or(() -> pathTemplateTenantId(environment))
                     .or(() -> hostTenantId(environment));
             if (tenantId.isPresent()) {
                 return tenantId;
@@ -79,6 +80,12 @@ final class OidcTenantResolver {
         return tenantResolution.hostTemplate()
                 .flatMap(template -> host(environment)
                         .flatMap(host -> tenantFromHostTemplate(host, template)));
+    }
+
+    private Optional<String> pathTemplateTenantId(SecurityEnvironment environment) {
+        return tenantResolution.pathTemplate()
+                .flatMap(template -> environment.path()
+                        .flatMap(path -> tenantFromPathTemplate(path, template)));
     }
 
     private Optional<String> defaultTenantId() {
@@ -153,6 +160,27 @@ final class OidcTenantResolver {
 
         String tenantId = host.substring(prefix.length(), host.length() - suffix.length());
         return nonBlank(tenantId);
+    }
+
+    private static Optional<String> tenantFromPathTemplate(String path, String template) {
+        List<String> pathSegments = pathSegments(path);
+        List<String> templateSegments = pathSegments(template);
+        if (pathSegments.size() != templateSegments.size()) {
+            return Optional.empty();
+        }
+
+        String tenantId = null;
+        for (int i = 0; i < templateSegments.size(); i++) {
+            String templateSegment = templateSegments.get(i);
+            String pathSegment = pathSegments.get(i);
+            if (TENANT_VARIABLE.equals(templateSegment)) {
+                tenantId = pathSegment;
+            } else if (!templateSegment.equals(pathSegment)) {
+                return Optional.empty();
+            }
+        }
+        return Optional.ofNullable(tenantId)
+                .flatMap(OidcTenantResolver::nonBlank);
     }
 
     private static Optional<String> nonBlank(String value) {

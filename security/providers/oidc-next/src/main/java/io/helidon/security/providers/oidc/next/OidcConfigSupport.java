@@ -102,16 +102,32 @@ final class OidcConfigSupport {
                                                                 "tenant-resolution.header-name must not be blank or padded"));
             target.pathSegment().ifPresent(pathSegment -> require(pathSegment >= 0,
                                                                   "tenant-resolution.path-segment must not be negative"));
+            target.pathTemplate().ifPresent(pathTemplate -> {
+                require(!pathTemplate.isBlank() && pathTemplate.equals(pathTemplate.strip()),
+                        "tenant-resolution.path-template must not be blank or padded");
+                validateSingleTenantVariable(pathTemplate, "tenant-resolution.path-template");
+                require(pathTemplateSegments(pathTemplate).contains(TENANT_VARIABLE),
+                        "tenant-resolution.path-template must contain {tenant} as a complete path segment");
+            });
             target.hostTemplate().ifPresent(hostTemplate -> {
                 require(!hostTemplate.isBlank() && hostTemplate.equals(hostTemplate.strip()),
                         "tenant-resolution.host-template must not be blank or padded");
-                int variableIndex = hostTemplate.indexOf(TENANT_VARIABLE);
-                require(variableIndex != -1,
-                        "tenant-resolution.host-template must contain exactly one {tenant} placeholder");
-                require(hostTemplate.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) == -1,
-                        "tenant-resolution.host-template must contain exactly one {tenant} placeholder");
+                validateSingleTenantVariable(hostTemplate, "tenant-resolution.host-template");
             });
         }
+    }
+
+    private static void validateSingleTenantVariable(String template, String configKey) {
+        int variableIndex = template.indexOf(TENANT_VARIABLE);
+        require(variableIndex != -1, configKey + " must contain exactly one {tenant} placeholder");
+        require(template.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) == -1,
+                configKey + " must contain exactly one {tenant} placeholder");
+    }
+
+    private static java.util.List<String> pathTemplateSegments(String pathTemplate) {
+        return java.util.Arrays.stream(pathTemplate.split("/"))
+                .filter(segment -> !segment.isEmpty())
+                .toList();
     }
 
     private static void validateAuthorizationCode(OidcTenantConfig.BuilderBase<?, ?> tenant,

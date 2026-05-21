@@ -141,6 +141,27 @@ class OidcProviderConfigTest {
 
         thrown = assertThrows(IllegalArgumentException.class,
                               () -> OidcTenantResolutionConfig.builder()
+                                      .pathTemplate(" ")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("path-template"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .pathTemplate("/tenants/{tenant}/{tenant}")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("{tenant}"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .pathTemplate("/tenants/tenant-{tenant}")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("complete path segment"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
                                       .hostTemplate(" ")
                                       .buildPrototype());
 
@@ -434,6 +455,7 @@ class OidcProviderConfigTest {
         assertThat(metadata.contains("form-encoded-body-enabled"), is(false));
         assertThat(metadata, containsString("pkce-required"));
         assertThat(metadata, containsString("audience-validation-enabled"));
+        assertThat(metadata, containsString("path-template"));
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant() {

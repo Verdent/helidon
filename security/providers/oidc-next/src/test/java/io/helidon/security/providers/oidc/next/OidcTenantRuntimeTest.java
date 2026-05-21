@@ -86,6 +86,27 @@ class OidcTenantRuntimeTest {
     }
 
     @Test
+    void pathTemplateTenantResolutionSelectsConfiguredTenant() {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
+                .tenantResolution(it -> it.pathTemplate("/tenants/{tenant}/resource"))
+                .putTenant("api", protectedResourceTenant())
+                .putTenant("other", OidcTenantConfig.create())
+                .buildPrototype());
+
+        OidcTenantContext context = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                          .path("/tenants/api/resource")
+                                                                          .build()))
+                .orElseThrow();
+
+        assertThat(context.tenantId(), is("api"));
+        assertThat(registry.tenantContext(request(SecurityEnvironment.builder()
+                                                          .path("/tenants/api/nested/resource")
+                                                          .build()))
+                           .isEmpty(),
+                   is(true));
+    }
+
+    @Test
     void hostTemplateTenantResolutionSelectsConfiguredTenant() {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
                 .tenantResolution(it -> it.hostTemplate("{tenant}.example.com"))
@@ -106,9 +127,11 @@ class OidcTenantRuntimeTest {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
                 .tenantResolution(it -> it.headerName("X-Tenant")
                         .pathSegment(1)
+                        .pathTemplate("/{tenant}")
                         .hostTemplate("{tenant}.example.com"))
                 .putTenant("header", OidcTenantConfig.create())
                 .putTenant("path", OidcTenantConfig.create())
+                .putTenant("template", OidcTenantConfig.create())
                 .putTenant("host", OidcTenantConfig.create())
                 .buildPrototype());
 
@@ -123,6 +146,11 @@ class OidcTenantRuntimeTest {
                                                                                .targetUri(URI.create("https://host.example.com"))
                                                                                .build()))
                 .orElseThrow();
+        OidcTenantContext pathTemplateContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                       .path("/template")
+                                                                                       .targetUri(URI.create("https://host.example.com"))
+                                                                                       .build()))
+                .orElseThrow();
         OidcTenantContext hostContext = registry.tenantContext(request(SecurityEnvironment.builder()
                                                                                .targetUri(URI.create("https://host.example.com"))
                                                                                .build()))
@@ -130,6 +158,7 @@ class OidcTenantRuntimeTest {
 
         assertThat(headerContext.tenantId(), is("header"));
         assertThat(pathContext.tenantId(), is("path"));
+        assertThat(pathTemplateContext.tenantId(), is("template"));
         assertThat(hostContext.tenantId(), is("host"));
     }
 

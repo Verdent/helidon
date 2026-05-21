@@ -19,7 +19,11 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
@@ -54,6 +58,9 @@ class OidcJwtAccessTokenValidationTest {
     private static final String SUBJECT = "user1-id";
     private static final String USERNAME = "user1";
     private static final URI MISSING_JWKS_URI = URI.create("file:///tmp/oidc-next-missing-jwks.json");
+    private static final AtomicInteger remoteJwkSetRequests = new AtomicInteger();
+    private static final AtomicReference<Queue<String>> remoteJwkSetResponses =
+            new AtomicReference<>(new ArrayDeque<>());
 
     private static JwkKeys signKeys;
     private static URI jwksUri;
@@ -74,13 +81,19 @@ class OidcJwtAccessTokenValidationTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(verifyJwkSet));
+        routing.get("/jwks", (request, response) -> {
+            remoteJwkSetRequests.incrementAndGet();
+            String jwkSet = remoteJwkSetResponses.get().poll();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(jwkSet == null ? emptyJwkSet() : jwkSet);
+        });
     }
 
     @BeforeEach
     void setUp(URI serverUri) {
         remoteJwksUri = serverUri.resolve("jwks");
+        remoteJwkSetRequests.set(0);
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(verifyJwkSet)));
     }
 
     @Test
@@ -118,6 +131,32 @@ class OidcJwtAccessTokenValidationTest {
         AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
+    void unknownKeyIdRefreshesRemoteJwkSet() {
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(emptyJwkSet(), verifyJwkSet)));
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(remoteJwkSetRequests.get(), is(2));
+    }
+
+    @Test
+    void unknownKeyIdRefreshIsRateLimited() {
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(emptyJwkSet(), emptyJwkSet(), verifyJwkSet)));
+        OidcProvider provider = provider(true, true, remoteJwksUri);
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse firstResponse = authenticate(provider, token);
+        AuthenticationResponse secondResponse = authenticate(provider, token);
+
+        assertInvalidToken(firstResponse, "Bearer Token signature is invalid");
+        assertInvalidToken(secondResponse, "Bearer Token signature is invalid");
+        assertThat(remoteJwkSetRequests.get(), is(2));
     }
 
     @Test
@@ -306,6 +345,10 @@ class OidcJwtAccessTokenValidationTest {
 
     private static String signedToken(Consumer<Jwt.Builder> customizer) {
         return signedToken(JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", customizer);
+    }
+
+    private static String emptyJwkSet() {
+        return "{\"keys\":[]}";
     }
 
     private static String signedToken(String algorithm,

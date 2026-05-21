@@ -307,6 +307,47 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void introspectionRequiresAudienceWhenAudienceValidationIsEnabled() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-validation.audience"));
+    }
+
+    @Test
+    void introspectionRejectsDiscoveryOnlyUntilDiscoveryLoadingExists() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.discoveryUri(URI.create("https://issuer.example/.well-known/openid-configuration")))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience("api://default")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
+    }
+
+    @Test
+    void introspectionRejectsInsecureRemoteEndpoint() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.introspectionEndpointUri(URI.create("http://issuer.example/introspect")))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience("api://default")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri must use https"));
+    }
+
+    @Test
     void authorizationCodeFlowRequiresRedirectionEndpointAndClient() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

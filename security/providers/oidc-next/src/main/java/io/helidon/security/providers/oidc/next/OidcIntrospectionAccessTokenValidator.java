@@ -17,11 +17,8 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -152,19 +149,11 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 .uri(endpointUri)
                 .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
-                .header(HeaderNames.AUTHORIZATION, basicAuthorization(clientId, clientSecret))
+                .header(HeaderNames.AUTHORIZATION,
+                        OidcClientAuthenticationSupport.basicAuthorization(clientId, clientSecret))
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .submit(form);
-    }
-
-    private String basicAuthorization(String clientId, String clientSecret) {
-        String credentials = formEncode(clientId) + ":" + formEncode(clientSecret);
-        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String formEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
 }

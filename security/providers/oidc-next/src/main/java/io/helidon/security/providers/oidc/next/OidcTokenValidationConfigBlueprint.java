@@ -24,7 +24,8 @@ import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 /**
- * Access-token validation configuration.
+ * Access-token validation configuration for Protected Resource Bearer Token requests and refreshed Authorization Code
+ * Flow access tokens.
  */
 @Prototype.Blueprint
 @Prototype.Configured

@@ -36,6 +36,9 @@ interface OidcProtectedResourceConfigBlueprint {
 
     /**
      * Access-token validation configuration.
+     * <p>
+     * Used for Protected Resource Bearer Token requests when {@link #enabled()} is {@code true}, and for refreshed
+     * Authorization Code Flow access tokens when a validation method is configured.
      *
      * @return token validation configuration
      */

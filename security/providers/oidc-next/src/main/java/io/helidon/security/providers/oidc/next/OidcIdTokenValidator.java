@@ -30,6 +30,7 @@ import io.helidon.security.jwt.SignedJwt;
 
 final class OidcIdTokenValidator {
     private static final String AUTHORIZED_PARTY_CLAIM = "azp";
+    private static final String AUTHENTICATION_TIME_CLAIM = "auth_time";
 
     private OidcIdTokenValidator() {
     }
@@ -59,7 +60,10 @@ final class OidcIdTokenValidator {
          * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
          * Quotes: "If an ID Token is returned as a result of a token refresh request"; "`iss` Claim Value MUST be the
          * same as in the ID Token issued when the original authentication occurred"; "`sub` Claim Value MUST be the
-         * same"; "`aud` Claim Value MUST be the same"; "`azp` Claim Value MUST be the same".
+         * same"; "`aud` Claim Value MUST be the same"; "`azp` Claim Value MUST be the same"; "`auth_time` Claim,
+         * its value MUST represent the time of the original authentication"; "its `nonce` Claim Value SHOULD NOT be
+         * present. If present, its value MUST be the same as in the ID Token issued when the original authentication
+         * occurred".
          */
         if (!refreshed.issuer().equals(current.issuer())) {
             return OidcIdTokenValidationResult.failure(
@@ -73,9 +77,22 @@ final class OidcIdTokenValidator {
             return OidcIdTokenValidationResult.failure(
                     "Refreshed ID Token audience does not match the existing local authentication result");
         }
-        if (!authorizedPartyValue(refreshed).equals(authorizedPartyValue(current))) {
+        if (!refreshed.payloadClaimValue(AUTHORIZED_PARTY_CLAIM).map(JsonValue::toString)
+                .equals(current.payloadClaimValue(AUTHORIZED_PARTY_CLAIM).map(JsonValue::toString))) {
             return OidcIdTokenValidationResult.failure(
                     "Refreshed ID Token authorized party does not match the existing local authentication result");
+        }
+        if (refreshed.nonce().isPresent() && !refreshed.nonce().equals(current.nonce())) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token nonce does not match the existing local authentication result");
+        }
+        Optional<String> refreshedAuthenticationTime = refreshed.payloadClaimValue(AUTHENTICATION_TIME_CLAIM)
+                .map(JsonValue::toString);
+        if (refreshedAuthenticationTime.isPresent()
+                && !refreshedAuthenticationTime.equals(current.payloadClaimValue(AUTHENTICATION_TIME_CLAIM)
+                                                               .map(JsonValue::toString))) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token authentication time does not match the existing local authentication result");
         }
 
         return validationResult;
@@ -233,8 +250,4 @@ final class OidcIdTokenValidator {
         return Optional.of(authorizedParty);
     }
 
-    private Optional<String> authorizedPartyValue(Jwt jwt) {
-        return jwt.payloadClaimValue(AUTHORIZED_PARTY_CLAIM)
-                .map(value -> value.asString().value());
-    }
 }

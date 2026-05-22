@@ -77,7 +77,9 @@ final class OidcRefreshTokenManager {
                     logFailure("Refreshed access token validation is not implemented for method: "
                                        + validationMethod.orElseThrow(),
                                Optional.empty());
-                    return RefreshResult.removeLocalAuthentication();
+                    return accessTokenExpired(expiresAt, now)
+                            ? RefreshResult.removeLocalAuthentication()
+                            : RefreshResult.authenticated(authenticationResult);
                 }
                 OidcTokenValidationResult accessTokenValidationResult =
                         accessTokenValidator.validate(tokenResponse.accessToken(), tenantContext);
@@ -85,7 +87,9 @@ final class OidcRefreshTokenManager {
                     logFailure(accessTokenValidationResult.errorDescription()
                                        .orElse("Refreshed access token validation failed"),
                                accessTokenValidationResult.cause());
-                    return RefreshResult.removeLocalAuthentication();
+                    return accessTokenExpired(expiresAt, now)
+                            ? RefreshResult.removeLocalAuthentication()
+                            : RefreshResult.authenticated(authenticationResult);
                 }
             }
 
@@ -100,7 +104,9 @@ final class OidcRefreshTokenManager {
                     logFailure(idTokenValidationResult.errorDescription()
                                        .orElse("Refreshed ID Token validation failed"),
                                idTokenValidationResult.cause());
-                    return RefreshResult.removeLocalAuthentication();
+                    return accessTokenExpired(expiresAt, now)
+                            ? RefreshResult.removeLocalAuthentication()
+                            : RefreshResult.authenticated(authenticationResult);
                 }
                 idToken = idTokenValidationResult.validatedToken().orElseThrow();
             }
@@ -141,7 +147,10 @@ final class OidcRefreshTokenManager {
                         .or(() -> current.scope())
                         .orElse(null),
                 refreshedAt,
-                current.expiresAt(),
+                idToken.jwt()
+                        .expirationTime()
+                        .filter(expirationTime -> expirationTime.isBefore(current.expiresAt()))
+                        .orElse(current.expiresAt()),
                 tokenResponse.expiresIn()
                         .map(refreshedAt::plusSeconds)
                         .orElse(null));

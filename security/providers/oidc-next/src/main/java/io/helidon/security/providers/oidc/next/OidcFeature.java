@@ -113,7 +113,7 @@ public final class OidcFeature implements HttpFeature {
         if (tokenResult.succeeded()) {
             OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
             OidcIdTokenValidationResult idTokenResult = idTokenValidator.validate(
-                    tokenResponse.idToken(),
+                    tokenResponse.idToken().orElseThrow(),
                     tenantContext,
                     state);
             if (!idTokenResult.succeeded()) {

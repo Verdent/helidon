@@ -29,16 +29,19 @@ final class OidcAuthenticationOrchestrator {
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcAuthenticationRequestFactory authenticationRequestFactory;
+    private final OidcRefreshTokenManager refreshTokenManager;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
                                            OidcAuthenticationRequestFactory authenticationRequestFactory,
+                                           OidcRefreshTokenManager refreshTokenManager,
                                            Map<OidcTokenValidationMethod, OidcAccessTokenValidator>
                                                    accessTokenValidators) {
         this.config = config;
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         this.authenticationRequestFactory = authenticationRequestFactory;
+        this.refreshTokenManager = refreshTokenManager;
         this.accessTokenValidators = accessTokenValidators;
     }
 
@@ -47,6 +50,7 @@ final class OidcAuthenticationOrchestrator {
         return new OidcAuthenticationOrchestrator(config,
                                                   tenantRuntimeRegistry,
                                                   OidcAuthenticationRequestFactory.create(),
+                                                  OidcRefreshTokenManager.create(),
                                                   accessTokenValidators());
     }
 
@@ -88,21 +92,42 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private Optional<AuthenticationResponse> authenticateLocalAuthenticationResult(OidcRequestContext context) {
-        Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context);
-        if (localAuthenticationResult.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(AuthenticationResponse.success(
-                OidcSubjectMapper.map(localAuthenticationResult.orElseThrow())));
-    }
-
-    private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context) {
         Optional<OidcTenantContext> tenantContext = context.tenantContext()
                 .filter(OidcTenantContext::ready);
         if (tenantContext.isEmpty()) {
             return Optional.empty();
         }
+
         OidcTenantContext readyTenant = tenantContext.orElseThrow();
+        Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context,
+                                                                                                      readyTenant);
+        if (localAuthenticationResult.isEmpty()) {
+            return Optional.empty();
+        }
+        OidcRefreshTokenManager.RefreshResult refreshResult = refreshTokenManager.refreshIfNeeded(
+                localAuthenticationResult.orElseThrow(),
+                readyTenant,
+                context.environment().time().toInstant());
+        return refreshResult.authenticationResult()
+                .map(result -> OidcResponseFactory.localAuthenticationSucceeded(OidcSubjectMapper.map(result),
+                                                                                authenticationCookie(refreshResult,
+                                                                                                     result,
+                                                                                                     readyTenant)));
+    }
+
+    private Optional<String> authenticationCookie(OidcRefreshTokenManager.RefreshResult refreshResult,
+                                                  OidcLocalAuthenticationResult authenticationResult,
+                                                  OidcTenantContext tenantContext) {
+        if (!refreshResult.refreshed()) {
+            return Optional.empty();
+        }
+        return Optional.of(tenantContext.cookieStateHandler()
+                                   .createLocalAuthenticationResultCookie(authenticationResult)
+                                   .toString());
+    }
+
+    private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context,
+                                                                             OidcTenantContext readyTenant) {
         String cookieName = readyTenant.cookieStateHandler()
                 .cookieConfig()
                 .localAuthenticationCookieName();

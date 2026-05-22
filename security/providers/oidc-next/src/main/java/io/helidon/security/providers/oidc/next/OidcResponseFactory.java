@@ -16,11 +16,14 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.Subject;
 
 final class OidcResponseFactory {
     private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
@@ -64,6 +67,14 @@ final class OidcResponseFactory {
                 .responseHeader(HeaderNames.LOCATION.defaultCase(), request.authorizationUri().toString())
                 .responseHeader(HeaderNames.SET_COOKIE.defaultCase(), request.stateCookie())
                 .build();
+    }
+
+    static AuthenticationResponse localAuthenticationSucceeded(Subject subject, Optional<String> authenticationCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.SUCCESS)
+                .user(subject);
+        authenticationCookie.ifPresent(cookie -> builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), cookie));
+        return builder.build();
     }
 
     static AuthenticationResponse ambiguousRequest() {

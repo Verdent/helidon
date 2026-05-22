@@ -49,6 +49,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final String CLIENT_SECRET = "client+secret=value";
     private static final String AUTHORIZATION_CODE = "authorization-code+value";
     private static final String PKCE_VERIFIER = "pkce-verifier+value";
+    private static final String REFRESH_TOKEN = "refresh-token+value";
 
     private static int responseStatus;
     private static String responseBody;
@@ -77,7 +78,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         OidcTokenResponse tokenResponse = result.tokenResponse().orElseThrow();
         assertThat(tokenResponse.accessToken(), is("access-token"));
         assertThat(tokenResponse.tokenType(), is("Bearer"));
-        assertThat(tokenResponse.idToken(), is("id-token"));
+        assertThat(tokenResponse.idToken().orElse(""), is("id-token"));
         assertThat(tokenResponse.refreshToken().orElse(""), is("refresh-token"));
         assertThat(tokenResponse.expiresIn().orElseThrow(), is(3600L));
         assertThat(tokenResponse.scope().orElse(""), is("openid profile"));
@@ -94,6 +95,34 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code", List.of(AUTHORIZATION_CODE),
                                                        "redirect_uri", List.of(REDIRECTION_ENDPOINT_URI.toString()),
                                                        "code_verifier", List.of(PKCE_VERIFIER))));
+    }
+
+    @Test
+    void refreshTokenGrantPostsRefreshTokenAndUsesClientAuthentication() {
+        responseBody = JsonObject.builder()
+                .set("access_token", "refreshed-access-token")
+                .set("token_type", "Bearer")
+                .set("refresh_token", "rotated-refresh-token")
+                .set("expires_in", 600)
+                .set("scope", "openid email")
+                .build()
+                .toString();
+
+        OidcTokenEndpointResult result = refresh(confidentialTenant(), REFRESH_TOKEN);
+
+        assertThat(result.succeeded(), is(true));
+        OidcTokenResponse tokenResponse = result.tokenResponse().orElseThrow();
+        assertThat(tokenResponse.accessToken(), is("refreshed-access-token"));
+        assertThat(tokenResponse.idToken().isEmpty(), is(true));
+        assertThat(tokenResponse.refreshToken().orElse(""), is("rotated-refresh-token"));
+        assertThat(tokenResponse.expiresIn().orElseThrow(), is(600L));
+
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request != null, is(true));
+        assertThat(request.authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
+                                                       "refresh_token", List.of(REFRESH_TOKEN))));
     }
 
     @Test
@@ -186,6 +215,12 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .exchangeAuthorizationCode(AUTHORIZATION_CODE,
                                            REDIRECTION_ENDPOINT_URI,
                                            Optional.ofNullable(pkceVerifier));
+    }
+
+    private OidcTokenEndpointResult refresh(OidcTenantConfig tenantConfig, String refreshToken) {
+        return OidcTenantContext.ready("default", tenantConfig)
+                .endpointClient()
+                .refreshAccessToken(refreshToken);
     }
 
     private OidcTenantConfig confidentialTenant() {

@@ -17,8 +17,14 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonValue;
+import io.helidon.json.JsonValueType;
 import io.helidon.security.Grant;
 import io.helidon.security.Principal;
 import io.helidon.security.Role;
@@ -32,20 +38,21 @@ final class OidcSubjectMapper {
     private OidcSubjectMapper() {
     }
 
-    static Subject map(OidcValidatedAccessToken validatedToken) {
+    static Subject map(OidcValidatedAccessToken validatedToken, OidcSubjectMappingConfig subjectMapping) {
         if (validatedToken instanceof OidcValidatedJwt validatedJwt) {
-            return mapJwt(validatedJwt);
+            return mapJwt(validatedJwt, subjectMapping);
         }
         if (validatedToken instanceof OidcValidatedIntrospection validatedIntrospection) {
-            return mapIntrospection(validatedIntrospection);
+            return mapIntrospection(validatedIntrospection, subjectMapping);
         }
         throw new IllegalArgumentException("Unsupported validated access token type: " + validatedToken.getClass());
     }
 
-    static Subject map(OidcLocalAuthenticationResult authenticationResult) {
+    static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
         Jwt idToken = authenticationResult.idToken().jwt();
-        String subject = idToken.subject().orElseThrow();
-        Principal principal = principal(idToken, subject);
+        String principalId = principalId(idToken, subjectMapping)
+                .orElseGet(() -> idToken.subject().orElseThrow());
+        Principal principal = principal(idToken, principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(authenticationResult.accessToken());
@@ -56,24 +63,28 @@ final class OidcSubjectMapper {
                 .principal(principal)
                 .addPublicCredential(TokenCredential.class, credentialBuilder.build());
 
-        idToken.userGroups()
-                .ifPresent(groups -> groups.forEach(group -> subjectBuilder.addGrant(Role.create(group))));
-        authenticationResult.scope()
-                .stream()
-                .flatMap(scope -> Arrays.stream(scope.split(" ")))
-                .filter(scope -> !scope.isBlank())
-                .forEach(scope -> subjectBuilder.addGrant(Grant.builder()
-                                                          .name(scope)
-                                                          .type("scope")
-                                                          .build()));
+        addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
+        if (subjectMapping.scopeGrantsEnabled()) {
+            Stream.concat(authenticationResult.scope()
+                                  .stream()
+                                  .flatMap(OidcSubjectMapper::splitScope),
+                          scopeClaimValues(idToken.payloadClaimsJson(), subjectMapping).stream())
+                    .distinct()
+                    .forEach(scope -> addScope(subjectBuilder, scope));
+        }
         return subjectBuilder.build();
     }
 
-    private static Subject mapJwt(OidcValidatedJwt validatedToken) {
+    static Optional<String> principalId(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
+        return firstClaimValue(claims, subjectMapping.principalIdClaimPaths());
+    }
+
+    private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcSubjectMappingConfig subjectMapping) {
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
-        String subject = jwt.subject().orElseThrow();
-        Principal principal = principal(jwt, subject);
+        String principalId = principalId(jwt, subjectMapping)
+                .orElseGet(() -> jwt.subject().orElseThrow());
+        Principal principal = principal(jwt, principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(validatedToken.rawToken());
@@ -87,27 +98,17 @@ final class OidcSubjectMapper {
                 .principal(principal)
                 .addPublicCredential(TokenCredential.class, credentialBuilder.build());
 
-        jwt.userGroups()
-                .ifPresent(groups -> groups.forEach(group -> subjectBuilder.addGrant(Role.create(group))));
-        jwt.scopes()
-                .ifPresent(scopes -> scopes.forEach(scope -> subjectBuilder.addGrant(Grant.builder()
-                                                                                 .name(scope)
-                                                                                 .type("scope")
-                                                                                 .build())));
+        addRoles(subjectBuilder, roleClaimValues(jwt.payloadClaimsJson(), subjectMapping));
+        if (subjectMapping.scopeGrantsEnabled()) {
+            scopeClaimValues(jwt.payloadClaimsJson(), subjectMapping).forEach(scope -> addScope(subjectBuilder, scope));
+        }
         return subjectBuilder.build();
     }
 
-    private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken) {
-        String principalId = validatedToken.principalId().orElseThrow();
-        Principal.Builder principalBuilder = Principal.builder()
-                .name(validatedToken.principalName().orElse(principalId))
-                .id(principalId);
-
-        validatedToken.claims()
-                .keysAsStrings()
-                .forEach(key -> validatedToken.claims()
-                        .value(key)
-                        .ifPresent(value -> principalBuilder.addAttribute(key, JwtUtil.toObject(value))));
+    private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken,
+                                            OidcSubjectMappingConfig subjectMapping) {
+        String principalId = principalId(validatedToken.claims(), subjectMapping).orElseThrow();
+        Principal.Builder principalBuilder = principal(validatedToken.claims(), principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(validatedToken.rawToken());
@@ -120,22 +121,19 @@ final class OidcSubjectMapper {
                 .principal(principalBuilder.build())
                 .addPublicCredential(TokenCredential.class, credentialBuilder.build());
 
-        validatedToken.groups()
-                .forEach(group -> subjectBuilder.addGrant(Role.create(group)));
-        validatedToken.scopes()
-                .forEach(scope -> subjectBuilder.addGrant(Grant.builder()
-                                                        .name(scope)
-                                                        .type("scope")
-                                                        .build()));
+        addRoles(subjectBuilder, roleClaimValues(validatedToken.claims(), subjectMapping));
+        if (subjectMapping.scopeGrantsEnabled()) {
+            scopeClaimValues(validatedToken.claims(), subjectMapping).forEach(scope -> addScope(subjectBuilder, scope));
+        }
         return subjectBuilder.build();
     }
 
-    private static Principal principal(Jwt jwt, String subject) {
-        String name = jwt.preferredUsername()
-                .orElse(subject);
+    private static Principal principal(Jwt jwt, String principalId, OidcSubjectMappingConfig subjectMapping) {
+        String name = firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalNameClaimPaths())
+                .orElse(principalId);
         Principal.Builder builder = Principal.builder()
                 .name(name)
-                .id(subject);
+                .id(principalId);
 
         jwt.payloadClaimsJson()
                 .forEach((key, jsonValue) -> builder.addAttribute(key, JwtUtil.toObject(jsonValue)));
@@ -146,5 +144,144 @@ final class OidcSubjectMapper {
         jwt.givenName().ifPresent(value -> builder.addAttribute("given_name", value));
         jwt.fullName().ifPresent(value -> builder.addAttribute("full_name", value));
         return builder.build();
+    }
+
+    private static Principal.Builder principal(JsonObject claims,
+                                               String principalId,
+                                               OidcSubjectMappingConfig subjectMapping) {
+        String name = firstClaimValue(claims, subjectMapping.principalNameClaimPaths())
+                .orElse(principalId);
+        Principal.Builder builder = Principal.builder()
+                .name(name)
+                .id(principalId);
+        claims.keysAsStrings()
+                .forEach(key -> claims.value(key)
+                        .ifPresent(value -> builder.addAttribute(key, JwtUtil.toObject(value))));
+        return builder;
+    }
+
+    private static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
+        return firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalIdClaimPaths());
+    }
+
+    private static Optional<String> firstClaimValue(JsonObject claims, List<String> claimPaths) {
+        return claimPaths.stream()
+                .map(claimPath -> claimValue(claims, claimPath))
+                .flatMap(Optional::stream)
+                .flatMap(jsonValue -> stringValues(jsonValue, false))
+                .filter(value -> !value.isBlank())
+                .findFirst();
+    }
+
+    private static Optional<String> firstClaimValue(Map<String, JsonValue> claims, List<String> claimPaths) {
+        return claimPaths.stream()
+                .map(claimPath -> claimValue(claims, claimPath))
+                .flatMap(Optional::stream)
+                .flatMap(jsonValue -> stringValues(jsonValue, false))
+                .filter(value -> !value.isBlank())
+                .findFirst();
+    }
+
+    private static List<String> roleClaimValues(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
+        return claimValues(claims, subjectMapping.roleClaimPaths(), false);
+    }
+
+    private static List<String> roleClaimValues(Map<String, JsonValue> claims,
+                                                OidcSubjectMappingConfig subjectMapping) {
+        return claimValues(claims, subjectMapping.roleClaimPaths(), false);
+    }
+
+    private static List<String> scopeClaimValues(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
+        return claimValues(claims, subjectMapping.scopeClaimPaths(), true);
+    }
+
+    private static List<String> scopeClaimValues(Map<String, JsonValue> claims,
+                                                 OidcSubjectMappingConfig subjectMapping) {
+        return claimValues(claims, subjectMapping.scopeClaimPaths(), true);
+    }
+
+    private static List<String> claimValues(JsonObject claims, List<String> claimPaths, boolean splitStrings) {
+        return claimPaths.stream()
+                .map(claimPath -> claimValue(claims, claimPath))
+                .flatMap(Optional::stream)
+                .flatMap(jsonValue -> stringValues(jsonValue, splitStrings))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private static List<String> claimValues(Map<String, JsonValue> claims,
+                                            List<String> claimPaths,
+                                            boolean splitStrings) {
+        return claimPaths.stream()
+                .map(claimPath -> claimValue(claims, claimPath))
+                .flatMap(Optional::stream)
+                .flatMap(jsonValue -> stringValues(jsonValue, splitStrings))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private static Optional<JsonValue> claimValue(JsonObject claims, String claimPath) {
+        String[] segments = claimPath.split("\\.");
+        if (segments.length == 0 || segments[0].isBlank()) {
+            return Optional.empty();
+        }
+        return claims.value(segments[0])
+                .flatMap(value -> claimValue(value, segments));
+    }
+
+    private static Optional<JsonValue> claimValue(Map<String, JsonValue> claims, String claimPath) {
+        String[] segments = claimPath.split("\\.");
+        if (segments.length == 0 || segments[0].isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(claims.get(segments[0]))
+                .flatMap(value -> claimValue(value, segments));
+    }
+
+    private static Optional<JsonValue> claimValue(JsonValue firstSegmentValue, String[] segments) {
+        JsonValue current = firstSegmentValue;
+        for (int i = 1; i < segments.length; i++) {
+            if (current == null || current.type() != JsonValueType.OBJECT || segments[i].isBlank()) {
+                return Optional.empty();
+            }
+            current = current.asObject()
+                    .value(segments[i])
+                    .orElse(null);
+        }
+        return Optional.ofNullable(current);
+    }
+
+    private static Stream<String> stringValues(JsonValue value, boolean splitStrings) {
+        if (value.type() == JsonValueType.STRING) {
+            return splitStrings ? splitScope(value.asString().value()) : Stream.of(value.asString().value());
+        }
+        if (value.type() == JsonValueType.ARRAY) {
+            return value.asArray()
+                    .values()
+                    .stream()
+                    .filter(item -> item.type() == JsonValueType.STRING)
+                    .flatMap(item -> splitStrings
+                            ? splitScope(item.asString().value())
+                            : Stream.of(item.asString().value()));
+        }
+        return Stream.empty();
+    }
+
+    private static Stream<String> splitScope(String scope) {
+        return Arrays.stream(scope.split("\\s+"))
+                .filter(value -> !value.isBlank());
+    }
+
+    private static void addRoles(Subject.Builder subjectBuilder, List<String> roles) {
+        roles.forEach(role -> subjectBuilder.addGrant(Role.create(role)));
+    }
+
+    private static void addScope(Subject.Builder subjectBuilder, String scope) {
+        subjectBuilder.addGrant(Grant.builder()
+                                        .name(scope)
+                                        .type("scope")
+                                        .build());
     }
 }

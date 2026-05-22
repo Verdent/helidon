@@ -234,6 +234,29 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void tokenValidationMethodRequiresPrerequisitesWithoutProtectedResource() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("jwks-uri"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
+    }
+
+    @Test
     void jwtValidationRequiresSecureJwksUriScheme() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

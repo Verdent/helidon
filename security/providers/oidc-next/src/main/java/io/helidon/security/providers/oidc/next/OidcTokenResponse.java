@@ -54,9 +54,23 @@ final class OidcTokenResponse {
          * Quotes: "`access_token` OAuth 2.0 Access Token"; "`token_type` OAuth 2.0 Token Type";
          * "`id_token` ID Token value associated with the authenticated session".
          */
+        return fromJson(json, true);
+    }
+
+    static OidcTokenResponse fromRefreshJson(JsonObject json) {
+        /*
+         * Spec: OpenID Connect Core 1.0, 12.2 Successful Refresh Response
+         * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
+         * Quote: "the response body is the Token Response of Section 3.1.3.3 (Successful Token Response) except that
+         * it might not contain an `id_token`".
+         */
+        return fromJson(json, false);
+    }
+
+    private static OidcTokenResponse fromJson(JsonObject json, boolean requireIdToken) {
         String accessToken = requiredString(json, "access_token");
         String tokenType = requiredString(json, "token_type");
-        String idToken = requiredString(json, "id_token");
+        String idToken = requireIdToken ? requiredString(json, "id_token") : stringValue(json, "id_token").orElse(null);
         if (!"bearer".equalsIgnoreCase(tokenType)) {
             throw new IllegalArgumentException("Token Endpoint response token_type is not supported");
         }
@@ -77,8 +91,8 @@ final class OidcTokenResponse {
         return tokenType;
     }
 
-    String idToken() {
-        return idToken;
+    Optional<String> idToken() {
+        return Optional.ofNullable(idToken);
     }
 
     Optional<String> refreshToken() {

@@ -75,8 +75,33 @@ final class OidcEndpointClient {
             form.add("code_verifier", verifier);
         });
 
+        return submit(form, false);
+    }
+
+    OidcTokenEndpointResult refreshAccessToken(String refreshToken) {
+        Optional<URI> endpointUri = metadata.tokenEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
+        }
+
+        /*
+         * Spec: RFC 6749, 6 Refreshing an Access Token
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-6
+         * Quotes: "The client makes a refresh request to the token endpoint"; "`grant_type` REQUIRED. Value MUST be
+         * set to `refresh_token`"; "`refresh_token` REQUIRED".
+         */
+        Parameters.Builder form = Parameters.builder("oidc-refresh-token-endpoint-form")
+                .add("grant_type", "refresh_token")
+                .add("refresh_token", refreshToken);
+
+        return submit(form, true);
+    }
+
+    private OidcTokenEndpointResult submit(Parameters.Builder form, boolean refreshResponse) {
+        URI endpointUri = metadata.tokenEndpointUri()
+                .orElseThrow();
         HttpClientRequest request = webClient.post()
-                .uri(endpointUri.orElseThrow())
+                .uri(endpointUri)
                 .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
@@ -85,7 +110,7 @@ final class OidcEndpointClient {
 
         try (HttpClientResponse response = request.submit(form.build())) {
             if (response.status().family() == Status.Family.SUCCESSFUL) {
-                return success(response);
+                return success(response, refreshResponse);
             }
             return error(response);
         } catch (RuntimeException e) {
@@ -93,9 +118,13 @@ final class OidcEndpointClient {
         }
     }
 
-    private OidcTokenEndpointResult success(HttpClientResponse response) {
+    private OidcTokenEndpointResult success(HttpClientResponse response, boolean refreshResponse) {
         try {
-            return OidcTokenEndpointResult.success(OidcTokenResponse.fromJson(response.as(JsonObject.class)));
+            JsonObject json = response.as(JsonObject.class);
+            OidcTokenResponse tokenResponse = refreshResponse
+                    ? OidcTokenResponse.fromRefreshJson(json)
+                    : OidcTokenResponse.fromJson(json);
+            return OidcTokenEndpointResult.success(tokenResponse);
         } catch (RuntimeException e) {
             return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
         }

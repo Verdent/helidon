@@ -41,6 +41,49 @@ final class OidcIdTokenValidator {
     OidcIdTokenValidationResult validate(String token,
                                          OidcTenantContext tenantContext,
                                          OidcAuthenticationRequestState authenticationRequestState) {
+        return validate(token, tenantContext, Optional.of(authenticationRequestState.nonce()));
+    }
+
+    OidcIdTokenValidationResult validateRefresh(String token,
+                                                OidcTenantContext tenantContext,
+                                                OidcValidatedIdToken currentIdToken) {
+        OidcIdTokenValidationResult validationResult = validate(token, tenantContext, Optional.empty());
+        if (!validationResult.succeeded()) {
+            return validationResult;
+        }
+
+        Jwt current = currentIdToken.jwt();
+        Jwt refreshed = validationResult.validatedToken().orElseThrow().jwt();
+        /*
+         * Spec: OpenID Connect Core 1.0, 12.2 Successful Refresh Response
+         * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
+         * Quotes: "If an ID Token is returned as a result of a token refresh request"; "`iss` Claim Value MUST be the
+         * same as in the ID Token issued when the original authentication occurred"; "`sub` Claim Value MUST be the
+         * same"; "`aud` Claim Value MUST be the same"; "`azp` Claim Value MUST be the same".
+         */
+        if (!refreshed.issuer().equals(current.issuer())) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token issuer does not match the existing local authentication result");
+        }
+        if (!refreshed.subject().equals(current.subject())) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token subject does not match the existing local authentication result");
+        }
+        if (!refreshed.audience().equals(current.audience())) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token audience does not match the existing local authentication result");
+        }
+        if (!authorizedPartyValue(refreshed).equals(authorizedPartyValue(current))) {
+            return OidcIdTokenValidationResult.failure(
+                    "Refreshed ID Token authorized party does not match the existing local authentication result");
+        }
+
+        return validationResult;
+    }
+
+    private OidcIdTokenValidationResult validate(String token,
+                                                OidcTenantContext tenantContext,
+                                                Optional<String> expectedNonce) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
@@ -87,7 +130,7 @@ final class OidcIdTokenValidator {
         Errors claimErrors = claimValidator(tokenValidation,
                                             expectedIssuer.orElseThrow(),
                                             clientId.orElseThrow(),
-                                            authenticationRequestState.nonce()).validate(jwt);
+                                            expectedNonce).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcIdTokenValidationResult.failure("ID Token claims are invalid");
         }
@@ -112,7 +155,7 @@ final class OidcIdTokenValidator {
     private JwtValidator claimValidator(OidcTokenValidationConfig tokenValidation,
                                         String expectedIssuer,
                                         String clientId,
-                                        String expectedNonce) {
+                                        Optional<String> expectedNonce) {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
          * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
@@ -147,13 +190,16 @@ final class OidcIdTokenValidator {
                 .build();
     }
 
-    private void validateNonce(Jwt jwt, String expectedNonce, Errors.Collector collector) {
+    private void validateNonce(Jwt jwt, Optional<String> expectedNonce, Errors.Collector collector) {
+        if (expectedNonce.isEmpty()) {
+            return;
+        }
         Optional<String> nonce = jwt.nonce();
         if (nonce.isEmpty()) {
             collector.fatal(jwt, "JWT nonce claim is mandatory");
             return;
         }
-        if (!expectedNonce.equals(nonce.orElseThrow())) {
+        if (!expectedNonce.orElseThrow().equals(nonce.orElseThrow())) {
             collector.fatal(jwt, "JWT nonce claim does not match the Authentication Request nonce");
         }
     }
@@ -185,5 +231,10 @@ final class OidcIdTokenValidator {
             return Optional.empty();
         }
         return Optional.of(authorizedParty);
+    }
+
+    private Optional<String> authorizedPartyValue(Jwt jwt) {
+        return jwt.payloadClaimValue(AUTHORIZED_PARTY_CLAIM)
+                .map(value -> value.asString().value());
     }
 }

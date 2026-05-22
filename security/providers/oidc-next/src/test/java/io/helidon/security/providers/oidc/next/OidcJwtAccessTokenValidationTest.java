@@ -163,6 +163,41 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void customPrincipalIdClaimIsRequiredForJwtAccessToken() {
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user")))), token);
+
+        assertInvalidToken(response, "Bearer Token JWT has no principal claim");
+    }
+
+    @Test
+    void principalIdClaimMustBeScalarForJwtAccessToken() {
+        String token = signedToken(it -> it.addPayloadClaim("tenant_user", List.of("first-user", "second-user")));
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user")))), token);
+
+        assertInvalidToken(response, "Bearer Token JWT has no principal claim");
+    }
+
+    @Test
+    void scopeGrantsCanBeDisabledForJwtAccessToken() {
+        String token = signedToken(it -> it
+                .addScope("resource.read")
+                .addPayloadClaim("scp", List.of("resource.write")));
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping
+                        .scopeClaimPaths(List.of("scope", "scp"))
+                        .scopeGrantsEnabled(false))), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().grantsByType("scope").isEmpty(), is(true));
+    }
+
+    @Test
     void remoteJwksEndpointAuthenticatesSubject() {
         String token = signedToken(it -> { });
 

@@ -243,13 +243,13 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void jwtValidationRequiresIssuerAndJwks() {
+    void jwtValidationRequiresIssuerOrDiscoveryAndJwksOrDiscovery() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .protectedResource(it -> it.enabled(true)
                         .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("issuer"));
+        assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -257,16 +257,32 @@ class OidcProviderConfigTest {
                         .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("jwks-uri"));
+        assertThat(thrown.getMessage(), containsString("token-validation.audience"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+        OidcTenantConfig derivedDiscoveryTenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype();
+        assertThat(derivedDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
+
+        OidcTenantConfig explicitDiscoveryTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
                 .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
-                .buildPrototype());
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype();
+        assertThat(explicitDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
 
-        assertThat(thrown.getMessage(), containsString("jwks-uri"));
+        OidcTenantConfig discoveryOnlyTenant = OidcTenantConfig.builder()
+                .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype();
+        assertThat(discoveryOnlyTenant.issuer().isEmpty(), is(true));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -281,13 +297,12 @@ class OidcProviderConfigTest {
     @Test
     void tokenValidationMethodRequiresPrerequisitesWithoutProtectedResource() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
                 .protectedResource(it -> it.tokenValidation(validation -> validation
                         .method(OidcTokenValidationMethod.JWT)
                         .audience(AUDIENCE)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("jwks-uri"));
+        assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

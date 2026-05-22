@@ -310,8 +310,9 @@ security:
 Introspection currently uses HTTP Basic client authentication and requires `client-id`, `client-secret`, and
 `endpoints.introspection-endpoint-uri`.
 
-Audience validation is enabled by default. If the introspection response does not contain an audience, either configure
-the expected audience or explicitly disable audience validation.
+Audience validation is enabled by default. Introspection responses with an `aud` claim must contain the configured
+expected audience. If the Authorization Server omits `aud` from introspection responses, disable audience validation
+explicitly.
 
 ```yaml
 protected-resource:
@@ -521,9 +522,15 @@ subject-mapping:
   scope-grants-enabled: true
 ```
 
-Claim paths are tried in order. Dotted paths read nested objects, for example `realm_access.roles`.
+Principal id and principal name claim paths are tried in order. Role and scope claim paths are aggregated from all
+configured paths and duplicate grant names are ignored. Dotted paths read nested objects, for example
+`realm_access.roles`.
 
-Role and scope claims may be strings or string arrays. Scope strings are split on whitespace.
+Principal id and principal name claims must be strings. Role and scope claims may be strings or string arrays. Scope
+strings are split on whitespace.
+
+For Authorization Code Flow local authentication, scope grants come from the Token Endpoint scope value stored in the
+local authentication result. ID Token scope claims are not promoted to Helidon scope grants.
 
 Example for a Keycloak-style token:
 

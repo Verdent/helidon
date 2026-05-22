@@ -50,8 +50,7 @@ final class OidcSubjectMapper {
 
     static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
         Jwt idToken = authenticationResult.idToken().jwt();
-        String principalId = principalId(idToken, subjectMapping)
-                .orElseGet(() -> idToken.subject().orElseThrow());
+        String principalId = principalId(idToken, subjectMapping).orElseThrow();
         Principal principal = principal(idToken, principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -65,10 +64,9 @@ final class OidcSubjectMapper {
 
         addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
         if (subjectMapping.scopeGrantsEnabled()) {
-            Stream.concat(authenticationResult.scope()
-                                  .stream()
-                                  .flatMap(OidcSubjectMapper::splitScope),
-                          scopeClaimValues(idToken.payloadClaimsJson(), subjectMapping).stream())
+            authenticationResult.scope()
+                    .stream()
+                    .flatMap(OidcSubjectMapper::splitScope)
                     .distinct()
                     .forEach(scope -> addScope(subjectBuilder, scope));
         }
@@ -82,8 +80,7 @@ final class OidcSubjectMapper {
     private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcSubjectMappingConfig subjectMapping) {
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
-        String principalId = principalId(jwt, subjectMapping)
-                .orElseGet(() -> jwt.subject().orElseThrow());
+        String principalId = principalId(jwt, subjectMapping).orElseThrow();
         Principal principal = principal(jwt, principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -160,7 +157,7 @@ final class OidcSubjectMapper {
         return builder;
     }
 
-    private static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
+    static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
         return firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalIdClaimPaths());
     }
 
@@ -168,7 +165,7 @@ final class OidcSubjectMapper {
         return claimPaths.stream()
                 .map(claimPath -> claimValue(claims, claimPath))
                 .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValues(jsonValue, false))
+                .flatMap(jsonValue -> stringValue(jsonValue).stream())
                 .filter(value -> !value.isBlank())
                 .findFirst();
     }
@@ -177,9 +174,16 @@ final class OidcSubjectMapper {
         return claimPaths.stream()
                 .map(claimPath -> claimValue(claims, claimPath))
                 .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValues(jsonValue, false))
+                .flatMap(jsonValue -> stringValue(jsonValue).stream())
                 .filter(value -> !value.isBlank())
                 .findFirst();
+    }
+
+    private static Optional<String> stringValue(JsonValue value) {
+        if (value.type() == JsonValueType.STRING) {
+            return Optional.of(value.asString().value());
+        }
+        return Optional.empty();
     }
 
     private static List<String> roleClaimValues(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {

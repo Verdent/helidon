@@ -112,11 +112,20 @@ final class OidcAuthenticationOrchestrator {
                 readyTenant,
                 context.environment().time().toInstant());
         Optional<String> removalCookie = localAuthenticationRemovalCookie(refreshResult, readyTenant);
-        return refreshResult.authenticationResult()
-                .map(result -> LocalAuthentication.response(OidcResponseFactory.localAuthenticationSucceeded(
-                        OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
-                        authenticationCookie(refreshResult, result, readyTenant))))
-                .orElseGet(() -> LocalAuthentication.empty(removalCookie));
+        Optional<OidcLocalAuthenticationResult> refreshedAuthenticationResult = refreshResult.authenticationResult();
+        if (refreshedAuthenticationResult.isEmpty()) {
+            return LocalAuthentication.empty(removalCookie);
+        }
+        OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
+        if (OidcSubjectMapper.principalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
+            LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has no principal claim");
+            return LocalAuthentication.empty(Optional.of(readyTenant.cookieStateHandler()
+                                                                 .removeLocalAuthenticationResultCookie()
+                                                                 .toString()));
+        }
+        return LocalAuthentication.response(OidcResponseFactory.localAuthenticationSucceeded(
+                OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
+                authenticationCookie(refreshResult, result, readyTenant)));
     }
 
     private Optional<String> localAuthenticationRemovalCookie(OidcRefreshTokenManager.RefreshResult refreshResult,

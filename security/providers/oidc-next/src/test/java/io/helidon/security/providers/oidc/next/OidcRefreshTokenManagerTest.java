@@ -1,0 +1,284 @@
+/*
+ * Copyright (c) 2026 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.helidon.security.providers.oidc.next;
+
+import java.net.URI;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.helidon.common.configurable.Resource;
+import io.helidon.common.parameters.Parameters;
+import io.helidon.http.HeaderNames;
+import io.helidon.http.HeaderValues;
+import io.helidon.http.SetCookie;
+import io.helidon.json.JsonObject;
+import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.SecurityResponse;
+import io.helidon.security.Subject;
+import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webserver.http.HttpRouting;
+import io.helidon.webserver.http.ServerRequest;
+import io.helidon.webserver.http.ServerResponse;
+import io.helidon.webserver.testing.junit5.ServerTest;
+import io.helidon.webserver.testing.junit5.SetUpRoute;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+
+@ServerTest
+class OidcRefreshTokenManagerTest {
+    private static final URI ISSUER = URI.create("https://issuer.example");
+    private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
+    private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI ORIGINAL_URI = URI.create("https://rp.example/resource");
+    private static final String CLIENT_ID = "client-id";
+    private static final String CLIENT_SECRET = "client-secret";
+    private static final String SUBJECT = "user1-id";
+    private static final String USERNAME = "user1";
+    private static final String COOKIE_SECRET = "test-cookie-secret";
+    private static final String OLD_ACCESS_TOKEN = "old-access-token";
+    private static final String OLD_REFRESH_TOKEN = "old-refresh-token";
+    private static final String REFRESHED_ACCESS_TOKEN = "refreshed-access-token";
+    private static final String ROTATED_REFRESH_TOKEN = "rotated-refresh-token";
+
+    private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+
+    private static JwkKeys signKeys;
+    private static int responseStatus;
+    private static String responseBody;
+
+    @BeforeAll
+    static void initClass() {
+        signKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+    }
+
+    @SetUpRoute
+    static void routing(HttpRouting.Builder routing) {
+        routing.post("/token", OidcRefreshTokenManagerTest::handleTokenEndpoint);
+    }
+
+    @BeforeEach
+    void setUp() {
+        responseStatus = 200;
+        responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
+        RECORDED_REQUEST.set(null);
+    }
+
+    @Test
+    void localAuthenticationRefreshesExpiredAccessTokenAndRotatesRefreshToken(URI serverUri) {
+        OidcTenantConfig tenant = tenant(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1));
+
+        AuthenticationResponse response = OidcProvider.create(OidcProviderConfig.builder()
+                                                                 .putTenant("default", tenant)
+                                                                 .buildPrototype())
+                .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header(HeaderNames.COOKIE.defaultCase(),
+                                localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().getName(), is(USERNAME));
+
+        TokenCredential credential = subject.publicCredential(TokenCredential.class).orElseThrow();
+        assertThat(credential.token(), is(REFRESHED_ACCESS_TOKEN));
+        assertThat(credential.getExpTime().orElseThrow().isAfter(now.plusSeconds(500)), is(true));
+        assertThat(subject.grantsByType("scope").stream().map(it -> it.getName()).toList(),
+                   is(List.of("openid", "email")));
+
+        List<String> setCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
+        assertThat(setCookies.size(), is(1));
+        SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
+        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
+                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
+                .orElseThrow();
+        assertThat(stored.accessToken(), is(REFRESHED_ACCESS_TOKEN));
+        assertThat(stored.refreshToken().orElse(""), is(ROTATED_REFRESH_TOKEN));
+        assertThat(stored.scope().orElse(""), is("openid email"));
+
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
+                                                       "refresh_token", List.of(OLD_REFRESH_TOKEN))));
+    }
+
+    @Test
+    void localAuthenticationRefreshesAccessTokenWithinClockSkew(URI serverUri) {
+        OidcTenantConfig tenant = tenant(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.plusSeconds(30));
+
+        AuthenticationResponse response = OidcProvider.create(OidcProviderConfig.builder()
+                                                                 .putTenant("default", tenant)
+                                                                 .buildPrototype())
+                .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header(HeaderNames.COOKIE.defaultCase(),
+                                localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user()
+                           .orElseThrow()
+                           .publicCredential(TokenCredential.class)
+                           .orElseThrow()
+                           .token(),
+                   is(REFRESHED_ACCESS_TOKEN));
+        assertThat(RECORDED_REQUEST.get() != null, is(true));
+    }
+
+    @Test
+    void expiredAccessTokenWithoutRefreshTokenStartsAuthenticationRequest(URI serverUri) {
+        OidcTenantConfig tenant = tenant(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1),
+                                                                        null);
+
+        AuthenticationResponse response = OidcProvider.create(OidcProviderConfig.builder()
+                                                                 .putTenant("default", tenant)
+                                                                 .buildPrototype())
+                .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header(HeaderNames.COOKIE.defaultCase(),
+                                localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        assertThat(response.statusCode().orElse(-1), is(303));
+        assertThat(response.responseHeaders().get(HeaderNames.LOCATION.defaultCase()).getFirst(),
+                   containsString("/authorize"));
+        assertThat(RECORDED_REQUEST.get(), is(nullValue()));
+    }
+
+    private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
+        RECORDED_REQUEST.set(new RecordedRequest(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
+                                                formParameters(request.content().as(Parameters.class))));
+        response.status(responseStatus)
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(responseBody);
+    }
+
+    private static OidcTenantConfig tenant(URI serverUri) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(serverUri.resolve("token"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.enabled(true)
+                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .buildPrototype();
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       Instant createdAt,
+                                                       Instant expiresAt,
+                                                       Instant accessTokenExpiresAt) {
+        return localAuthenticationCookie(tenant, createdAt, expiresAt, accessTokenExpiresAt, OLD_REFRESH_TOKEN);
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       Instant createdAt,
+                                                       Instant expiresAt,
+                                                       Instant accessTokenExpiresAt,
+                                                       String refreshToken) {
+        String idToken = signedIdToken();
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        return OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        OLD_ACCESS_TOKEN,
+                        "Bearer",
+                        refreshToken,
+                        "openid profile",
+                        createdAt,
+                        expiresAt,
+                        accessTokenExpiresAt));
+    }
+
+    private static String signedIdToken() {
+        Instant now = Instant.now();
+        Jwt jwt = Jwt.builder()
+                .type("JWT")
+                .subject(SUBJECT)
+                .issuer(ISSUER.toString())
+                .algorithm("RS256")
+                .keyId("verify-rsa")
+                .issueTime(now)
+                .expirationTime(now.plusSeconds(3600))
+                .addAudience(CLIENT_ID)
+                .nonce("nonce")
+                .preferredUsername(USERNAME)
+                .build();
+        return SignedJwt.sign(jwt, signKeys.forKeyId("sign-rsa").orElseThrow())
+                .tokenContent();
+    }
+
+    private static JsonObject refreshResponse(String accessToken, String refreshToken) {
+        return JsonObject.builder()
+                .set("access_token", accessToken)
+                .set("token_type", "Bearer")
+                .set("refresh_token", refreshToken)
+                .set("expires_in", 600)
+                .set("scope", "openid email")
+                .build();
+    }
+
+    private static Map<String, List<String>> formParameters(Parameters parameters) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (String name : parameters.names()) {
+            result.put(name, parameters.all(name));
+        }
+        return result;
+    }
+
+    private record RecordedRequest(String authorization, Map<String, List<String>> formParameters) {
+    }
+}

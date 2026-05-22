@@ -47,14 +47,14 @@ final class OidcTokenResponse {
         this.rawResponse = rawResponse;
     }
 
-    static OidcTokenResponse fromJson(JsonObject json) {
+    static OidcTokenResponse fromAuthorizationCodeJson(JsonObject json) {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.3.3 Successful Token Response
          * https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
          * Quotes: "`access_token` OAuth 2.0 Access Token"; "`token_type` OAuth 2.0 Token Type";
          * "`id_token` ID Token value associated with the authenticated session".
          */
-        return fromJson(json, true);
+        return create(json, true);
     }
 
     static OidcTokenResponse fromRefreshJson(JsonObject json) {
@@ -64,10 +64,10 @@ final class OidcTokenResponse {
          * Quote: "the response body is the Token Response of Section 3.1.3.3 (Successful Token Response) except that
          * it might not contain an `id_token`".
          */
-        return fromJson(json, false);
+        return create(json, false);
     }
 
-    private static OidcTokenResponse fromJson(JsonObject json, boolean requireIdToken) {
+    private static OidcTokenResponse create(JsonObject json, boolean requireIdToken) {
         String accessToken = requiredString(json, "access_token");
         String tokenType = requiredString(json, "token_type");
         String idToken = requireIdToken ? requiredString(json, "id_token") : stringValue(json, "id_token").orElse(null);

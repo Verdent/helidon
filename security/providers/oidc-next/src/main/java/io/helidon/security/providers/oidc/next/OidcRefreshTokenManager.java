@@ -46,22 +46,31 @@ final class OidcRefreshTokenManager {
         Optional<String> refreshToken = authenticationResult.refreshToken();
         if (refreshToken.isEmpty()) {
             return accessTokenExpired(expiresAt, now)
-                    ? RefreshResult.unauthenticated()
+                    ? RefreshResult.removeLocalAuthentication()
                     : RefreshResult.authenticated(authenticationResult);
         }
 
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
                 .refreshAccessToken(refreshToken.orElseThrow());
         if (tokenResult.succeeded()) {
+            OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
+            if (tokenResponse.expiresIn().isEmpty()) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "Token Endpoint refresh response did not include expires_in");
+                return accessTokenExpired(expiresAt, now)
+                        ? RefreshResult.removeLocalAuthentication()
+                        : RefreshResult.authenticated(authenticationResult);
+            }
             return RefreshResult.refreshed(refresh(authenticationResult,
-                                                 tokenResult.tokenResponse().orElseThrow(),
+                                                 tokenResponse,
                                                  now));
         }
 
         logRefreshFailure(tokenResult);
-        return accessTokenExpired(expiresAt, now)
-                ? RefreshResult.unauthenticated()
-                : RefreshResult.authenticated(authenticationResult);
+        if (invalidGrant(tokenResult) || accessTokenExpired(expiresAt, now)) {
+            return RefreshResult.removeLocalAuthentication();
+        }
+        return RefreshResult.authenticated(authenticationResult);
     }
 
     private OidcLocalAuthenticationResult refresh(OidcLocalAuthenticationResult current,
@@ -109,17 +118,33 @@ final class OidcRefreshTokenManager {
                                                   tokenResult.description()));
     }
 
-    record RefreshResult(Optional<OidcLocalAuthenticationResult> authenticationResult, boolean refreshed) {
+    private boolean invalidGrant(OidcTokenEndpointResult tokenResult) {
+        /*
+         * Spec: RFC 6749, 5.2 Error Response
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2
+         * Quote: "`invalid_grant` The provided authorization grant (e.g., authorization code, resource owner
+         * credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the
+         * authorization request, or was issued to another client".
+         */
+        return tokenResult.error()
+                .map(OidcTokenErrorResponse::error)
+                .filter("invalid_grant"::equals)
+                .isPresent();
+    }
+
+    record RefreshResult(Optional<OidcLocalAuthenticationResult> authenticationResult,
+                         boolean refreshed,
+                         boolean removeCookie) {
         private static RefreshResult authenticated(OidcLocalAuthenticationResult authenticationResult) {
-            return new RefreshResult(Optional.of(authenticationResult), false);
+            return new RefreshResult(Optional.of(authenticationResult), false, false);
         }
 
         private static RefreshResult refreshed(OidcLocalAuthenticationResult authenticationResult) {
-            return new RefreshResult(Optional.of(authenticationResult), true);
+            return new RefreshResult(Optional.of(authenticationResult), true, false);
         }
 
-        private static RefreshResult unauthenticated() {
-            return new RefreshResult(Optional.empty(), false);
+        private static RefreshResult removeLocalAuthentication() {
+            return new RefreshResult(Optional.empty(), false, true);
         }
     }
 }

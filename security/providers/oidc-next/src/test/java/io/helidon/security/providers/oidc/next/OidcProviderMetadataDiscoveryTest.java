@@ -89,6 +89,42 @@ class OidcProviderMetadataDiscoveryTest {
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
     }
 
+    @Test
+    void jwtProtectedResourceTenantLoadsJwkSetUriFromDiscovery() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
+        assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
+    }
+
+    @Test
+    void jwtProtectedResourceTenantFailsWhenDiscoveredJwkSetUriIsMissing() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .build()
+                .toString();
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
                 .putTenant("tenant", tenantConfig)

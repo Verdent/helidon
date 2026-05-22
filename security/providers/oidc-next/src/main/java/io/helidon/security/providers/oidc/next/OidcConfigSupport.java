@@ -240,12 +240,19 @@ final class OidcConfigSupport {
         switch (method) {
         case JWT -> {
             tenant.issuer()
+                    .or(() -> endpoints.discoveryUri())
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "issuer must be configured when JWT access-token validation is enabled"));
-            URI jwksUri = endpoints.jwksUri()
+                            "issuer or discovery-uri must be configured when JWT access-token validation is enabled"));
+            Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
+            Optional<URI> jwksUri = endpoints.jwksUri();
+            jwksUri
+                    .or(() -> discoveryUri)
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "jwks-uri must be configured when JWT access-token validation is enabled"));
-            validateJwksUri(jwksUri, endpoints.tlsRequired());
+                            "jwks-uri or discovery-uri must be configured when JWT access-token validation is enabled"));
+            jwksUri.ifPresent(uri -> validateJwksUri(uri, endpoints.tlsRequired()));
+            if (jwksUri.isEmpty()) {
+                discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+            }
             if (tokenValidation.audienceValidationEnabled()) {
                 /*
                  * Spec: RFC 7519, 4.1.3 "aud" (Audience) Claim
@@ -333,7 +340,7 @@ final class OidcConfigSupport {
         validateNoFragment("authorization-endpoint-uri", uri);
     }
 
-    private static void validateJwksUri(URI uri, boolean tlsRequired) {
+    static void validateJwksUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata

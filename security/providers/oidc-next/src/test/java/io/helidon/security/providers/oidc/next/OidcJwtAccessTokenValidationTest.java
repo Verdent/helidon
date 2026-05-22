@@ -67,15 +67,18 @@ class OidcJwtAccessTokenValidationTest {
     private static final String USERNAME = "user1";
     private static final URI MISSING_JWKS_URI = URI.create("file:///tmp/oidc-next-missing-jwks.json");
     private static final Instant TEST_INSTANT = Instant.parse("2026-05-21T00:00:00Z");
+    private static final AtomicInteger discoveryRequests = new AtomicInteger();
     private static final AtomicInteger remoteJwkSetRequests = new AtomicInteger();
     private static final AtomicReference<Queue<String>> remoteJwkSetResponses =
             new AtomicReference<>(new ArrayDeque<>());
+    private static final AtomicReference<String> providerMetadata = new AtomicReference<>();
 
     private static JwkKeys signKeys;
     private static URI jwksUri;
     private static String verifyJwkSet;
 
     private URI remoteJwksUri;
+    private URI discoveryUri;
     @TempDir
     private Path tempDir;
 
@@ -92,6 +95,11 @@ class OidcJwtAccessTokenValidationTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            discoveryRequests.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(providerMetadata.get());
+        });
         routing.get("/jwks", (request, response) -> {
             remoteJwkSetRequests.incrementAndGet();
             String jwkSet = remoteJwkSetResponses.get().poll();
@@ -103,8 +111,15 @@ class OidcJwtAccessTokenValidationTest {
     @BeforeEach
     void setUp(URI serverUri) {
         remoteJwksUri = serverUri.resolve("jwks");
+        discoveryUri = serverUri.resolve(".well-known/openid-configuration");
+        discoveryRequests.set(0);
         remoteJwkSetRequests.set(0);
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of(verifyJwkSet)));
+        providerMetadata.set(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("jwks_uri", remoteJwksUri.toString())
+                .build()
+                .toString());
     }
 
     @Test
@@ -204,6 +219,17 @@ class OidcJwtAccessTokenValidationTest {
         AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
+    void discoveredJwksEndpointAuthenticatesSubject() {
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(discoveryProvider(), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(discoveryRequests.get(), is(1));
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
@@ -440,6 +466,20 @@ class OidcJwtAccessTokenValidationTest {
 
     private static OidcProvider provider(boolean audienceValidationEnabled) {
         return provider(audienceValidationEnabled, true, jwksUri);
+    }
+
+    private OidcProvider discoveryProvider() {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", OidcTenantConfig.builder()
+                                                   .issuer(ISSUER)
+                                                   .endpoints(it -> it.discoveryUri(discoveryUri)
+                                                           .tlsRequired(false))
+                                                   .protectedResource(it -> it.enabled(true)
+                                                           .tokenValidation(validation -> validation
+                                                                   .method(OidcTokenValidationMethod.JWT)
+                                                                   .audience(AUDIENCE)))
+                                                   .buildPrototype())
+                                           .buildPrototype());
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured, URI jwksUri) {

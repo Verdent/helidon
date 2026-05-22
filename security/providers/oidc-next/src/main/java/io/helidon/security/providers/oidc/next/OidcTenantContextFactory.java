@@ -48,6 +48,7 @@ final class OidcTenantContextFactory {
                 OidcProviderMetadata metadata = needsDiscovery(tenantConfig, staticMetadata)
                         ? metadataLoader.load(staticMetadata)
                         : staticMetadata;
+                validateJwtMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata);
             } catch (RuntimeException e) {
                 return OidcTenantContext.failed(tenantId, tenantConfig);
@@ -59,6 +60,11 @@ final class OidcTenantContextFactory {
         if (staticMetadata.discoveryUri().isEmpty()) {
             return false;
         }
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource().tokenValidation();
+        if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()
+                && (staticMetadata.issuer().isEmpty() || staticMetadata.jwkSetUri().isEmpty())) {
+            return true;
+        }
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode();
         if (authorizationCode.enabled()
                 && (staticMetadata.authorizationEndpointUri().isEmpty()
@@ -67,6 +73,25 @@ final class OidcTenantContextFactory {
         }
         return tenantConfig.outbound().clientCredentialsGrantEnabled()
                 && staticMetadata.tokenEndpointUri().isEmpty();
+    }
+
+    private static void validateJwtMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource().tokenValidation();
+        if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+            return;
+        }
+
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "REQUIRED. URL of the OP's JSON Web Key Set [JWK] document".
+         */
+        metadata.jwkSetUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateJwksUri(uri, tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "discovered jwks_uri must be present for JWT access-token validation");
+                                 });
     }
 
     @FunctionalInterface

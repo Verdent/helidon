@@ -47,11 +47,12 @@ final class OidcAuthenticationOrchestrator {
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
                                                  OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators = accessTokenValidators();
         return new OidcAuthenticationOrchestrator(config,
                                                   tenantRuntimeRegistry,
                                                   OidcAuthenticationRequestFactory.create(),
-                                                  OidcRefreshTokenManager.create(),
-                                                  accessTokenValidators());
+                                                  OidcRefreshTokenManager.create(accessTokenValidators),
+                                                  accessTokenValidators);
     }
 
     AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {

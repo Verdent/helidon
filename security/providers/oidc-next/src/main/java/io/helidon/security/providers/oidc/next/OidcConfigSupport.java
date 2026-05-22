@@ -195,12 +195,14 @@ final class OidcConfigSupport {
                                                   OidcProtectedResourceConfig protectedResource,
                                                   OidcTokenTransportConfig tokenTransport,
                                                   OidcEndpointConfig endpoints) {
-        if (!protectedResource.enabled()) {
+        OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
+        if (!protectedResource.enabled() && tokenValidation.method().isEmpty()) {
             return;
         }
 
-        OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
-        if (!tokenTransport.authorizationHeaderEnabled() && !tokenTransport.queryParameterEnabled()) {
+        if (protectedResource.enabled()
+                && !tokenTransport.authorizationHeaderEnabled()
+                && !tokenTransport.queryParameterEnabled()) {
             throw new IllegalArgumentException(
                     "at least one Bearer Token transport must be enabled when Protected Resource is enabled");
         }

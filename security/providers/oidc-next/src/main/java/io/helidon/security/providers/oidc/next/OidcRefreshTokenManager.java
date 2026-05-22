@@ -18,16 +18,24 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 final class OidcRefreshTokenManager {
     private static final System.Logger LOGGER = System.getLogger(OidcRefreshTokenManager.class.getName());
 
-    private OidcRefreshTokenManager() {
+    private final OidcIdTokenValidator idTokenValidator;
+    private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
+
+    private OidcRefreshTokenManager(OidcIdTokenValidator idTokenValidator,
+                                    Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
+        this.idTokenValidator = idTokenValidator;
+        this.accessTokenValidators = accessTokenValidators;
     }
 
-    static OidcRefreshTokenManager create() {
-        return new OidcRefreshTokenManager();
+    static OidcRefreshTokenManager create(
+            Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
+        return new OidcRefreshTokenManager(OidcIdTokenValidator.create(), accessTokenValidators);
     }
 
     RefreshResult refreshIfNeeded(OidcLocalAuthenticationResult authenticationResult,
@@ -61,12 +69,49 @@ final class OidcRefreshTokenManager {
                         ? RefreshResult.removeLocalAuthentication()
                         : RefreshResult.authenticated(authenticationResult);
             }
+            Optional<OidcTokenValidationMethod> validationMethod = tenantContext.tokenValidation().method();
+            if (validationMethod.isPresent()) {
+                OidcAccessTokenValidator accessTokenValidator = accessTokenValidators.get(
+                        validationMethod.orElseThrow());
+                if (accessTokenValidator == null) {
+                    logFailure("Refreshed access token validation is not implemented for method: "
+                                       + validationMethod.orElseThrow(),
+                               Optional.empty());
+                    return RefreshResult.removeLocalAuthentication();
+                }
+                OidcTokenValidationResult accessTokenValidationResult =
+                        accessTokenValidator.validate(tokenResponse.accessToken(), tenantContext);
+                if (!accessTokenValidationResult.succeeded()) {
+                    logFailure(accessTokenValidationResult.errorDescription()
+                                       .orElse("Refreshed access token validation failed"),
+                               accessTokenValidationResult.cause());
+                    return RefreshResult.removeLocalAuthentication();
+                }
+            }
+
+            OidcValidatedIdToken idToken = authenticationResult.idToken();
+            Optional<String> refreshedIdToken = tokenResponse.idToken();
+            if (refreshedIdToken.isPresent()) {
+                OidcIdTokenValidationResult idTokenValidationResult =
+                        idTokenValidator.validateRefresh(refreshedIdToken.orElseThrow(),
+                                                         tenantContext,
+                                                         authenticationResult.idToken());
+                if (!idTokenValidationResult.succeeded()) {
+                    logFailure(idTokenValidationResult.errorDescription()
+                                       .orElse("Refreshed ID Token validation failed"),
+                               idTokenValidationResult.cause());
+                    return RefreshResult.removeLocalAuthentication();
+                }
+                idToken = idTokenValidationResult.validatedToken().orElseThrow();
+            }
+
             return RefreshResult.refreshed(refresh(authenticationResult,
                                                  tokenResponse,
+                                                 idToken,
                                                  now));
         }
 
-        logRefreshFailure(tokenResult);
+        logFailure(tokenResult.description(), tokenResult.cause());
         if (invalidGrant(tokenResult) || accessTokenExpired(expiresAt, now)) {
             return RefreshResult.removeLocalAuthentication();
         }
@@ -75,6 +120,7 @@ final class OidcRefreshTokenManager {
 
     private OidcLocalAuthenticationResult refresh(OidcLocalAuthenticationResult current,
                                                   OidcTokenResponse tokenResponse,
+                                                  OidcValidatedIdToken idToken,
                                                   Instant refreshedAt) {
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
@@ -85,7 +131,7 @@ final class OidcRefreshTokenManager {
          */
         return OidcLocalAuthenticationResult.create(
                 current.tenantId(),
-                current.idToken(),
+                idToken,
                 tokenResponse.accessToken(),
                 tokenResponse.tokenType(),
                 tokenResponse.refreshToken()
@@ -109,13 +155,9 @@ final class OidcRefreshTokenManager {
         return !now.isBefore(expiresAt);
     }
 
-    private void logRefreshFailure(OidcTokenEndpointResult tokenResult) {
-        tokenResult.cause()
-                .ifPresentOrElse(cause -> LOGGER.log(System.Logger.Level.DEBUG,
-                                                      tokenResult.description(),
-                                                      cause),
-                                 () -> LOGGER.log(System.Logger.Level.DEBUG,
-                                                  tokenResult.description()));
+    private void logFailure(String description, Optional<Throwable> cause) {
+        cause.ifPresentOrElse(error -> LOGGER.log(System.Logger.Level.DEBUG, description, error),
+                              () -> LOGGER.log(System.Logger.Level.DEBUG, description));
     }
 
     private boolean invalidGrant(OidcTokenEndpointResult tokenResult) {

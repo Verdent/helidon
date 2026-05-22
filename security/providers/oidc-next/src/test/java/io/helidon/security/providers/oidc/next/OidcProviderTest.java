@@ -702,7 +702,7 @@ class OidcProviderTest {
         if (scope != null) {
             builder.set("scope", scope);
         }
-        return OidcTokenResponse.fromJson(builder.build());
+        return OidcTokenResponse.fromAuthorizationCodeJson(builder.build());
     }
 
     private static void assertAuthenticationRequestStarted(AuthenticationResponse response) {

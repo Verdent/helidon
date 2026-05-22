@@ -459,7 +459,24 @@ class OidcProviderTest {
     }
 
     @Test
-    void localAuthenticationResultCookieUsesConfiguredIdTokenScopeClaims() {
+    void localAuthenticationResultCookieRequiresConfiguredPrincipalIdClaim() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user"))));
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertAuthenticationRequestStarted(response);
+    }
+
+    @Test
+    void localAuthenticationResultCookieUsesTokenResponseScopesOnly() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping.scopeClaimPaths(List.of("id_scopes"))));
         OidcProvider provider = provider(tenant);
@@ -488,7 +505,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.user().orElseThrow().grantsByType("scope").stream().map(Grant::getName).toList(),
-                   is(List.of("openid", "profile", "app.read", "app.write")));
+                   is(List.of("openid", "profile")));
     }
 
     @Test

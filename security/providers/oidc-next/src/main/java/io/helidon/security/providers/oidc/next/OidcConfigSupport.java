@@ -152,11 +152,13 @@ final class OidcConfigSupport {
             throw new IllegalArgumentException(configKey + " must not be empty");
         }
         paths.stream()
-                .filter(path -> path.isBlank()
-                        || !path.equals(path.strip())
-                        || path.contains("..")
-                        || path.startsWith(".")
-                        || path.endsWith("."))
+                .filter(path -> {
+                    if (path.isBlank() || !path.equals(path.strip())) {
+                        return true;
+                    }
+                    return Arrays.stream(path.split("\\.", -1))
+                            .anyMatch(segment -> segment.isBlank() || !segment.equals(segment.strip()));
+                })
                 .findFirst()
                 .ifPresent(path -> {
                     throw new IllegalArgumentException(configKey + " contains invalid claim path: " + path);

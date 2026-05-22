@@ -56,26 +56,8 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         return jwt;
     }
 
-    Optional<String> principalId() {
-        return stringClaim("sub")
-                .filter(it -> !it.isBlank())
-                .or(() -> stringClaim("username").filter(it -> !it.isBlank()))
-                .or(() -> clientId().filter(it -> !it.isBlank()));
-    }
-
-    Optional<String> principalName() {
-        return stringClaim("preferred_username")
-                .filter(it -> !it.isBlank())
-                .or(() -> stringClaim("username").filter(it -> !it.isBlank()))
-                .or(this::principalId);
-    }
-
     Optional<String> issuer() {
         return stringClaim("iss");
-    }
-
-    Optional<String> clientId() {
-        return stringClaim("client_id");
     }
 
     Optional<String> tokenType() {
@@ -96,17 +78,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
 
     List<String> audience() {
         return stringListClaim("aud");
-    }
-
-    List<String> scopes() {
-        return scopes(claims);
-    }
-
-    List<String> groups() {
-        return stringListClaim("groups")
-                .stream()
-                .filter(group -> !group.isBlank())
-                .toList();
     }
 
     private Optional<String> stringClaim(String claimName) {

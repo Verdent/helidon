@@ -125,6 +125,31 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void customSubjectMappingAppliesToIntrospection() {
+        responseBody = validResponse(it -> it
+                .set("principal_id", "opaque-user-id")
+                .set("display_name", "Opaque User")
+                .set("realm_access", realm -> realm.setStrings("roles", List.of("realm-admin", "realm-auditor")))
+                .setStrings("scp", List.of("resource.audit", "resource.export"))).toString();
+
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping
+                        .principalIdClaimPaths(List.of("principal_id"))
+                        .principalNameClaimPaths(List.of("display_name"))
+                        .roleClaimPaths(List.of("realm_access.roles"))
+                        .scopeClaimPaths(List.of("scp")))), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is("opaque-user-id"));
+        assertThat(subject.principal().getName(), is("Opaque User"));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                   is(List.of("realm-admin", "realm-auditor")));
+        assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("resource.audit", "resource.export")));
+    }
+
+    @Test
     void bearerEvidenceWinsOverAuthorizationCodeFlowForIntrospection() {
         AuthenticationResponse response = provider().authenticate(
                 OidcProviderTest.request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(),
@@ -295,25 +320,35 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     private OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured) {
+        return provider(audienceValidationEnabled, audienceConfigured, tenant -> { });
+    }
+
+    private OidcProvider provider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        return provider(true, true, tenantCustomizer);
+    }
+
+    private OidcProvider provider(boolean audienceValidationEnabled,
+                                  boolean audienceConfigured,
+                                  Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it
+                        .introspectionEndpointUri(introspectionEndpointUri)
+                        .tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> {
+                            validation
+                                    .method(OidcTokenValidationMethod.INTROSPECTION)
+                                    .audienceValidationEnabled(audienceValidationEnabled);
+                            if (audienceConfigured) {
+                                validation.audience(AUDIENCE);
+                            }
+                        }));
+        tenantCustomizer.accept(tenantBuilder);
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", OidcTenantConfig.builder()
-                                                   .issuer(ISSUER)
-                                                   .clientId(CLIENT_ID)
-                                                   .clientSecret(CLIENT_SECRET)
-                                                   .endpoints(it -> it
-                                                           .introspectionEndpointUri(introspectionEndpointUri)
-                                                           .tlsRequired(false))
-                                                   .protectedResource(it -> it.enabled(true)
-                                                           .tokenValidation(validation -> {
-                                                               validation
-                                                                       .method(OidcTokenValidationMethod.INTROSPECTION)
-                                                                       .audienceValidationEnabled(
-                                                                               audienceValidationEnabled);
-                                                               if (audienceConfigured) {
-                                                                   validation.audience(AUDIENCE);
-                                                               }
-                                                           }))
-                                                   .buildPrototype())
+                                           .putTenant("default", tenantBuilder.buildPrototype())
                                            .buildPrototype());
     }
 

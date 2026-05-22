@@ -136,6 +136,10 @@ final class OidcTenantContext {
         return tenantConfig.tokenTransport();
     }
 
+    OidcSubjectMappingConfig subjectMapping() {
+        return tenantConfig.subjectMapping();
+    }
+
     private void requireReady() {
         if (!ready()) {
             throw new IllegalStateException("OIDC tenant runtime resources are available only when tenant is ready");

@@ -110,6 +110,15 @@ interface OidcTenantConfigBlueprint {
     OidcTokenTransportConfig tokenTransport();
 
     /**
+     * Subject mapping configuration.
+     *
+     * @return subject mapping configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcSubjectMappingConfig subjectMapping();
+
+    /**
      * Cookie configuration used by OIDC stateful flows.
      *
      * @return cookie configuration

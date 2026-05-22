@@ -129,7 +129,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcTokenValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
-        if (validated.principalId().isEmpty()) {
+        if (OidcSubjectMapper.principalId(validated.claims(), tenantContext.subjectMapping()).isEmpty()) {
             return OidcTokenValidationResult.failure("Bearer Token introspection response has no principal claim");
         }
         if (validated.tokenType()

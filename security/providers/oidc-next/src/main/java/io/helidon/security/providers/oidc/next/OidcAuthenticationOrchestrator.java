@@ -79,40 +79,53 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private AuthenticationResponse authenticateAuthorizationCodeFlow(OidcRequestContext context) {
-        Optional<AuthenticationResponse> localAuthenticationResult = authenticateLocalAuthenticationResult(context);
-        if (localAuthenticationResult.isPresent()) {
-            return localAuthenticationResult.orElseThrow();
+        LocalAuthentication localAuthentication = authenticateLocalAuthenticationResult(context);
+        if (localAuthentication.response().isPresent()) {
+            return localAuthentication.response().orElseThrow();
         }
-        return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context));
+        return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
+                                                                 localAuthentication.removalCookie());
     }
 
     private AuthenticationResponse authenticateAmbiguous(OidcRequestContext context) {
-        return authenticateLocalAuthenticationResult(context)
-                .orElseGet(OidcResponseFactory::ambiguousRequest);
+        LocalAuthentication localAuthentication = authenticateLocalAuthenticationResult(context);
+        return localAuthentication.response()
+                .orElseGet(() -> OidcResponseFactory.ambiguousRequest(localAuthentication.removalCookie()));
     }
 
-    private Optional<AuthenticationResponse> authenticateLocalAuthenticationResult(OidcRequestContext context) {
+    private LocalAuthentication authenticateLocalAuthenticationResult(OidcRequestContext context) {
         Optional<OidcTenantContext> tenantContext = context.tenantContext()
                 .filter(OidcTenantContext::ready);
         if (tenantContext.isEmpty()) {
-            return Optional.empty();
+            return LocalAuthentication.empty();
         }
 
         OidcTenantContext readyTenant = tenantContext.orElseThrow();
         Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context,
                                                                                                       readyTenant);
         if (localAuthenticationResult.isEmpty()) {
-            return Optional.empty();
+            return LocalAuthentication.empty();
         }
         OidcRefreshTokenManager.RefreshResult refreshResult = refreshTokenManager.refreshIfNeeded(
                 localAuthenticationResult.orElseThrow(),
                 readyTenant,
                 context.environment().time().toInstant());
+        Optional<String> removalCookie = localAuthenticationRemovalCookie(refreshResult, readyTenant);
         return refreshResult.authenticationResult()
-                .map(result -> OidcResponseFactory.localAuthenticationSucceeded(OidcSubjectMapper.map(result),
-                                                                                authenticationCookie(refreshResult,
-                                                                                                     result,
-                                                                                                     readyTenant)));
+                .map(result -> LocalAuthentication.response(OidcResponseFactory.localAuthenticationSucceeded(
+                        OidcSubjectMapper.map(result),
+                        authenticationCookie(refreshResult, result, readyTenant))))
+                .orElseGet(() -> LocalAuthentication.empty(removalCookie));
+    }
+
+    private Optional<String> localAuthenticationRemovalCookie(OidcRefreshTokenManager.RefreshResult refreshResult,
+                                                              OidcTenantContext tenantContext) {
+        if (!refreshResult.removeCookie()) {
+            return Optional.empty();
+        }
+        return Optional.of(tenantContext.cookieStateHandler()
+                                   .removeLocalAuthenticationResultCookie()
+                                   .toString());
     }
 
     private Optional<String> authenticationCookie(OidcRefreshTokenManager.RefreshResult refreshResult,
@@ -138,6 +151,20 @@ final class OidcAuthenticationOrchestrator {
         return readyTenant.cookieStateHandler()
                 .readLocalAuthenticationResult(cookieValues.get(0), context.environment().time().toInstant())
                 .filter(result -> readyTenant.tenantId().equals(result.tenantId()));
+    }
+
+    private record LocalAuthentication(Optional<AuthenticationResponse> response, Optional<String> removalCookie) {
+        private static LocalAuthentication response(AuthenticationResponse response) {
+            return new LocalAuthentication(Optional.of(response), Optional.empty());
+        }
+
+        private static LocalAuthentication empty() {
+            return empty(Optional.empty());
+        }
+
+        private static LocalAuthentication empty(Optional<String> removalCookie) {
+            return new LocalAuthentication(Optional.empty(), removalCookie);
+        }
     }
 
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {

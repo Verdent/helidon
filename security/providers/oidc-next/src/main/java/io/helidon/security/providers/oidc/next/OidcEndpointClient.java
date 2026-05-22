@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Function;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
@@ -75,7 +76,7 @@ final class OidcEndpointClient {
             form.add("code_verifier", verifier);
         });
 
-        return submit(form, false);
+        return submit(form, OidcTokenResponse::fromAuthorizationCodeJson);
     }
 
     OidcTokenEndpointResult refreshAccessToken(String refreshToken) {
@@ -94,10 +95,11 @@ final class OidcEndpointClient {
                 .add("grant_type", "refresh_token")
                 .add("refresh_token", refreshToken);
 
-        return submit(form, true);
+        return submit(form, OidcTokenResponse::fromRefreshJson);
     }
 
-    private OidcTokenEndpointResult submit(Parameters.Builder form, boolean refreshResponse) {
+    private OidcTokenEndpointResult submit(Parameters.Builder form,
+                                           Function<JsonObject, OidcTokenResponse> responseParser) {
         URI endpointUri = metadata.tokenEndpointUri()
                 .orElseThrow();
         HttpClientRequest request = webClient.post()
@@ -110,7 +112,7 @@ final class OidcEndpointClient {
 
         try (HttpClientResponse response = request.submit(form.build())) {
             if (response.status().family() == Status.Family.SUCCESSFUL) {
-                return success(response, refreshResponse);
+                return success(response, responseParser);
             }
             return error(response);
         } catch (RuntimeException e) {
@@ -118,13 +120,10 @@ final class OidcEndpointClient {
         }
     }
 
-    private OidcTokenEndpointResult success(HttpClientResponse response, boolean refreshResponse) {
+    private OidcTokenEndpointResult success(HttpClientResponse response,
+                                            Function<JsonObject, OidcTokenResponse> responseParser) {
         try {
-            JsonObject json = response.as(JsonObject.class);
-            OidcTokenResponse tokenResponse = refreshResponse
-                    ? OidcTokenResponse.fromRefreshJson(json)
-                    : OidcTokenResponse.fromJson(json);
-            return OidcTokenEndpointResult.success(tokenResponse);
+            return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
         } catch (RuntimeException e) {
             return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
         }

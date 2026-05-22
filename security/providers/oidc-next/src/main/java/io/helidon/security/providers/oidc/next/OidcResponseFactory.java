@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.http.HeaderNames;
@@ -60,12 +62,18 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
+        return authorizationCodeFlowInitiated(request, Optional.empty());
+    }
+
+    static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request,
+                                                                 Optional<String> localAuthenticationRemovalCookie) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
                 .statusCode(Status.SEE_OTHER_303.code())
                 .description("Redirecting to OpenID Provider Authorization Endpoint")
                 .responseHeader(HeaderNames.LOCATION.defaultCase(), request.authorizationUri().toString())
-                .responseHeader(HeaderNames.SET_COOKIE.defaultCase(), request.stateCookie())
+                .responseHeader(HeaderNames.SET_COOKIE.defaultCase(),
+                                setCookies(request.stateCookie(), localAuthenticationRemovalCookie))
                 .build();
     }
 
@@ -78,11 +86,18 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse ambiguousRequest() {
-        return AuthenticationResponse.builder()
+        return ambiguousRequest(Optional.empty());
+    }
+
+    static AuthenticationResponse ambiguousRequest(Optional<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
-                .description("OIDC request cannot be classified by protocol operation")
-                .build();
+                .description("OIDC request cannot be classified by protocol operation");
+        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
+                HeaderNames.SET_COOKIE.defaultCase(),
+                cookie));
+        return builder.build();
     }
 
     static AuthenticationResponse invalidBearerTokenRequest(String description) {
@@ -92,6 +107,13 @@ final class OidcResponseFactory {
                 .description(description)
                 .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_request", description))
                 .build();
+    }
+
+    private static List<String> setCookies(String stateCookie, Optional<String> localAuthenticationRemovalCookie) {
+        List<String> cookies = new ArrayList<>(2);
+        localAuthenticationRemovalCookie.ifPresent(cookies::add);
+        cookies.add(stateCookie);
+        return List.copyOf(cookies);
     }
 
     static AuthenticationResponse optional(String description) {

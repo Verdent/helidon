@@ -51,8 +51,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final String PKCE_VERIFIER = "pkce-verifier+value";
     private static final String REFRESH_TOKEN = "refresh-token+value";
 
-    private static int responseStatus;
-    private static String responseBody;
+    private static volatile int responseStatus;
+    private static volatile String responseBody;
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
     private URI tokenEndpointUri;
@@ -123,6 +123,36 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
         assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
                                                        "refresh_token", List.of(REFRESH_TOKEN))));
+    }
+
+    @Test
+    void refreshTokenGrantForPublicClientSendsClientIdInForm() {
+        responseBody = validRefreshResponse().toString();
+
+        OidcTokenEndpointResult result = refresh(publicTenant(), REFRESH_TOKEN);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
+                                                       "refresh_token", List.of(REFRESH_TOKEN),
+                                                       "client_id", List.of(CLIENT_ID))));
+    }
+
+    @Test
+    void refreshTokenGrantWithClientSecretPostSendsCredentialsInForm() {
+        responseBody = validRefreshResponse().toString();
+
+        OidcTokenEndpointResult result = refresh(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST),
+                                                 REFRESH_TOKEN);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
+                                                       "refresh_token", List.of(REFRESH_TOKEN),
+                                                       "client_id", List.of(CLIENT_ID),
+                                                       "client_secret", List.of(CLIENT_SECRET))));
     }
 
     @Test
@@ -267,6 +297,14 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .set("expires_in", 3600)
                 .set("scope", "openid profile")
                 .set("provider_extension", "extension-value")
+                .build();
+    }
+
+    private static JsonObject validRefreshResponse() {
+        return JsonObject.builder()
+                .set("access_token", "refreshed-access-token")
+                .set("token_type", "Bearer")
+                .set("expires_in", 600)
                 .build();
     }
 

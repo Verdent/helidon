@@ -10,7 +10,7 @@ one tenant is configured the provider automatically uses it as the default tenan
 The current implementation supports:
 
 - Protected Resource Bearer Token authentication.
-- Access-token validation by local JWT validation against a JWKS URI.
+- Access-token validation by local JWT validation against an explicit or discovered JWKS URI.
 - Access-token validation by OAuth 2.0 Token Introspection.
 - OpenID Connect Authorization Code Flow.
 - PKCE with `S256`, enabled by default.
@@ -32,8 +32,6 @@ The current implementation does not yet support:
 - Client Credentials Grant token acquisition.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
-- Discovery-backed JWKS resolution for Protected Resource JWT validation. Configure `endpoints.jwks-uri` explicitly
-  for `protected-resource.token-validation.method: JWT`.
 - Discovery-backed introspection endpoint resolution for Protected Resource introspection. Configure
   `endpoints.introspection-endpoint-uri` explicitly.
 - Refresh single-flight coordination for refresh-token rotation races.
@@ -238,13 +236,12 @@ yet.
 If `issuer` is configured and `endpoints.discovery-uri` is omitted, the provider derives the discovery URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
-Discovery is currently used by Authorization Code Flow when provider endpoint metadata is missing. The discovered
-metadata can provide `authorization_endpoint`, `token_endpoint`, and `jwks_uri`. When Authorization Code Flow is
-configured with explicit Authorization and Token Endpoint URIs instead of discovery, configure `endpoints.jwks-uri` as
-well so ID Token signatures can be verified.
+Discovery is used by Authorization Code Flow when provider endpoint metadata is missing and by Protected Resource JWT
+validation when `endpoints.jwks-uri` is not configured. The discovered metadata can provide `authorization_endpoint`,
+`token_endpoint`, and `jwks_uri`. When Authorization Code Flow is configured with explicit Authorization and Token
+Endpoint URIs instead of discovery, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
-Protected Resource JWT validation still requires explicit `endpoints.jwks-uri`, and Protected Resource introspection
-still requires explicit `endpoints.introspection-endpoint-uri`.
+Protected Resource introspection still requires explicit `endpoints.introspection-endpoint-uri`.
 
 `authorization-code.redirection-endpoint-uri` is not under `endpoints` because it is the client callback endpoint, not
 an OpenID Provider endpoint.
@@ -271,7 +268,9 @@ security:
                 clock-skew: "PT1M"
 ```
 
-`issuer` and `endpoints.jwks-uri` are required. `audience` is required when audience validation is enabled.
+`issuer` or `endpoints.discovery-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
+provider loads the OpenID Provider Configuration and uses its `jwks_uri`. `audience` is required when audience validation
+is enabled.
 
 Audience validation is enabled by default. Disable it only when the deployment intentionally accepts tokens without a
 local audience check.

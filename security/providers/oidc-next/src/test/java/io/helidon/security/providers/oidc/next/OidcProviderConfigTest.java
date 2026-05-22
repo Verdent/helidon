@@ -223,6 +223,12 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("subject-mapping.role-claim-paths"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .subjectMapping(it -> it.roleClaimPaths(List.of("realm_access. roles")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("subject-mapping.role-claim-paths"));
     }
 
     @Test

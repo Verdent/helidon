@@ -150,6 +150,39 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void customPrincipalIdClaimIsRequiredForIntrospection() {
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("principal_id")))), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response has no principal claim");
+    }
+
+    @Test
+    void principalIdClaimMustBeScalarForIntrospection() {
+        responseBody = validResponse(it -> it.setStrings("principal_id", List.of("first-user", "second-user")))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("principal_id")))), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response has no principal claim");
+    }
+
+    @Test
+    void scopeGrantsCanBeDisabledForIntrospection() {
+        responseBody = validResponse(it -> it.setStrings("scp", List.of("resource.audit", "resource.export")))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping
+                        .scopeClaimPaths(List.of("scope", "scp"))
+                        .scopeGrantsEnabled(false))), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().grantsByType("scope").isEmpty(), is(true));
+    }
+
+    @Test
     void bearerEvidenceWinsOverAuthorizationCodeFlowForIntrospection() {
         AuthenticationResponse response = provider().authenticate(
                 OidcProviderTest.request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(),

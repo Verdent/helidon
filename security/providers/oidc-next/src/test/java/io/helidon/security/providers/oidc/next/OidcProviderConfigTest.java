@@ -53,6 +53,7 @@ class OidcProviderConfigTest {
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
         OidcCookieConfig cookies = OidcCookieConfig.create();
+        OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -66,6 +67,12 @@ class OidcProviderConfigTest {
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
         assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub", "username", "client_id")));
+        assertThat(subjectMapping.principalNameClaimPaths(), is(List.of("preferred_username", "username")));
+        assertThat(subjectMapping.roleClaimPaths(), is(List.of("groups")));
+        assertThat(subjectMapping.scopeClaimPaths(), is(List.of("scope")));
+        assertThat(subjectMapping.scopeGrantsEnabled(), is(true));
+        assertThat(tenantConfig.subjectMapping().principalIdClaimPaths(), is(subjectMapping.principalIdClaimPaths()));
         assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
         assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
         assertThat(OidcPkceMethod.values().length, is(1));
@@ -89,14 +96,20 @@ class OidcProviderConfigTest {
     @Test
     void providerConfigCanBeReadFromConfig() {
         Config config = Config.builder()
-                .sources(ConfigSources.create(Map.of(
-                        "tenants.default.issuer", ISSUER.toString(),
-                        "tenants.default.client-id", "client-id",
-                        "tenants.default.client-secret", "client-secret-value",
-                        "tenants.default.endpoints.jwks-uri", JWKS_URI.toString(),
-                        "tenants.default.protected-resource.enabled", "true",
-                        "tenants.default.protected-resource.token-validation.method", "JWT",
-                        "tenants.default.protected-resource.token-validation.audience", AUDIENCE)))
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.issuer", ISSUER.toString()),
+                        Map.entry("tenants.default.client-id", "client-id"),
+                        Map.entry("tenants.default.client-secret", "client-secret-value"),
+                        Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
+                        Map.entry("tenants.default.protected-resource.enabled", "true"),
+                        Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
+                        Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
+                        Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
+                        Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
+                        Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
+                        Map.entry("tenants.default.subject-mapping.role-claim-paths.0", "realm_access.roles"),
+                        Map.entry("tenants.default.subject-mapping.scope-claim-paths.0", "scp"),
+                        Map.entry("tenants.default.subject-mapping.scope-grants-enabled", "false"))))
                 .build();
 
         OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
@@ -110,6 +123,11 @@ class OidcProviderConfigTest {
         assertThat(tenant.protectedResource().tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(tenant.protectedResource().tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
+        assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
+        assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
+        assertThat(tenant.subjectMapping().scopeClaimPaths(), is(List.of("scp")));
+        assertThat(tenant.subjectMapping().scopeGrantsEnabled(), is(false));
     }
 
     @Test
@@ -184,6 +202,27 @@ class OidcProviderConfigTest {
                                       .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("{tenant}"));
+    }
+
+    @Test
+    void subjectMappingConfigRejectsInvalidClaimPaths() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .subjectMapping(it -> it.principalIdClaimPaths(List.of()))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("subject-mapping.principal-id-claim-paths"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .subjectMapping(it -> it.principalIdClaimPaths(List.of(" ")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("subject-mapping.principal-id-claim-paths"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .subjectMapping(it -> it.roleClaimPaths(List.of("realm_access..roles")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("subject-mapping.role-claim-paths"));
     }
 
     @Test
@@ -740,6 +779,10 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
         assertThat(metadata, containsString("path-template"));
+        assertThat(metadata, containsString("subject-mapping"));
+        assertThat(metadata, containsString("principal-id-claim-paths"));
+        assertThat(metadata, containsString("role-claim-paths"));
+        assertThat(metadata, containsString("scope-grants-enabled"));
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant() {

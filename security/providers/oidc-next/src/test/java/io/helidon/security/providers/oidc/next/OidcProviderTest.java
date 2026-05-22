@@ -36,6 +36,7 @@ import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
+import io.helidon.security.Role;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
@@ -414,6 +415,83 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationResultCookieUsesCustomSubjectMapping() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+                .subjectMapping(mapping -> mapping
+                        .principalIdClaimPaths(List.of("tenant_user"))
+                        .principalNameClaimPaths(List.of("display_name"))
+                        .roleClaimPaths(List.of("realm_access.roles"))
+                        .scopeGrantsEnabled(false)));
+        OidcProvider provider = provider(tenant);
+        String idToken = signedIdToken(it -> it
+                .addPayloadClaim("tenant_user", "tenant-user-id")
+                .addPayloadClaim("display_name", "Tenant User")
+                .addPayloadClaim("realm_access", JsonObject.builder()
+                        .setStrings("roles", List.of("app-admin", "app-auditor"))
+                        .build()));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        Instant now = Instant.now();
+        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        now,
+                        now.plusSeconds(3600),
+                        now.plusSeconds(600)));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is("tenant-user-id"));
+        assertThat(subject.principal().getName(), is("Tenant User"));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                   is(List.of("app-admin", "app-auditor")));
+        assertThat(subject.grantsByType("scope").isEmpty(), is(true));
+    }
+
+    @Test
+    void localAuthenticationResultCookieUsesConfiguredIdTokenScopeClaims() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+                .subjectMapping(mapping -> mapping.scopeClaimPaths(List.of("id_scopes"))));
+        OidcProvider provider = provider(tenant);
+        String idToken = signedIdToken(it -> it
+                .preferredUsername(USERNAME)
+                .addPayloadClaim("id_scopes", List.of("app.read", "app.write")));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        Instant now = Instant.now();
+        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        now,
+                        now.plusSeconds(3600),
+                        now.plusSeconds(600)));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("openid", "profile", "app.read", "app.write")));
+    }
+
+    @Test
     void localAuthenticationResultCookieAuthenticatesCombinedProtectedResourceAndCodeFlowPolicy() {
         OidcTenantConfig tenant = authorizationCodeAndProtectedResourceTenant();
         OidcProvider provider = provider(tenant);
@@ -594,7 +672,13 @@ class OidcProviderTest {
     }
 
     private static OidcTenantConfig authorizationCodeTenant(Consumer<OidcAuthorizationCodeConfig.Builder> customizer) {
-        return OidcTenantConfig.builder()
+        return authorizationCodeTenant(customizer, builder -> { });
+    }
+
+    private static OidcTenantConfig authorizationCodeTenant(
+            Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
+            Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -603,10 +687,11 @@ class OidcProviderTest {
                     it.enabled(true)
                             .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                             .scopes(List.of("openid", "profile"));
-                    customizer.accept(it);
+                    authorizationCodeCustomizer.accept(it);
                 })
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
-                .buildPrototype();
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"));
+        tenantCustomizer.accept(builder);
+        return builder.buildPrototype();
     }
 
     private static OidcTenantConfig authorizationCodeAndProtectedResourceTenant() {

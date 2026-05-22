@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.http.HeaderValues;
+import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -132,6 +133,33 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(credential.getExpTime().isPresent(), is(true));
         assertThat(credential.getTokenInstance(Jwt.class).isPresent(), is(true));
         assertThat(credential.getTokenInstance(SignedJwt.class).isPresent(), is(true));
+    }
+
+    @Test
+    void customSubjectMappingAppliesToJwtAccessToken() {
+        String token = signedToken(it -> it
+                .addPayloadClaim("tenant_user", "tenant-user-id")
+                .addPayloadClaim("display_name", "Tenant User")
+                .addPayloadClaim("realm_access", JsonObject.builder()
+                        .setStrings("roles", List.of("realm-admin", "realm-auditor"))
+                        .build())
+                .addPayloadClaim("scp", List.of("message:read", "message:write")));
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping
+                        .principalIdClaimPaths(List.of("tenant_user"))
+                        .principalNameClaimPaths(List.of("display_name"))
+                        .roleClaimPaths(List.of("realm_access.roles"))
+                        .scopeClaimPaths(List.of("scp")))), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is("tenant-user-id"));
+        assertThat(subject.principal().getName(), is("Tenant User"));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                   is(List.of("realm-admin", "realm-auditor")));
+        assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("message:read", "message:write")));
     }
 
     @Test
@@ -380,21 +408,28 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured, URI jwksUri) {
+        return provider(audienceValidationEnabled, audienceConfigured, jwksUri, tenant -> { });
+    }
+
+    private static OidcProvider provider(boolean audienceValidationEnabled,
+                                         boolean audienceConfigured,
+                                         URI jwksUri,
+                                         Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(jwksUri)
+                        .tlsRequired(false))
+                .protectedResource(it -> it.enabled(true)
+                        .tokenValidation(validation -> {
+                            validation.method(OidcTokenValidationMethod.JWT)
+                                    .audienceValidationEnabled(audienceValidationEnabled);
+                            if (audienceConfigured) {
+                                validation.audience(AUDIENCE);
+                            }
+                        }));
+        tenantCustomizer.accept(tenantBuilder);
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", OidcTenantConfig.builder()
-                                                   .issuer(ISSUER)
-                                                   .endpoints(it -> it.jwksUri(jwksUri)
-                                                           .tlsRequired(false))
-                                                   .protectedResource(it -> it.enabled(true)
-                                                           .tokenValidation(validation -> {
-                                                               validation.method(OidcTokenValidationMethod.JWT)
-                                                                       .audienceValidationEnabled(
-                                                                               audienceValidationEnabled);
-                                                               if (audienceConfigured) {
-                                                                   validation.audience(AUDIENCE);
-                                                               }
-                                                           }))
-                                                   .buildPrototype())
+                                           .putTenant("default", tenantBuilder.buildPrototype())
                                            .buildPrototype());
     }
 

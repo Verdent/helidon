@@ -114,7 +114,7 @@ final class OidcAuthenticationOrchestrator {
         Optional<String> removalCookie = localAuthenticationRemovalCookie(refreshResult, readyTenant);
         return refreshResult.authenticationResult()
                 .map(result -> LocalAuthentication.response(OidcResponseFactory.localAuthenticationSucceeded(
-                        OidcSubjectMapper.map(result),
+                        OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
                         authenticationCookie(refreshResult, result, readyTenant))))
                 .orElseGet(() -> LocalAuthentication.empty(removalCookie));
     }
@@ -193,7 +193,8 @@ final class OidcAuthenticationOrchestrator {
         OidcTokenValidationResult validationResult = validator.validate(bearerToken, tenantContext);
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(
-                    OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow()));
+                    OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),
+                                          tenantContext.subjectMapping()));
         }
         validationResult.cause()
                 .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,

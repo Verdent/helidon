@@ -85,6 +85,15 @@ final class OidcConfigSupport {
             if (!target.enabled()) {
                 return;
             }
+            OidcSubjectMappingConfig subjectMapping = target.subjectMapping();
+            validateClaimPaths(subjectMapping.principalIdClaimPaths(),
+                               "subject-mapping.principal-id-claim-paths",
+                               true);
+            validateClaimPaths(subjectMapping.principalNameClaimPaths(),
+                               "subject-mapping.principal-name-claim-paths",
+                               false);
+            validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
+            validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
@@ -136,6 +145,22 @@ final class OidcConfigSupport {
         return Arrays.stream(pathTemplate.split("/"))
                 .filter(segment -> !segment.isEmpty())
                 .toList();
+    }
+
+    private static void validateClaimPaths(List<String> paths, String configKey, boolean required) {
+        if (required && paths.isEmpty()) {
+            throw new IllegalArgumentException(configKey + " must not be empty");
+        }
+        paths.stream()
+                .filter(path -> path.isBlank()
+                        || !path.equals(path.strip())
+                        || path.contains("..")
+                        || path.startsWith(".")
+                        || path.endsWith("."))
+                .findFirst()
+                .ifPresent(path -> {
+                    throw new IllegalArgumentException(configKey + " contains invalid claim path: " + path);
+                });
     }
 
     private static void validateAuthorizationCode(OidcTenantConfig.BuilderBase<?, ?> tenant,

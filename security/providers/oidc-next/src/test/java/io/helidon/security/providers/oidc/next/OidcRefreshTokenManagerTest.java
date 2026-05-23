@@ -77,6 +77,7 @@ class OidcRefreshTokenManagerTest {
 
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static final AtomicReference<RecordedRequest> RECORDED_INTROSPECTION_REQUEST = new AtomicReference<>();
+    private static final AtomicReference<String> RECORDED_USER_INFO_AUTHORIZATION = new AtomicReference<>();
 
     private static JwkKeys signKeys;
     private static String verifyJwkSet;
@@ -84,6 +85,8 @@ class OidcRefreshTokenManagerTest {
     private static volatile String responseBody;
     private static volatile int introspectionResponseStatus;
     private static volatile String introspectionResponseBody;
+    private static volatile int userInfoResponseStatus;
+    private static volatile String userInfoResponseBody;
 
     @BeforeAll
     static void initClass() {
@@ -97,6 +100,7 @@ class OidcRefreshTokenManagerTest {
     static void routing(HttpRouting.Builder routing) {
         routing.post("/token", OidcRefreshTokenManagerTest::handleTokenEndpoint);
         routing.post("/introspect", OidcRefreshTokenManagerTest::handleIntrospectionEndpoint);
+        routing.get("/userinfo", OidcRefreshTokenManagerTest::handleUserInfoEndpoint);
         routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(verifyJwkSet));
     }
@@ -107,8 +111,11 @@ class OidcRefreshTokenManagerTest {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
         introspectionResponseStatus = 200;
         introspectionResponseBody = activeIntrospectionResponse().toString();
+        userInfoResponseStatus = 200;
+        userInfoResponseBody = userInfoResponse(SUBJECT, "refetched-user").toString();
         RECORDED_REQUEST.set(null);
         RECORDED_INTROSPECTION_REQUEST.set(null);
+        RECORDED_USER_INFO_AUTHORIZATION.set(null);
     }
 
     @Test
@@ -431,6 +438,58 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void refreshRequeriesUserInfoAndStoresRefreshedUserInfo(URI serverUri) {
+        OidcTenantConfig tenant = tenantWithUserInfo(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1),
+                                                                        OLD_REFRESH_TOKEN,
+                                                                        JsonObject.builder()
+                                                                                .set("sub", SUBJECT)
+                                                                                .set("preferred_username",
+                                                                                     "old-userinfo-user")
+                                                                                .build(),
+                                                                        it -> { });
+
+        AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().getName(), is("refetched-user"));
+        assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is("Bearer " + REFRESHED_ACCESS_TOKEN));
+        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
+                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
+                                                            .getFirst());
+        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
+                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
+                .orElseThrow();
+        assertThat(stored.userInfo().orElseThrow().stringValue("preferred_username").orElse(""),
+                   is("refetched-user"));
+    }
+
+    @Test
+    void invalidRefreshedUserInfoClearsExpiredLocalAuthentication(URI serverUri) {
+        userInfoResponseBody = userInfoResponse("other-subject", "refetched-user").toString();
+        OidcTenantConfig tenant = tenantWithUserInfo(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1),
+                                                                        OLD_REFRESH_TOKEN,
+                                                                        JsonObject.builder()
+                                                                                .set("sub", SUBJECT)
+                                                                                .build(),
+                                                                        it -> { });
+
+        AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
+
+        assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
+        assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is("Bearer " + REFRESHED_ACCESS_TOKEN));
+    }
+
+    @Test
     void refreshedIdTokenShorterExpirationShortensLocalAuthentication(URI serverUri) {
         Instant now = Instant.now();
         Instant refreshedExpiration = now.plusSeconds(120).truncatedTo(ChronoUnit.SECONDS);
@@ -651,6 +710,13 @@ class OidcRefreshTokenManagerTest {
                 .send(introspectionResponseBody);
     }
 
+    private static void handleUserInfoEndpoint(ServerRequest request, ServerResponse response) {
+        RECORDED_USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
+        response.status(userInfoResponseStatus)
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(userInfoResponseBody);
+    }
+
     private static OidcTenantConfig tenant(URI serverUri) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -704,6 +770,23 @@ class OidcRefreshTokenManagerTest {
                 .buildPrototype();
     }
 
+    private static OidcTenantConfig tenantWithUserInfo(URI serverUri) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(serverUri.resolve("token"))
+                        .userInfoEndpointUri(serverUri.resolve("userinfo"))
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .buildPrototype();
+    }
+
     private static AuthenticationResponse authenticate(OidcTenantConfig tenant, SetCookie localAuthenticationCookie) {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenant)
@@ -741,6 +824,22 @@ class OidcRefreshTokenManagerTest {
                                                        Instant accessTokenExpiresAt,
                                                        String refreshToken,
                                                        Consumer<Jwt.Builder> idTokenCustomizer) {
+        return localAuthenticationCookie(tenant,
+                                         createdAt,
+                                         expiresAt,
+                                         accessTokenExpiresAt,
+                                         refreshToken,
+                                         null,
+                                         idTokenCustomizer);
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       Instant createdAt,
+                                                       Instant expiresAt,
+                                                       Instant accessTokenExpiresAt,
+                                                       String refreshToken,
+                                                       JsonObject userInfo,
+                                                       Consumer<Jwt.Builder> idTokenCustomizer) {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create(tenant)
@@ -751,6 +850,7 @@ class OidcRefreshTokenManagerTest {
                         "Bearer",
                         refreshToken,
                         "openid profile",
+                        userInfo,
                         createdAt,
                         expiresAt,
                         accessTokenExpiresAt));
@@ -840,6 +940,13 @@ class OidcRefreshTokenManagerTest {
                 .set("exp", now.plus(1, ChronoUnit.HOURS).getEpochSecond())
                 .set("iat", now.minus(1, ChronoUnit.MINUTES).getEpochSecond())
                 .set("token_type", "Bearer")
+                .build();
+    }
+
+    private static JsonObject userInfoResponse(String subject, String username) {
+        return JsonObject.builder()
+                .set("sub", subject)
+                .set("preferred_username", username)
                 .build();
     }
 

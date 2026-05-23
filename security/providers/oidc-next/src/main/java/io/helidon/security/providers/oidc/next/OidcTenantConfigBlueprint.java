@@ -78,7 +78,7 @@ interface OidcTenantConfigBlueprint {
      * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server.
      * <p>
      * This client is used for well-known metadata requests, JSON Web Key Set loading, Token Endpoint
-     * requests, and introspection.
+     * requests, introspection, and UserInfo requests.
      *
      * @return WebClient configuration
      */
@@ -118,6 +118,14 @@ interface OidcTenantConfigBlueprint {
      */
     @Option.Configured
     Optional<OidcLogoutConfig> logout();
+
+    /**
+     * UserInfo request configuration for Authorization Code Flow local authentication.
+     *
+     * @return UserInfo request configuration
+     */
+    @Option.Configured
+    Optional<OidcUserInfoConfig> userInfo();
 
     /**
      * Token transport configuration.

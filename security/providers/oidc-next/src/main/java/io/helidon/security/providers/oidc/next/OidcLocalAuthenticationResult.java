@@ -21,6 +21,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import io.helidon.json.JsonObject;
+
 final class OidcLocalAuthenticationResult {
     private final String tenantId;
     private final OidcValidatedIdToken idToken;
@@ -28,6 +30,7 @@ final class OidcLocalAuthenticationResult {
     private final String tokenType;
     private final String refreshToken;
     private final String scope;
+    private final JsonObject userInfo;
     private final Instant createdAt;
     private final Instant expiresAt;
     private final Instant accessTokenExpiresAt;
@@ -38,6 +41,7 @@ final class OidcLocalAuthenticationResult {
                                           String tokenType,
                                           String refreshToken,
                                           String scope,
+                                          JsonObject userInfo,
                                           Instant createdAt,
                                           Instant expiresAt,
                                           Instant accessTokenExpiresAt) {
@@ -47,6 +51,7 @@ final class OidcLocalAuthenticationResult {
         this.tokenType = tokenType;
         this.refreshToken = refreshToken;
         this.scope = scope;
+        this.userInfo = userInfo;
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;
         this.accessTokenExpiresAt = accessTokenExpiresAt;
@@ -66,6 +71,16 @@ final class OidcLocalAuthenticationResult {
                                                 List<String> requestedScopes,
                                                 Instant createdAt,
                                                 Duration maxLifetime) {
+        return create(tenantId, tokenResponse, idToken, requestedScopes, Optional.empty(), createdAt, maxLifetime);
+    }
+
+    static OidcLocalAuthenticationResult create(String tenantId,
+                                                OidcTokenResponse tokenResponse,
+                                                OidcValidatedIdToken idToken,
+                                                List<String> requestedScopes,
+                                                Optional<JsonObject> userInfo,
+                                                Instant createdAt,
+                                                Duration maxLifetime) {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
         Instant maxExpiresAt = createdAt.plus(maxLifetime);
         Instant expiresAt = idTokenExpiresAt.isBefore(maxExpiresAt) ? idTokenExpiresAt : maxExpiresAt;
@@ -75,6 +90,7 @@ final class OidcLocalAuthenticationResult {
                       tokenResponse.tokenType(),
                       tokenResponse.refreshToken().orElse(null),
                       tokenResponse.scope().or(() -> requestedScope(requestedScopes)).orElse(null),
+                      userInfo.orElse(null),
                       createdAt,
                       expiresAt,
                       tokenResponse.expiresIn().map(createdAt::plusSeconds).orElse(null));
@@ -89,12 +105,35 @@ final class OidcLocalAuthenticationResult {
                                                 Instant createdAt,
                                                 Instant expiresAt,
                                                 Instant accessTokenExpiresAt) {
+        return create(tenantId,
+                      idToken,
+                      accessToken,
+                      tokenType,
+                      refreshToken,
+                      scope,
+                      null,
+                      createdAt,
+                      expiresAt,
+                      accessTokenExpiresAt);
+    }
+
+    static OidcLocalAuthenticationResult create(String tenantId,
+                                                OidcValidatedIdToken idToken,
+                                                String accessToken,
+                                                String tokenType,
+                                                String refreshToken,
+                                                String scope,
+                                                JsonObject userInfo,
+                                                Instant createdAt,
+                                                Instant expiresAt,
+                                                Instant accessTokenExpiresAt) {
         return new OidcLocalAuthenticationResult(tenantId,
                                                  idToken,
                                                  accessToken,
                                                  tokenType,
                                                  refreshToken,
                                                  scope,
+                                                 userInfo,
                                                  createdAt,
                                                  expiresAt,
                                                  accessTokenExpiresAt);
@@ -122,6 +161,10 @@ final class OidcLocalAuthenticationResult {
 
     Optional<String> scope() {
         return Optional.ofNullable(scope);
+    }
+
+    Optional<JsonObject> userInfo() {
+        return Optional.ofNullable(userInfo);
     }
 
     Instant createdAt() {

@@ -21,6 +21,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
+import io.helidon.json.JsonObject;
+
 final class OidcRefreshTokenManager {
     private static final System.Logger LOGGER = System.getLogger(OidcRefreshTokenManager.class.getName());
 
@@ -111,9 +113,27 @@ final class OidcRefreshTokenManager {
                 idToken = idTokenValidationResult.validatedToken().orElseThrow();
             }
 
+            Optional<JsonObject> userInfo = Optional.empty();
+            if (OidcUserInfoSupport.enabled(tenantContext.tenantConfig())) {
+                userInfo = tenantContext.endpointClient().userInfo(tokenResponse.accessToken());
+                if (userInfo.isEmpty()) {
+                    logFailure("UserInfo Endpoint request failed during refresh", Optional.empty());
+                    return accessTokenExpired(expiresAt, now)
+                            ? RefreshResult.removeLocalAuthentication()
+                            : RefreshResult.authenticated(authenticationResult);
+                }
+                if (!OidcUserInfoSupport.subjectMatches(userInfo.orElseThrow(), idToken)) {
+                    logFailure("UserInfo response is invalid during refresh", Optional.empty());
+                    return accessTokenExpired(expiresAt, now)
+                            ? RefreshResult.removeLocalAuthentication()
+                            : RefreshResult.authenticated(authenticationResult);
+                }
+            }
+
             return RefreshResult.refreshed(refresh(authenticationResult,
                                                  tokenResponse,
                                                  idToken,
+                                                 userInfo,
                                                  now));
         }
 
@@ -127,6 +147,7 @@ final class OidcRefreshTokenManager {
     private OidcLocalAuthenticationResult refresh(OidcLocalAuthenticationResult current,
                                                   OidcTokenResponse tokenResponse,
                                                   OidcValidatedIdToken idToken,
+                                                  Optional<JsonObject> userInfo,
                                                   Instant refreshedAt) {
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
@@ -146,6 +167,7 @@ final class OidcRefreshTokenManager {
                 tokenResponse.scope()
                         .or(() -> current.scope())
                         .orElse(null),
+                userInfo.orElse(null),
                 refreshedAt,
                 idToken.jwt()
                         .expirationTime()

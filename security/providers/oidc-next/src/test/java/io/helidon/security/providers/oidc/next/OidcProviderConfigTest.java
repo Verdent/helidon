@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcProviderConfigTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
-    private static final URI DISCOVERY_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
+    private static final URI WELL_KNOWN_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
@@ -295,12 +295,12 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void jwtValidationRequiresIssuerOrDiscoveryAndJwksOrDiscovery() {
+    void jwtValidationRequiresIssuerOrWellKnownUriAndJwksOrWellKnownUri() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
+        assertThat(thrown.getMessage(), containsString("issuer or well-known-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -309,27 +309,27 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
 
-        OidcTenantConfig derivedDiscoveryTenant = OidcTenantConfig.builder()
+        OidcTenantConfig derivedWellKnownTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
-        assertThat(derivedDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
+        assertThat(derivedWellKnownTenant.endpoints().jwksUri().isEmpty(), is(true));
 
-        OidcTenantConfig explicitDiscoveryTenant = OidcTenantConfig.builder()
+        OidcTenantConfig explicitWellKnownTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
-                .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
+                .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
-        assertThat(explicitDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
+        assertThat(explicitWellKnownTenant.endpoints().jwksUri().isEmpty(), is(true));
 
-        OidcTenantConfig discoveryOnlyTenant = OidcTenantConfig.builder()
-                .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
+        OidcTenantConfig wellKnownOnlyTenant = OidcTenantConfig.builder()
+                .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
-        assertThat(discoveryOnlyTenant.issuer().isEmpty(), is(true));
+        assertThat(wellKnownOnlyTenant.issuer().isEmpty(), is(true));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -349,7 +349,7 @@ class OidcProviderConfigTest {
                                 .audience(AUDIENCE)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
+        assertThat(thrown.getMessage(), containsString("issuer or well-known-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -463,11 +463,11 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void introspectionRejectsDiscoveryOnlyUntilDiscoveryLoadingExists() {
+    void introspectionRejectsWellKnownUriOnlyUntilWellKnownMetadataLoadingExists() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
-                .endpoints(it -> it.discoveryUri(URI.create("https://issuer.example/.well-known/openid-configuration")))
+                .endpoints(it -> it.wellKnownUri(URI.create("https://issuer.example/.well-known/openid-configuration")))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://default")))
                 .buildPrototype());
@@ -687,7 +687,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void authorizationCodeFlowCanUseDiscoveryUriDerivedFromIssuer() {
+    void authorizationCodeFlowCanUseWellKnownUriDerivedFromIssuer() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
@@ -695,7 +695,7 @@ class OidcProviderConfigTest {
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
-        assertThat(tenant.endpoints().discoveryUri().isEmpty(), is(true));
+        assertThat(tenant.endpoints().wellKnownUri().isEmpty(), is(true));
     }
 
     @Test

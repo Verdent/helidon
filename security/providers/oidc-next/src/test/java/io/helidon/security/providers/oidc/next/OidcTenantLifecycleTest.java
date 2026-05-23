@@ -215,7 +215,7 @@ class OidcTenantLifecycleTest {
         assertThat(first.description().orElse(""), is("OIDC tenant is not ready: tenant"));
         assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(second.description().orElse(""),
-                   containsString("token-endpoint-uri or discovery-uri"));
+                   containsString("token-endpoint-uri or well-known-uri"));
         assertThat(attempts.get(), is(2));
     }
 

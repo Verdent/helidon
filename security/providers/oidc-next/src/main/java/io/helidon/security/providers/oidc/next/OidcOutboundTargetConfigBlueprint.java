@@ -42,7 +42,7 @@ interface OidcOutboundTargetConfigBlueprint {
      * If any provider-level outbound target enables Client Credentials Grant, every enabled tenant must satisfy the
      * Client Credentials prerequisites: {@code client-id}, client authentication other than {@code NONE}, a
      * {@code client-secret} for client-secret based authentication, and either {@code endpoints.token-endpoint-uri} or
-     * discovery.
+     * well-known metadata.
      *
      * @return whether Client Credentials Grant is enabled
      */

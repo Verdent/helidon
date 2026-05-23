@@ -77,7 +77,8 @@ interface OidcTenantConfigBlueprint {
     /**
      * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server.
      * <p>
-     * This client is used for discovery, JSON Web Key Set loading, Token Endpoint requests, and introspection.
+     * This client is used for well-known metadata requests, JSON Web Key Set loading, Token Endpoint
+     * requests, and introspection.
      *
      * @return WebClient configuration
      */
@@ -86,7 +87,7 @@ interface OidcTenantConfigBlueprint {
     WebClientConfig webClient();
 
     /**
-     * OpenID Provider endpoint and discovery settings.
+     * OpenID Provider endpoint and well-known metadata settings.
      *
      * @return endpoint configuration
      */

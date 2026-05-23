@@ -39,13 +39,13 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @ServerTest
-class OidcProviderMetadataDiscoveryTest {
+class OidcWellKnownMetadataLoadingTest {
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
     private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final AtomicReference<String> PROVIDER_METADATA = new AtomicReference<>();
-    private static final AtomicReference<String> DISCOVERY_WEBCLIENT_HEADER = new AtomicReference<>();
+    private static final AtomicReference<String> WELL_KNOWN_WEBCLIENT_HEADER = new AtomicReference<>();
 
     private URI issuer;
     private URI authorizationEndpointUri;
@@ -56,7 +56,7 @@ class OidcProviderMetadataDiscoveryTest {
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
-            DISCOVERY_WEBCLIENT_HEADER.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
+            WELL_KNOWN_WEBCLIENT_HEADER.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(PROVIDER_METADATA.get());
         });
@@ -77,11 +77,11 @@ class OidcProviderMetadataDiscoveryTest {
                 .set("userinfo_endpoint", userInfoEndpointUri.toString())
                 .build()
                 .toString());
-        DISCOVERY_WEBCLIENT_HEADER.set("");
+        WELL_KNOWN_WEBCLIENT_HEADER.set("");
     }
 
     @Test
-    void authorizationCodeTenantLoadsDiscoveredEndpoints() {
+    void authorizationCodeTenantLoadsWellKnownMetadataEndpoints() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .clientId("client-id")
@@ -95,16 +95,16 @@ class OidcProviderMetadataDiscoveryTest {
 
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
-        assertThat(context.metadata().discoveryUri(), is(Optional.of(issuer.resolve("/.well-known/openid-configuration"))));
+        assertThat(context.metadata().wellKnownUri(), is(Optional.of(issuer.resolve("/.well-known/openid-configuration"))));
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(authorizationEndpointUri)));
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
-        assertThat(DISCOVERY_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
     @Test
-    void jwtProtectedResourceTenantLoadsJwkSetUriFromDiscovery() {
+    void jwtProtectedResourceTenantLoadsJwkSetUriFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .endpoints(it -> it.tlsRequired(false))
@@ -120,7 +120,7 @@ class OidcProviderMetadataDiscoveryTest {
     }
 
     @Test
-    void targetClientCredentialsGrantTenantLoadsTokenEndpointFromDiscovery() {
+    void targetClientCredentialsGrantTenantLoadsTokenEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .clientId("client-id")
@@ -156,7 +156,7 @@ class OidcProviderMetadataDiscoveryTest {
     }
 
     @Test
-    void jwtProtectedResourceTenantFailsWhenDiscoveredJwkSetUriIsMissing() {
+    void jwtProtectedResourceTenantFailsWhenWellKnownMetadataJwkSetUriIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .build()

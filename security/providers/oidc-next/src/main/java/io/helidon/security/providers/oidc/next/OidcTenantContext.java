@@ -24,12 +24,7 @@ final class OidcTenantContext {
     private final String tenantId;
     private final OidcTenantConfig tenantConfig;
     private final OidcTenantState state;
-    private final Optional<OidcEndpointPolicy> endpointPolicy;
-    private final OidcProviderMetadata metadata;
-    private final OidcEndpointClient endpointClient;
-    private final OidcJwkSetManager jwkSetManager;
-    private final OidcCookieStateHandler cookieStateHandler;
-    private final WebClient webClient;
+    private final Optional<RuntimeResources> runtimeResources;
 
     private OidcTenantContext(String tenantId,
                               OidcTenantConfig tenantConfig,
@@ -39,21 +34,9 @@ final class OidcTenantContext {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.state = state;
-        if (state == OidcTenantState.READY) {
-            this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
-            this.metadata = readyMetadata;
-            this.webClient = readyWebClient;
-            this.endpointClient = new OidcEndpointClient(tenantConfig, metadata, webClient);
-            this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata, webClient);
-            this.cookieStateHandler = OidcCookieStateHandler.create(tenantConfig);
-        } else {
-            this.endpointPolicy = Optional.empty();
-            this.metadata = null;
-            this.endpointClient = null;
-            this.jwkSetManager = null;
-            this.cookieStateHandler = null;
-            this.webClient = null;
-        }
+        this.runtimeResources = state == OidcTenantState.READY
+                ? Optional.of(RuntimeResources.create(tenantId, tenantConfig, readyMetadata, readyWebClient))
+                : Optional.empty();
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
@@ -107,42 +90,37 @@ final class OidcTenantContext {
     }
 
     OidcProviderMetadata metadata() {
-        requireReady();
-        return metadata;
+        return runtimeResources().metadata();
     }
 
     OidcEndpointClient endpointClient() {
-        requireReady();
-        return endpointClient;
+        return runtimeResources().endpointClient();
     }
 
     OidcJwkSetManager jwkSetManager() {
-        requireReady();
-        return jwkSetManager;
+        return runtimeResources().jwkSetManager();
     }
 
     WebClient webClient() {
-        requireReady();
-        return webClient;
+        return runtimeResources().webClient();
     }
 
     OidcTokenValidationConfig tokenValidation() {
-        requireReady();
+        runtimeResources();
         return tenantConfig.protectedResource()
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
     }
 
     OidcCookieStateHandler cookieStateHandler() {
-        requireReady();
-        return cookieStateHandler;
+        return runtimeResources().cookieStateHandler();
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
         if (!ready()) {
             return Optional.empty();
         }
-        return endpointPolicy;
+        return runtimeResources().endpointPolicy();
     }
 
     OidcTokenTransportConfig tokenTransport() {
@@ -153,9 +131,27 @@ final class OidcTenantContext {
         return tenantConfig.subjectMapping();
     }
 
-    private void requireReady() {
-        if (!ready()) {
-            throw new IllegalStateException("OIDC tenant runtime resources are available only when tenant is ready");
+    private RuntimeResources runtimeResources() {
+        return runtimeResources.orElseThrow(() -> new IllegalStateException(
+                "OIDC tenant runtime resources are available only when tenant is ready"));
+    }
+
+    private record RuntimeResources(Optional<OidcEndpointPolicy> endpointPolicy,
+                                    OidcProviderMetadata metadata,
+                                    OidcEndpointClient endpointClient,
+                                    OidcJwkSetManager jwkSetManager,
+                                    OidcCookieStateHandler cookieStateHandler,
+                                    WebClient webClient) {
+        private static RuntimeResources create(String tenantId,
+                                               OidcTenantConfig tenantConfig,
+                                               OidcProviderMetadata metadata,
+                                               WebClient webClient) {
+            return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
+                                        metadata,
+                                        new OidcEndpointClient(tenantConfig, metadata, webClient),
+                                        OidcJwkSetManager.create(tenantId, metadata, webClient),
+                                        OidcCookieStateHandler.create(tenantConfig),
+                                        webClient);
         }
     }
 }

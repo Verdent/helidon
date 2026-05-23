@@ -55,9 +55,7 @@ final class OidcRefreshTokenManager {
 
         Optional<String> refreshToken = authenticationResult.refreshToken();
         if (refreshToken.isEmpty()) {
-            return accessTokenExpired(expiresAt, now)
-                    ? RefreshResult.removeLocalAuthentication()
-                    : RefreshResult.authenticated(authenticationResult);
+            return keepOrRemoveLocalAuthentication(authenticationResult, expiresAt, now);
         }
 
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
@@ -65,50 +63,50 @@ final class OidcRefreshTokenManager {
         if (tokenResult.succeeded()) {
             OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
             if (tokenResponse.expiresIn().isEmpty()) {
-                LOGGER.log(System.Logger.Level.DEBUG,
-                           "Token Endpoint refresh response did not include expires_in");
-                return accessTokenExpired(expiresAt, now)
-                        ? RefreshResult.removeLocalAuthentication()
-                        : RefreshResult.authenticated(authenticationResult);
+                return refreshFailure(authenticationResult,
+                                      expiresAt,
+                                      now,
+                                      "Token Endpoint refresh response did not include expires_in",
+                                      Optional.empty());
             }
             Optional<OidcTokenValidationMethod> validationMethod = tenantContext.tokenValidation().method();
             if (validationMethod.isPresent()) {
                 OidcAccessTokenValidator accessTokenValidator = accessTokenValidators.get(
                         validationMethod.orElseThrow());
                 if (accessTokenValidator == null) {
-                    logFailure("Refreshed access token validation is not implemented for method: "
-                                       + validationMethod.orElseThrow(),
-                               Optional.empty());
-                    return accessTokenExpired(expiresAt, now)
-                            ? RefreshResult.removeLocalAuthentication()
-                            : RefreshResult.authenticated(authenticationResult);
+                    return refreshFailure(authenticationResult,
+                                          expiresAt,
+                                          now,
+                                          "Refreshed access token validation is not implemented for method: "
+                                                  + validationMethod.orElseThrow(),
+                                          Optional.empty());
                 }
-                OidcTokenValidationResult accessTokenValidationResult =
+                OidcValidationResult<OidcValidatedAccessToken> accessTokenValidationResult =
                         accessTokenValidator.validate(tokenResponse.accessToken(), tenantContext);
                 if (!accessTokenValidationResult.succeeded()) {
-                    logFailure(accessTokenValidationResult.errorDescription()
-                                       .orElse("Refreshed access token validation failed"),
-                               accessTokenValidationResult.cause());
-                    return accessTokenExpired(expiresAt, now)
-                            ? RefreshResult.removeLocalAuthentication()
-                            : RefreshResult.authenticated(authenticationResult);
+                    return refreshFailure(authenticationResult,
+                                          expiresAt,
+                                          now,
+                                          accessTokenValidationResult.errorDescription()
+                                                  .orElse("Refreshed access token validation failed"),
+                                          accessTokenValidationResult.cause());
                 }
             }
 
             OidcValidatedIdToken idToken = authenticationResult.idToken();
             Optional<String> refreshedIdToken = tokenResponse.idToken();
             if (refreshedIdToken.isPresent()) {
-                OidcIdTokenValidationResult idTokenValidationResult =
+                OidcValidationResult<OidcValidatedIdToken> idTokenValidationResult =
                         idTokenValidator.validateRefresh(refreshedIdToken.orElseThrow(),
                                                          tenantContext,
                                                          authenticationResult.idToken());
                 if (!idTokenValidationResult.succeeded()) {
-                    logFailure(idTokenValidationResult.errorDescription()
-                                       .orElse("Refreshed ID Token validation failed"),
-                               idTokenValidationResult.cause());
-                    return accessTokenExpired(expiresAt, now)
-                            ? RefreshResult.removeLocalAuthentication()
-                            : RefreshResult.authenticated(authenticationResult);
+                    return refreshFailure(authenticationResult,
+                                          expiresAt,
+                                          now,
+                                          idTokenValidationResult.errorDescription()
+                                                  .orElse("Refreshed ID Token validation failed"),
+                                          idTokenValidationResult.cause());
                 }
                 idToken = idTokenValidationResult.validatedToken().orElseThrow();
             }
@@ -117,16 +115,18 @@ final class OidcRefreshTokenManager {
             if (OidcUserInfoSupport.enabled(tenantContext.tenantConfig())) {
                 userInfo = tenantContext.endpointClient().userInfo(tokenResponse.accessToken());
                 if (userInfo.isEmpty()) {
-                    logFailure("UserInfo Endpoint request failed during refresh", Optional.empty());
-                    return accessTokenExpired(expiresAt, now)
-                            ? RefreshResult.removeLocalAuthentication()
-                            : RefreshResult.authenticated(authenticationResult);
+                    return refreshFailure(authenticationResult,
+                                          expiresAt,
+                                          now,
+                                          "UserInfo Endpoint request failed during refresh",
+                                          Optional.empty());
                 }
                 if (!OidcUserInfoSupport.subjectMatches(userInfo.orElseThrow(), idToken)) {
-                    logFailure("UserInfo response is invalid during refresh", Optional.empty());
-                    return accessTokenExpired(expiresAt, now)
-                            ? RefreshResult.removeLocalAuthentication()
-                            : RefreshResult.authenticated(authenticationResult);
+                    return refreshFailure(authenticationResult,
+                                          expiresAt,
+                                          now,
+                                          "UserInfo response is invalid during refresh",
+                                          Optional.empty());
                 }
             }
 
@@ -142,6 +142,23 @@ final class OidcRefreshTokenManager {
             return RefreshResult.removeLocalAuthentication();
         }
         return RefreshResult.authenticated(authenticationResult);
+    }
+
+    private RefreshResult refreshFailure(OidcLocalAuthenticationResult current,
+                                         Instant expiresAt,
+                                         Instant now,
+                                         String description,
+                                         Optional<Throwable> cause) {
+        logFailure(description, cause);
+        return keepOrRemoveLocalAuthentication(current, expiresAt, now);
+    }
+
+    private RefreshResult keepOrRemoveLocalAuthentication(OidcLocalAuthenticationResult current,
+                                                          Instant expiresAt,
+                                                          Instant now) {
+        return accessTokenExpired(expiresAt, now)
+                ? RefreshResult.removeLocalAuthentication()
+                : RefreshResult.authenticated(current);
     }
 
     private OidcLocalAuthenticationResult refresh(OidcLocalAuthenticationResult current,

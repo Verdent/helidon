@@ -221,15 +221,14 @@ final class OidcSubjectMapper {
     }
 
     private static Optional<String> firstClaimValue(JsonObject claims, List<String> claimPaths) {
-        return claimPaths.stream()
-                .map(claimPath -> claimValue(claims, claimPath))
-                .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValue(jsonValue).stream())
-                .filter(value -> !value.isBlank())
-                .findFirst();
+        return firstClaimValue(claims::value, claimPaths);
     }
 
     private static Optional<String> firstClaimValue(Map<String, JsonValue> claims, List<String> claimPaths) {
+        return firstClaimValue(name -> Optional.ofNullable(claims.get(name)), claimPaths);
+    }
+
+    private static Optional<String> firstClaimValue(ClaimSource claims, List<String> claimPaths) {
         return claimPaths.stream()
                 .map(claimPath -> claimValue(claims, claimPath))
                 .flatMap(Optional::stream)
@@ -264,18 +263,16 @@ final class OidcSubjectMapper {
     }
 
     private static List<String> claimValues(JsonObject claims, List<String> claimPaths, boolean splitStrings) {
-        return claimPaths.stream()
-                .map(claimPath -> claimValue(claims, claimPath))
-                .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValues(jsonValue, splitStrings))
-                .filter(value -> !value.isBlank())
-                .distinct()
-                .toList();
+        return claimValues(claims::value, claimPaths, splitStrings);
     }
 
     private static List<String> claimValues(Map<String, JsonValue> claims,
                                             List<String> claimPaths,
                                             boolean splitStrings) {
+        return claimValues(name -> Optional.ofNullable(claims.get(name)), claimPaths, splitStrings);
+    }
+
+    private static List<String> claimValues(ClaimSource claims, List<String> claimPaths, boolean splitStrings) {
         return claimPaths.stream()
                 .map(claimPath -> claimValue(claims, claimPath))
                 .flatMap(Optional::stream)
@@ -285,21 +282,12 @@ final class OidcSubjectMapper {
                 .toList();
     }
 
-    private static Optional<JsonValue> claimValue(JsonObject claims, String claimPath) {
+    private static Optional<JsonValue> claimValue(ClaimSource claims, String claimPath) {
         String[] segments = claimPath.split("\\.");
         if (segments.length == 0 || segments[0].isBlank()) {
             return Optional.empty();
         }
         return claims.value(segments[0])
-                .flatMap(value -> claimValue(value, segments));
-    }
-
-    private static Optional<JsonValue> claimValue(Map<String, JsonValue> claims, String claimPath) {
-        String[] segments = claimPath.split("\\.");
-        if (segments.length == 0 || segments[0].isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(claims.get(segments[0]))
                 .flatMap(value -> claimValue(value, segments));
     }
 
@@ -346,5 +334,10 @@ final class OidcSubjectMapper {
                                         .name(scope)
                                         .type("scope")
                                         .build());
+    }
+
+    @FunctionalInterface
+    private interface ClaimSource {
+        Optional<JsonValue> value(String name);
     }
 }

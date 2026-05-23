@@ -43,58 +43,58 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     }
 
     @Override
-    public OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
+    public OidcValidationResult<OidcValidatedAccessToken> validate(String token, OidcTenantContext tenantContext) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token is not a valid signed JWT", e);
+            return OidcValidationResult.failure("Bearer Token is not a valid signed JWT", e);
         }
 
         Jwt jwt;
         try {
             jwt = signedJwt.getJwt();
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token JWT payload is invalid", e);
+            return OidcValidationResult.failure("Bearer Token JWT payload is invalid", e);
         }
 
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
         Errors headerErrors = headerValidator(tokenValidation.allowedAlgorithms()).validate(jwt);
         if (!headerErrors.isValid()) {
-            return OidcTokenValidationResult.failure("Bearer Token JWS header is invalid");
+            return OidcValidationResult.failure("Bearer Token JWS header is invalid");
         }
 
         try {
             Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
-                return OidcTokenValidationResult.failure("Bearer Token signature is invalid");
+                return OidcValidationResult.failure("Bearer Token signature is invalid");
             }
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token signature keys are unavailable", e);
+            return OidcValidationResult.failure("Bearer Token signature keys are unavailable", e);
         }
 
         Optional<String> expectedIssuer = tenantContext.metadata()
                 .issuer()
                 .map(Object::toString);
         if (expectedIssuer.isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
+            return OidcValidationResult.failure("Bearer Token JWT validation is not configured");
         }
         Optional<String> expectedAudience = tokenValidation.audience();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token JWT validation is not configured");
+            return OidcValidationResult.failure("Bearer Token JWT validation is not configured");
         }
 
         Errors claimErrors = claimValidator(tokenValidation,
                                             expectedIssuer.orElseThrow(),
                                             expectedAudience).validate(jwt);
         if (!claimErrors.isValid()) {
-            return OidcTokenValidationResult.failure("Bearer Token JWT claims are invalid");
+            return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
         }
         if (OidcSubjectMapper.principalId(jwt, tenantContext.subjectMapping()).isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token JWT has no principal claim");
+            return OidcValidationResult.failure("Bearer Token JWT has no principal claim");
         }
 
-        return OidcTokenValidationResult.success(OidcValidatedJwt.create(token, signedJwt, jwt));
+        return OidcValidationResult.success(OidcValidatedJwt.create(token, signedJwt, jwt));
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

@@ -109,11 +109,14 @@ final class OidcOutboundOrchestrator {
     }
 
     private boolean outboundTargetTlsAllowed(OidcTenantConfig tenantConfig, SecurityEnvironment outboundEnv) {
-        if (!tenantConfig.endpoints().tlsRequired() || outboundEnv == null || outboundEnv.targetUri() == null) {
+        if (!tenantConfig.endpoints().tlsRequired()) {
             return true;
         }
+        if (outboundEnv == null || outboundEnv.targetUri() == null) {
+            return false;
+        }
         String scheme = outboundEnv.targetUri().getScheme();
-        return scheme == null || "https".equalsIgnoreCase(scheme);
+        return "https".equalsIgnoreCase(scheme);
     }
 
     private Optional<OidcOutboundPolicy> targetPolicy(OutboundTarget target) {
@@ -195,6 +198,7 @@ final class OidcOutboundOrchestrator {
         if (outboundEnv != null) {
             headers.putAll(outboundEnv.headers());
         }
+        headers.keySet().removeIf(HeaderNames.AUTHORIZATION.defaultCase()::equalsIgnoreCase);
         headers.put(HeaderNames.AUTHORIZATION.defaultCase(), List.of("Bearer " + token));
         return headers;
     }

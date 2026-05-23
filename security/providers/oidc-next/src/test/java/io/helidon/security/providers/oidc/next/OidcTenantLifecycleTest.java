@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -57,10 +58,11 @@ class OidcTenantLifecycleTest {
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
                 .build();
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
         AuthenticationResponse authenticationResponse = provider.authenticate(request);
         OutboundSecurityResponse outboundResponse = provider.outboundSecurity(request,
-                                                                              SecurityEnvironment.create(),
+                                                                              outboundEnv,
                                                                               outboundConfig);
 
         assertThat(OidcTenantRuntimeRegistry.create(config).tenantContext("tenant").orElseThrow().state(),
@@ -68,8 +70,7 @@ class OidcTenantLifecycleTest {
         assertThat(authenticationResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(authenticationResponse.statusCode().orElse(-1), is(503));
         assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant is disabled: tenant"));
-        assertThat(provider.isOutboundSupported(request, SecurityEnvironment.create(), outboundConfig),
-                   is(true));
+        assertThat(provider.isOutboundSupported(request, outboundEnv, outboundConfig), is(true));
         assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(outboundResponse.description().orElse(""), is("OIDC tenant is disabled: tenant"));
     }
@@ -205,10 +206,11 @@ class OidcTenantLifecycleTest {
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
                 .build();
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
-        boolean supported = outbound.isSupported(request, SecurityEnvironment.create(), outboundConfig);
-        OutboundSecurityResponse first = outbound.secure(request, SecurityEnvironment.create(), outboundConfig);
-        OutboundSecurityResponse second = outbound.secure(request, SecurityEnvironment.create(), outboundConfig);
+        boolean supported = outbound.isSupported(request, outboundEnv, outboundConfig);
+        OutboundSecurityResponse first = outbound.secure(request, outboundEnv, outboundConfig);
+        OutboundSecurityResponse second = outbound.secure(request, outboundEnv, outboundConfig);
 
         assertThat(supported, is(true));
         assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
@@ -232,16 +234,17 @@ class OidcTenantLifecycleTest {
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
                 .build();
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
         AuthenticationResponse authenticationResponse = authentication.authenticate(request);
         OutboundSecurityResponse outboundResponse = outbound.secure(request,
-                                                                    SecurityEnvironment.create(),
+                                                                    outboundEnv,
                                                                     outboundConfig);
 
         assertThat(authenticationResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(authenticationResponse.statusCode().orElse(-1), is(503));
         assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
-        assertThat(outbound.isSupported(request, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(outbound.isSupported(request, outboundEnv, outboundConfig), is(true));
         assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(outboundResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
     }
@@ -286,6 +289,15 @@ class OidcTenantLifecycleTest {
         return OidcProviderConfig.builder()
                 .putTenant("tenant", tenantConfig)
                 .buildPrototype();
+    }
+
+    private static SecurityEnvironment outboundEnvironment() {
+        return SecurityEnvironment.builder()
+                .targetUri(URI.create("https://api.example.com/resource"))
+                .transport("https")
+                .path("/resource")
+                .method("GET")
+                .build();
     }
 
     private static void await(CountDownLatch latch) {

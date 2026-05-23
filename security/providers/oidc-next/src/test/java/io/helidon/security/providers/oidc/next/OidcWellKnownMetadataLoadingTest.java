@@ -19,11 +19,13 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.providers.common.OutboundTarget;
@@ -46,6 +48,9 @@ class OidcWellKnownMetadataLoadingTest {
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final AtomicReference<String> PROVIDER_METADATA = new AtomicReference<>();
     private static final AtomicReference<String> WELL_KNOWN_WEBCLIENT_HEADER = new AtomicReference<>();
+    private static final AtomicInteger REDIRECTED_WELL_KNOWN_REQUESTS = new AtomicInteger();
+
+    private static volatile String redirectLocation;
 
     private URI issuer;
     private URI authorizationEndpointUri;
@@ -57,6 +62,17 @@ class OidcWellKnownMetadataLoadingTest {
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
             WELL_KNOWN_WEBCLIENT_HEADER.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
+            if (redirectLocation != null) {
+                response.status(Status.TEMPORARY_REDIRECT_307)
+                        .header(HeaderNames.LOCATION, redirectLocation)
+                        .send();
+                return;
+            }
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(PROVIDER_METADATA.get());
+        });
+        routing.get("/redirected-openid-configuration", (request, response) -> {
+            REDIRECTED_WELL_KNOWN_REQUESTS.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(PROVIDER_METADATA.get());
         });
@@ -78,6 +94,8 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         WELL_KNOWN_WEBCLIENT_HEADER.set("");
+        REDIRECTED_WELL_KNOWN_REQUESTS.set(0);
+        redirectLocation = null;
     }
 
     @Test
@@ -140,6 +158,24 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
     }
 
+    @Test
+    void wellKnownMetadataRedirectIsNotFollowedWhenTenantWebClientFollowsRedirects() {
+        redirectLocation = issuer.resolve("/redirected-openid-configuration").toString();
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .webClient(redirectFollowingTenantWebClient())
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(REDIRECTED_WELL_KNOWN_REQUESTS.get(), is(0));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
     private static OutboundTarget clientCredentialsTarget() {
         return OutboundTarget.builder("api")
                 .customObject(OidcOutboundTargetConfig.class,
@@ -152,6 +188,13 @@ class OidcWellKnownMetadataLoadingTest {
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig redirectFollowingTenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .followRedirects(true)
                 .buildPrototype();
     }
 

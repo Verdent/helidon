@@ -243,7 +243,7 @@ class OidcTenantRuntimeTest {
         var providerRequest = request(SecurityEnvironment.builder()
                                               .header("X-Tenant", "client")
                                               .build());
-        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), EndpointConfig.create()),
+        assertThat(provider.isOutboundSupported(providerRequest, outboundEnvironment(), EndpointConfig.create()),
                    is(true));
     }
 
@@ -271,5 +271,14 @@ class OidcTenantRuntimeTest {
 
     private static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
         return OidcProviderTest.request(endpointPolicy, environment);
+    }
+
+    private static SecurityEnvironment outboundEnvironment() {
+        return SecurityEnvironment.builder()
+                .targetUri(URI.create("https://api.example.com/resource"))
+                .transport("https")
+                .path("/resource")
+                .method("GET")
+                .build();
     }
 }

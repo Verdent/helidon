@@ -64,6 +64,26 @@ class OidcTokenPropagationTest {
     }
 
     @Test
+    void tokenPropagationReplacesExistingAuthorizationHeaderCaseInsensitively() {
+        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        ProviderRequest request = providerRequest(subject("api://orders"));
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://api.example.com/orders/42"))
+                .transport("https")
+                .path("/orders/42")
+                .method("GET")
+                .header("authorization", "Bearer stale-token")
+                .build();
+
+        var response = provider.outboundSecurity(request, outboundEnv, EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer " + ACCESS_TOKEN)));
+        assertThat(response.requestHeaders().containsKey("authorization"), is(false));
+    }
+
+    @Test
     void tokenPropagationCanUseRawTokenCredentialWithoutParsedClaims() {
         OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
         ProviderRequest request = providerRequest(subjectWithRawToken());
@@ -147,6 +167,45 @@ class OidcTokenPropagationTest {
         var response = provider.outboundSecurity(request, outboundEnv, EndpointConfig.create());
 
         assertThat(provider.isOutboundSupported(request, outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void endpointTokenPropagationDoesNotApplyWhenTargetUriIsMissingAndTlsIsRequired() {
+        OidcProvider provider = provider(OidcTenantConfig.create());
+        ProviderRequest request = providerRequest(subject("api://orders"));
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .transport("https")
+                .path("/orders/42")
+                .method("GET")
+                .build();
+        EndpointConfig outboundConfig = EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation())
+                .build();
+
+        var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
+
+        assertThat(provider.isOutboundSupported(request, outboundEnv, outboundConfig), is(false));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void endpointTokenPropagationDoesNotApplyWhenTargetUriHasNoSchemeAndTlsIsRequired() {
+        OidcProvider provider = provider(OidcTenantConfig.create());
+        ProviderRequest request = providerRequest(subject("api://orders"));
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .targetUri(URI.create("/orders/42"))
+                .transport("https")
+                .path("/orders/42")
+                .method("GET")
+                .build();
+        EndpointConfig outboundConfig = EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation())
+                .build();
+
+        var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
+
+        assertThat(provider.isOutboundSupported(request, outboundEnv, outboundConfig), is(false));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 

@@ -47,6 +47,7 @@ class OidcProviderConfigTest {
     private static final URI WELL_KNOWN_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI LOGOUT_ENDPOINT_URI = URI.create("/oidc/logout");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final String AUDIENCE = "api://default";
@@ -56,6 +57,7 @@ class OidcProviderConfigTest {
         OidcProviderConfig providerConfig = OidcProviderConfig.create();
         OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
+        OidcLogoutConfig logout = OidcLogoutConfig.create();
         OidcProtectedResourceConfig protectedResource = OidcProtectedResourceConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
@@ -69,7 +71,10 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
         assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
+        assertThat(tenantConfig.logout().isEmpty(), is(true));
         assertThat(authorizationCode.enabled(), is(true));
+        assertThat(logout.enabled(), is(true));
+        assertThat(logout.localEndpointUri(), is(LOGOUT_ENDPOINT_URI));
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.pkceRequired(), is(true));
@@ -118,6 +123,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.webclient.proxy.port", "8080"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
+                        Map.entry("tenants.default.logout.enabled", "false"),
+                        Map.entry("tenants.default.logout.local-endpoint-uri", "/oidc/logout"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
@@ -149,6 +156,8 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(tenant.logout().orElseThrow().localEndpointUri(), is(LOGOUT_ENDPOINT_URI));
+        assertThat(tenant.logout().orElseThrow().enabled(), is(false));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -637,6 +646,54 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void logoutRequiresLocalEndpointPath() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.localEndpointUri(URI.create("https://app.example/oidc/logout")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("local-endpoint-uri must be a local absolute path"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.localEndpointUri(URI.create("oidc/logout")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("local absolute path"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.localEndpointUri(URI.create("")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("local absolute path"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.localEndpointUri(URI.create("/oidc/logout?tenant=a")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("query"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.localEndpointUri(URI.create("/oidc/logout#fragment")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("fragment"));
+    }
+
+    @Test
+    void logoutEndpointMustNotCollideWithRedirectionEndpoint() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .logout(logout -> logout.localEndpointUri(URI.create("/oidc/callback")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri"));
+    }
+
+    @Test
     void authorizationCodeFlowCanExplicitlyDisablePkce() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -871,6 +928,8 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("path-template"));
         assertThat(metadata, containsString("webclient"));
         assertThat(metadata, containsString("subject-mapping"));
+        assertThat(metadata, containsString("logout"));
+        assertThat(metadata, containsString("local-endpoint-uri"));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));

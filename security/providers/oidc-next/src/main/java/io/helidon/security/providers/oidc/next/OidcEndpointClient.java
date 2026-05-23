@@ -98,12 +98,32 @@ final class OidcEndpointClient {
         return submit(form, OidcTokenResponse::fromRefreshJson);
     }
 
+    OidcTokenEndpointResult clientCredentialsToken() {
+        Optional<URI> endpointUri = metadata.tokenEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
+        }
+
+        /*
+         * Spec: RFC 6749, 4.4.2 Access Token Request
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
+         * Quotes: "The client makes a request to the token endpoint"; "using the
+         * `application/x-www-form-urlencoded` format"; "`grant_type` REQUIRED.  Value MUST be set to
+         * `client_credentials`."
+         */
+        Parameters.Builder form = Parameters.builder("oidc-client-credentials-token-endpoint-form")
+                .add("grant_type", "client_credentials");
+
+        return submit(form, OidcTokenResponse::fromClientCredentialsJson);
+    }
+
     private OidcTokenEndpointResult submit(Parameters.Builder form,
                                            Function<JsonObject, OidcTokenResponse> responseParser) {
         URI endpointUri = metadata.tokenEndpointUri()
                 .orElseThrow();
         HttpClientRequest request = webClient.post()
                 .uri(endpointUri)
+                .followRedirects(false)
                 .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)

@@ -282,8 +282,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
     }

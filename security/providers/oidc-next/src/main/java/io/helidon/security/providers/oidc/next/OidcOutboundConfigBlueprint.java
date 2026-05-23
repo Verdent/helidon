@@ -36,6 +36,10 @@ interface OidcOutboundConfigBlueprint {
 
     /**
      * Whether outbound Client Credentials Grant is enabled.
+     * <p>
+     * Client Credentials Grant requires a confidential client: {@code client-id}, client authentication other than
+     * {@code NONE}, a {@code client-secret} for client-secret based authentication, and either
+     * {@code endpoints.token-endpoint-uri} or discovery.
      *
      * @return whether Client Credentials Grant is enabled
      */

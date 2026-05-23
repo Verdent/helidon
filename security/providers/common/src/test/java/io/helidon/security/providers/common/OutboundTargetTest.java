@@ -265,5 +265,6 @@ public class OutboundTargetTest {
         assertThat(instance.matches("http", "my.calendar.google.com", null, null), is(true));
 
         assertThat(instance.matches("http", "calendar.google.org", null, null), is(false));
+        assertThat(instance.matches("http", "calendargoogleXcom", null, null), is(false));
     }
 }

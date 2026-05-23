@@ -135,6 +135,27 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void clientCredentialsGrantReplacesExistingAuthorizationHeaderCaseInsensitively() {
+        OidcProvider provider = provider(confidentialTenant());
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://api.example.com/resource"))
+                .transport("https")
+                .path("/resource")
+                .method("GET")
+                .header("authorization", "Bearer stale-token")
+                .build();
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnv,
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token")));
+        assertThat(response.requestHeaders().containsKey("authorization"), is(false));
+    }
+
+    @Test
     void clientCredentialsGrantCanUseClientSecretPost() {
         OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST));
 
@@ -265,6 +286,55 @@ class OidcClientCredentialsGrantTest {
                 .buildPrototype();
         OidcProvider provider = provider(tenant);
         SecurityEnvironment outboundEnv = outboundEnvironment("http://api.example.com/resource", "/resource");
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnv,
+                                                                      EndpointConfig.create());
+
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void tenantWideClientCredentialsGrantDoesNotApplyWhenTargetUriIsMissingAndTlsIsRequired() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tokenEndpointUri(URI.create("https://issuer.example/token")))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .transport("https")
+                .path("/resource")
+                .method("GET")
+                .build();
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnv,
+                                                                      EndpointConfig.create());
+
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void tenantWideClientCredentialsGrantDoesNotApplyWhenTargetUriHasNoSchemeAndTlsIsRequired() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tokenEndpointUri(URI.create("https://issuer.example/token")))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                .targetUri(URI.create("/resource"))
+                .transport("https")
+                .path("/resource")
+                .method("GET")
+                .build();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnv,

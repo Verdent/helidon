@@ -613,12 +613,13 @@ class OidcProviderTest {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagation());
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
-                                                                      SecurityEnvironment.create(),
+                                                                      outboundEnv,
                                                                       outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(provider.isOutboundSupported(providerRequest, outboundEnv, outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 
@@ -630,12 +631,13 @@ class OidcProviderTest {
                                              .buildPrototype());
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.clientCredentialsGrant());
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
-                                                                      SecurityEnvironment.create(),
+                                                                      outboundEnv,
                                                                       outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(provider.isOutboundSupported(providerRequest, outboundEnv, outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.description().orElse(""),
                    containsString("token-endpoint-uri or well-known-uri"));
@@ -646,12 +648,13 @@ class OidcProviderTest {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
+        SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
-                                                                      SecurityEnvironment.create(),
+                                                                      outboundEnv,
                                                                       outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
+        assertThat(provider.isOutboundSupported(providerRequest, outboundEnv, outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.description().orElse(""),
                    is("OIDC outbound request cannot be classified by protocol operation"));
@@ -668,6 +671,15 @@ class OidcProviderTest {
     private static EndpointConfig outboundConfig(OidcOutboundPolicy outboundPolicy) {
         return EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, outboundPolicy)
+                .build();
+    }
+
+    private static SecurityEnvironment outboundEnvironment() {
+        return SecurityEnvironment.builder()
+                .targetUri(URI.create("https://api.example.com/resource"))
+                .transport("https")
+                .path("/resource")
+                .method("GET")
                 .build();
     }
 

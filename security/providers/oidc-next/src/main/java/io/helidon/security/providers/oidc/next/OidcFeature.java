@@ -26,6 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.config.Config;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
@@ -41,11 +42,13 @@ import io.helidon.webserver.http.ServerResponse;
  */
 public final class OidcFeature implements HttpFeature {
     private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcAuthorizationResponseProcessor authorizationResponseProcessor;
     private final OidcIdTokenValidator idTokenValidator;
 
     private OidcFeature(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.config = Objects.requireNonNull(config);
+        this.tenantRuntimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
         this.authorizationResponseProcessor = OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry);
         this.idTokenValidator = OidcIdTokenValidator.create();
     }
@@ -180,17 +183,32 @@ public final class OidcFeature implements HttpFeature {
         }
         Map<String, List<String>> cookies = request.headers().cookies().toMap();
         Instant now = Instant.now();
-        List<Map.Entry<String, OidcTenantConfig>> localAuthenticationTenants = tenants.stream()
-                .filter(tenant -> localAuthenticationResultMatchesTenant(tenant, cookies, now))
+        List<LogoutTenant> logoutTenants = tenants.stream()
+                .map(entry -> {
+                    OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(entry.getValue());
+                    Optional<OidcLocalAuthenticationResult> localAuthenticationResult = cookies
+                            .getOrDefault(cookieStateHandler.cookieConfig().localAuthenticationCookieName(), List.of())
+                            .stream()
+                            .flatMap(cookieValue -> cookieStateHandler.readLocalAuthenticationResult(cookieValue, now)
+                                    .stream())
+                            .filter(result -> entry.getKey().equals(result.tenantId()))
+                            .findFirst();
+                    return new LogoutTenant(entry.getKey(),
+                                            entry.getValue(),
+                                            cookieStateHandler,
+                                            localAuthenticationResult);
+                })
                 .toList();
-        List<Map.Entry<String, OidcTenantConfig>> tenantsToClear = localAuthenticationTenants.size() == 1
+        List<LogoutTenant> localAuthenticationTenants = logoutTenants.stream()
+                .filter(tenant -> tenant.localAuthenticationResult().isPresent())
+                .toList();
+        List<LogoutTenant> tenantsToClear = localAuthenticationTenants.size() == 1
                 ? localAuthenticationTenants
-                : tenants;
+                : logoutTenants;
 
         Set<String> removedCookieNames = new HashSet<>();
         tenantsToClear.stream()
-                .map(Map.Entry::getValue)
-                .map(OidcCookieStateHandler::create)
+                .map(LogoutTenant::cookieStateHandler)
                 .forEach(cookieStateHandler -> {
                     String localAuthenticationCookieName = cookieStateHandler.cookieConfig()
                             .localAuthenticationCookieName();
@@ -204,7 +222,130 @@ public final class OidcFeature implements HttpFeature {
                     }
                 });
 
-        response.status(Status.NO_CONTENT_204).send();
+        Optional<LogoutTenant> endSessionTenant = Optional.empty();
+        if (localAuthenticationTenants.size() == 1) {
+            endSessionTenant = Optional.of(localAuthenticationTenants.getFirst());
+        } else if (logoutTenants.size() == 1) {
+            endSessionTenant = Optional.of(logoutTenants.getFirst());
+        }
+        if (endSessionTenant.isEmpty()) {
+            response.status(Status.NO_CONTENT_204).send();
+            return;
+        }
+
+        LogoutTenant selectedEndSessionTenant = endSessionTenant.orElseThrow();
+        Optional<OidcEndSessionConfig> configuredEndSession =
+                OidcLogoutSupport.enabledEndSession(selectedEndSessionTenant.tenantConfig());
+        if (configuredEndSession.isEmpty()) {
+            response.status(Status.NO_CONTENT_204).send();
+            return;
+        }
+
+        OidcEndSessionConfig endSession = configuredEndSession.orElseThrow();
+        Optional<String> idTokenHint = selectedEndSessionTenant
+                .localAuthenticationResult()
+                .map(OidcLocalAuthenticationResult::idToken)
+                .map(OidcValidatedIdToken::rawToken);
+        if (idTokenHint.isEmpty() && endSession.idTokenHintRequired()) {
+            response.status(Status.FORBIDDEN_403)
+                    .send("id_token_hint is required for RP-Initiated Logout");
+            return;
+        }
+
+        Optional<URI> postLogoutRedirectUri;
+        try {
+            postLogoutRedirectUri = postLogoutRedirectUri(request, endSession);
+        } catch (IllegalArgumentException e) {
+            response.status(Status.BAD_REQUEST_400)
+                    .send(e.getMessage());
+            return;
+        }
+
+        OidcTenantContext tenantContext = tenantRuntimeRegistry.tenantContext(selectedEndSessionTenant.tenantId())
+                .filter(OidcTenantContext::ready)
+                .orElse(null);
+        if (tenantContext == null) {
+            response.status(Status.BAD_GATEWAY_502)
+                    .send("End Session Endpoint is unavailable");
+            return;
+        }
+
+        URI endSessionEndpointUri = tenantContext.metadata()
+                .endSessionEndpointUri()
+                .orElse(null);
+        if (endSessionEndpointUri == null) {
+            response.status(Status.BAD_GATEWAY_502)
+                    .send("End Session Endpoint is unavailable");
+            return;
+        }
+
+        response.status(Status.SEE_OTHER_303);
+        response.headers().add(HeaderNames.LOCATION, endSessionLocation(endSessionEndpointUri,
+                                                                        idTokenHint,
+                                                                        selectedEndSessionTenant.tenantConfig()
+                                                                                .clientId(),
+                                                                        postLogoutRedirectUri,
+                                                                        request).toString());
+        response.send();
+    }
+
+    private Optional<URI> postLogoutRedirectUri(ServerRequest request, OidcEndSessionConfig endSession) {
+        List<String> requestedPostLogoutRedirectUris = request.query()
+                .all("post_logout_redirect_uri", List::of);
+        if (requestedPostLogoutRedirectUris.isEmpty()) {
+            return endSession.postLogoutRedirectUri();
+        }
+        if (requestedPostLogoutRedirectUris.size() > 1 || requestedPostLogoutRedirectUris.getFirst().isBlank()) {
+            throw new IllegalArgumentException("post_logout_redirect_uri is invalid");
+        }
+
+        URI requestedUri;
+        try {
+            requestedUri = URI.create(requestedPostLogoutRedirectUris.getFirst());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("post_logout_redirect_uri is invalid", e);
+        }
+
+        if (endSession.postLogoutRedirectUri().filter(requestedUri::equals).isPresent()
+                || endSession.allowedPostLogoutRedirectUris().contains(requestedUri)) {
+            return Optional.of(requestedUri);
+        }
+        throw new IllegalArgumentException("post_logout_redirect_uri is not allowed");
+    }
+
+    private URI endSessionLocation(URI endSessionEndpointUri,
+                                   Optional<String> idTokenHint,
+                                   Optional<String> clientId,
+                                   Optional<URI> postLogoutRedirectUri,
+                                   ServerRequest request) {
+        /*
+         * Spec: OpenID Connect RP-Initiated Logout 1.0, 2 RP-Initiated Logout
+         * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+         * Quotes: "redirecting the End-User's User Agent to the OP's Logout Endpoint";
+         * "RECOMMENDED. ID Token previously issued by the OP to the RP passed to the Logout Endpoint as a hint";
+         * "OPTIONAL. OAuth 2.0 Client Identifier valid at the Authorization Server";
+         * "OPTIONAL. URI to which the RP is requesting"; "OPTIONAL. Opaque value used by the RP".
+         */
+        UriQueryWriteable query = UriQueryWriteable.create();
+        idTokenHint.ifPresent(value -> query.set("id_token_hint", value));
+        if (idTokenHint.isEmpty()) {
+            clientId.ifPresent(value -> query.set("client_id", value));
+        }
+        postLogoutRedirectUri.ifPresent(uri -> query.set("post_logout_redirect_uri", uri.toString()));
+        if (postLogoutRedirectUri.isPresent()) {
+            request.query()
+                    .first("state")
+                    .filter(state -> !state.isBlank())
+                    .ifPresent(state -> query.set("state", state));
+        }
+
+        String queryValue = query.rawValue();
+        if (queryValue.isEmpty()) {
+            return endSessionEndpointUri;
+        }
+        return URI.create(endSessionEndpointUri
+                                  + (endSessionEndpointUri.getRawQuery() == null ? "?" : "&")
+                                  + queryValue);
     }
 
     private boolean sameOrigin(ServerRequest request) {
@@ -266,17 +407,6 @@ public final class OidcFeature implements HttpFeature {
                 .toList();
     }
 
-    private boolean localAuthenticationResultMatchesTenant(Map.Entry<String, OidcTenantConfig> tenant,
-                                                           Map<String, List<String>> cookies,
-                                                           Instant now) {
-        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenant.getValue());
-        return cookies.getOrDefault(cookieStateHandler.cookieConfig().localAuthenticationCookieName(), List.of())
-                .stream()
-                .flatMap(cookieValue -> cookieStateHandler.readLocalAuthenticationResult(cookieValue, now).stream())
-                .map(OidcLocalAuthenticationResult::tenantId)
-                .anyMatch(tenant.getKey()::equals);
-    }
-
     private static String logoutEndpointPath(OidcTenantConfig tenant) {
         return path(tenant.logout().orElseThrow().localEndpointUri());
     }
@@ -287,5 +417,11 @@ public final class OidcFeature implements HttpFeature {
             return "/";
         }
         return path;
+    }
+
+    private record LogoutTenant(String tenantId,
+                                OidcTenantConfig tenantConfig,
+                                OidcCookieStateHandler cookieStateHandler,
+                                Optional<OidcLocalAuthenticationResult> localAuthenticationResult) {
     }
 }

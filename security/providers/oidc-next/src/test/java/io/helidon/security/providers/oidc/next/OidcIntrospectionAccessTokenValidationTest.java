@@ -370,8 +370,7 @@ class OidcIntrospectionAccessTokenValidationTest {
                 .endpoints(it -> it
                         .introspectionEndpointUri(introspectionEndpointUri)
                         .tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> {
+                .protectedResource(it -> it.tokenValidation(validation -> {
                             validation
                                     .method(OidcTokenValidationMethod.INTROSPECTION)
                                     .audienceValidationEnabled(audienceValidationEnabled);

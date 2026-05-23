@@ -701,8 +701,7 @@ class OidcProviderTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> {
-                    it.enabled(true)
-                            .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                    it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                             .scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(it);
                 })
@@ -718,11 +717,9 @@ class OidcProviderTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .jwksUri(URI.create("https://issuer.example/jwks")))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();

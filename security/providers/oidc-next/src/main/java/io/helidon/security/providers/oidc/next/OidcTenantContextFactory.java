@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Objects;
+import java.util.Optional;
 
 final class OidcTenantContextFactory {
     private final TenantInitializer initializer;
@@ -60,13 +61,15 @@ final class OidcTenantContextFactory {
         if (staticMetadata.discoveryUri().isEmpty()) {
             return false;
         }
-        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource().tokenValidation();
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()
                 && (staticMetadata.issuer().isEmpty() || staticMetadata.jwkSetUri().isEmpty())) {
             return true;
         }
-        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode();
-        if (authorizationCode.enabled()
+        Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
+        if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()
                 && (staticMetadata.authorizationEndpointUri().isEmpty()
                 || staticMetadata.tokenEndpointUri().isEmpty())) {
             return true;
@@ -76,7 +79,9 @@ final class OidcTenantContextFactory {
     }
 
     private static void validateJwtMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource().tokenValidation();
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
             return;
         }

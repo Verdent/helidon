@@ -44,7 +44,7 @@ final class OidcAuthenticationRequestFactory {
     OidcAuthenticationRequest create(OidcRequestContext context) {
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
-        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode();
+        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
         URI authorizationEndpointUri = tenantContext.metadata()
                 .authorizationEndpointUri()
                 .orElseThrow(() -> new IllegalStateException("authorization-endpoint-uri is not configured"));

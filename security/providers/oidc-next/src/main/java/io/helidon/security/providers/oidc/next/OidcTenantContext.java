@@ -110,7 +110,9 @@ final class OidcTenantContext {
 
     OidcTokenValidationConfig tokenValidation() {
         requireReady();
-        return tenantConfig.protectedResource().tokenValidation();
+        return tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .orElseGet(OidcTokenValidationConfig::create);
     }
 
     OidcCookieStateHandler cookieStateHandler() {

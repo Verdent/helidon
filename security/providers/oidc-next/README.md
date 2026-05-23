@@ -50,6 +50,8 @@ security:
 ```
 
 For a single tenant, `default-tenant` is optional. The only configured tenant is selected automatically.
+`protected-resource` and `authorization-code` are not configured by default. Adding either block enables that part of the
+provider unless the block explicitly sets `enabled: false`.
 
 ```yaml
 security:
@@ -61,7 +63,6 @@ security:
             endpoints:
               jwks-uri: "https://issuer.example/jwks"
             protected-resource:
-              enabled: true
               token-validation:
                 method: JWT
                 audience: "api://orders"
@@ -111,7 +112,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .endpoints(endpoints -> endpoints
                         .jwksUri(URI.create("https://issuer.example/jwks")))
                 .protectedResource(protectedResource -> protectedResource
-                        .enabled(true)
                         .tokenValidation(tokenValidation -> tokenValidation
                                 .method(OidcTokenValidationMethod.JWT)
                                 .audience("api://orders")
@@ -133,7 +133,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .endpoints(endpoints -> endpoints
                         .introspectionEndpointUri(URI.create("https://issuer.example/oauth2/introspect")))
                 .protectedResource(protectedResource -> protectedResource
-                        .enabled(true)
                         .tokenValidation(tokenValidation -> tokenValidation
                                 .method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://orders")))
@@ -153,7 +152,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .authorizationCode(authorizationCode -> authorizationCode
-                        .enabled(true)
                         .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                         .scopes(List.of("openid", "profile", "email")))
                 .cookies(cookies -> cookies
@@ -174,7 +172,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .clientId(System.getenv("OIDC_CLIENT_ID"))
                 .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
                 .authorizationCode(authorizationCode -> authorizationCode
-                        .enabled(true)
                         .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                         .scopes(List.of("openid", "profile")))
                 .cookies(cookies -> cookies
@@ -202,7 +199,6 @@ OidcTenantConfig tenant = OidcTenantConfig.builder()
         .endpoints(endpoints -> endpoints
                 .jwksUri(URI.create("https://issuer.example/jwks")))
         .protectedResource(protectedResource -> protectedResource
-                .enabled(true)
                 .tokenValidation(tokenValidation -> tokenValidation
                         .method(OidcTokenValidationMethod.JWT)
                         .audience("api://orders")))
@@ -260,7 +256,6 @@ security:
             endpoints:
               jwks-uri: "https://issuer.example/jwks"
             protected-resource:
-              enabled: true
               token-validation:
                 method: JWT
                 audience: "api://orders"
@@ -277,7 +272,6 @@ local audience check.
 
 ```yaml
 protected-resource:
-  enabled: true
   token-validation:
     method: JWT
     audience-validation-enabled: false
@@ -300,7 +294,6 @@ security:
             endpoints:
               introspection-endpoint-uri: "https://issuer.example/oauth2/introspect"
             protected-resource:
-              enabled: true
               token-validation:
                 method: INTROSPECTION
                 audience: "api://orders"
@@ -315,7 +308,6 @@ explicitly.
 
 ```yaml
 protected-resource:
-  enabled: true
   token-validation:
     method: INTROSPECTION
     audience-validation-enabled: false
@@ -355,14 +347,13 @@ security:
             client-id: "${OIDC_CLIENT_ID}"
             client-secret: "${OIDC_CLIENT_SECRET}"
             authorization-code:
-              enabled: true
               redirection-endpoint-uri: "https://app.example/oidc/callback"
               scopes: [ "openid", "profile", "email" ]
             cookies:
               encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
-When `authorization-code.enabled` is `true`:
+When `authorization-code` is configured and not explicitly disabled:
 
 - `client-id` is required.
 - `authorization-code.redirection-endpoint-uri` is required.
@@ -375,7 +366,6 @@ PKCE is enabled by default and uses `S256`.
 
 ```yaml
 authorization-code:
-  enabled: true
   redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-required: true
@@ -386,7 +376,6 @@ PKCE can be disabled for compatibility with providers that cannot process it.
 
 ```yaml
 authorization-code:
-  enabled: true
   redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-required: false
@@ -429,7 +418,6 @@ security:
               token-endpoint-uri: "https://issuer.example/token"
               jwks-uri: "https://issuer.example/jwks"
             authorization-code:
-              enabled: true
               redirection-endpoint-uri: "https://app.example/oidc/callback"
               scopes: [ "openid", "profile" ]
             cookies:
@@ -448,7 +436,6 @@ security:
             client-id: "${OIDC_CLIENT_ID}"
             token-endpoint-auth-method: NONE
             authorization-code:
-              enabled: true
               redirection-endpoint-uri: "https://app.example/oidc/callback"
               scopes: [ "openid", "profile" ]
             cookies:
@@ -479,6 +466,8 @@ expires. A terminal refresh failure, such as `invalid_grant`, removes the local 
 
 If `protected-resource.token-validation.method` is configured, the same validation policy is used for refreshed access
 tokens before a refreshed token is stored in the local authentication cookie.
+Set `protected-resource.enabled: false` when the tenant should use the validation policy only for refreshed access tokens
+and should not accept Bearer Token Protected Resource requests.
 
 ```yaml
 security:
@@ -492,10 +481,10 @@ security:
             endpoints:
               jwks-uri: "https://issuer.example/jwks"
             authorization-code:
-              enabled: true
               redirection-endpoint-uri: "https://app.example/oidc/callback"
               scopes: [ "openid", "profile" ]
             protected-resource:
+              enabled: false
               token-validation:
                 method: JWT
                 audience: "api://orders"
@@ -565,11 +554,9 @@ security:
             endpoints:
               jwks-uri: "https://issuer.example/jwks"
             authorization-code:
-              enabled: true
               redirection-endpoint-uri: "https://app.example/oidc/callback"
               scopes: [ "openid", "profile" ]
             protected-resource:
-              enabled: true
               token-validation:
                 method: JWT
                 audience: "api://orders"

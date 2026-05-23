@@ -32,6 +32,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
 import io.helidon.http.PathMatchers;
 import io.helidon.http.Status;
+import io.helidon.json.JsonObject;
 import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
@@ -141,11 +142,27 @@ public final class OidcFeature implements HttpFeature {
                         .send("ID Token is invalid");
                 return;
             }
+            OidcValidatedIdToken validatedIdToken = idTokenResult.validatedToken().orElseThrow();
+            Optional<JsonObject> userInfo = Optional.empty();
+            if (OidcUserInfoSupport.enabled(tenantContext.tenantConfig())) {
+                userInfo = tenantContext.endpointClient().userInfo(tokenResponse.accessToken());
+                if (userInfo.isEmpty()) {
+                    response.status(Status.BAD_GATEWAY_502)
+                            .send("UserInfo Endpoint request failed");
+                    return;
+                }
+                if (!OidcUserInfoSupport.subjectMatches(userInfo.orElseThrow(), validatedIdToken)) {
+                    response.status(Status.BAD_GATEWAY_502)
+                            .send("UserInfo response is invalid");
+                    return;
+                }
+            }
             OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.create(
                     tenantContext.tenantId(),
                     tokenResponse,
-                    idTokenResult.validatedToken().orElseThrow(),
+                    validatedIdToken,
                     tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
+                    userInfo,
                     Instant.now(),
                     tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
             response.headers()

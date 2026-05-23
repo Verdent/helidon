@@ -33,6 +33,7 @@ import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
+import io.helidon.security.Role;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
@@ -78,6 +79,10 @@ class OidcFeatureRouteTest {
     private static JwkKeys signKeys;
     private static String verifyJwkSet;
     private static String tokenEndpointResponseBody;
+    private static String userInfoEndpointResponseBody;
+    private static Status userInfoEndpointStatus;
+    private static boolean userInfoEndpointJsonContentType;
+    private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
 
     @BeforeAll
     static void initClass() {
@@ -91,6 +96,14 @@ class OidcFeatureRouteTest {
     static void routing(HttpRouting.Builder routing) {
         OidcFeature.create(providerConfig()).setup(routing);
         routing.post("/token", (request, response) -> tokenEndpointResponse(response));
+        routing.get("/userinfo", (request, response) -> {
+            USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
+            response.status(userInfoEndpointStatus);
+            if (userInfoEndpointStatus.family() == Status.Family.SUCCESSFUL && userInfoEndpointJsonContentType) {
+                response.header(HeaderValues.CONTENT_TYPE_JSON);
+            }
+            response.send(userInfoEndpointResponseBody);
+        });
         routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(verifyJwkSet));
     }
@@ -98,6 +111,10 @@ class OidcFeatureRouteTest {
     @BeforeEach
     void setUp() {
         tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(NONCE)).toString();
+        userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT).build().toString();
+        userInfoEndpointStatus = Status.OK_200;
+        userInfoEndpointJsonContentType = true;
+        USER_INFO_AUTHORIZATION.set("");
     }
 
     @Test
@@ -223,6 +240,195 @@ class OidcFeatureRouteTest {
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_GATEWAY_502));
                 assertThat(response.as(String.class), is("ID Token is invalid"));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteMergesUserInfoClaims(URI serverUri) {
+        userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
+                .set("preferred_username", "userinfo-user")
+                .set("email", "userinfo@example.org")
+                .setStrings("groups", List.of("admin", "auditor"))
+                .build()
+                .toString();
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer access-token"));
+
+                SetCookie localAuthenticationCookie = SetCookie.parse(response.headers()
+                        .get(HeaderNames.SET_COOKIE)
+                        .allValues()
+                        .stream()
+                        .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
+                        .findFirst()
+                        .orElseThrow());
+                AuthenticationResponse authentication = OidcProvider.create(providerConfig(tenant))
+                        .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                                .targetUri(URI.create("https://rp.example/resource"))
+                                .header(HeaderNames.COOKIE.defaultCase(),
+                                        localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                                .build()));
+
+                assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                Subject subject = authentication.user().orElseThrow();
+                assertThat(subject.principal().id(), is(SUBJECT));
+                assertThat(subject.principal().getName(), is("userinfo-user"));
+                assertThat(subject.principal().abacAttributeRaw("email"), is("userinfo@example.org"));
+                assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                           is(List.of("admin", "auditor")));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteRejectsUserInfoSubjectMismatch(URI serverUri) {
+        userInfoEndpointResponseBody = userInfoEndpointResponse("other-subject").build().toString();
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                assertThat(response.as(String.class), is("UserInfo response is invalid"));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer access-token"));
+                assertNoLocalAuthenticationCookie(response, tenant);
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteRejectsInvalidUserInfoSubjectValues(URI serverUri) {
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            for (String invalidResponse : List.of(JsonObject.builder().build().toString(),
+                                                  userInfoEndpointResponse("").build().toString(),
+                                                  JsonObject.builder().set("sub", true).build().toString())) {
+                userInfoEndpointResponseBody = invalidResponse;
+                URI callbackUri = callbackUri(rpServer);
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .get("/oidc/callback")
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat(invalidResponse, response.status(), is(Status.BAD_GATEWAY_502));
+                    assertThat(invalidResponse, response.as(String.class), is("UserInfo response is invalid"));
+                    assertNoLocalAuthenticationCookie(response, tenant);
+                }
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteRejectsUserInfoEndpointError(URI serverUri) {
+        userInfoEndpointStatus = Status.UNAUTHORIZED_401;
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                assertThat(response.as(String.class), is("UserInfo Endpoint request failed"));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer access-token"));
+                assertNoLocalAuthenticationCookie(response, tenant);
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteRejectsMalformedUserInfoResponse(URI serverUri) {
+        userInfoEndpointResponseBody = "{invalid-json";
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                assertThat(response.as(String.class), is("UserInfo Endpoint request failed"));
+                assertNoLocalAuthenticationCookie(response, tenant);
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteRejectsUserInfoResponseWithoutJsonContentType(URI serverUri) {
+        userInfoEndpointJsonContentType = false;
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                assertThat(response.as(String.class), is("UserInfo Endpoint request failed"));
+                assertNoLocalAuthenticationCookie(response, tenant);
             }
         } finally {
             rpServer.stop();
@@ -957,6 +1163,23 @@ class OidcFeatureRouteTest {
                 .buildPrototype();
     }
 
+    private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(openIdProviderUri.resolve("token"))
+                        .userInfoEndpointUri(openIdProviderUri.resolve("userinfo"))
+                        .jwksUri(openIdProviderUri.resolve("jwks"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .buildPrototype();
+    }
+
     private static void tokenEndpointResponse(ServerResponse response) {
         response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(tokenEndpointResponseBody);
@@ -969,6 +1192,21 @@ class OidcFeatureRouteTest {
                 .set("id_token", idToken)
                 .set("expires_in", 600)
                 .build();
+    }
+
+    private static JsonObject.Builder userInfoEndpointResponse(String subject) {
+        return JsonObject.builder()
+                .set("sub", subject);
+    }
+
+    private static void assertNoLocalAuthenticationCookie(HttpClientResponse response, OidcTenantConfig tenant) {
+        assertThat(response.headers()
+                           .get(HeaderNames.SET_COOKIE)
+                           .allValues()
+                           .stream()
+                           .noneMatch(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName()
+                                                                           + "=")),
+                   is(true));
     }
 
     private static WebServer redirectionEndpointServer(URI openIdProviderUri) {

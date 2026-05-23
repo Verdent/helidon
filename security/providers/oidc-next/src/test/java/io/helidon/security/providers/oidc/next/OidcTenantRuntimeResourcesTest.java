@@ -82,7 +82,7 @@ class OidcTenantRuntimeResourcesTest {
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.of(INTROSPECTION_ENDPOINT_URI),
-                                                                          Optional.empty(),
+                                                                          Optional.of(USER_INFO_ENDPOINT_URI),
                                                                           Optional.of(END_SESSION_ENDPOINT_URI));
         OidcProviderMetadata wellKnownMetadata =
                 OidcProviderMetadata.create(Optional.of(ISSUER),
@@ -102,7 +102,7 @@ class OidcTenantRuntimeResourcesTest {
         assertThat(merged.tokenEndpointUri(), is(Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI)));
         assertThat(merged.jwkSetUri(), is(Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI)));
         assertThat(merged.introspectionEndpointUri(), is(Optional.of(INTROSPECTION_ENDPOINT_URI)));
-        assertThat(merged.userInfoEndpointUri(), is(Optional.of(WELL_KNOWN_METADATA_USER_INFO_ENDPOINT_URI)));
+        assertThat(merged.userInfoEndpointUri(), is(Optional.of(USER_INFO_ENDPOINT_URI)));
         assertThat(merged.endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
     }
 

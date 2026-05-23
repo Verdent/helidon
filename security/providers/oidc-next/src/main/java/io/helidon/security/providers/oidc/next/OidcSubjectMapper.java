@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import io.helidon.json.JsonObject;
@@ -35,6 +36,22 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcSubjectMapper {
+    private static final Set<String> ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO = Set.of("iss",
+                                                                                               "sub",
+                                                                                               "aud",
+                                                                                               "exp",
+                                                                                               "nbf",
+                                                                                               "iat",
+                                                                                               "jti",
+                                                                                               "azp",
+                                                                                               "nonce",
+                                                                                               "auth_time",
+                                                                                               "acr",
+                                                                                               "amr",
+                                                                                               "at_hash",
+                                                                                               "c_hash",
+                                                                                               "sid");
+
     private OidcSubjectMapper() {
     }
 
@@ -51,7 +68,13 @@ final class OidcSubjectMapper {
     static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
         Jwt idToken = authenticationResult.idToken().jwt();
         String principalId = principalId(idToken, subjectMapping).orElseThrow();
-        Principal principal = principal(idToken, principalId, subjectMapping);
+        Optional<JsonObject> userInfo = authenticationResult.userInfo();
+        JsonObject claims = userInfo
+                .map(value -> mergeUserInfo(idToken, value))
+                .orElse(null);
+        Principal principal = userInfo
+                .map(value -> principal(idToken, claims, value, principalId, subjectMapping))
+                .orElseGet(() -> principal(idToken, principalId, subjectMapping));
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(authenticationResult.accessToken());
@@ -62,7 +85,11 @@ final class OidcSubjectMapper {
                 .principal(principal)
                 .addPublicCredential(TokenCredential.class, credentialBuilder.build());
 
-        addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
+        if (userInfo.isPresent()) {
+            addRoles(subjectBuilder, roleClaimValues(claims, subjectMapping));
+        } else {
+            addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
+        }
         if (subjectMapping.scopeGrantsEnabled()) {
             authenticationResult.scope()
                     .stream()
@@ -71,6 +98,16 @@ final class OidcSubjectMapper {
                     .forEach(scope -> addScope(subjectBuilder, scope));
         }
         return subjectBuilder.build();
+    }
+
+    private static JsonObject mergeUserInfo(Jwt idToken, JsonObject userInfo) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .from(JsonObject.create(idToken.payloadClaimsJson()));
+        userInfo.keysAsStrings()
+                .stream()
+                .filter(key -> !ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO.contains(key))
+                .forEach(key -> userInfo.value(key).ifPresent(value -> builder.set(key, value)));
+        return builder.build();
     }
 
     static Optional<String> principalId(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
@@ -126,6 +163,28 @@ final class OidcSubjectMapper {
     }
 
     private static Principal principal(Jwt jwt, String principalId, OidcSubjectMappingConfig subjectMapping) {
+        Principal.Builder builder = principalBuilder(jwt, principalId, subjectMapping);
+        return builder.build();
+    }
+
+    private static Principal principal(Jwt jwt,
+                                       JsonObject mergedClaims,
+                                       JsonObject userInfo,
+                                       String principalId,
+                                       OidcSubjectMappingConfig subjectMapping) {
+        Principal.Builder builder = principalBuilder(jwt, principalId, subjectMapping);
+        firstClaimValue(mergedClaims, subjectMapping.principalNameClaimPaths()).ifPresent(builder::name);
+        userInfo.keysAsStrings()
+                .stream()
+                .filter(key -> !ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO.contains(key))
+                .forEach(key -> userInfo.value(key)
+                        .ifPresent(value -> builder.addAttribute(key, JwtUtil.toObject(value))));
+        return builder.build();
+    }
+
+    private static Principal.Builder principalBuilder(Jwt jwt,
+                                                      String principalId,
+                                                      OidcSubjectMappingConfig subjectMapping) {
         String name = firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalNameClaimPaths())
                 .orElse(principalId);
         Principal.Builder builder = Principal.builder()
@@ -140,7 +199,7 @@ final class OidcSubjectMapper {
         jwt.familyName().ifPresent(value -> builder.addAttribute("family_name", value));
         jwt.givenName().ifPresent(value -> builder.addAttribute("given_name", value));
         jwt.fullName().ifPresent(value -> builder.addAttribute("full_name", value));
-        return builder.build();
+        return builder;
     }
 
     private static Principal.Builder principal(JsonObject claims,

@@ -180,6 +180,76 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void userInfoTenantLoadsUserInfoEndpointFromWellKnownMetadata() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointIsMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
+    void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointHasFragment() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("userinfo_endpoint", issuer.resolve("/userinfo#fragment").toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
     void jwtProtectedResourceTenantLoadsJwkSetUriFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)

@@ -16,17 +16,19 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 /**
- * Outbound OIDC/OAuth configuration.
+ * OIDC-specific outbound target configuration.
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcConfigSupport.OutboundTargetDecorator.class)
 @Prototype.Configured
-interface OidcOutboundConfigBlueprint {
+interface OidcOutboundTargetConfigBlueprint {
     /**
-     * Whether outbound Token Propagation is enabled.
+     * Whether Token Propagation is enabled for this outbound target.
      *
      * @return whether Token Propagation is enabled
      */
@@ -35,15 +37,27 @@ interface OidcOutboundConfigBlueprint {
     boolean tokenPropagationEnabled();
 
     /**
-     * Whether outbound Client Credentials Grant is enabled.
+     * Whether Client Credentials Grant is enabled for this outbound target.
      * <p>
-     * Client Credentials Grant requires a confidential client: {@code client-id}, client authentication other than
-     * {@code NONE}, a {@code client-secret} for client-secret based authentication, and either
-     * {@code endpoints.token-endpoint-uri} or discovery.
+     * If any provider-level outbound target enables Client Credentials Grant, every enabled tenant must satisfy the
+     * Client Credentials prerequisites: {@code client-id}, client authentication other than {@code NONE}, a
+     * {@code client-secret} for client-secret based authentication, and either {@code endpoints.token-endpoint-uri} or
+     * discovery.
      *
      * @return whether Client Credentials Grant is enabled
      */
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean clientCredentialsGrantEnabled();
+
+    /**
+     * Expected access-token audience for Token Propagation to this outbound target.
+     * <p>
+     * When Token Propagation is enabled on the tenant and this target matches, this value restricts the propagated token
+     * even when {@code token-propagation-enabled} is not set on the target itself.
+     *
+     * @return expected audience
+     */
+    @Option.Configured
+    Optional<String> audience();
 }

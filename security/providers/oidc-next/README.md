@@ -23,13 +23,13 @@ The current implementation supports:
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
 - Configurable subject mapping for principal id, principal name, roles, and scope grants.
 - Multi-tenant selection by default tenant, header, path segment, path template, or host template.
+- Outbound Token Propagation to configured outbound targets.
+- Outbound Client Credentials Grant token acquisition and caching.
 
 The current implementation does not yet support:
 
 - UserInfo requests and UserInfo claim merge.
 - RP-Initiated Logout.
-- Outbound token propagation.
-- Client Credentials Grant token acquisition.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
 - Discovery-backed introspection endpoint resolution for Protected Resource introspection. Configure
@@ -93,8 +93,10 @@ import java.net.URI;
 import java.util.List;
 
 import io.helidon.security.Security;
+import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
 import io.helidon.security.providers.oidc.next.OidcFeature;
+import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
@@ -232,10 +234,11 @@ yet.
 If `issuer` is configured and `endpoints.discovery-uri` is omitted, the provider derives the discovery URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
-Discovery is used by Authorization Code Flow when provider endpoint metadata is missing and by Protected Resource JWT
-validation when `endpoints.jwks-uri` is not configured. The discovered metadata can provide `authorization_endpoint`,
-`token_endpoint`, and `jwks_uri`. When Authorization Code Flow is configured with explicit Authorization and Token
-Endpoint URIs instead of discovery, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
+Discovery is used by Authorization Code Flow when provider endpoint metadata is missing, by Client Credentials Grant
+when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
+`endpoints.jwks-uri` is not configured. The discovered metadata can provide `authorization_endpoint`, `token_endpoint`,
+and `jwks_uri`. When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead
+of discovery, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
 Protected Resource introspection still requires explicit `endpoints.introspection-endpoint-uri`.
 
@@ -383,8 +386,8 @@ authorization-code:
 
 ## Token Endpoint Client Authentication
 
-`token-endpoint-auth-method` controls how the client authenticates to the Token Endpoint for Authorization Code Flow and
-refresh-token requests.
+`token-endpoint-auth-method` controls how the client authenticates to the Token Endpoint for Authorization Code Flow,
+refresh-token requests, and Client Credentials Grant.
 
 ```yaml
 token-endpoint-auth-method: CLIENT_SECRET_BASIC
@@ -440,6 +443,108 @@ security:
               scopes: [ "openid", "profile" ]
             cookies:
               encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+## Outbound Token Propagation And Client Credentials
+
+Outbound target selection uses Helidon's common `OutboundTarget` model. Configure targets at provider level with
+`outbound`. A target can match by transport, host, path, and method.
+
+Token Propagation sends the current user `TokenCredential` as `Authorization: Bearer <access-token>`. It is never applied
+tenant-wide without a matching outbound target.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
+        tenants:
+          web:
+            outbound:
+              token-propagation-enabled: true
+```
+
+Target configuration can select the OIDC outbound strategy directly and can restrict propagated tokens by audience. If an
+audience is configured, the current JWT or introspection-backed access token must contain that `aud` value, otherwise the
+provider abstains. A target can also configure only `audience` when Token Propagation is enabled on the tenant; the
+matching target then supplies the audience restriction for that tenant-level propagation policy.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
+            token-propagation-enabled: true
+            audience: "api://orders"
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+```
+
+Client Credentials Grant obtains an access token from the Token Endpoint with `grant_type=client_credentials` and applies
+the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
+cached until it is close to expiration, then reacquired.
+
+Client Credentials Grant is only valid for confidential clients. Configure `client-id`, `client-secret`, and either
+`endpoints.token-endpoint-uri` or discovery. `token-endpoint-auth-method: NONE` is rejected for this grant.
+
+If any `outbound` entry enables Client Credentials Grant directly, every enabled tenant in the provider must meet
+these Client Credentials prerequisites. Tenant resolution can select any enabled tenant for a matching outbound request,
+so unrelated tenants that should not be used for Client Credentials Grant should be disabled or moved to a separate
+provider configuration.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        outbound:
+          - name: inventory-api
+            transports: [ "https" ]
+            hosts: [ "inventory.internal.example" ]
+            client-credentials-grant-enabled: true
+        tenants:
+          service:
+            client-id: "${OIDC_CLIENT_ID}"
+            client-secret: "${OIDC_CLIENT_SECRET}"
+            token-endpoint-auth-method: CLIENT_SECRET_BASIC
+            endpoints:
+              token-endpoint-uri: "https://issuer.example/token"
+```
+
+If `client-credentials-grant-enabled` is configured on a tenant and no provider-level `outbound` targets are configured,
+the provider can
+apply Client Credentials Grant tenant-wide. Configure targets when outbound tokens must be limited to specific
+downstream services.
+
+Programmatic outbound target configuration:
+
+```java
+OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+        .tokenPropagationEnabled(true)
+        .audience("api://orders")
+        .buildPrototype();
+
+OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
+        .addTransport("https")
+        .addHost("orders.internal.example")
+        .addPath("/orders/.*")
+        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .build();
+
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .addOutboundTarget(ordersApi)
+        .putTenant("web", OidcTenantConfig.builder()
+                .issuer(URI.create("https://issuer.example"))
+                .buildPrototype())
+        .buildPrototype();
 ```
 
 ## Local Authentication Cookies
@@ -617,7 +722,8 @@ Tenant resolution order is:
 
 ## TLS Requirements
 
-Endpoint URIs are required to use HTTPS by default.
+Endpoint URIs are required to use HTTPS by default. The same switch also prevents OIDC outbound support from attaching
+Bearer tokens to non-HTTPS outbound target URIs.
 
 ```yaml
 endpoints:
@@ -633,7 +739,8 @@ endpoints:
 ```
 
 Do not disable TLS in production. Disabling TLS can expose access tokens, client credentials, and token signature
-verification keys.
+verification keys. Outbound targets that carry tokens should normally be constrained with `transports: [ "https" ]` even
+though HTTPS is enforced by default.
 
 ## Configuration Reference
 
@@ -645,6 +752,7 @@ Provider options:
 | `optional` | Whether authentication failures may be treated as optional by the provider. Defaults to `false`. |
 | `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one tenant is configured. |
 | `tenant-resolution` | Tenant resolution rules. |
+| `outbound` | Provider-level outbound target list. Targets can match transport, host, path, and method, and may select Token Propagation or Client Credentials Grant. |
 | `tenants` | Map of tenant id to tenant configuration. |
 
 Tenant options:
@@ -662,7 +770,34 @@ Tenant options:
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
-| `outbound` | Outbound configuration. Token propagation and client credentials token acquisition are classified but not implemented yet. |
+| `outbound` | Tenant outbound configuration. Enables Token Propagation or Client Credentials Grant. |
+
+Tenant outbound options:
+
+| Key | Description |
+| --- | --- |
+| `token-propagation-enabled` | Enables Token Propagation for this tenant. This is applied only through matching `outbound`. |
+| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
+
+Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
+
+Common outbound target options:
+
+| Key | Description |
+| --- | --- |
+| `name` | Required unique target name. |
+| `transports` | Transport list, for example `[ "https" ]`. Empty means all transports. |
+| `hosts` | Host list. Empty or `*` means all hosts; `*` can be used as a wildcard inside a host pattern. |
+| `paths` | Path list. Empty or `*` means all paths; values are also treated as regular expressions. |
+| `methods` | HTTP method list. Empty means all methods. |
+
+OIDC outbound target options:
+
+| Key | Description |
+| --- | --- |
+| `token-propagation-enabled` | Use Token Propagation for this outbound target. |
+| `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. |
+| `audience` | Expected `aud` claim for Token Propagation to this outbound target. |
 
 Token validation options:
 

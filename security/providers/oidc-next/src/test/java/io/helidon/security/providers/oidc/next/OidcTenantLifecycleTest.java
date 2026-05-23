@@ -34,6 +34,7 @@ import io.helidon.security.SecurityResponse;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -167,7 +168,10 @@ class OidcTenantLifecycleTest {
     @Test
     void notReadyTenantFailsPredictablyAndRetries() {
         AtomicInteger attempts = new AtomicInteger();
-        OidcProviderConfig config = providerConfig(OidcTenantConfig.create());
+        OidcProviderConfig config = providerConfig(OidcTenantConfig.builder()
+                                                   .clientId("client-id")
+                                                   .clientSecret("client-secret")
+                                                   .buildPrototype());
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 config,
                 OidcTenantContextFactory.create(retryOnceInitializer(attempts)));
@@ -189,7 +193,10 @@ class OidcTenantLifecycleTest {
     @Test
     void outboundSupportCheckDoesNotConsumeNotReadyRetry() {
         AtomicInteger attempts = new AtomicInteger();
-        OidcProviderConfig config = providerConfig(OidcTenantConfig.create());
+        OidcProviderConfig config = providerConfig(OidcTenantConfig.builder()
+                                                   .clientId("client-id")
+                                                   .clientSecret("client-secret")
+                                                   .buildPrototype());
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 config,
                 OidcTenantContextFactory.create(retryOnceInitializer(attempts)));
@@ -207,7 +214,8 @@ class OidcTenantLifecycleTest {
         assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(first.description().orElse(""), is("OIDC tenant is not ready: tenant"));
         assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(second.description().orElse(""), is("Client Credentials Grant is not implemented yet"));
+        assertThat(second.description().orElse(""),
+                   containsString("token-endpoint-uri or discovery-uri"));
         assertThat(attempts.get(), is(2));
     }
 

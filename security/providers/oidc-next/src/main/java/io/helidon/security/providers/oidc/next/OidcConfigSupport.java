@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
+import io.helidon.security.providers.common.OutboundTarget;
 
 final class OidcConfigSupport {
     private static final String TENANT_VARIABLE = "{tenant}";
@@ -66,6 +67,13 @@ final class OidcConfigSupport {
         return Optional.empty();
     }
 
+    static boolean targetClientCredentialsGrantEnabled(List<OutboundTarget> outboundTargets) {
+        return outboundTargets.stream()
+                .map(OidcOutboundPolicy::fromTarget)
+                .flatMap(Optional::stream)
+                .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
+    }
+
     static final class ProviderDecorator implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {
         @Override
         public void decorate(OidcProviderConfig.BuilderBase<?, ?> target) {
@@ -78,6 +86,18 @@ final class OidcConfigSupport {
                     throw new IllegalArgumentException("default-tenant must reference a configured tenant");
                 }
             });
+
+            if (!targetClientCredentialsGrantEnabled(target.outboundTargets())) {
+                return;
+            }
+
+            target.tenants()
+                    .values()
+                    .stream()
+                    .filter(OidcTenantConfig::enabled)
+                    .forEach(tenant -> validateClientCredentialsGrant(tenant,
+                                                                      tenant.endpoints(),
+                                                                      "target Client Credentials Grant"));
         }
     }
 
@@ -99,6 +119,17 @@ final class OidcConfigSupport {
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
+        }
+    }
+
+    static final class OutboundTargetDecorator
+            implements Prototype.BuilderDecorator<OidcOutboundTargetConfig.BuilderBase<?, ?>> {
+        @Override
+        public void decorate(OidcOutboundTargetConfig.BuilderBase<?, ?> target) {
+            if (target.tokenPropagationEnabled() && target.clientCredentialsGrantEnabled()) {
+                throw new IllegalArgumentException(
+                        "Token Propagation and Client Credentials Grant cannot both be enabled on the same outbound target");
+            }
         }
     }
 
@@ -313,22 +344,52 @@ final class OidcConfigSupport {
             return;
         }
 
+        validateClientCredentialsGrant(tenant, endpoints, "Client Credentials Grant");
+    }
+
+    static void validateClientCredentialsGrant(OidcTenantConfig tenant,
+                                               OidcEndpointConfig endpoints,
+                                               String operation) {
+        validateClientCredentialsGrant(tenant.clientId(),
+                                       tenant.clientSecret(),
+                                       tenant.tokenEndpointAuthenticationMethod(),
+                                       tenant.issuer(),
+                                       endpoints,
+                                       operation);
+    }
+
+    private static void validateClientCredentialsGrant(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                                       OidcEndpointConfig endpoints,
+                                                       String operation) {
+        validateClientCredentialsGrant(tenant.clientId(),
+                                       tenant.clientSecret(),
+                                       tenant.tokenEndpointAuthenticationMethod(),
+                                       tenant.issuer(),
+                                       endpoints,
+                                       operation);
+    }
+
+    private static void validateClientCredentialsGrant(Optional<String> clientId,
+                                                       Optional<String> clientSecret,
+                                                       Optional<OidcClientAuthenticationMethod> authenticationMethod,
+                                                       Optional<URI> issuer,
+                                                       OidcEndpointConfig endpoints,
+                                                       String operation) {
         /*
          * Spec: RFC 6749, 4.4 Client Credentials Grant and 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
          * Quotes: "MUST only be used by confidential clients"; "client MUST authenticate".
          */
-        tenant.clientId()
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "client-id must be configured when Client Credentials Grant is enabled"));
-        validateTokenEndpointAuthentication(tenant, true, "Client Credentials Grant");
-        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
+        clientId.orElseThrow(() -> new IllegalArgumentException(
+                "client-id must be configured when " + operation + " is enabled"));
+        validateTokenEndpointAuthentication(clientSecret, authenticationMethod, true, operation);
+        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(issuer, endpoints);
         Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
         tokenEndpointUri
                 .or(() -> discoveryUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "token-endpoint-uri or discovery-uri must be configured when Client Credentials Grant "
+                        "token-endpoint-uri or discovery-uri must be configured when " + operation + " "
                                 + "is enabled"));
         tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
         if (tokenEndpointUri.isEmpty()) {
@@ -368,7 +429,7 @@ final class OidcConfigSupport {
         validateHttpsEndpointUri("discovery-uri", uri, tlsRequired, false);
     }
 
-    private static void validateTokenEndpointUri(URI uri, boolean tlsRequired) {
+    static void validateTokenEndpointUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: RFC 6749, 3.2 Token Endpoint
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2
@@ -411,13 +472,23 @@ final class OidcConfigSupport {
     private static void validateTokenEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant,
                                                             boolean confidentialClientRequired,
                                                             String operation) {
-        OidcClientAuthenticationMethod method = tenant.tokenEndpointAuthenticationMethod()
-                .orElseGet(() -> tenant.clientSecret()
+        validateTokenEndpointAuthentication(tenant.clientSecret(),
+                                            tenant.tokenEndpointAuthenticationMethod(),
+                                            confidentialClientRequired,
+                                            operation);
+    }
+
+    private static void validateTokenEndpointAuthentication(Optional<String> clientSecret,
+                                                            Optional<OidcClientAuthenticationMethod> authenticationMethod,
+                                                            boolean confidentialClientRequired,
+                                                            String operation) {
+        OidcClientAuthenticationMethod method = authenticationMethod
+                .orElseGet(() -> clientSecret
                         .isPresent()
                         ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
                         : OidcClientAuthenticationMethod.NONE);
         switch (method) {
-        case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> tenant.clientSecret()
+        case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> clientSecret
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-secret must be configured for " + method
                                 + " Token Endpoint authentication when " + operation + " is enabled"));

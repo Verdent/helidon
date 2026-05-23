@@ -243,14 +243,8 @@ class OidcTenantRuntimeTest {
         var providerRequest = request(SecurityEnvironment.builder()
                                               .header("X-Tenant", "client")
                                               .build());
-        var outboundResponse = provider.outboundSecurity(providerRequest,
-                                                         SecurityEnvironment.create(),
-                                                         EndpointConfig.create());
-
         assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), EndpointConfig.create()),
                    is(true));
-        assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(outboundResponse.description().orElse(""), is("Client Credentials Grant is not implemented yet"));
     }
 
     private static OidcTenantConfig protectedResourceTenant() {

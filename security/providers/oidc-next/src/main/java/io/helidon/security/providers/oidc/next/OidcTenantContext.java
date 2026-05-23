@@ -23,7 +23,6 @@ final class OidcTenantContext {
     private final OidcTenantConfig tenantConfig;
     private final OidcTenantState state;
     private final Optional<OidcEndpointPolicy> endpointPolicy;
-    private final Optional<OidcOutboundPolicy> outboundPolicy;
     private final OidcProviderMetadata metadata;
     private final OidcEndpointClient endpointClient;
     private final OidcJwkSetManager jwkSetManager;
@@ -38,14 +37,12 @@ final class OidcTenantContext {
         this.state = state;
         if (state == OidcTenantState.READY) {
             this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
-            this.outboundPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
             this.metadata = readyMetadata;
             this.endpointClient = OidcEndpointClient.create(tenantConfig, metadata);
             this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
             this.cookieStateHandler = OidcCookieStateHandler.create(tenantConfig);
         } else {
             this.endpointPolicy = Optional.empty();
-            this.outboundPolicy = Optional.empty();
             this.metadata = null;
             this.endpointClient = null;
             this.jwkSetManager = null;
@@ -125,13 +122,6 @@ final class OidcTenantContext {
             return Optional.empty();
         }
         return endpointPolicy;
-    }
-
-    Optional<OidcOutboundPolicy> outboundPolicy() {
-        if (!ready()) {
-            return Optional.empty();
-        }
-        return outboundPolicy;
     }
 
     OidcTokenTransportConfig tokenTransport() {

@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -31,22 +30,16 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcEndpointClient {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-
     private final OidcTenantConfig tenantConfig;
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
 
-    private OidcEndpointClient(OidcTenantConfig tenantConfig,
-                               OidcProviderMetadata metadata,
-                               WebClient webClient) {
+    OidcEndpointClient(OidcTenantConfig tenantConfig,
+                       OidcProviderMetadata metadata,
+                       WebClient webClient) {
         this.tenantConfig = tenantConfig;
         this.metadata = metadata;
         this.webClient = webClient;
-    }
-
-    static OidcEndpointClient create(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        return new OidcEndpointClient(tenantConfig, metadata, WebClient.create());
     }
 
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
@@ -124,7 +117,6 @@ final class OidcEndpointClient {
         HttpClientRequest request = webClient.post()
                 .uri(endpointUri)
                 .followRedirects(false)
-                .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");

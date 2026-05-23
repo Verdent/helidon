@@ -22,6 +22,7 @@ The current implementation supports:
 - Validation of refreshed access tokens when token validation is configured.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
 - Configurable subject mapping for principal id, principal name, roles, and scope grants.
+- Tenant WebClient configuration for OpenID Provider and Authorization Server requests.
 - Multi-tenant selection by default tenant, header, path segment, path template, or host template.
 - Outbound Token Propagation to configured outbound targets.
 - Outbound Client Credentials Grant token acquisition and caching.
@@ -90,6 +91,7 @@ Common imports used by the examples:
 
 ```java
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 
 import io.helidon.security.Security;
@@ -101,6 +103,8 @@ import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
+import io.helidon.webclient.api.Proxy;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.security.SecurityFeature;
 ```
@@ -210,6 +214,54 @@ OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .roleClaimPaths(List.of("realm_access.roles", "groups"))
                 .scopeClaimPaths(List.of("scope", "scp"))
                 .scopeGrantsEnabled(true))
+        .buildPrototype();
+```
+
+## WebClient Configuration
+
+Each tenant has one `webclient` configuration used for outbound requests to the OpenID Provider or Authorization Server:
+discovery, JWKS loading, Token Endpoint requests, and introspection.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          main:
+            issuer: "https://issuer.example"
+            webclient:
+              connect-timeout: "PT3S"
+              read-timeout: "PT10S"
+              proxy:
+                type: HTTP
+                host: "proxy.example.com"
+                port: 8080
+              tls:
+                protocols: [ "TLSv1.3" ]
+                cipher-suite: [ "TLS_AES_128_GCM_SHA256" ]
+```
+
+Use this for HTTP client behavior such as proxy, no-proxy, private trust material, mTLS, TLS protocols/ciphers, DNS,
+keep-alive, and timeouts. When no WebClient read timeout is configured, OIDC uses a 10 second read timeout for its
+tenant WebClient.
+
+Token Endpoint requests and introspection requests disable redirect following per request because those requests carry
+client credentials. This remains true even if `webclient.follow-redirects` is enabled.
+
+Programmatic WebClient configuration:
+
+```java
+OidcTenantConfig tenant = OidcTenantConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .webClient(WebClientConfig.builder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .readTimeout(Duration.ofSeconds(10))
+                .proxy(Proxy.builder()
+                        .type(Proxy.ProxyType.HTTP)
+                        .host("proxy.example.com")
+                        .port(8080)
+                        .build())
+                .buildPrototype())
         .buildPrototype();
 ```
 
@@ -764,6 +816,7 @@ Tenant options:
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`. |
+| `webclient` | WebClient configuration for discovery, JWKS, Token Endpoint, and introspection requests. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |

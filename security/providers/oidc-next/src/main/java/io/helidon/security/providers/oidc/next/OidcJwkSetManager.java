@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetManager {
     private static final int UNKNOWN_KEY_ID_REFRESH_ATTEMPT_LIMIT = 64;
@@ -56,12 +57,12 @@ final class OidcJwkSetManager {
         this.clock = clock;
     }
 
-    static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata) {
-        return create(tenantId, metadata, Clock.systemUTC());
+    static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata, WebClient webClient) {
+        return new OidcJwkSetManager(tenantId, metadata, new OidcJwkSetLoader(webClient), Clock.systemUTC());
     }
 
     static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata, Clock clock) {
-        return new OidcJwkSetManager(tenantId, metadata, OidcJwkSetLoader.create(), clock);
+        return new OidcJwkSetManager(tenantId, metadata, new OidcJwkSetLoader(WebClient.create()), clock);
     }
 
     Optional<URI> jwkSetUri() {

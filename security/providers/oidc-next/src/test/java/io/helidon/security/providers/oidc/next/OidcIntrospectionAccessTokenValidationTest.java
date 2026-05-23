@@ -25,10 +25,12 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.parameters.Parameters;
+import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
@@ -39,6 +41,7 @@ import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
@@ -60,29 +63,44 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static final String CLIENT_ID = "client/id";
     private static final String CLIENT_SECRET = "client+secret=value";
     private static final String OPAQUE_TOKEN = "opaque-token+value/=";
+    private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
+    private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
+    private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
 
     private static int responseStatus;
     private static String responseBody;
+    private static String redirectLocation;
+    private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
     private URI introspectionEndpointUri;
+    private URI redirectedIntrospectionEndpointUri;
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.post("/introspect", OidcIntrospectionAccessTokenValidationTest::handleIntrospection);
+        routing.post("/redirected-introspect", (request, response) -> {
+            REDIRECTED_REQUEST_COUNT.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(validResponse(it -> { }));
+        });
     }
 
     @BeforeEach
     void setUp(URI serverUri) {
         introspectionEndpointUri = serverUri.resolve("introspect");
+        redirectedIntrospectionEndpointUri = serverUri.resolve("redirected-introspect");
         responseStatus = 200;
         responseBody = validResponse(it -> { }).toString();
+        redirectLocation = null;
+        REDIRECTED_REQUEST_COUNT.set(0);
         RECORDED_REQUEST.set(null);
     }
 
     @Test
     void validIntrospectionAuthenticatesSubject() {
-        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant.webClient(tenantWebClient())),
+                                                       OPAQUE_TOKEN);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
@@ -105,6 +123,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(request.method(), is("POST"));
         assertThat(request.authorization(), is(basicAuthorization()));
         assertThat(request.contentType(), is("application/x-www-form-urlencoded"));
+        assertThat(request.tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
         assertThat(request.formParameters(), is(Map.of("token", List.of(OPAQUE_TOKEN),
                                                        "token_type_hint", List.of("access_token"))));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
@@ -327,14 +346,36 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection endpoint is unavailable");
     }
 
+    @Test
+    void introspectionRedirectIsNotFollowedWhenTenantWebClientFollowsRedirects() {
+        responseStatus = 307;
+        redirectLocation = redirectedIntrospectionEndpointUri.toString();
+        responseBody = JsonObject.builder()
+                .set("error", "temporarily_unavailable")
+                .build()
+                .toString();
+
+        AuthenticationResponse response = authenticate(
+                provider(tenant -> tenant.webClient(redirectFollowingTenantWebClient())),
+                OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection endpoint rejected the token");
+        assertThat(REDIRECTED_REQUEST_COUNT.get(), is(0));
+        assertThat(RECORDED_REQUEST.get().tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
     private static void handleIntrospection(ServerRequest request, ServerResponse response) {
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
+                                                request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
                                                 formParameters(request.content().as(Parameters.class))));
         response.status(responseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(responseBody);
+                .header(HeaderValues.CONTENT_TYPE_JSON);
+        if (redirectLocation != null) {
+            response.header(HeaderNames.LOCATION, redirectLocation);
+        }
+        response.send(responseBody);
     }
 
     private AuthenticationResponse authenticate(OidcProvider provider, String token) {
@@ -384,7 +425,20 @@ class OidcIntrospectionAccessTokenValidationTest {
                                            .buildPrototype());
     }
 
-    private JsonObject validResponse(Consumer<JsonObject.Builder> customizer) {
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig redirectFollowingTenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .followRedirects(true)
+                .buildPrototype();
+    }
+
+    private static JsonObject validResponse(Consumer<JsonObject.Builder> customizer) {
         Instant now = Instant.now();
         JsonObject.Builder builder = JsonObject.builder()
                 .set("active", true)
@@ -436,6 +490,7 @@ class OidcIntrospectionAccessTokenValidationTest {
     private record RecordedRequest(String method,
                                    String authorization,
                                    String contentType,
+                                   String tenantWebClientHeader,
                                    Map<String, List<String>> formParameters) {
     }
 }

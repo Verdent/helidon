@@ -33,6 +33,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.http.HeaderName;
+import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
@@ -47,6 +49,7 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
@@ -65,6 +68,9 @@ class OidcJwtAccessTokenValidationTest {
     private static final String AUDIENCE = "api://default";
     private static final String SUBJECT = "user1-id";
     private static final String USERNAME = "user1";
+    private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
+    private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
+    private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final URI MISSING_JWKS_URI = URI.create("file:///tmp/oidc-next-missing-jwks.json");
     private static final Instant TEST_INSTANT = Instant.parse("2026-05-21T00:00:00Z");
     private static final AtomicInteger discoveryRequests = new AtomicInteger();
@@ -72,6 +78,8 @@ class OidcJwtAccessTokenValidationTest {
     private static final AtomicReference<Queue<String>> remoteJwkSetResponses =
             new AtomicReference<>(new ArrayDeque<>());
     private static final AtomicReference<String> providerMetadata = new AtomicReference<>();
+    private static final AtomicReference<String> discoveryWebClientHeader = new AtomicReference<>();
+    private static final AtomicReference<String> remoteJwkSetWebClientHeader = new AtomicReference<>();
 
     private static JwkKeys signKeys;
     private static URI jwksUri;
@@ -97,11 +105,13 @@ class OidcJwtAccessTokenValidationTest {
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
             discoveryRequests.incrementAndGet();
+            discoveryWebClientHeader.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(providerMetadata.get());
         });
         routing.get("/jwks", (request, response) -> {
             remoteJwkSetRequests.incrementAndGet();
+            remoteJwkSetWebClientHeader.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
             String jwkSet = remoteJwkSetResponses.get().poll();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(jwkSet == null ? emptyJwkSet() : jwkSet);
@@ -114,6 +124,8 @@ class OidcJwtAccessTokenValidationTest {
         discoveryUri = serverUri.resolve(".well-known/openid-configuration");
         discoveryRequests.set(0);
         remoteJwkSetRequests.set(0);
+        discoveryWebClientHeader.set("");
+        remoteJwkSetWebClientHeader.set("");
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of(verifyJwkSet)));
         providerMetadata.set(JsonObject.builder()
                 .set("issuer", ISSUER.toString())
@@ -226,11 +238,15 @@ class OidcJwtAccessTokenValidationTest {
     void discoveredJwksEndpointAuthenticatesSubject() {
         String token = signedToken(it -> { });
 
-        AuthenticationResponse response = authenticate(discoveryProvider(), token);
+        AuthenticationResponse response = authenticate(
+                discoveryProvider(tenant -> tenant.webClient(tenantWebClient())),
+                token);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(discoveryRequests.get(), is(1));
         assertThat(remoteJwkSetRequests.get(), is(1));
+        assertThat(discoveryWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+        assertThat(remoteJwkSetWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
     @Test
@@ -469,16 +485,27 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private OidcProvider discoveryProvider() {
+        return discoveryProvider(tenant -> { });
+    }
+
+    private OidcProvider discoveryProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.discoveryUri(discoveryUri)
+                        .tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)));
+        tenantCustomizer.accept(tenantBuilder);
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", OidcTenantConfig.builder()
-                                                   .issuer(ISSUER)
-                                                   .endpoints(it -> it.discoveryUri(discoveryUri)
-                                                           .tlsRequired(false))
-                                                   .protectedResource(it -> it.tokenValidation(validation -> validation
-                                                                   .method(OidcTokenValidationMethod.JWT)
-                                                                   .audience(AUDIENCE)))
-                                                   .buildPrototype())
+                                           .putTenant("default", tenantBuilder.buildPrototype())
                                            .buildPrototype());
+    }
+
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured, URI jwksUri) {

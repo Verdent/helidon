@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -32,16 +31,11 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-
-    private final WebClient webClient;
-
-    private OidcIntrospectionAccessTokenValidator(WebClient webClient) {
-        this.webClient = webClient;
+    private OidcIntrospectionAccessTokenValidator() {
     }
 
     static OidcIntrospectionAccessTokenValidator create() {
-        return new OidcIntrospectionAccessTokenValidator(WebClient.create());
+        return new OidcIntrospectionAccessTokenValidator();
     }
 
     @Override
@@ -59,7 +53,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcTokenValidationResult.failure("Bearer Token introspection is not configured");
         }
 
-        try (HttpClientResponse response = request(endpointUri.orElseThrow(),
+        try (HttpClientResponse response = request(tenantContext.webClient(),
+                                                   endpointUri.orElseThrow(),
                                                    token,
                                                    clientId.orElseThrow(),
                                                    clientSecret.orElseThrow())) {
@@ -140,14 +135,18 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         return OidcTokenValidationResult.success(validated);
     }
 
-    private HttpClientResponse request(URI endpointUri, String token, String clientId, String clientSecret) {
+    private HttpClientResponse request(WebClient webClient,
+                                       URI endpointUri,
+                                       String token,
+                                       String clientId,
+                                       String clientSecret) {
         Parameters form = Parameters.builder("oidc-introspection-form")
                 .add("token", token)
                 .add("token_type_hint", "access_token")
                 .build();
         return webClient.post()
                 .uri(endpointUri)
-                .readTimeout(REQUEST_TIMEOUT)
+                .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderNames.AUTHORIZATION,
                         OidcClientAuthenticationSupport.basicAuthorization(clientId, clientSecret))

@@ -112,6 +112,14 @@ interface OidcTenantConfigBlueprint {
     Optional<OidcAuthorizationCodeConfig> authorizationCode();
 
     /**
+     * Local OpenID Connect logout endpoint configuration.
+     *
+     * @return logout configuration
+     */
+    @Option.Configured
+    Optional<OidcLogoutConfig> logout();
+
+    /**
      * Token transport configuration.
      *
      * @return token transport configuration

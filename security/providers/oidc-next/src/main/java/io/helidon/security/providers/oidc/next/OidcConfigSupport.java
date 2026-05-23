@@ -310,10 +310,7 @@ final class OidcConfigSupport {
         configuredAuthorizationCode
                 .filter(OidcAuthorizationCodeConfig::enabled)
                 .flatMap(OidcAuthorizationCodeConfig::redirectionEndpointUri)
-                .map(uri -> {
-                    String path = uri.getPath();
-                    return path == null || path.isEmpty() ? "/" : path;
-                })
+                .map(OidcUri::path)
                 .filter(logout.localEndpointUri().getPath()::equals)
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException(

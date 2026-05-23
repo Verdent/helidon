@@ -20,7 +20,6 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -112,11 +111,11 @@ final class OidcAuthorizationResponseProcessor {
             return OidcAuthorizationResponseResult.invalid("Authorization Response error must appear exactly once",
                                                            stateRemovalCookie);
         }
-        if (code.filter(ParameterValue::present).isPresent() && error.filter(ParameterValue::present).isPresent()) {
+        if (code.filter(ParameterValue::valid).isPresent() && error.filter(ParameterValue::valid).isPresent()) {
             return OidcAuthorizationResponseResult.invalid("Authorization Response cannot contain both code and error",
                                                            stateRemovalCookie);
         }
-        if (error.filter(ParameterValue::present).isPresent()) {
+        if (error.filter(ParameterValue::valid).isPresent()) {
             Optional<ParameterValue> errorDescription = singleParameter(parameters, ERROR_DESCRIPTION_PARAM);
             Optional<ParameterValue> errorUri = singleParameter(parameters, ERROR_URI_PARAM);
             if (errorDescription.filter(ParameterValue::invalid).isPresent()) {
@@ -141,7 +140,7 @@ final class OidcAuthorizationResponseProcessor {
                                                                       state,
                                                                       stateRemovalCookie);
         }
-        if (code.filter(ParameterValue::present).isEmpty()) {
+        if (code.filter(ParameterValue::valid).isEmpty()) {
             return OidcAuthorizationResponseResult.invalid("Authorization Response code is missing", stateRemovalCookie);
         }
         /*
@@ -197,10 +196,8 @@ final class OidcAuthorizationResponseProcessor {
     }
 
     private boolean redirectionEndpointMatches(URI callbackUri, URI expectedUri) {
-        if (!Objects.equals(normalize(callbackUri.getScheme()), normalize(expectedUri.getScheme()))
-                || !Objects.equals(normalize(callbackUri.getHost()), normalize(expectedUri.getHost()))
-                || effectivePort(callbackUri) != effectivePort(expectedUri)
-                || !Objects.equals(path(callbackUri), path(expectedUri))) {
+        if (!OidcUri.sameOrigin(callbackUri, expectedUri)
+                || !Objects.equals(OidcUri.path(callbackUri), OidcUri.path(expectedUri))) {
             return false;
         }
 
@@ -214,33 +211,6 @@ final class OidcAuthorizationResponseProcessor {
         return true;
     }
 
-    private int effectivePort(URI uri) {
-        int port = uri.getPort();
-        if (port != -1) {
-            return port;
-        }
-        String scheme = uri.getScheme();
-        if ("https".equalsIgnoreCase(scheme)) {
-            return 443;
-        }
-        if ("http".equalsIgnoreCase(scheme)) {
-            return 80;
-        }
-        return -1;
-    }
-
-    private String path(URI uri) {
-        String path = uri.getPath();
-        if (path == null || path.isEmpty()) {
-            return "/";
-        }
-        return path;
-    }
-
-    private String normalize(String value) {
-        return value == null ? null : value.toLowerCase(Locale.ROOT);
-    }
-
     private record StoredAuthenticationRequestState(OidcTenantContext tenantContext,
                                                     OidcAuthenticationRequestState state) {
     }
@@ -252,10 +222,6 @@ final class OidcAuthorizationResponseProcessor {
 
         private static ParameterValue invalidParameter() {
             return new ParameterValue(null, false);
-        }
-
-        private boolean present() {
-            return valid;
         }
 
         private boolean invalid() {

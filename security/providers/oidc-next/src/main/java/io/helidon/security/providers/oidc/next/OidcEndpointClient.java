@@ -46,11 +46,6 @@ final class OidcEndpointClient {
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
                                                       URI redirectionEndpointUri,
                                                       Optional<String> pkceVerifier) {
-        Optional<URI> endpointUri = metadata.tokenEndpointUri();
-        if (endpointUri.isEmpty()) {
-            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
-        }
-
         /*
          * Spec: RFC 6749, 4.1.3 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.3
@@ -74,11 +69,6 @@ final class OidcEndpointClient {
     }
 
     OidcTokenEndpointResult refreshAccessToken(String refreshToken) {
-        Optional<URI> endpointUri = metadata.tokenEndpointUri();
-        if (endpointUri.isEmpty()) {
-            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
-        }
-
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-6
@@ -93,11 +83,6 @@ final class OidcEndpointClient {
     }
 
     OidcTokenEndpointResult clientCredentialsToken() {
-        Optional<URI> endpointUri = metadata.tokenEndpointUri();
-        if (endpointUri.isEmpty()) {
-            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
-        }
-
         /*
          * Spec: RFC 6749, 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
@@ -151,10 +136,12 @@ final class OidcEndpointClient {
 
     private OidcTokenEndpointResult submit(Parameters.Builder form,
                                            Function<JsonObject, OidcTokenResponse> responseParser) {
-        URI endpointUri = metadata.tokenEndpointUri()
-                .orElseThrow();
+        Optional<URI> endpointUri = metadata.tokenEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
+        }
         HttpClientRequest request = webClient.post()
-                .uri(endpointUri)
+                .uri(endpointUri.orElseThrow())
                 .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)

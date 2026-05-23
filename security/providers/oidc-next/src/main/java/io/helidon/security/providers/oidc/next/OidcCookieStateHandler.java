@@ -64,10 +64,6 @@ final class OidcCookieStateHandler {
         return cookieConfig;
     }
 
-    Optional<String> encryptionSecret() {
-        return cookieConfig.encryptionSecret();
-    }
-
     SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
         return cookieBuilder(cookieConfig.authenticationRequestCookieName(), protect(toJson(state).toString()))
                 .maxAge(cookieConfig.authenticationRequestLifetime())

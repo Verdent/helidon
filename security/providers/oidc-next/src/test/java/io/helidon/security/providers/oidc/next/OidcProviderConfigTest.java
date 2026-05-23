@@ -48,6 +48,8 @@ class OidcProviderConfigTest {
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI LOGOUT_ENDPOINT_URI = URI.create("/oidc/logout");
+    private static final URI END_SESSION_ENDPOINT_URI = URI.create("https://issuer.example/logout");
+    private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/logged-out");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final String AUDIENCE = "api://default";
@@ -58,6 +60,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
         OidcLogoutConfig logout = OidcLogoutConfig.create();
+        OidcEndSessionConfig endSession = OidcEndSessionConfig.create();
         OidcProtectedResourceConfig protectedResource = OidcProtectedResourceConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
@@ -75,6 +78,11 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.enabled(), is(true));
         assertThat(logout.enabled(), is(true));
         assertThat(logout.localEndpointUri(), is(LOGOUT_ENDPOINT_URI));
+        assertThat(logout.endSession().isEmpty(), is(true));
+        assertThat(endSession.enabled(), is(true));
+        assertThat(endSession.idTokenHintRequired(), is(true));
+        assertThat(endSession.postLogoutRedirectUri().isEmpty(), is(true));
+        assertThat(endSession.allowedPostLogoutRedirectUris().isEmpty(), is(true));
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.pkceRequired(), is(true));
@@ -125,6 +133,12 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
                         Map.entry("tenants.default.logout.enabled", "false"),
                         Map.entry("tenants.default.logout.local-endpoint-uri", "/oidc/logout"),
+                        Map.entry("tenants.default.logout.end-session.enabled", "false"),
+                        Map.entry("tenants.default.logout.end-session.id-token-hint-required", "false"),
+                        Map.entry("tenants.default.logout.end-session.post-logout-redirect-uri",
+                                  POST_LOGOUT_REDIRECT_URI.toString()),
+                        Map.entry("tenants.default.logout.end-session.allowed-post-logout-redirect-uris.0",
+                                  "https://rp.example/other-logged-out"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
@@ -158,6 +172,12 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
         assertThat(tenant.logout().orElseThrow().localEndpointUri(), is(LOGOUT_ENDPOINT_URI));
         assertThat(tenant.logout().orElseThrow().enabled(), is(false));
+        OidcEndSessionConfig endSession = tenant.logout().orElseThrow().endSession().orElseThrow();
+        assertThat(endSession.enabled(), is(false));
+        assertThat(endSession.idTokenHintRequired(), is(false));
+        assertThat(endSession.postLogoutRedirectUri().orElseThrow(), is(POST_LOGOUT_REDIRECT_URI));
+        assertThat(endSession.allowedPostLogoutRedirectUris(),
+                   is(List.of(URI.create("https://rp.example/other-logged-out"))));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -694,6 +714,108 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void logoutEndSessionRequiresEndpointOrWellKnownUri() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .logout(logout -> logout.endSession(endSession -> { }))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri or well-known-uri"));
+    }
+
+    @Test
+    void logoutEndSessionRejectsInsecureEndpointByDefault() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .endpoints(it -> it.endSessionEndpointUri(URI.create("http://issuer.example/logout")))
+                .logout(logout -> logout.endSession(endSession -> { }))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri must use https"));
+    }
+
+    @Test
+    void logoutEndSessionCanDisableTlsRequirementForEndpoint() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .endpoints(it -> it.endSessionEndpointUri(URI.create("http://issuer.example/logout"))
+                        .tlsRequired(false))
+                .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
+    void logoutEndSessionRejectsEndpointWithFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .endpoints(it -> it.endSessionEndpointUri(URI.create("https://issuer.example/logout#fragment")))
+                .logout(logout -> logout.endSession(endSession -> { }))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri must not include a fragment"));
+    }
+
+    @Test
+    void logoutEndSessionRejectsInsecurePostLogoutRedirectUriByDefault() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .logout(logout -> logout.endSession(endSession -> endSession
+                        .postLogoutRedirectUri(URI.create("http://rp.example/logged-out"))))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("post-logout-redirect-uri must use https"));
+    }
+
+    @Test
+    void logoutEndSessionRejectsPostLogoutRedirectUriWithFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .logout(logout -> logout.endSession(endSession -> endSession
+                        .postLogoutRedirectUri(URI.create("https://rp.example/logged-out#fragment"))))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("post-logout-redirect-uri must not include a fragment"));
+    }
+
+    @Test
+    void logoutEndSessionRejectsInsecureAllowedPostLogoutRedirectUriByDefault() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .logout(logout -> logout.endSession(endSession -> endSession
+                        .addAllowedPostLogoutRedirectUri(URI.create("http://rp.example/logged-out"))))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("allowed-post-logout-redirect-uris must use https"));
+    }
+
+    @Test
+    void logoutEndSessionRequiresAuthorizationCodeWhenIdTokenHintIsRequired() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .logout(logout -> logout.endSession(endSession -> { }))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code"));
+    }
+
+    @Test
+    void logoutEndSessionRequiresClientIdWhenIdTokenHintCanBeOmitted() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-id"));
+    }
+
+    @Test
     void authorizationCodeFlowCanExplicitlyDisablePkce() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -930,6 +1052,10 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("subject-mapping"));
         assertThat(metadata, containsString("logout"));
         assertThat(metadata, containsString("local-endpoint-uri"));
+        assertThat(metadata, containsString("end-session"));
+        assertThat(metadata, containsString("id-token-hint-required"));
+        assertThat(metadata, containsString("post-logout-redirect-uri"));
+        assertThat(metadata, containsString("allowed-post-logout-redirect-uris"));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));

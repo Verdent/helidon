@@ -29,21 +29,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcTenantRuntimeResourcesTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
-    private static final URI DISCOVERY_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
+    private static final URI WELL_KNOWN_URI = URI.create("https://issuer.example/.well-known/openid-configuration");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final URI JWK_SET_URI = URI.create("https://issuer.example/jwks");
     private static final URI INTROSPECTION_ENDPOINT_URI = URI.create("https://issuer.example/introspect");
     private static final URI USER_INFO_ENDPOINT_URI = URI.create("https://issuer.example/userinfo");
     private static final URI END_SESSION_ENDPOINT_URI = URI.create("https://issuer.example/logout");
-    private static final URI DISCOVERED_AUTHORIZATION_ENDPOINT_URI = URI.create("https://discovered.example/authorize");
-    private static final URI DISCOVERED_TOKEN_ENDPOINT_URI = URI.create("https://discovered.example/token");
-    private static final URI DISCOVERED_JWK_SET_URI = URI.create("https://discovered.example/jwks");
-    private static final URI DISCOVERED_INTROSPECTION_ENDPOINT_URI = URI.create("https://discovered.example/introspect");
-    private static final URI DISCOVERED_USER_INFO_ENDPOINT_URI = URI.create("https://discovered.example/userinfo");
-    private static final URI DISCOVERED_END_SESSION_ENDPOINT_URI = URI.create("https://discovered.example/logout");
+    private static final URI WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI =
+            URI.create("https://metadata.example/authorize");
+    private static final URI WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI = URI.create("https://metadata.example/token");
+    private static final URI WELL_KNOWN_METADATA_JWK_SET_URI = URI.create("https://metadata.example/jwks");
+    private static final URI WELL_KNOWN_METADATA_INTROSPECTION_ENDPOINT_URI =
+            URI.create("https://metadata.example/introspect");
+    private static final URI WELL_KNOWN_METADATA_USER_INFO_ENDPOINT_URI = URI.create("https://metadata.example/userinfo");
+    private static final URI WELL_KNOWN_METADATA_END_SESSION_ENDPOINT_URI = URI.create("https://metadata.example/logout");
     private static final URI PATH_ISSUER = URI.create("https://issuer.example/tenant-a/");
-    private static final URI PATH_ISSUER_DISCOVERY_URI =
+    private static final URI PATH_ISSUER_WELL_KNOWN_URI =
             URI.create("https://issuer.example/tenant-a/.well-known/openid-configuration");
     private static final String AUDIENCE = "api://default";
 
@@ -51,7 +53,7 @@ class OidcTenantRuntimeResourcesTest {
     void tenantContextContainsRuntimeResourcesFromStaticProviderMetadata() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
                                                            .issuer(ISSUER)
-                                                           .endpoints(it -> it.discoveryUri(DISCOVERY_URI)
+                                                           .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI)
                                                                    .authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                                                                    .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                                                                    .jwksUri(JWK_SET_URI)
@@ -61,7 +63,7 @@ class OidcTenantRuntimeResourcesTest {
                                                            .buildPrototype());
 
         assertThat(context.metadata().issuer(), is(Optional.of(ISSUER)));
-        assertThat(context.metadata().discoveryUri(), is(Optional.of(DISCOVERY_URI)));
+        assertThat(context.metadata().wellKnownUri(), is(Optional.of(WELL_KNOWN_URI)));
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(TOKEN_ENDPOINT_URI)));
         assertThat(context.metadata().introspectionEndpointUri(), is(Optional.of(INTROSPECTION_ENDPOINT_URI)));
@@ -73,108 +75,111 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
-    void staticProviderMetadataOverridesDiscoveredProviderMetadata() {
+    void staticProviderMetadataOverridesWellKnownMetadata() {
         OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
-                                                                          Optional.of(DISCOVERY_URI),
+                                                                          Optional.of(WELL_KNOWN_URI),
                                                                           Optional.of(AUTHORIZATION_ENDPOINT_URI),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.of(INTROSPECTION_ENDPOINT_URI),
                                                                           Optional.empty(),
                                                                           Optional.of(END_SESSION_ENDPOINT_URI));
-        OidcProviderMetadata discoveredMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
-                                                                              Optional.empty(),
-                                                                              Optional.of(DISCOVERED_AUTHORIZATION_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_TOKEN_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_JWK_SET_URI),
-                                                                              Optional.of(DISCOVERED_INTROSPECTION_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_USER_INFO_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_END_SESSION_ENDPOINT_URI));
+        OidcProviderMetadata wellKnownMetadata =
+                OidcProviderMetadata.create(Optional.of(ISSUER),
+                                            Optional.empty(),
+                                            Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_INTROSPECTION_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_USER_INFO_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_END_SESSION_ENDPOINT_URI));
 
-        OidcProviderMetadata merged = staticMetadata.mergeDiscovered(discoveredMetadata);
+        OidcProviderMetadata merged = staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
 
         assertThat(merged.issuer(), is(Optional.of(ISSUER)));
-        assertThat(merged.discoveryUri(), is(Optional.of(DISCOVERY_URI)));
+        assertThat(merged.wellKnownUri(), is(Optional.of(WELL_KNOWN_URI)));
         assertThat(merged.authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
-        assertThat(merged.tokenEndpointUri(), is(Optional.of(DISCOVERED_TOKEN_ENDPOINT_URI)));
-        assertThat(merged.jwkSetUri(), is(Optional.of(DISCOVERED_JWK_SET_URI)));
+        assertThat(merged.tokenEndpointUri(), is(Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI)));
+        assertThat(merged.jwkSetUri(), is(Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI)));
         assertThat(merged.introspectionEndpointUri(), is(Optional.of(INTROSPECTION_ENDPOINT_URI)));
-        assertThat(merged.userInfoEndpointUri(), is(Optional.of(DISCOVERED_USER_INFO_ENDPOINT_URI)));
+        assertThat(merged.userInfoEndpointUri(), is(Optional.of(WELL_KNOWN_METADATA_USER_INFO_ENDPOINT_URI)));
         assertThat(merged.endSessionEndpointUri(), is(Optional.of(END_SESSION_ENDPOINT_URI)));
     }
 
     @Test
-    void discoveredProviderMetadataIssuerMustMatchStaticIssuer() {
+    void wellKnownMetadataIssuerMustMatchStaticIssuer() {
         OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
-                                                                          Optional.of(DISCOVERY_URI),
+                                                                          Optional.of(WELL_KNOWN_URI),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty());
-        OidcProviderMetadata discoveredMetadata = OidcProviderMetadata.create(Optional.of(URI.create("https://other.example")),
-                                                                              Optional.empty(),
-                                                                              Optional.of(DISCOVERED_AUTHORIZATION_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_TOKEN_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_JWK_SET_URI),
-                                                                              Optional.empty(),
-                                                                              Optional.empty(),
-                                                                              Optional.empty());
+        OidcProviderMetadata wellKnownMetadata =
+                OidcProviderMetadata.create(Optional.of(URI.create("https://other.example")),
+                                            Optional.empty(),
+                                            Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI),
+                                            Optional.empty(),
+                                            Optional.empty(),
+                                            Optional.empty());
 
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> staticMetadata.mergeDiscovered(discoveredMetadata));
+                                                       () -> staticMetadata.mergeWellKnownMetadata(wellKnownMetadata));
 
-        assertThat(thrown.getMessage(), is("discovered issuer must match configured issuer"));
+        assertThat(thrown.getMessage(), is("well-known metadata issuer must match configured issuer"));
     }
 
     @Test
-    void discoveredProviderMetadataIssuerIsRequired() {
+    void wellKnownMetadataIssuerIsRequired() {
         OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
-                                                                          Optional.of(DISCOVERY_URI),
+                                                                          Optional.of(WELL_KNOWN_URI),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
                                                                           Optional.empty());
-        OidcProviderMetadata discoveredMetadata = OidcProviderMetadata.create(Optional.empty(),
-                                                                              Optional.empty(),
-                                                                              Optional.of(DISCOVERED_AUTHORIZATION_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_TOKEN_ENDPOINT_URI),
-                                                                              Optional.of(DISCOVERED_JWK_SET_URI),
-                                                                              Optional.empty(),
-                                                                              Optional.empty(),
-                                                                              Optional.empty());
+        OidcProviderMetadata wellKnownMetadata =
+                OidcProviderMetadata.create(Optional.empty(),
+                                            Optional.empty(),
+                                            Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI),
+                                            Optional.empty(),
+                                            Optional.empty(),
+                                            Optional.empty());
 
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> staticMetadata.mergeDiscovered(discoveredMetadata));
+                                                       () -> staticMetadata.mergeWellKnownMetadata(wellKnownMetadata));
 
-        assertThat(thrown.getMessage(), is("discovered issuer must be present"));
+        assertThat(thrown.getMessage(), is("well-known metadata issuer must be present"));
     }
 
     @Test
-    void discoveryUriIsRetainedWhenJwkSetUriIsNotStatic() {
+    void wellKnownUriIsRetainedWhenJwkSetUriIsNotStatic() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
                                                            .issuer(ISSUER)
-                                                           .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
+                                                           .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI))
                                                            .buildPrototype());
 
         assertThat(context.state(), is(OidcTenantState.READY));
-        assertThat(context.metadata().discoveryUri(), is(Optional.of(DISCOVERY_URI)));
+        assertThat(context.metadata().wellKnownUri(), is(Optional.of(WELL_KNOWN_URI)));
         assertThat(context.metadata().jwkSetUri(), is(Optional.empty()));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.empty()));
         assertThat(context.tokenValidation().method().isEmpty(), is(true));
     }
 
     @Test
-    void discoveryUriDefaultsFromIssuer() {
+    void wellKnownUriDefaultsFromIssuer() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
                                                            .issuer(PATH_ISSUER)
                                                            .buildPrototype());
 
         assertThat(context.metadata().issuer(), is(Optional.of(PATH_ISSUER)));
-        assertThat(context.metadata().discoveryUri(), is(Optional.of(PATH_ISSUER_DISCOVERY_URI)));
+        assertThat(context.metadata().wellKnownUri(), is(Optional.of(PATH_ISSUER_WELL_KNOWN_URI)));
     }
 
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {

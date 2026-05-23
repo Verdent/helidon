@@ -242,27 +242,27 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
         Optional<URI> authorizationEndpointUri = endpoints.authorizationEndpointUri();
-        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
+        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
         authorizationEndpointUri
-                .or(() -> discoveryUri)
+                .or(() -> wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "authorization-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
+                        "authorization-endpoint-uri or well-known-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         authorizationEndpointUri.ifPresent(uri -> validateAuthorizationEndpointUri(uri, endpoints.tlsRequired()));
         Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
         tokenEndpointUri
-                .or(() -> discoveryUri)
+                .or(() -> wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "token-endpoint-uri or discovery-uri must be configured when Authorization Code Flow "
+                        "token-endpoint-uri or well-known-uri must be configured when Authorization Code Flow "
                                 + "is enabled"));
         tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
         if (authorizationEndpointUri.isEmpty() || tokenEndpointUri.isEmpty()) {
-            discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
         }
         tenant.issuer()
-                .or(endpoints::discoveryUri)
+                .or(endpoints::wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "issuer or discovery-uri must be configured when Authorization Code Flow is enabled"));
+                        "issuer or well-known-uri must be configured when Authorization Code Flow is enabled"));
         if (!authorizationCode.scopes().contains("openid")) {
             throw new IllegalArgumentException(
                     "openid scope must be configured when Authorization Code Flow is enabled");
@@ -299,18 +299,18 @@ final class OidcConfigSupport {
         switch (method) {
         case JWT -> {
             tenant.issuer()
-                    .or(() -> endpoints.discoveryUri())
+                    .or(() -> endpoints.wellKnownUri())
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "issuer or discovery-uri must be configured when JWT access-token validation is enabled"));
-            Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(tenant.issuer(), endpoints);
+                            "issuer or well-known-uri must be configured when JWT access-token validation is enabled"));
+            Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
             Optional<URI> jwksUri = endpoints.jwksUri();
             jwksUri
-                    .or(() -> discoveryUri)
+                    .or(() -> wellKnownUri)
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "jwks-uri or discovery-uri must be configured when JWT access-token validation is enabled"));
+                            "jwks-uri or well-known-uri must be configured when JWT access-token validation is enabled"));
             jwksUri.ifPresent(uri -> validateJwksUri(uri, endpoints.tlsRequired()));
             if (jwksUri.isEmpty()) {
-                discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+                wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
             }
             if (tokenValidation.audienceValidationEnabled()) {
                 /*
@@ -402,16 +402,16 @@ final class OidcConfigSupport {
         clientId.orElseThrow(() -> new IllegalArgumentException(
                 "client-id must be configured when " + operation + " is enabled"));
         validateTokenEndpointAuthentication(clientSecret, authenticationMethod, true, operation);
-        Optional<URI> discoveryUri = OidcProviderMetadata.discoveryUri(issuer, endpoints);
+        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(issuer, endpoints);
         Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
         tokenEndpointUri
-                .or(() -> discoveryUri)
+                .or(() -> wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "token-endpoint-uri or discovery-uri must be configured when " + operation + " "
+                        "token-endpoint-uri or well-known-uri must be configured when " + operation + " "
                                 + "is enabled"));
         tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
         if (tokenEndpointUri.isEmpty()) {
-            discoveryUri.ifPresent(uri -> validateDiscoveryUri(uri, endpoints.tlsRequired()));
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
         }
     }
 
@@ -438,13 +438,13 @@ final class OidcConfigSupport {
         validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
     }
 
-    private static void validateDiscoveryUri(URI uri, boolean tlsRequired) {
+    private static void validateWellKnownUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
          * Quote: "This URL MUST use the `https` scheme".
          */
-        validateHttpsEndpointUri("discovery-uri", uri, tlsRequired, false);
+        validateHttpsEndpointUri("well-known-uri", uri, tlsRequired, false);
     }
 
     static void validateTokenEndpointUri(URI uri, boolean tlsRequired) {

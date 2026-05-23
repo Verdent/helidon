@@ -348,7 +348,7 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
-    void outboundTargetConfigCanUseDiscoveredTokenEndpoint() {
+    void outboundTargetConfigCanUseWellKnownMetadataTokenEndpoint() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
                         Map.entry("tenants.default.issuer", issuer.toString()),
@@ -514,7 +514,7 @@ class OidcClientCredentialsGrantTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.description().orElse(""),
-                   containsString("token-endpoint-uri or discovery-uri"));
+                   containsString("token-endpoint-uri or well-known-uri"));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 

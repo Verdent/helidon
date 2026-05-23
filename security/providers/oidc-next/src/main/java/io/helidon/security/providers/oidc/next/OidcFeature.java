@@ -20,6 +20,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.config.Config;
@@ -76,6 +77,7 @@ public final class OidcFeature implements HttpFeature {
                 .stream()
                 .filter(OidcTenantConfig::enabled)
                 .map(OidcTenantConfig::authorizationCode)
+                .flatMap(Optional::stream)
                 .filter(OidcAuthorizationCodeConfig::enabled)
                 .flatMap(authorizationCode -> authorizationCode.redirectionEndpointUri().stream())
                 .map(OidcFeature::path)
@@ -125,7 +127,7 @@ public final class OidcFeature implements HttpFeature {
                     tenantContext.tenantId(),
                     tokenResponse,
                     idTokenResult.validatedToken().orElseThrow(),
-                    tenantContext.tenantConfig().authorizationCode().scopes(),
+                    tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
                     Instant.now(),
                     tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
             response.headers()

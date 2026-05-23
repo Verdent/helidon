@@ -660,8 +660,7 @@ class OidcRefreshTokenManagerTest {
                         .tokenEndpointUri(serverUri.resolve("token"))
                         .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
@@ -676,12 +675,12 @@ class OidcRefreshTokenManagerTest {
                         .tokenEndpointUri(serverUri.resolve("token"))
                         .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience(AUDIENCE)))
+                .protectedResource(it -> it.enabled(false)
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }
@@ -695,12 +694,12 @@ class OidcRefreshTokenManagerTest {
                         .tokenEndpointUri(serverUri.resolve("token"))
                         .introspectionEndpointUri(serverUri.resolve("introspect"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.INTROSPECTION)
-                        .audience(AUDIENCE)))
+                .protectedResource(it -> it.enabled(false)
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience(AUDIENCE)))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }

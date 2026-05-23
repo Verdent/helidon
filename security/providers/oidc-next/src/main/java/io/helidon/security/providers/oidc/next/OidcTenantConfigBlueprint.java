@@ -88,8 +88,7 @@ interface OidcTenantConfigBlueprint {
      * @return protected resource configuration
      */
     @Option.Configured
-    @Option.Default("create()")
-    OidcProtectedResourceConfig protectedResource();
+    Optional<OidcProtectedResourceConfig> protectedResource();
 
     /**
      * Authorization Code Flow configuration.
@@ -97,8 +96,7 @@ interface OidcTenantConfigBlueprint {
      * @return Authorization Code Flow configuration
      */
     @Option.Configured
-    @Option.Default("create()")
-    OidcAuthorizationCodeConfig authorizationCode();
+    Optional<OidcAuthorizationCodeConfig> authorizationCode();
 
     /**
      * Token transport configuration.

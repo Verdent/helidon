@@ -30,10 +30,12 @@ final class OidcConfigSupport {
     }
 
     static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant) {
-        OidcProtectedResourceConfig protectedResource = tenant.protectedResource();
-        OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode();
-        boolean bearerTokenAuthentication = protectedResource.enabled();
-        boolean authorizationCodeFlow = authorizationCode.enabled();
+        boolean bearerTokenAuthentication = tenant.protectedResource()
+                .filter(OidcProtectedResourceConfig::enabled)
+                .isPresent();
+        boolean authorizationCodeFlow = tenant.authorizationCode()
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .isPresent();
 
         if (bearerTokenAuthentication && authorizationCodeFlow) {
             return Optional.of(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow());
@@ -166,8 +168,12 @@ final class OidcConfigSupport {
     }
 
     private static void validateAuthorizationCode(OidcTenantConfig.BuilderBase<?, ?> tenant,
-                                                  OidcAuthorizationCodeConfig authorizationCode,
+                                                  Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode,
                                                   OidcEndpointConfig endpoints) {
+        if (configuredAuthorizationCode.isEmpty()) {
+            return;
+        }
+        OidcAuthorizationCodeConfig authorizationCode = configuredAuthorizationCode.orElseThrow();
         if (!authorizationCode.enabled()) {
             return;
         }
@@ -219,9 +225,13 @@ final class OidcConfigSupport {
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,
-                                                  OidcProtectedResourceConfig protectedResource,
+                                                  Optional<OidcProtectedResourceConfig> configuredProtectedResource,
                                                   OidcTokenTransportConfig tokenTransport,
                                                   OidcEndpointConfig endpoints) {
+        if (configuredProtectedResource.isEmpty()) {
+            return;
+        }
+        OidcProtectedResourceConfig protectedResource = configuredProtectedResource.orElseThrow();
         OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
         if (!protectedResource.enabled() && tokenValidation.method().isEmpty()) {
             return;

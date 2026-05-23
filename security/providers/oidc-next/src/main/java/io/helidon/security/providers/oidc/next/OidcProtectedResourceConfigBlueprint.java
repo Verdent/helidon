@@ -31,7 +31,7 @@ interface OidcProtectedResourceConfigBlueprint {
      * @return whether Bearer Token authentication is enabled
      */
     @Option.Configured
-    @Option.DefaultBoolean(false)
+    @Option.DefaultBoolean(true)
     boolean enabled();
 
     /**

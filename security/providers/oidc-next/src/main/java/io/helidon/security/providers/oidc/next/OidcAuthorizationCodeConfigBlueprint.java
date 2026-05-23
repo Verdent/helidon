@@ -35,7 +35,7 @@ interface OidcAuthorizationCodeConfigBlueprint {
      * @return whether Authorization Code Flow initiation is enabled
      */
     @Option.Configured
-    @Option.DefaultBoolean(false)
+    @Option.DefaultBoolean(true)
     boolean enabled();
 
     /**

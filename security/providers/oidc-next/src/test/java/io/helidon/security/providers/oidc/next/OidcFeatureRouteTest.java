@@ -241,8 +241,7 @@ class OidcFeatureRouteTest {
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
@@ -257,8 +256,7 @@ class OidcFeatureRouteTest {
                         .tokenEndpointUri(openIdProviderUri.resolve("token"))
                         .jwksUri(openIdProviderUri.resolve("jwks"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();

@@ -44,7 +44,7 @@ class OidcTenantLifecycleTest {
     void disabledTenantReturnsDisabledContextAndFailsPredictably() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .enabled(false)
-                .protectedResource(it -> it.enabled(true))
+                .protectedResource(OidcProtectedResourceConfig.create())
                 .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder()

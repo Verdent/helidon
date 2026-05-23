@@ -474,8 +474,7 @@ class OidcJwtAccessTokenValidationTest {
                                                    .issuer(ISSUER)
                                                    .endpoints(it -> it.discoveryUri(discoveryUri)
                                                            .tlsRequired(false))
-                                                   .protectedResource(it -> it.enabled(true)
-                                                           .tokenValidation(validation -> validation
+                                                   .protectedResource(it -> it.tokenValidation(validation -> validation
                                                                    .method(OidcTokenValidationMethod.JWT)
                                                                    .audience(AUDIENCE)))
                                                    .buildPrototype())
@@ -494,8 +493,7 @@ class OidcJwtAccessTokenValidationTest {
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(jwksUri)
                         .tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> {
+                .protectedResource(it -> it.tokenValidation(validation -> {
                             validation.method(OidcTokenValidationMethod.JWT)
                                     .audienceValidationEnabled(audienceValidationEnabled);
                             if (audienceConfigured) {

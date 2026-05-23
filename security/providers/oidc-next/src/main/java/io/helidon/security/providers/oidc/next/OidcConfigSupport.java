@@ -135,6 +135,7 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
+            validateLogout(target.logout(), target.authorizationCode());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
         }
@@ -271,6 +272,30 @@ final class OidcConfigSupport {
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validateLogout(Optional<OidcLogoutConfig> configuredLogout,
+                                       Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode) {
+        if (configuredLogout.isEmpty()) {
+            return;
+        }
+        OidcLogoutConfig logout = configuredLogout.orElseThrow();
+        if (!logout.enabled()) {
+            return;
+        }
+        validateLocalEndpointUri("local-endpoint-uri", logout.localEndpointUri());
+        configuredAuthorizationCode
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .flatMap(OidcAuthorizationCodeConfig::redirectionEndpointUri)
+                .map(uri -> {
+                    String path = uri.getPath();
+                    return path == null || path.isEmpty() ? "/" : path;
+                })
+                .filter(logout.localEndpointUri().getPath()::equals)
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException(
+                            "local-endpoint-uri must not use the same path as redirection-endpoint-uri");
+                });
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -485,6 +510,20 @@ final class OidcConfigSupport {
         if (uri.getRawFragment() != null) {
             throw new IllegalArgumentException(configKey + " must not include a fragment component: " + uri);
         }
+    }
+
+    private static void validateLocalEndpointUri(String configKey, URI uri) {
+        if (uri.getScheme() != null || uri.getRawAuthority() != null) {
+            throw new IllegalArgumentException(configKey + " must be a local absolute path: " + uri);
+        }
+        String path = uri.getPath();
+        if (path == null || path.isEmpty() || !path.startsWith("/")) {
+            throw new IllegalArgumentException(configKey + " must be a local absolute path: " + uri);
+        }
+        if (uri.getRawQuery() != null) {
+            throw new IllegalArgumentException(configKey + " must not include a query component: " + uri);
+        }
+        validateNoFragment(configKey, uri);
     }
 
     private static void validateTokenEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant,

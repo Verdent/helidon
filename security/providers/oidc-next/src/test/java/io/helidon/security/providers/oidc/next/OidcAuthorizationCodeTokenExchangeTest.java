@@ -37,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 
@@ -84,7 +85,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(tokenResponse.scope().orElse(""), is("openid profile"));
 
         RecordedRequest request = RECORDED_REQUEST.get();
-        assertThat(request != null, is(true));
+        assertThat(request, is(notNullValue()));
         assertThat(request.method(), is("POST"));
         assertThat(request.authorization(),
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
@@ -117,7 +118,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(tokenResponse.expiresIn().orElseThrow(), is(600L));
 
         RecordedRequest request = RECORDED_REQUEST.get();
-        assertThat(request != null, is(true));
+        assertThat(request, is(notNullValue()));
         assertThat(request.authorization(),
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
         assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),

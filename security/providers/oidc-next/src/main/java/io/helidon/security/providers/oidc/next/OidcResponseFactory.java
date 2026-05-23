@@ -28,7 +28,7 @@ import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 
 final class OidcResponseFactory {
-    private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
+    private static final String WWW_AUTHENTICATE = HeaderNames.WWW_AUTHENTICATE.defaultCase();
 
     private OidcResponseFactory() {
     }

@@ -59,6 +59,7 @@ final class OidcTenantContextFactory {
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
+                validateEndSessionMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
                 return OidcTenantContext.failed(tenantId, tenantConfig);
@@ -85,6 +86,10 @@ final class OidcTenantContextFactory {
                 || staticMetadata.tokenEndpointUri().isEmpty())) {
             return true;
         }
+        Optional<OidcEndSessionConfig> endSession = OidcLogoutSupport.enabledEndSession(tenantConfig);
+        if (endSession.isPresent() && staticMetadata.endSessionEndpointUri().isEmpty()) {
+            return true;
+        }
         return (tenantConfig.outbound().clientCredentialsGrantEnabled() || targetClientCredentialsGrantEnabled)
                 && staticMetadata.tokenEndpointUri().isEmpty();
     }
@@ -108,6 +113,28 @@ final class OidcTenantContextFactory {
                                      throw new IllegalStateException(
                                              "well-known metadata jwks_uri must be present for JWT access-token "
                                                      + "validation");
+                                 });
+    }
+
+    private static void validateEndSessionMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        Optional<OidcEndSessionConfig> endSession = OidcLogoutSupport.enabledEndSession(tenantConfig);
+        if (endSession.isEmpty()) {
+            return;
+        }
+
+        /*
+         * Spec: OpenID Connect RP-Initiated Logout 1.0, 2.1 OpenID Provider Discovery Metadata
+         * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OPMetadata
+         * Quotes: "OPTIONAL. URL at the OP"; "This URL MUST use the `https` scheme".
+         */
+        metadata.endSessionEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateEndSessionEndpointUri(
+                                         uri,
+                                         tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata end_session_endpoint must be present for "
+                                                     + "RP-Initiated Logout");
                                  });
     }
 

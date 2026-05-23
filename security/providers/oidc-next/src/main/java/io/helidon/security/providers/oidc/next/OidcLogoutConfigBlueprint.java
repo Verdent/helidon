@@ -17,12 +17,13 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 /**
- * Local OpenID Connect logout endpoint configuration.
+ * OpenID Connect logout endpoint configuration.
  */
 @Prototype.Blueprint
 @Prototype.Configured
@@ -44,4 +45,12 @@ interface OidcLogoutConfigBlueprint {
     @Option.Configured
     @Option.Default("/oidc/logout")
     URI localEndpointUri();
+
+    /**
+     * RP-Initiated Logout End Session request configuration.
+     *
+     * @return End Session request configuration
+     */
+    @Option.Configured
+    Optional<OidcEndSessionConfig> endSession();
 }

@@ -57,6 +57,7 @@ class OidcWellKnownMetadataLoadingTest {
     private URI tokenEndpointUri;
     private URI jwksUri;
     private URI userInfoEndpointUri;
+    private URI endSessionEndpointUri;
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
@@ -85,12 +86,14 @@ class OidcWellKnownMetadataLoadingTest {
         tokenEndpointUri = serverUri.resolve("token");
         jwksUri = serverUri.resolve("jwks");
         userInfoEndpointUri = serverUri.resolve("userinfo");
+        endSessionEndpointUri = serverUri.resolve("logout");
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
                 .set("jwks_uri", jwksUri.toString())
                 .set("userinfo_endpoint", userInfoEndpointUri.toString())
+                .set("end_session_endpoint", endSessionEndpointUri.toString())
                 .build()
                 .toString());
         WELL_KNOWN_WEBCLIENT_HEADER.set("");
@@ -118,7 +121,62 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
+        assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void logoutTenantLoadsEndSessionEndpointFromWellKnownMetadata() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.tlsRequired(false))
+                .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void logoutTenantFailsWhenWellKnownMetadataEndSessionEndpointIsMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
+    void logoutTenantFailsWhenWellKnownMetadataEndSessionEndpointHasFragment() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("end_session_endpoint", issuer.resolve("/logout#fragment").toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
     @Test

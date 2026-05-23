@@ -23,6 +23,7 @@ The current implementation supports:
 - Refresh-token based local authentication renewal.
 - Validation of refreshed access tokens when token validation is configured.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
+- Optional UserInfo requests for Authorization Code Flow with exact `sub` matching before claim merge.
 - Configurable subject mapping for principal id, principal name, roles, and scope grants.
 - Tenant WebClient configuration for OpenID Provider and Authorization Server requests.
 - Multi-tenant selection by default tenant, header, path segment, path template, or host template.
@@ -31,9 +32,9 @@ The current implementation supports:
 
 The current implementation does not yet support:
 
-- UserInfo requests and UserInfo claim merge.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
+- Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
 - Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
   `endpoints.introspection-endpoint-uri` explicitly.
 - Refresh single-flight coordination for refresh-token rotation races.
@@ -225,7 +226,7 @@ OidcTenantConfig tenant = OidcTenantConfig.builder()
 ## WebClient Configuration
 
 Each tenant has one `webclient` configuration used for outbound requests to the OpenID Provider or Authorization Server:
-well-known metadata requests, JWKS loading, Token Endpoint requests, and introspection.
+well-known metadata requests, JWKS loading, Token Endpoint requests, introspection, and UserInfo requests.
 
 ```yaml
 security:
@@ -250,8 +251,9 @@ Use this for HTTP client behavior such as proxy, no-proxy, private trust materia
 keep-alive, and timeouts. When no WebClient read timeout is configured, OIDC uses a 10 second read timeout for its
 tenant WebClient.
 
-Token Endpoint requests and introspection requests disable redirect following per request because those requests carry
-client credentials. This remains true even if `webclient.follow-redirects` is enabled.
+Token Endpoint requests, introspection requests, and UserInfo requests disable redirect following per request because
+those requests carry client credentials or access tokens. This remains true even if `webclient.follow-redirects` is
+enabled.
 
 Programmatic WebClient configuration:
 
@@ -285,17 +287,20 @@ endpoints:
   end-session-endpoint-uri: "https://issuer.example/logout"
 ```
 
-`user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata. RP-Initiated Logout can use
+`user-info-endpoint-uri` and `end-session-endpoint-uri` can be loaded from well-known metadata. UserInfo can use
+`user-info-endpoint-uri` directly or load `userinfo_endpoint` from well-known metadata. RP-Initiated Logout can use
 `end-session-endpoint-uri` directly or load `end_session_endpoint` from well-known metadata.
+`user-info-endpoint-uri` must use HTTPS unless `endpoints.tls-required` is disabled, and must not contain a fragment.
 `end-session-endpoint-uri` must use HTTPS unless `endpoints.tls-required` is disabled, and must not contain a fragment.
 
 If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
-Well-known metadata is used by Authorization Code Flow when provider endpoint metadata is missing, by Client Credentials
+Well-known metadata is used by Authorization Code Flow when provider endpoint URIs are missing, by Client Credentials
 Grant when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
 `endpoints.jwks-uri` is not configured. It is also used by RP-Initiated Logout when `endpoints.end-session-endpoint-uri`
-is not configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, and `end_session_endpoint`.
+is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not configured. It can provide
+`authorization_endpoint`, `token_endpoint`, `jwks_uri`, `userinfo_endpoint`, and `end_session_endpoint`.
 When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
@@ -440,6 +445,64 @@ authorization-code:
   redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-required: false
+```
+
+## UserInfo
+
+Configure `user-info` to request UserInfo after Authorization Code Flow token exchange and ID Token validation.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            client-secret: "${OIDC_CLIENT_SECRET}"
+            endpoints:
+              user-info-endpoint-uri: "https://issuer.example/userinfo"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+              scopes: [ "openid", "profile", "email" ]
+            user-info:
+              enabled: true
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+When `user-info` is configured and not explicitly disabled:
+
+- Authorization Code Flow must be configured and enabled.
+- A UserInfo Endpoint is required, either explicitly or from well-known metadata.
+- The provider calls the UserInfo Endpoint with the access token returned by the Token Endpoint.
+- The UserInfo response must be a successful JSON object response with `Content-Type: application/json`.
+- The UserInfo response must contain `sub`, and it must exactly match the ID Token `sub`.
+
+UserInfo claims are stored in the protected local authentication result cookie and merged into subject attributes on
+later requests. The full UserInfo JSON object is stored client-side in the protected cookie, so avoid returning large
+claims or unnecessary personal data from the UserInfo Endpoint. UserInfo claims override ID Token claims with the same
+name for principal attributes, principal name, and roles, except ID Token protocol and authentication claims remain
+ID Token sourced. Principal id still comes from the validated ID Token claim mapping.
+
+Refresh-token renewal re-requests UserInfo when `user-info` is enabled and stores the refreshed UserInfo claims only
+after the refreshed UserInfo `sub` matches the ID Token `sub`.
+
+Programmatic configuration:
+
+```java
+OidcTenantConfig tenant = OidcTenantConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .clientId("client-id")
+        .clientSecret("client-secret")
+        .endpoints(endpoints -> endpoints
+                .userInfoEndpointUri(URI.create("https://issuer.example/userinfo")))
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
+                .scopes(List.of("openid", "profile", "email")))
+        .userInfo(userInfo -> { })
+        .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
+        .buildPrototype();
 ```
 
 ## Local Logout Endpoint
@@ -919,11 +982,12 @@ Tenant options:
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`. |
-| `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, and introspection requests. |
+| `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
 | `logout` | OIDC logout endpoint configuration. |
+| `user-info` | UserInfo request configuration for Authorization Code Flow local authentication. |
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
@@ -937,6 +1001,12 @@ Tenant outbound options:
 | `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
+
+UserInfo options:
+
+| Key | Description |
+| --- | --- |
+| `enabled` | Whether UserInfo requests are enabled when `user-info` is configured. Defaults to `true`. |
 
 Logout options:
 

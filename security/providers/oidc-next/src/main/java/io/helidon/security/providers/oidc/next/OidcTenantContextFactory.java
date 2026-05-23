@@ -59,6 +59,7 @@ final class OidcTenantContextFactory {
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
+                validateUserInfoMetadata(tenantConfig, metadata);
                 validateEndSessionMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
@@ -84,6 +85,10 @@ final class OidcTenantContextFactory {
         if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()
                 && (staticMetadata.authorizationEndpointUri().isEmpty()
                 || staticMetadata.tokenEndpointUri().isEmpty())) {
+            return true;
+        }
+        if (tenantConfig.userInfo().filter(OidcUserInfoConfig::enabled).isPresent()
+                && staticMetadata.userInfoEndpointUri().isEmpty()) {
             return true;
         }
         Optional<OidcEndSessionConfig> endSession = OidcLogoutSupport.enabledEndSession(tenantConfig);
@@ -113,6 +118,26 @@ final class OidcTenantContextFactory {
                                      throw new IllegalStateException(
                                              "well-known metadata jwks_uri must be present for JWT access-token "
                                                      + "validation");
+                                 });
+    }
+
+    private static void validateUserInfoMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        if (tenantConfig.userInfo().filter(OidcUserInfoConfig::enabled).isEmpty()) {
+            return;
+        }
+
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "OPTIONAL. URL of the OP's UserInfo Endpoint".
+         */
+        metadata.userInfoEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateUserInfoEndpointUri(
+                                         uri,
+                                         tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata userinfo_endpoint must be present for UserInfo");
                                  });
     }
 

@@ -157,6 +157,7 @@ final class OidcCookieStateHandler {
                 .set("expires_at", result.expiresAt().toString());
         result.refreshToken().ifPresent(refreshToken -> builder.set("refresh_token", refreshToken));
         result.scope().ifPresent(scope -> builder.set("scope", scope));
+        result.userInfo().ifPresent(userInfo -> builder.set("userinfo", userInfo));
         result.accessTokenExpiresAt()
                 .ifPresent(accessTokenExpiresAt -> builder.set("access_token_expires_at",
                                                                accessTokenExpiresAt.toString()));
@@ -187,6 +188,7 @@ final class OidcCookieStateHandler {
                 json.stringValue("token_type").orElseThrow(),
                 json.stringValue("refresh_token").orElse(null),
                 json.stringValue("scope").orElse(null),
+                json.objectValue("userinfo").orElse(null),
                 Instant.parse(json.stringValue("created_at").orElseThrow()),
                 Instant.parse(json.stringValue("expires_at").orElseThrow()),
                 json.stringValue("access_token_expires_at").map(Instant::parse).orElse(null));

@@ -19,6 +19,8 @@ package io.helidon.security.providers.oidc.next;
 import java.util.Objects;
 import java.util.Optional;
 
+import io.helidon.webclient.api.WebClient;
+
 final class OidcTenantContextFactory {
     private final TenantInitializer initializer;
 
@@ -27,12 +29,11 @@ final class OidcTenantContextFactory {
     }
 
     static OidcTenantContextFactory create() {
-        return create(defaultInitializer(OidcProviderMetadataLoader.create(), false));
+        return create(defaultInitializer(false));
     }
 
     static OidcTenantContextFactory create(OidcProviderConfig config) {
-        return create(defaultInitializer(OidcProviderMetadataLoader.create(),
-                                         OidcConfigSupport.targetClientCredentialsGrantEnabled(config.outboundTargets())));
+        return create(defaultInitializer(OidcConfigSupport.targetClientCredentialsGrantEnabled(config.outboundTargets())));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -47,18 +48,18 @@ final class OidcTenantContextFactory {
                                       "Tenant initializer must return a context");
     }
 
-    private static TenantInitializer defaultInitializer(OidcProviderMetadataLoader metadataLoader,
-                                                       boolean targetClientCredentialsGrantEnabled) {
+    private static TenantInitializer defaultInitializer(boolean targetClientCredentialsGrantEnabled) {
         return (tenantId, tenantConfig) -> {
             try {
+                WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
                 OidcProviderMetadata metadata = needsDiscovery(tenantConfig,
                                                                staticMetadata,
                                                                targetClientCredentialsGrantEnabled)
-                        ? metadataLoader.load(staticMetadata)
+                        ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
-                return OidcTenantContext.ready(tenantId, tenantConfig, metadata);
+                return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
                 return OidcTenantContext.failed(tenantId, tenantConfig);
             }

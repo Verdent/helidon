@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
-import java.time.Duration;
 
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
@@ -26,16 +25,10 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcProviderMetadataLoader {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-
     private final WebClient webClient;
 
-    private OidcProviderMetadataLoader(WebClient webClient) {
+    OidcProviderMetadataLoader(WebClient webClient) {
         this.webClient = webClient;
-    }
-
-    static OidcProviderMetadataLoader create() {
-        return new OidcProviderMetadataLoader(WebClient.create());
     }
 
     OidcProviderMetadata load(OidcProviderMetadata staticMetadata) {
@@ -43,7 +36,6 @@ final class OidcProviderMetadataLoader {
                 .orElseThrow(() -> new IllegalArgumentException("discovery-uri is not configured"));
         try (HttpClientResponse response = webClient.get()
                 .uri(discoveryUri)
-                .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .request()) {

@@ -22,10 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
+import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
@@ -36,6 +38,7 @@ import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.SecurityTime;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
@@ -58,6 +61,9 @@ class OidcClientCredentialsGrantTest {
     private static final String CLIENT_SECRET = "client+secret=value";
     private static final String EXISTING_HEADER_NAME = "X-Existing";
     private static final String EXISTING_HEADER_VALUE = "existing-value";
+    private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
+    private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
+    private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
 
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
@@ -105,7 +111,9 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void clientCredentialsGrantObtainsTokenAndUsesClientSecretBasic() {
-        OidcProvider provider = provider(confidentialTenant());
+        OidcProvider provider = provider(confidentialTenant(null,
+                                                           true,
+                                                           tenant -> tenant.webClient(tenantWebClient())));
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(), outboundEnv, EndpointConfig.create());
@@ -122,6 +130,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(request.authorization(),
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
         assertThat(request.contentType(), is("application/x-www-form-urlencoded"));
+        assertThat(request.tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
         assertThat(request.formParameters(), is(Map.of("grant_type", List.of("client_credentials"))));
     }
 
@@ -473,7 +482,10 @@ class OidcClientCredentialsGrantTest {
                 .set("error", "temporarily_unavailable")
                 .build()
                 .toString();
-        OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST));
+        OidcProvider provider = provider(confidentialTenant(
+                OidcClientAuthenticationMethod.CLIENT_SECRET_POST,
+                true,
+                tenant -> tenant.webClient(redirectFollowingTenantWebClient())));
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnvironment(),
@@ -483,6 +495,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(response.description().orElse(""), containsString("temporarily_unavailable"));
         assertThat(REQUEST_COUNT.get(), is(1));
         assertThat(REDIRECTED_REQUEST_COUNT.get(), is(0));
+        assertThat(RECORDED_REQUEST.get().tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
     @Test
@@ -510,6 +523,7 @@ class OidcClientCredentialsGrantTest {
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
+                                                request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
                                                 formParameters(request.content().as(Parameters.class))));
         String body = dynamicTokenResponse
                 ? tokenResponse("access-token-" + requestNumber, dynamicExpiresIn).toString()
@@ -541,7 +555,13 @@ class OidcClientCredentialsGrantTest {
     }
 
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method, boolean outboundEnabled) {
-        return OidcTenantConfig.builder()
+        return confidentialTenant(method, outboundEnabled, tenant -> { });
+    }
+
+    private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method,
+                                                boolean outboundEnabled,
+                                                Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .update(builder -> {
@@ -555,7 +575,21 @@ class OidcClientCredentialsGrantTest {
                     if (outboundEnabled) {
                         builder.outbound(it -> it.clientCredentialsGrantEnabled(true));
                     }
-                })
+                });
+        tenantCustomizer.accept(tenantBuilder);
+        return tenantBuilder.buildPrototype();
+    }
+
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig redirectFollowingTenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .followRedirects(true)
                 .buildPrototype();
     }
 
@@ -653,6 +687,7 @@ class OidcClientCredentialsGrantTest {
     private record RecordedRequest(String method,
                                    String authorization,
                                    String contentType,
+                                   String tenantWebClientHeader,
                                    Map<String, List<String>> formParameters) {
     }
 }

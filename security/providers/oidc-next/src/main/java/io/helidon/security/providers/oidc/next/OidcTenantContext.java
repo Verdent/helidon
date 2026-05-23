@@ -18,6 +18,8 @@ package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
 
+import io.helidon.webclient.api.WebClient;
+
 final class OidcTenantContext {
     private final String tenantId;
     private final OidcTenantConfig tenantConfig;
@@ -27,19 +29,22 @@ final class OidcTenantContext {
     private final OidcEndpointClient endpointClient;
     private final OidcJwkSetManager jwkSetManager;
     private final OidcCookieStateHandler cookieStateHandler;
+    private final WebClient webClient;
 
     private OidcTenantContext(String tenantId,
                               OidcTenantConfig tenantConfig,
                               OidcTenantState state,
-                              OidcProviderMetadata readyMetadata) {
+                              OidcProviderMetadata readyMetadata,
+                              WebClient readyWebClient) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.state = state;
         if (state == OidcTenantState.READY) {
             this.endpointPolicy = OidcConfigSupport.endpointPolicy(tenantConfig);
             this.metadata = readyMetadata;
-            this.endpointClient = OidcEndpointClient.create(tenantConfig, metadata);
-            this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata);
+            this.webClient = readyWebClient;
+            this.endpointClient = new OidcEndpointClient(tenantConfig, metadata, webClient);
+            this.jwkSetManager = OidcJwkSetManager.create(tenantId, metadata, webClient);
             this.cookieStateHandler = OidcCookieStateHandler.create(tenantConfig);
         } else {
             this.endpointPolicy = Optional.empty();
@@ -47,27 +52,38 @@ final class OidcTenantContext {
             this.endpointClient = null;
             this.jwkSetManager = null;
             this.cookieStateHandler = null;
+            this.webClient = null;
         }
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
-        return ready(tenantId, tenantConfig, OidcProviderMetadata.fromStaticConfig(tenantConfig));
+        return ready(tenantId,
+                     tenantConfig,
+                     OidcProviderMetadata.fromStaticConfig(tenantConfig),
+                     OidcConfigSupport.createWebClient(tenantConfig));
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata);
+        return ready(tenantId, tenantConfig, metadata, OidcConfigSupport.createWebClient(tenantConfig));
+    }
+
+    static OidcTenantContext ready(String tenantId,
+                                   OidcTenantConfig tenantConfig,
+                                   OidcProviderMetadata metadata,
+                                   WebClient webClient) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata, webClient);
     }
 
     static OidcTenantContext notReady(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null, null);
     }
 
     static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null, null);
     }
 
     static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null, null);
     }
 
     String tenantId() {
@@ -103,6 +119,11 @@ final class OidcTenantContext {
     OidcJwkSetManager jwkSetManager() {
         requireReady();
         return jwkSetManager;
+    }
+
+    WebClient webClient() {
+        requireReady();
+        return webClient;
     }
 
     OidcTokenValidationConfig tokenValidation() {

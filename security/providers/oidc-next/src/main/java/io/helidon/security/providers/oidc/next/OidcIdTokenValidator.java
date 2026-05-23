@@ -39,16 +39,16 @@ final class OidcIdTokenValidator {
         return new OidcIdTokenValidator();
     }
 
-    OidcIdTokenValidationResult validate(String token,
-                                         OidcTenantContext tenantContext,
-                                         OidcAuthenticationRequestState authenticationRequestState) {
+    OidcValidationResult<OidcValidatedIdToken> validate(String token,
+                                                        OidcTenantContext tenantContext,
+                                                        OidcAuthenticationRequestState authenticationRequestState) {
         return validate(token, tenantContext, Optional.of(authenticationRequestState.nonce()));
     }
 
-    OidcIdTokenValidationResult validateRefresh(String token,
-                                                OidcTenantContext tenantContext,
-                                                OidcValidatedIdToken currentIdToken) {
-        OidcIdTokenValidationResult validationResult = validate(token, tenantContext, Optional.empty());
+    OidcValidationResult<OidcValidatedIdToken> validateRefresh(String token,
+                                                               OidcTenantContext tenantContext,
+                                                               OidcValidatedIdToken currentIdToken) {
+        OidcValidationResult<OidcValidatedIdToken> validationResult = validate(token, tenantContext, Optional.empty());
         if (!validationResult.succeeded()) {
             return validationResult;
         }
@@ -66,24 +66,24 @@ final class OidcIdTokenValidator {
          * occurred".
          */
         if (!refreshed.issuer().equals(current.issuer())) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token issuer does not match the existing local authentication result");
         }
         if (!refreshed.subject().equals(current.subject())) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token subject does not match the existing local authentication result");
         }
         if (!refreshed.audience().equals(current.audience())) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token audience does not match the existing local authentication result");
         }
         if (!refreshed.payloadClaimValue(AUTHORIZED_PARTY_CLAIM).map(JsonValue::toString)
                 .equals(current.payloadClaimValue(AUTHORIZED_PARTY_CLAIM).map(JsonValue::toString))) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token authorized party does not match the existing local authentication result");
         }
         if (refreshed.nonce().isPresent() && !refreshed.nonce().equals(current.nonce())) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token nonce does not match the existing local authentication result");
         }
         Optional<String> refreshedAuthenticationTime = refreshed.payloadClaimValue(AUTHENTICATION_TIME_CLAIM)
@@ -91,34 +91,34 @@ final class OidcIdTokenValidator {
         if (refreshedAuthenticationTime.isPresent()
                 && !refreshedAuthenticationTime.equals(current.payloadClaimValue(AUTHENTICATION_TIME_CLAIM)
                                                                .map(JsonValue::toString))) {
-            return OidcIdTokenValidationResult.failure(
+            return OidcValidationResult.failure(
                     "Refreshed ID Token authentication time does not match the existing local authentication result");
         }
 
         return validationResult;
     }
 
-    private OidcIdTokenValidationResult validate(String token,
-                                                OidcTenantContext tenantContext,
-                                                Optional<String> expectedNonce) {
+    private OidcValidationResult<OidcValidatedIdToken> validate(String token,
+                                                               OidcTenantContext tenantContext,
+                                                               Optional<String> expectedNonce) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
         } catch (RuntimeException e) {
-            return OidcIdTokenValidationResult.failure("ID Token is not a valid signed JWT", e);
+            return OidcValidationResult.failure("ID Token is not a valid signed JWT", e);
         }
 
         Jwt jwt;
         try {
             jwt = signedJwt.getJwt();
         } catch (RuntimeException e) {
-            return OidcIdTokenValidationResult.failure("ID Token JWT payload is invalid", e);
+            return OidcValidationResult.failure("ID Token JWT payload is invalid", e);
         }
 
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
         Errors headerErrors = headerValidator(tokenValidation.allowedAlgorithms()).validate(jwt);
         if (!headerErrors.isValid()) {
-            return OidcIdTokenValidationResult.failure("ID Token JWS header is invalid");
+            return OidcValidationResult.failure("ID Token JWS header is invalid");
         }
 
         try {
@@ -130,10 +130,10 @@ final class OidcIdTokenValidator {
              */
             Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
-                return OidcIdTokenValidationResult.failure("ID Token signature is invalid");
+                return OidcValidationResult.failure("ID Token signature is invalid");
             }
         } catch (RuntimeException e) {
-            return OidcIdTokenValidationResult.failure("ID Token signature keys are unavailable", e);
+            return OidcValidationResult.failure("ID Token signature keys are unavailable", e);
         }
 
         Optional<String> expectedIssuer = tenantContext.metadata()
@@ -141,7 +141,7 @@ final class OidcIdTokenValidator {
                 .map(Object::toString);
         Optional<String> clientId = tenantContext.tenantConfig().clientId();
         if (expectedIssuer.isEmpty() || clientId.isEmpty()) {
-            return OidcIdTokenValidationResult.failure("ID Token validation is not configured");
+            return OidcValidationResult.failure("ID Token validation is not configured");
         }
 
         Errors claimErrors = claimValidator(tokenValidation,
@@ -149,10 +149,10 @@ final class OidcIdTokenValidator {
                                             clientId.orElseThrow(),
                                             expectedNonce).validate(jwt);
         if (!claimErrors.isValid()) {
-            return OidcIdTokenValidationResult.failure("ID Token claims are invalid");
+            return OidcValidationResult.failure("ID Token claims are invalid");
         }
 
-        return OidcIdTokenValidationResult.success(OidcValidatedIdToken.create(token, signedJwt, jwt));
+        return OidcValidationResult.success(OidcValidatedIdToken.create(token, signedJwt, jwt));
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

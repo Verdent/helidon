@@ -243,24 +243,19 @@ final class OidcConfigSupport {
         authorizationCode.redirectionEndpointUri()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
-        Optional<URI> authorizationEndpointUri = endpoints.authorizationEndpointUri();
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-        authorizationEndpointUri
-                .or(() -> wellKnownUri)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "authorization-endpoint-uri or well-known-uri must be configured when Authorization Code Flow "
-                                + "is enabled"));
-        authorizationEndpointUri.ifPresent(uri -> validateAuthorizationEndpointUri(uri, endpoints.tlsRequired()));
-        Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
-        tokenEndpointUri
-                .or(() -> wellKnownUri)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "token-endpoint-uri or well-known-uri must be configured when Authorization Code Flow "
-                                + "is enabled"));
-        tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
-        if (authorizationEndpointUri.isEmpty() || tokenEndpointUri.isEmpty()) {
-            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
-        }
+        requireEndpointOrWellKnown(endpoints.authorizationEndpointUri(),
+                                   wellKnownUri,
+                                   "authorization-endpoint-uri",
+                                   "Authorization Code Flow",
+                                   endpoints.tlsRequired(),
+                                   OidcConfigSupport::validateAuthorizationEndpointUri);
+        requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
+                                   wellKnownUri,
+                                   "token-endpoint-uri",
+                                   "Authorization Code Flow",
+                                   endpoints.tlsRequired(),
+                                   OidcConfigSupport::validateTokenEndpointUri);
         tenant.issuer()
                 .or(endpoints::wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -292,15 +287,12 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "authorization-code must be configured when UserInfo is enabled"));
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-        Optional<URI> userInfoEndpointUri = endpoints.userInfoEndpointUri();
-        userInfoEndpointUri
-                .or(() -> wellKnownUri)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "user-info-endpoint-uri or well-known-uri must be configured when UserInfo is enabled"));
-        userInfoEndpointUri.ifPresent(uri -> validateUserInfoEndpointUri(uri, endpoints.tlsRequired()));
-        if (userInfoEndpointUri.isEmpty()) {
-            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
-        }
+        requireEndpointOrWellKnown(endpoints.userInfoEndpointUri(),
+                                   wellKnownUri,
+                                   "user-info-endpoint-uri",
+                                   "UserInfo",
+                                   endpoints.tlsRequired(),
+                                   OidcConfigSupport::validateUserInfoEndpointUri);
     }
 
     private static void validateLogout(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -343,16 +335,12 @@ final class OidcConfigSupport {
         }
         OidcEndSessionConfig endSession = configuredEndSession.orElseThrow();
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-        Optional<URI> endSessionEndpointUri = endpoints.endSessionEndpointUri();
-        endSessionEndpointUri
-                .or(() -> wellKnownUri)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "end-session-endpoint-uri or well-known-uri must be configured when RP-Initiated Logout "
-                                + "is enabled"));
-        endSessionEndpointUri.ifPresent(uri -> validateEndSessionEndpointUri(uri, endpoints.tlsRequired()));
-        if (endSessionEndpointUri.isEmpty()) {
-            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
-        }
+        requireEndpointOrWellKnown(endpoints.endSessionEndpointUri(),
+                                   wellKnownUri,
+                                   "end-session-endpoint-uri",
+                                   "RP-Initiated Logout",
+                                   endpoints.tlsRequired(),
+                                   OidcConfigSupport::validateEndSessionEndpointUri);
         endSession.postLogoutRedirectUri()
                 .ifPresent(uri -> validatePostLogoutRedirectUri("post-logout-redirect-uri",
                                                                 uri,
@@ -403,15 +391,12 @@ final class OidcConfigSupport {
                     .orElseThrow(() -> new IllegalArgumentException(
                             "issuer or well-known-uri must be configured when JWT access-token validation is enabled"));
             Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-            Optional<URI> jwksUri = endpoints.jwksUri();
-            jwksUri
-                    .or(() -> wellKnownUri)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "jwks-uri or well-known-uri must be configured when JWT access-token validation is enabled"));
-            jwksUri.ifPresent(uri -> validateJwksUri(uri, endpoints.tlsRequired()));
-            if (jwksUri.isEmpty()) {
-                wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
-            }
+            requireEndpointOrWellKnown(endpoints.jwksUri(),
+                                       wellKnownUri,
+                                       "jwks-uri",
+                                       "JWT access-token validation",
+                                       endpoints.tlsRequired(),
+                                       OidcConfigSupport::validateJwksUri);
             if (tokenValidation.audienceValidationEnabled()) {
                 /*
                  * Spec: RFC 7519, 4.1.3 "aud" (Audience) Claim
@@ -503,15 +488,27 @@ final class OidcConfigSupport {
                 "client-id must be configured when " + operation + " is enabled"));
         validateTokenEndpointAuthentication(clientSecret, authenticationMethod, true, operation);
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(issuer, endpoints);
-        Optional<URI> tokenEndpointUri = endpoints.tokenEndpointUri();
-        tokenEndpointUri
+        requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
+                                   wellKnownUri,
+                                   "token-endpoint-uri",
+                                   operation,
+                                   endpoints.tlsRequired(),
+                                   OidcConfigSupport::validateTokenEndpointUri);
+    }
+
+    private static void requireEndpointOrWellKnown(Optional<URI> endpointUri,
+                                                   Optional<URI> wellKnownUri,
+                                                   String endpointConfigKey,
+                                                   String operation,
+                                                   boolean tlsRequired,
+                                                   EndpointUriValidator endpointValidator) {
+        endpointUri
                 .or(() -> wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "token-endpoint-uri or well-known-uri must be configured when " + operation + " "
-                                + "is enabled"));
-        tokenEndpointUri.ifPresent(uri -> validateTokenEndpointUri(uri, endpoints.tlsRequired()));
-        if (tokenEndpointUri.isEmpty()) {
-            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
+                        endpointConfigKey + " or well-known-uri must be configured when " + operation + " is enabled"));
+        endpointUri.ifPresent(uri -> endpointValidator.validate(uri, tlsRequired));
+        if (endpointUri.isEmpty()) {
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, tlsRequired));
         }
     }
 
@@ -664,5 +661,10 @@ final class OidcConfigSupport {
         }
         default -> throw new IllegalStateException("Unexpected client authentication method: " + method);
         }
+    }
+
+    @FunctionalInterface
+    private interface EndpointUriValidator {
+        void validate(URI uri, boolean tlsRequired);
     }
 }

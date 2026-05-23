@@ -18,36 +18,34 @@ package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
 
-final class OidcTokenValidationResult {
-    private final OidcValidatedAccessToken validatedToken;
+final class OidcValidationResult<T> {
+    private final T validatedToken;
     private final String errorDescription;
     private final Throwable cause;
 
-    private OidcTokenValidationResult(OidcValidatedAccessToken validatedToken,
-                                      String errorDescription,
-                                      Throwable cause) {
+    private OidcValidationResult(T validatedToken, String errorDescription, Throwable cause) {
         this.validatedToken = validatedToken;
         this.errorDescription = errorDescription;
         this.cause = cause;
     }
 
-    static OidcTokenValidationResult success(OidcValidatedAccessToken validatedToken) {
-        return new OidcTokenValidationResult(validatedToken, null, null);
+    static <T> OidcValidationResult<T> success(T validatedToken) {
+        return new OidcValidationResult<>(validatedToken, null, null);
     }
 
-    static OidcTokenValidationResult failure(String errorDescription) {
+    static <T> OidcValidationResult<T> failure(String errorDescription) {
         return failure(errorDescription, null);
     }
 
-    static OidcTokenValidationResult failure(String errorDescription, Throwable cause) {
-        return new OidcTokenValidationResult(null, errorDescription, cause);
+    static <T> OidcValidationResult<T> failure(String errorDescription, Throwable cause) {
+        return new OidcValidationResult<>(null, errorDescription, cause);
     }
 
     boolean succeeded() {
         return validatedToken != null;
     }
 
-    Optional<OidcValidatedAccessToken> validatedToken() {
+    Optional<T> validatedToken() {
         return Optional.ofNullable(validatedToken);
     }
 

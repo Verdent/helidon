@@ -31,6 +31,21 @@ final class OidcUserInfoSupport {
                 .isPresent();
     }
 
+    static Result userInfo(OidcTenantContext tenantContext, String accessToken, OidcValidatedIdToken idToken) {
+        if (!enabled(tenantContext.tenantConfig())) {
+            return Result.success(Optional.empty());
+        }
+
+        Optional<JsonObject> userInfo = tenantContext.endpointClient().userInfo(accessToken);
+        if (userInfo.isEmpty()) {
+            return Result.failure("UserInfo Endpoint request failed");
+        }
+        if (!subjectMatches(userInfo.orElseThrow(), idToken)) {
+            return Result.failure("UserInfo response is invalid");
+        }
+        return Result.success(userInfo);
+    }
+
     static boolean subjectMatches(JsonObject userInfo, OidcValidatedIdToken idToken) {
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
@@ -51,5 +66,23 @@ final class OidcUserInfoSupport {
                 .filter(value -> value.type() == JsonValueType.STRING)
                 .map(value -> value.asString().value())
                 .filter(value -> !value.isBlank());
+    }
+
+    record Result(Optional<JsonObject> userInfo, String failureDescription) {
+        private static Result success(Optional<JsonObject> userInfo) {
+            return new Result(userInfo, null);
+        }
+
+        private static Result failure(String errorDescription) {
+            return new Result(Optional.empty(), errorDescription);
+        }
+
+        boolean succeeded() {
+            return failureDescription == null;
+        }
+
+        Optional<String> errorDescription() {
+            return Optional.ofNullable(failureDescription);
+        }
     }
 }

@@ -22,6 +22,8 @@ import java.util.Optional;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcTenantContextFactory {
+    private static final System.Logger LOGGER = System.getLogger(OidcTenantContextFactory.class.getName());
+
     private final TenantInitializer initializer;
 
     private OidcTenantContextFactory(TenantInitializer initializer) {
@@ -59,6 +61,7 @@ final class OidcTenantContextFactory {
                 validateEndSessionMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
+                LOGGER.log(System.Logger.Level.DEBUG, "OIDC tenant initialization failed: " + tenantId, e);
                 return OidcTenantContext.failed(tenantId, tenantConfig);
             }
         };

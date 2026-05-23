@@ -38,11 +38,6 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     }
 
     @Override
-    public OidcTokenValidationMethod method() {
-        return OidcTokenValidationMethod.JWT;
-    }
-
-    @Override
     public OidcValidationResult<OidcValidatedAccessToken> validate(String token, OidcTenantContext tenantContext) {
         SignedJwt signedJwt;
         try {

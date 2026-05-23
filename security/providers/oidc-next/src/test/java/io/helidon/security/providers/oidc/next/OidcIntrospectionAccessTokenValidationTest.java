@@ -52,6 +52,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @ServerTest
@@ -119,7 +120,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(credential.getTokenInstance(JsonObject.class).isPresent(), is(true));
 
         RecordedRequest request = RECORDED_REQUEST.get();
-        assertThat(request != null, is(true));
+        assertThat(request, is(notNullValue()));
         assertThat(request.method(), is("POST"));
         assertThat(request.authorization(), is(basicAuthorization()));
         assertThat(request.contentType(), is("application/x-www-form-urlencoded"));

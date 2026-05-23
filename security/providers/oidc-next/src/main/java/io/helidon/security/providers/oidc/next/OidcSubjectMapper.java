@@ -69,12 +69,6 @@ final class OidcSubjectMapper {
         Jwt idToken = authenticationResult.idToken().jwt();
         String principalId = principalId(idToken, subjectMapping).orElseThrow();
         Optional<JsonObject> userInfo = authenticationResult.userInfo();
-        JsonObject claims = userInfo
-                .map(value -> mergeUserInfo(idToken, value))
-                .orElse(null);
-        Principal principal = userInfo
-                .map(value -> principal(idToken, claims, value, principalId, subjectMapping))
-                .orElseGet(() -> principal(idToken, principalId, subjectMapping));
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(authenticationResult.accessToken());
@@ -82,12 +76,15 @@ final class OidcSubjectMapper {
         authenticationResult.accessTokenExpiresAt().ifPresent(credentialBuilder::expTime);
 
         Subject.Builder subjectBuilder = Subject.builder()
-                .principal(principal)
                 .addPublicCredential(TokenCredential.class, credentialBuilder.build());
 
         if (userInfo.isPresent()) {
-            addRoles(subjectBuilder, roleClaimValues(claims, subjectMapping));
+            JsonObject userInfoClaims = userInfo.orElseThrow();
+            JsonObject mergedClaims = mergeUserInfo(idToken, userInfoClaims);
+            subjectBuilder.principal(principal(idToken, mergedClaims, userInfoClaims, principalId, subjectMapping));
+            addRoles(subjectBuilder, roleClaimValues(mergedClaims, subjectMapping));
         } else {
+            subjectBuilder.principal(principal(idToken, principalId, subjectMapping));
             addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
         }
         if (subjectMapping.scopeGrantsEnabled()) {

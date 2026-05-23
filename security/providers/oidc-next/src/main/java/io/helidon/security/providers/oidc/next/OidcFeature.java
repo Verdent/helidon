@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -28,7 +27,6 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
 import io.helidon.http.PathMatchers;
 import io.helidon.http.Status;
-import io.helidon.json.JsonObject;
 import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
@@ -38,6 +36,8 @@ import io.helidon.webserver.http.ServerResponse;
  * OpenID Connect HTTP feature for Redirection Endpoint and logout routes.
  */
 public final class OidcFeature implements HttpFeature {
+    private static final System.Logger LOGGER = System.getLogger(OidcFeature.class.getName());
+
     private final OidcProviderConfig config;
     private final OidcAuthorizationResponseProcessor authorizationResponseProcessor;
     private final OidcLogoutHandler logoutHandler;
@@ -90,7 +90,7 @@ public final class OidcFeature implements HttpFeature {
                 .flatMap(Optional::stream)
                 .filter(OidcAuthorizationCodeConfig::enabled)
                 .flatMap(authorizationCode -> authorizationCode.redirectionEndpointUri().stream())
-                .map(OidcFeature::path)
+                .map(OidcUri::path)
                 .forEach(paths::add);
         return Set.copyOf(paths);
     }
@@ -111,6 +111,10 @@ public final class OidcFeature implements HttpFeature {
             return;
         }
         if (result.authorizationError()) {
+            LOGGER.log(System.Logger.Level.DEBUG,
+                       "OpenID Provider returned an Authorization Error Response: "
+                               + result.error().orElse("unknown")
+                               + result.errorDescription().map(description -> ": " + description).orElse(""));
             response.status(Status.BAD_REQUEST_400)
                     .send("OpenID Provider returned an Authorization Error Response");
             return;
@@ -126,62 +130,51 @@ public final class OidcFeature implements HttpFeature {
                 .exchangeAuthorizationCode(result.authorizationCode().orElseThrow(),
                                            state.redirectionEndpointUri(),
                                            state.pkceVerifier());
-        if (tokenResult.succeeded()) {
-            OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
-            OidcValidationResult<OidcValidatedIdToken> idTokenResult = idTokenValidator.validate(
-                    tokenResponse.idToken().orElseThrow(),
-                    tenantContext,
-                    state);
-            if (!idTokenResult.succeeded()) {
+        if (!tokenResult.succeeded()) {
+            if (tokenResult.errorResponse()) {
                 response.status(Status.BAD_GATEWAY_502)
-                        .send("ID Token is invalid");
+                        .send("Token Endpoint returned an Error Response");
                 return;
             }
-            OidcValidatedIdToken validatedIdToken = idTokenResult.validatedToken().orElseThrow();
-            Optional<JsonObject> userInfo = Optional.empty();
-            if (OidcUserInfoSupport.enabled(tenantContext.tenantConfig())) {
-                userInfo = tenantContext.endpointClient().userInfo(tokenResponse.accessToken());
-                if (userInfo.isEmpty()) {
-                    response.status(Status.BAD_GATEWAY_502)
-                            .send("UserInfo Endpoint request failed");
-                    return;
-                }
-                if (!OidcUserInfoSupport.subjectMatches(userInfo.orElseThrow(), validatedIdToken)) {
-                    response.status(Status.BAD_GATEWAY_502)
-                            .send("UserInfo response is invalid");
-                    return;
-                }
-            }
-            OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.create(
-                    tenantContext.tenantId(),
-                    tokenResponse,
-                    validatedIdToken,
-                    tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
-                    userInfo,
-                    Instant.now(),
-                    tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
-            response.headers()
-                    .addCookie(tenantContext.cookieStateHandler()
-                                       .createLocalAuthenticationResultCookie(localAuthenticationResult));
-            response.status(Status.SEE_OTHER_303);
-            response.headers().add(HeaderNames.LOCATION, state.originalUri().toString());
-            response.send();
-            return;
-        }
-        if (tokenResult.errorResponse()) {
             response.status(Status.BAD_GATEWAY_502)
-                    .send("Token Endpoint returned an Error Response");
+                    .send("Token Endpoint exchange failed");
             return;
         }
-        response.status(Status.BAD_GATEWAY_502)
-                .send("Token Endpoint exchange failed");
-    }
 
-    private static String path(URI uri) {
-        String path = uri.getPath();
-        if (path == null || path.isEmpty()) {
-            return "/";
+        OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
+        OidcValidationResult<OidcValidatedIdToken> idTokenResult = idTokenValidator.validate(
+                tokenResponse.idToken().orElseThrow(),
+                tenantContext,
+                state);
+        if (!idTokenResult.succeeded()) {
+            response.status(Status.BAD_GATEWAY_502)
+                    .send("ID Token is invalid");
+            return;
         }
-        return path;
+
+        OidcValidatedIdToken validatedIdToken = idTokenResult.validatedToken().orElseThrow();
+        OidcUserInfoSupport.Result userInfoResult = OidcUserInfoSupport.userInfo(tenantContext,
+                                                                                  tokenResponse.accessToken(),
+                                                                                  validatedIdToken);
+        if (!userInfoResult.succeeded()) {
+            response.status(Status.BAD_GATEWAY_502)
+                    .send(userInfoResult.errorDescription().orElseThrow());
+            return;
+        }
+
+        OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.create(
+                tenantContext.tenantId(),
+                tokenResponse,
+                validatedIdToken,
+                tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
+                userInfoResult.userInfo(),
+                Instant.now(),
+                tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
+        response.headers()
+                .addCookie(tenantContext.cookieStateHandler()
+                                   .createLocalAuthenticationResultCookie(localAuthenticationResult));
+        response.status(Status.SEE_OTHER_303);
+        response.headers().add(HeaderNames.LOCATION, state.originalUri().toString());
+        response.send();
     }
 }

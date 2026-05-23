@@ -52,6 +52,7 @@ import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -140,12 +141,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(subject.grantsByType("scope").stream().map(it -> it.getName()).toList(),
                    is(List.of("openid", "email")));
 
-        List<String> setCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
-        assertThat(setCookies.size(), is(1));
-        SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
+        OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(response, tenant);
         assertThat(stored.accessToken(), is(REFRESHED_ACCESS_TOKEN));
         assertThat(stored.refreshToken().orElse(""), is(ROTATED_REFRESH_TOKEN));
         assertThat(stored.scope().orElse(""), is("openid email"));
@@ -169,12 +165,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user()
-                           .orElseThrow()
-                           .publicCredential(TokenCredential.class)
-                           .orElseThrow()
-                           .token(),
-                   is(OLD_ACCESS_TOKEN));
+        assertAccessToken(response, OLD_ACCESS_TOKEN);
         assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
         assertThat(RECORDED_REQUEST.get(), is(nullValue()));
     }
@@ -191,13 +182,8 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user()
-                           .orElseThrow()
-                           .publicCredential(TokenCredential.class)
-                           .orElseThrow()
-                           .token(),
-                   is(REFRESHED_ACCESS_TOKEN));
-        assertThat(RECORDED_REQUEST.get() != null, is(true));
+        assertAccessToken(response, REFRESHED_ACCESS_TOKEN);
+        assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
     @Test
@@ -216,17 +202,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(response.user().orElseThrow().grantsByType("scope").stream().map(it -> it.getName()).toList(),
                    is(List.of("openid", "profile")));
 
-        String localAuthenticationCookieName = tenant.cookies().localAuthenticationCookieName();
-        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
-                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
-                                                            .stream()
-                                                            .filter(cookie -> cookie.startsWith(
-                                                                    localAuthenticationCookieName + "="))
-                                                            .findFirst()
-                                                            .orElseThrow());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
+        OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(response, tenant);
         assertThat(stored.accessToken(), is(REFRESHED_ACCESS_TOKEN));
         assertThat(stored.refreshToken().orElse(""), is(OLD_REFRESH_TOKEN));
         assertThat(stored.scope().orElse(""), is("openid profile"));
@@ -249,7 +225,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
-        assertThat(RECORDED_REQUEST.get() != null, is(true));
+        assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
     @Test
@@ -269,14 +245,9 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user()
-                           .orElseThrow()
-                           .publicCredential(TokenCredential.class)
-                           .orElseThrow()
-                           .token(),
-                   is(OLD_ACCESS_TOKEN));
+        assertAccessToken(response, OLD_ACCESS_TOKEN);
         assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
-        assertThat(RECORDED_REQUEST.get() != null, is(true));
+        assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
     @Test
@@ -292,7 +263,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
-        assertThat(RECORDED_REQUEST.get() != null, is(true));
+        assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
     @Test
@@ -325,13 +296,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
-                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
-                                                            .getFirst());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
-        assertThat(stored.accessToken(), is(refreshedAccessToken));
+        assertThat(storedLocalAuthenticationResult(response, tenant).accessToken(), is(refreshedAccessToken));
     }
 
     @Test
@@ -364,12 +329,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user()
-                           .orElseThrow()
-                           .publicCredential(TokenCredential.class)
-                           .orElseThrow()
-                           .token(),
-                   is(OLD_ACCESS_TOKEN));
+        assertAccessToken(response, OLD_ACCESS_TOKEN);
         assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
     }
 
@@ -428,13 +388,7 @@ class OidcRefreshTokenManagerTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.user().orElseThrow().principal().getName(), is("refreshed-user"));
-        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
-                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
-                                                            .getFirst());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
-        assertThat(stored.idToken().rawToken(), is(refreshedIdToken));
+        assertThat(storedLocalAuthenticationResult(response, tenant).idToken().rawToken(), is(refreshedIdToken));
     }
 
     @Test
@@ -458,12 +412,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.user().orElseThrow().principal().getName(), is("refetched-user"));
         assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is("Bearer " + REFRESHED_ACCESS_TOKEN));
-        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
-                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
-                                                            .getFirst());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
+        OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(response, tenant);
         assertThat(stored.userInfo().orElseThrow().stringValue("preferred_username").orElse(""),
                    is("refetched-user"));
     }
@@ -509,13 +458,7 @@ class OidcRefreshTokenManagerTest {
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        SetCookie refreshedCookie = SetCookie.parse(response.responseHeaders()
-                                                            .get(HeaderNames.SET_COOKIE.defaultCase())
-                                                            .getFirst());
-        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
-                .orElseThrow();
-        assertThat(stored.expiresAt(), is(refreshedExpiration));
+        assertThat(storedLocalAuthenticationResult(response, tenant).expiresAt(), is(refreshedExpiration));
     }
 
     @Test
@@ -965,6 +908,27 @@ class OidcRefreshTokenManagerTest {
                                                                  + "=")
                                    && cookie.contains("Expires=")),
                    is(true));
+    }
+
+    private static void assertAccessToken(AuthenticationResponse response, String expectedToken) {
+        assertThat(response.user()
+                           .orElseThrow()
+                           .publicCredential(TokenCredential.class)
+                           .orElseThrow()
+                           .token(),
+                   is(expectedToken));
+    }
+
+    private static OidcLocalAuthenticationResult storedLocalAuthenticationResult(AuthenticationResponse response,
+                                                                                OidcTenantConfig tenant) {
+        String localAuthenticationCookieName = tenant.cookies().localAuthenticationCookieName();
+        List<String> setCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
+        assertThat(setCookies.size(), is(1));
+        SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
+        assertThat(refreshedCookie.name(), is(localAuthenticationCookieName));
+        return OidcCookieStateHandler.create(tenant)
+                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
+                .orElseThrow();
     }
 
     private static Map<String, List<String>> formParameters(Parameters parameters) {

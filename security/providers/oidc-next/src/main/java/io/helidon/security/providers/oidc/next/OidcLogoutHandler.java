@@ -61,7 +61,7 @@ final class OidcLogoutHandler {
             return;
         }
 
-        String requestPath = path(request.requestedUri().toUri());
+        String requestPath = OidcUri.path(request.requestedUri().toUri());
         List<Map.Entry<String, OidcTenantConfig>> tenants = logoutTenants()
                 .stream()
                 .filter(entry -> logoutEndpointPath(entry.getValue()).equals(requestPath))
@@ -154,26 +154,17 @@ final class OidcLogoutHandler {
             return;
         }
 
-        OidcTenantContext tenantContext = tenantRuntimeRegistry.tenantContext(selectedEndSessionTenant.tenantId())
+        Optional<URI> endSessionEndpointUri = tenantRuntimeRegistry.tenantContext(selectedEndSessionTenant.tenantId())
                 .filter(OidcTenantContext::ready)
-                .orElse(null);
-        if (tenantContext == null) {
-            response.status(Status.BAD_GATEWAY_502)
-                    .send("End Session Endpoint is unavailable");
-            return;
-        }
-
-        URI endSessionEndpointUri = tenantContext.metadata()
-                .endSessionEndpointUri()
-                .orElse(null);
-        if (endSessionEndpointUri == null) {
+                .flatMap(tenantContext -> tenantContext.metadata().endSessionEndpointUri());
+        if (endSessionEndpointUri.isEmpty()) {
             response.status(Status.BAD_GATEWAY_502)
                     .send("End Session Endpoint is unavailable");
             return;
         }
 
         response.status(Status.SEE_OTHER_303);
-        response.headers().add(HeaderNames.LOCATION, endSessionLocation(endSessionEndpointUri,
+        response.headers().add(HeaderNames.LOCATION, endSessionLocation(endSessionEndpointUri.orElseThrow(),
                                                                         idTokenHint,
                                                                         selectedEndSessionTenant.tenantConfig()
                                                                                 .clientId(),
@@ -256,39 +247,10 @@ final class OidcLogoutHandler {
     private boolean sameOrigin(URI requestedUri, String originHeader) {
         try {
             URI origin = URI.create(originHeader);
-            return sameOrigin(requestedUri, origin);
+            return OidcUri.sameOrigin(requestedUri, origin);
         } catch (IllegalArgumentException e) {
             return false;
         }
-    }
-
-    private boolean sameOrigin(URI requestedUri, URI origin) {
-        String requestedScheme = requestedUri.getScheme();
-        String originScheme = origin.getScheme();
-        String requestedHost = requestedUri.getHost();
-        String originHost = origin.getHost();
-        return requestedScheme != null
-                && originScheme != null
-                && requestedHost != null
-                && originHost != null
-                && requestedScheme.equalsIgnoreCase(originScheme)
-                && requestedHost.equalsIgnoreCase(originHost)
-                && effectivePort(requestedUri) == effectivePort(origin);
-    }
-
-    private int effectivePort(URI uri) {
-        int port = uri.getPort();
-        if (port != -1) {
-            return port;
-        }
-        String scheme = uri.getScheme();
-        if ("https".equalsIgnoreCase(scheme)) {
-            return 443;
-        }
-        if ("http".equalsIgnoreCase(scheme)) {
-            return 80;
-        }
-        return -1;
     }
 
     private List<Map.Entry<String, OidcTenantConfig>> logoutTenants() {
@@ -301,15 +263,7 @@ final class OidcLogoutHandler {
     }
 
     private static String logoutEndpointPath(OidcTenantConfig tenant) {
-        return path(tenant.logout().orElseThrow().localEndpointUri());
-    }
-
-    private static String path(URI uri) {
-        String path = uri.getPath();
-        if (path == null || path.isEmpty()) {
-            return "/";
-        }
-        return path;
+        return OidcUri.path(tenant.logout().orElseThrow().localEndpointUri());
     }
 
     private record LogoutTenant(String tenantId,

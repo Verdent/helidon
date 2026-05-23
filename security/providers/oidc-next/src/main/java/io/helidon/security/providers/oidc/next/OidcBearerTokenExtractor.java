@@ -23,10 +23,10 @@ import java.util.Optional;
 
 import io.helidon.common.uri.UriEncoding;
 import io.helidon.common.uri.UriQuery;
+import io.helidon.http.HeaderNames;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcBearerTokenExtractor {
-    private static final String AUTHORIZATION = "Authorization";
     private static final String ACCESS_TOKEN = "access_token";
     private static final String BEARER_SCHEME = "Bearer";
 
@@ -63,7 +63,7 @@ final class OidcBearerTokenExtractor {
 
     private static OidcBearerTokenExtractionResult authorizationHeaderBearerToken(SecurityEnvironment environment) {
         List<String> tokens = new ArrayList<>();
-        List<String> values = environment.headers().getOrDefault(AUTHORIZATION, List.of());
+        List<String> values = environment.headers().getOrDefault(HeaderNames.AUTHORIZATION.defaultCase(), List.of());
         for (String value : values) {
             Optional<String> token = authorizationHeaderBearerToken(value);
             if (token.isEmpty()) {

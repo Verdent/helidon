@@ -111,29 +111,21 @@ final class OidcRefreshTokenManager {
                 idToken = idTokenValidationResult.validatedToken().orElseThrow();
             }
 
-            Optional<JsonObject> userInfo = Optional.empty();
-            if (OidcUserInfoSupport.enabled(tenantContext.tenantConfig())) {
-                userInfo = tenantContext.endpointClient().userInfo(tokenResponse.accessToken());
-                if (userInfo.isEmpty()) {
-                    return refreshFailure(authenticationResult,
-                                          expiresAt,
-                                          now,
-                                          "UserInfo Endpoint request failed during refresh",
-                                          Optional.empty());
-                }
-                if (!OidcUserInfoSupport.subjectMatches(userInfo.orElseThrow(), idToken)) {
-                    return refreshFailure(authenticationResult,
-                                          expiresAt,
-                                          now,
-                                          "UserInfo response is invalid during refresh",
-                                          Optional.empty());
-                }
+            OidcUserInfoSupport.Result userInfoResult = OidcUserInfoSupport.userInfo(tenantContext,
+                                                                                      tokenResponse.accessToken(),
+                                                                                      idToken);
+            if (!userInfoResult.succeeded()) {
+                return refreshFailure(authenticationResult,
+                                      expiresAt,
+                                      now,
+                                      userInfoResult.errorDescription().orElseThrow() + " during refresh",
+                                      Optional.empty());
             }
 
             return RefreshResult.refreshed(refresh(authenticationResult,
                                                  tokenResponse,
                                                  idToken,
-                                                 userInfo,
+                                                 userInfoResult.userInfo(),
                                                  now));
         }
 

@@ -29,7 +29,6 @@ final class OidcAuthorizationResponseResult {
     private final String authorizationCode;
     private final String error;
     private final String errorDescription;
-    private final String errorUri;
     private final List<SetCookie> stateCookies;
 
     private OidcAuthorizationResponseResult(OidcAuthorizationResponseStatus status,
@@ -39,7 +38,6 @@ final class OidcAuthorizationResponseResult {
                                             String authorizationCode,
                                             String error,
                                             String errorDescription,
-                                            String errorUri,
                                             List<SetCookie> stateCookies) {
         this.status = status;
         this.description = description;
@@ -48,7 +46,6 @@ final class OidcAuthorizationResponseResult {
         this.authorizationCode = authorizationCode;
         this.error = error;
         this.errorDescription = errorDescription;
-        this.errorUri = errorUri;
         this.stateCookies = List.copyOf(stateCookies);
     }
 
@@ -60,13 +57,11 @@ final class OidcAuthorizationResponseResult {
                                                    null,
                                                    null,
                                                    null,
-                                                   null,
                                                    stateCookies);
     }
 
     static OidcAuthorizationResponseResult authorizationError(String error,
                                                               String errorDescription,
-                                                              String errorUri,
                                                               OidcTenantContext tenantContext,
                                                               OidcAuthenticationRequestState state,
                                                               List<SetCookie> stateCookies) {
@@ -77,7 +72,6 @@ final class OidcAuthorizationResponseResult {
                                                    null,
                                                    error,
                                                    errorDescription,
-                                                   errorUri,
                                                    stateCookies);
     }
 
@@ -90,7 +84,6 @@ final class OidcAuthorizationResponseResult {
                                                    tenantContext,
                                                    state,
                                                    authorizationCode,
-                                                   null,
                                                    null,
                                                    null,
                                                    stateCookies);
@@ -130,10 +123,6 @@ final class OidcAuthorizationResponseResult {
 
     Optional<String> errorDescription() {
         return Optional.ofNullable(errorDescription);
-    }
-
-    Optional<String> errorUri() {
-        return Optional.ofNullable(errorUri);
     }
 
     List<SetCookie> stateCookies() {

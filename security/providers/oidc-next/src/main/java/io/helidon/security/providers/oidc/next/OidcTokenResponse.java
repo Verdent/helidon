@@ -29,22 +29,19 @@ final class OidcTokenResponse {
     private final String refreshToken;
     private final Long expiresIn;
     private final String scope;
-    private final JsonObject rawResponse;
 
     private OidcTokenResponse(String accessToken,
                               String tokenType,
                               String idToken,
                               String refreshToken,
                               Long expiresIn,
-                              String scope,
-                              JsonObject rawResponse) {
+                              String scope) {
         this.accessToken = accessToken;
         this.tokenType = tokenType;
         this.idToken = idToken;
         this.refreshToken = refreshToken;
         this.expiresIn = expiresIn;
         this.scope = scope;
-        this.rawResponse = rawResponse;
     }
 
     static OidcTokenResponse fromAuthorizationCodeJson(JsonObject json) {
@@ -88,8 +85,7 @@ final class OidcTokenResponse {
                                      idToken,
                                      stringValue(json, "refresh_token").orElse(null),
                                      expiresIn(json).orElse(null),
-                                     stringValue(json, "scope").orElse(null),
-                                     json);
+                                     stringValue(json, "scope").orElse(null));
     }
 
     String accessToken() {
@@ -114,10 +110,6 @@ final class OidcTokenResponse {
 
     Optional<String> scope() {
         return Optional.ofNullable(scope);
-    }
-
-    JsonObject rawResponse() {
-        return rawResponse;
     }
 
     private static String requiredString(JsonObject json, String name) {

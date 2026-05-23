@@ -229,7 +229,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                            Instant now) {
         OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(config);
         return OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry)
-                .process(OidcAuthorizationResponseContext.create(parameters, cookies, redirectionEndpointUri, now));
+                .process(parameters, cookies, redirectionEndpointUri, now);
     }
 
     private static Map<String, List<String>> cookies(OidcTenantConfig tenantConfig,

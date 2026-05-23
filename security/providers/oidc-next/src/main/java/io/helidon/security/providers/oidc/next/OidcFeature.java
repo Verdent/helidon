@@ -106,10 +106,10 @@ public final class OidcFeature implements HttpFeature {
 
     private void processAuthorizationResponse(ServerRequest request, ServerResponse response) {
         OidcAuthorizationResponseResult result = authorizationResponseProcessor.process(
-                OidcAuthorizationResponseContext.create(request.query(),
-                                                        request.headers().cookies().toMap(),
-                                                        request.requestedUri().toUri(),
-                                                        Instant.now()));
+                request.query(),
+                request.headers().cookies().toMap(),
+                request.requestedUri().toUri(),
+                Instant.now());
         result.stateCookies().forEach(response.headers()::addCookie);
         if (result.stateValidated()) {
             processTokenEndpointExchange(result, response);
@@ -251,8 +251,11 @@ public final class OidcFeature implements HttpFeature {
         }
 
         LogoutTenant selectedEndSessionTenant = endSessionTenant.orElseThrow();
-        Optional<OidcEndSessionConfig> configuredEndSession =
-                OidcLogoutSupport.enabledEndSession(selectedEndSessionTenant.tenantConfig());
+        Optional<OidcEndSessionConfig> configuredEndSession = selectedEndSessionTenant.tenantConfig()
+                .logout()
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(OidcLogoutConfig::endSession)
+                .filter(OidcEndSessionConfig::enabled);
         if (configuredEndSession.isEmpty()) {
             response.status(Status.NO_CONTENT_204).send();
             return;

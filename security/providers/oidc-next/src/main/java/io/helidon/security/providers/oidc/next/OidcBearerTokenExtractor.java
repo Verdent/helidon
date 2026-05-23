@@ -104,10 +104,6 @@ final class OidcBearerTokenExtractor {
         return Optional.of(trimmed.substring(tokenStart));
     }
 
-    static OidcBearerTokenExtractionResult accessTokenQueryParameterBearerToken(UriQuery queryParams) {
-        return accessTokenQueryParameterBearerToken(queryParams, Optional.empty());
-    }
-
     private static OidcBearerTokenExtractionResult accessTokenQueryParameterBearerToken(UriQuery queryParams,
                                                                                        Optional<String> rawQuery) {
         if (!queryParams.contains(ACCESS_TOKEN)) {

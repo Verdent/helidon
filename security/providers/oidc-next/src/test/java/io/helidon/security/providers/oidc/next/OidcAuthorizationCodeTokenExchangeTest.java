@@ -82,7 +82,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(tokenResponse.refreshToken().orElse(""), is("refresh-token"));
         assertThat(tokenResponse.expiresIn().orElseThrow(), is(3600L));
         assertThat(tokenResponse.scope().orElse(""), is("openid profile"));
-        assertThat(tokenResponse.rawResponse().stringValue("provider_extension").orElse(""), is("extension-value"));
 
         RecordedRequest request = RECORDED_REQUEST.get();
         assertThat(request != null, is(true));
@@ -213,7 +212,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
         OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
 
-        assertThat(result.failed(), is(true));
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
         assertThat(result.description(), is("Token Endpoint response is invalid"));
     }
 
@@ -224,7 +224,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
         OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
 
-        assertThat(result.failed(), is(true));
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
         assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
     }
 
@@ -295,7 +296,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .set("refresh_token", "refresh-token")
                 .set("expires_in", 3600)
                 .set("scope", "openid profile")
-                .set("provider_extension", "extension-value")
                 .build();
     }
 

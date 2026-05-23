@@ -28,10 +28,6 @@ final class OidcTenantContextFactory {
         this.initializer = initializer;
     }
 
-    static OidcTenantContextFactory create() {
-        return create(defaultInitializer(false));
-    }
-
     static OidcTenantContextFactory create(OidcProviderConfig config) {
         return create(defaultInitializer(OidcConfigSupport.targetClientCredentialsGrantEnabled(config.outboundTargets())));
     }
@@ -91,7 +87,10 @@ final class OidcTenantContextFactory {
                 && staticMetadata.userInfoEndpointUri().isEmpty()) {
             return true;
         }
-        Optional<OidcEndSessionConfig> endSession = OidcLogoutSupport.enabledEndSession(tenantConfig);
+        Optional<OidcEndSessionConfig> endSession = tenantConfig.logout()
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(OidcLogoutConfig::endSession)
+                .filter(OidcEndSessionConfig::enabled);
         if (endSession.isPresent() && staticMetadata.endSessionEndpointUri().isEmpty()) {
             return true;
         }
@@ -142,7 +141,10 @@ final class OidcTenantContextFactory {
     }
 
     private static void validateEndSessionMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        Optional<OidcEndSessionConfig> endSession = OidcLogoutSupport.enabledEndSession(tenantConfig);
+        Optional<OidcEndSessionConfig> endSession = tenantConfig.logout()
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(OidcLogoutConfig::endSession)
+                .filter(OidcEndSessionConfig::enabled);
         if (endSession.isEmpty()) {
             return;
         }

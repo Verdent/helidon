@@ -53,9 +53,9 @@ final class OidcTenantContextFactory {
             try {
                 WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
-                OidcProviderMetadata metadata = needsDiscovery(tenantConfig,
-                                                               staticMetadata,
-                                                               targetClientCredentialsGrantEnabled)
+                OidcProviderMetadata metadata = needsWellKnownMetadata(tenantConfig,
+                                                                       staticMetadata,
+                                                                       targetClientCredentialsGrantEnabled)
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
@@ -66,10 +66,10 @@ final class OidcTenantContextFactory {
         };
     }
 
-    private static boolean needsDiscovery(OidcTenantConfig tenantConfig,
-                                          OidcProviderMetadata staticMetadata,
-                                          boolean targetClientCredentialsGrantEnabled) {
-        if (staticMetadata.discoveryUri().isEmpty()) {
+    private static boolean needsWellKnownMetadata(OidcTenantConfig tenantConfig,
+                                                 OidcProviderMetadata staticMetadata,
+                                                 boolean targetClientCredentialsGrantEnabled) {
+        if (staticMetadata.wellKnownUri().isEmpty()) {
             return false;
         }
         OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
@@ -106,7 +106,8 @@ final class OidcTenantContextFactory {
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateJwksUri(uri, tenantConfig.endpoints().tlsRequired()),
                                  () -> {
                                      throw new IllegalStateException(
-                                             "discovered jwks_uri must be present for JWT access-token validation");
+                                             "well-known metadata jwks_uri must be present for JWT access-token "
+                                                     + "validation");
                                  });
     }
 

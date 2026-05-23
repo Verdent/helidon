@@ -638,7 +638,7 @@ class OidcProviderTest {
         assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.description().orElse(""),
-                   containsString("token-endpoint-uri or discovery-uri"));
+                   containsString("token-endpoint-uri or well-known-uri"));
     }
 
     @Test

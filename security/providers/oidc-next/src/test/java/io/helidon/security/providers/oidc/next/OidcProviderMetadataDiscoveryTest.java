@@ -73,8 +73,7 @@ class OidcProviderMetadataDiscoveryTest {
                 .issuer(issuer)
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -94,8 +93,7 @@ class OidcProviderMetadataDiscoveryTest {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .endpoints(it -> it.tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))
                 .buildPrototype();
 
@@ -115,8 +113,7 @@ class OidcProviderMetadataDiscoveryTest {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .endpoints(it -> it.tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))
                 .buildPrototype();
 

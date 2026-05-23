@@ -239,8 +239,7 @@ class OidcIdTokenValidatorTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .jwksUri(jwksUri)
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }

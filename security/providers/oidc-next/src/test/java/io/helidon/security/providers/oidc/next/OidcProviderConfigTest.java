@@ -50,6 +50,7 @@ class OidcProviderConfigTest {
         OidcProviderConfig providerConfig = OidcProviderConfig.create();
         OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
+        OidcProtectedResourceConfig protectedResource = OidcProtectedResourceConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
         OidcCookieConfig cookies = OidcCookieConfig.create();
@@ -59,7 +60,10 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.optional(), is(false));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
-        assertThat(authorizationCode.enabled(), is(false));
+        assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
+        assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
+        assertThat(authorizationCode.enabled(), is(true));
+        assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
@@ -101,7 +105,6 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
-                        Map.entry("tenants.default.protected-resource.enabled", "true"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
@@ -119,10 +122,11 @@ class OidcProviderConfigTest {
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
-        assertThat(tenant.protectedResource().enabled(), is(true));
-        assertThat(tenant.protectedResource().tokenValidation().method().orElseThrow(),
+        OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
+        assertThat(protectedResource.enabled(), is(true));
+        assertThat(protectedResource.tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
-        assertThat(tenant.protectedResource().tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -134,14 +138,14 @@ class OidcProviderConfigTest {
     void disabledTenantCanKeepIncompleteFlowConfiguration() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .enabled(false)
-                .protectedResource(it -> it.enabled(true))
-                .authorizationCode(it -> it.enabled(true))
+                .protectedResource(OidcProtectedResourceConfig.create())
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
 
         assertThat(tenant.enabled(), is(false));
-        assertThat(tenant.protectedResource().enabled(), is(true));
-        assertThat(tenant.authorizationCode().enabled(), is(true));
+        assertThat(tenant.protectedResource().orElseThrow().enabled(), is(true));
+        assertThat(tenant.authorizationCode().orElseThrow().enabled(), is(true));
         assertThat(tenant.outbound().clientCredentialsGrantEnabled(), is(true));
     }
 
@@ -236,7 +240,7 @@ class OidcProviderConfigTest {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(JWKS_URI))
-                .protectedResource(it -> it.enabled(true))
+                .protectedResource(OidcProtectedResourceConfig.create())
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.method"));
@@ -245,24 +249,21 @@ class OidcProviderConfigTest {
     @Test
     void jwtValidationRequiresIssuerOrDiscoveryAndJwksOrDiscovery() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
 
         OidcTenantConfig derivedDiscoveryTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
         assertThat(derivedDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
@@ -270,16 +271,14 @@ class OidcProviderConfigTest {
         OidcTenantConfig explicitDiscoveryTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
         assertThat(explicitDiscoveryTenant.endpoints().jwksUri().isEmpty(), is(true));
 
         OidcTenantConfig discoveryOnlyTenant = OidcTenantConfig.builder()
                 .endpoints(it -> it.discoveryUri(DISCOVERY_URI))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
         assertThat(discoveryOnlyTenant.issuer().isEmpty(), is(true));
@@ -287,8 +286,7 @@ class OidcProviderConfigTest {
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(JWKS_URI))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
@@ -297,9 +295,10 @@ class OidcProviderConfigTest {
     @Test
     void tokenValidationMethodRequiresPrerequisitesWithoutProtectedResource() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience(AUDIENCE)))
+                .protectedResource(it -> it.enabled(false)
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("issuer or discovery-uri"));
@@ -308,9 +307,10 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER)
                 .clientId("client-id")
                 .clientSecret("client-secret")
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.INTROSPECTION)
-                        .audience(AUDIENCE)))
+                .protectedResource(it -> it.enabled(false)
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience(AUDIENCE)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
@@ -321,8 +321,7 @@ class OidcProviderConfigTest {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(URI.create("http://issuer.example/jwks")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype());
 
@@ -335,8 +334,7 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(URI.create("file:///tmp/oidc-next-jwks.json"))
                         .tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
 
@@ -348,13 +346,13 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(JWKS_URI))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audienceValidationEnabled(false)))
                 .buildPrototype();
 
-        assertThat(tenant.protectedResource().tokenValidation().audience().isEmpty(), is(true));
-        assertThat(tenant.protectedResource().tokenValidation().audienceValidationEnabled(), is(false));
+        OidcTokenValidationConfig tokenValidation = tenant.protectedResource().orElseThrow().tokenValidation();
+        assertThat(tokenValidation.audience().isEmpty(), is(true));
+        assertThat(tokenValidation.audienceValidationEnabled(), is(false));
     }
 
     @Test
@@ -363,7 +361,6 @@ class OidcProviderConfigTest {
                 .sources(ConfigSources.create(Map.of(
                         "tenants.default.issuer", ISSUER.toString(),
                         "tenants.default.endpoints.jwks-uri", JWKS_URI.toString(),
-                        "tenants.default.protected-resource.enabled", "true",
                         "tenants.default.protected-resource.token-validation.method", "JWT",
                         "tenants.default.protected-resource.token-validation.audience-validation-enabled", "false")))
                 .build();
@@ -372,6 +369,7 @@ class OidcProviderConfigTest {
                 .tenants()
                 .get("default")
                 .protectedResource()
+                .orElseThrow()
                 .tokenValidation();
 
         assertThat(tokenValidation.audience().isEmpty(), is(true));
@@ -383,16 +381,14 @@ class OidcProviderConfigTest {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-id"));
@@ -400,8 +396,7 @@ class OidcProviderConfigTest {
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .clientId("client-id")
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
@@ -413,8 +408,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
@@ -426,8 +420,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.discoveryUri(URI.create("https://issuer.example/.well-known/openid-configuration")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://default")))
                 .buildPrototype());
 
@@ -440,8 +433,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("http://issuer.example/introspect")))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://default")))
                 .buildPrototype());
 
@@ -455,8 +447,7 @@ class OidcProviderConfigTest {
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("http://issuer.example/introspect"))
                         .tlsRequired(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://default")))
                 .buildPrototype();
 
@@ -469,7 +460,7 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER)
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-id"));
@@ -479,7 +470,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri"));
@@ -492,8 +483,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("email")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
@@ -508,8 +498,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("cookies.encryption-secret"));
@@ -522,8 +511,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-endpoint-uri must use https"));
@@ -537,8 +525,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -552,8 +539,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("http://issuer.example/token")))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
@@ -568,8 +554,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("http://issuer.example/token"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -583,8 +568,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("https://issuer.example/token#fragment")))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
@@ -598,8 +582,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize#fragment"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-endpoint-uri must not include a fragment"));
@@ -612,14 +595,14 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceRequired(false))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
-        assertThat(tenant.authorizationCode().pkceRequired(), is(false));
-        assertThat(tenant.authorizationCode().pkceMethod(), is(OidcPkceMethod.S256));
+        OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
+        assertThat(authorizationCode.pkceRequired(), is(false));
+        assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
     }
 
     @Test
@@ -631,8 +614,7 @@ class OidcProviderConfigTest {
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -649,8 +631,7 @@ class OidcProviderConfigTest {
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
@@ -662,8 +643,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -676,8 +656,7 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER)
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .tokenTransport(it -> it.authorizationHeaderEnabled(false))
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype());
 
@@ -818,8 +797,7 @@ class OidcProviderConfigTest {
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .tokenTransport(tokenTransport)
-                .protectedResource(it -> it.enabled(true)
-                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
     }

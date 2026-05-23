@@ -21,10 +21,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.helidon.http.HeaderName;
+import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
@@ -38,7 +41,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @ServerTest
 class OidcProviderMetadataDiscoveryTest {
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
+    private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
+    private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final AtomicReference<String> PROVIDER_METADATA = new AtomicReference<>();
+    private static final AtomicReference<String> DISCOVERY_WEBCLIENT_HEADER = new AtomicReference<>();
 
     private URI issuer;
     private URI authorizationEndpointUri;
@@ -48,9 +55,11 @@ class OidcProviderMetadataDiscoveryTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> response
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(PROVIDER_METADATA.get()));
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            DISCOVERY_WEBCLIENT_HEADER.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(PROVIDER_METADATA.get());
+        });
     }
 
     @BeforeEach
@@ -68,6 +77,7 @@ class OidcProviderMetadataDiscoveryTest {
                 .set("userinfo_endpoint", userInfoEndpointUri.toString())
                 .build()
                 .toString());
+        DISCOVERY_WEBCLIENT_HEADER.set("");
     }
 
     @Test
@@ -75,6 +85,7 @@ class OidcProviderMetadataDiscoveryTest {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .clientId("client-id")
+                .webClient(tenantWebClient())
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
@@ -89,6 +100,7 @@ class OidcProviderMetadataDiscoveryTest {
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
+        assertThat(DISCOVERY_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
     @Test
@@ -135,6 +147,12 @@ class OidcProviderMetadataDiscoveryTest {
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
+    }
+
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
     }
 
     @Test

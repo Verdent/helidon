@@ -17,15 +17,21 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.api.WebClientConfig;
 
 final class OidcConfigSupport {
     private static final String TENANT_VARIABLE = "{tenant}";
+    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT =
+            WebClientConfig.create().socketOptions().readTimeout();
 
     private OidcConfigSupport() {
     }
@@ -72,6 +78,18 @@ final class OidcConfigSupport {
                 .map(OidcOutboundPolicy::fromTarget)
                 .flatMap(Optional::stream)
                 .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
+    }
+
+    static WebClient createWebClient(OidcTenantConfig tenantConfig) {
+        WebClientConfig configured = tenantConfig.webClient();
+        if (configured.readTimeout().isPresent()
+                || !WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT.equals(configured.socketOptions().readTimeout())) {
+            return WebClient.create(configured);
+        }
+        return WebClient.create(WebClientConfig.builder()
+                                        .from(configured)
+                                        .readTimeout(DEFAULT_READ_TIMEOUT)
+                                        .buildPrototype());
     }
 
     static final class ProviderDecorator implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {

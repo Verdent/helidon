@@ -21,7 +21,6 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
@@ -32,16 +31,10 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetLoader {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-
     private final WebClient webClient;
 
-    private OidcJwkSetLoader(WebClient webClient) {
+    OidcJwkSetLoader(WebClient webClient) {
         this.webClient = webClient;
-    }
-
-    static OidcJwkSetLoader create() {
-        return new OidcJwkSetLoader(WebClient.create());
     }
 
     JwkKeys load(URI uri) {
@@ -75,7 +68,6 @@ final class OidcJwkSetLoader {
     private JsonObject loadRemote(URI uri) {
         try (HttpClientResponse response = webClient.get()
                 .uri(uri)
-                .readTimeout(REQUEST_TIMEOUT)
                 .header(HeaderValues.ACCEPT_JSON)
                 .request()) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {

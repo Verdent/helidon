@@ -21,6 +21,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.webclient.api.WebClientConfig;
 
 /**
  * OpenID Connect tenant configuration.
@@ -72,6 +73,17 @@ interface OidcTenantConfigBlueprint {
      */
     @Option.Configured("token-endpoint-auth-method")
     Optional<OidcClientAuthenticationMethod> tokenEndpointAuthenticationMethod();
+
+    /**
+     * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server.
+     * <p>
+     * This client is used for discovery, JSON Web Key Set loading, Token Endpoint requests, and introspection.
+     *
+     * @return WebClient configuration
+     */
+    @Option.Configured("webclient")
+    @Option.Default("create()")
+    WebClientConfig webClient();
 
     /**
      * OpenID Provider endpoint and discovery settings.

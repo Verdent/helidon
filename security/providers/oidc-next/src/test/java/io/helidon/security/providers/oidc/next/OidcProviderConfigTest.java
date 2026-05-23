@@ -19,17 +19,21 @@ package io.helidon.security.providers.oidc.next;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import io.helidon.common.socket.SocketOptions;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.webclient.api.Proxy;
+import io.helidon.webclient.api.WebClientConfig;
 
 import org.junit.jupiter.api.Test;
 
@@ -108,6 +112,10 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
+                        Map.entry("tenants.default.webclient.read-timeout", "PT2S"),
+                        Map.entry("tenants.default.webclient.proxy.type", "HTTP"),
+                        Map.entry("tenants.default.webclient.proxy.host", "proxy.example.com"),
+                        Map.entry("tenants.default.webclient.proxy.port", "8080"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
@@ -132,6 +140,10 @@ class OidcProviderConfigTest {
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
+        assertThat(tenant.webClient().readTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
+        assertThat(tenant.webClient().proxy().type(), is(Proxy.ProxyType.HTTP));
+        assertThat(tenant.webClient().proxy().host(), is("proxy.example.com"));
+        assertThat(tenant.webClient().proxy().port(), is(8080));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
@@ -142,6 +154,32 @@ class OidcProviderConfigTest {
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
         assertThat(tenant.subjectMapping().scopeClaimPaths(), is(List.of("scp")));
         assertThat(tenant.subjectMapping().scopeGrantsEnabled(), is(false));
+    }
+
+    @Test
+    void tenantWebClientUsesOidcDefaultReadTimeoutUnlessConfigured() {
+        OidcTenantConfig defaultTenant = OidcTenantConfig.create();
+        OidcTenantConfig configuredTenant = OidcTenantConfig.builder()
+                .webClient(WebClientConfig.builder()
+                        .readTimeout(Duration.ofSeconds(2))
+                        .buildPrototype())
+                .buildPrototype();
+        OidcTenantConfig socketConfiguredTenant = OidcTenantConfig.builder()
+                .webClient(WebClientConfig.builder()
+                        .socketOptions(SocketOptions.builder()
+                                .readTimeout(Duration.ofSeconds(4))
+                                .build())
+                        .buildPrototype())
+                .buildPrototype();
+
+        assertThat(OidcConfigSupport.createWebClient(defaultTenant).prototype().readTimeout().orElseThrow(),
+                   is(Duration.ofSeconds(10)));
+        assertThat(OidcConfigSupport.createWebClient(configuredTenant).prototype().readTimeout().orElseThrow(),
+                   is(Duration.ofSeconds(2)));
+        assertThat(OidcConfigSupport.createWebClient(socketConfiguredTenant).prototype().readTimeout().isEmpty(),
+                   is(true));
+        assertThat(OidcConfigSupport.createWebClient(socketConfiguredTenant).prototype().socketOptions().readTimeout(),
+                   is(Duration.ofSeconds(4)));
     }
 
     @Test
@@ -831,6 +869,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
         assertThat(metadata, containsString("path-template"));
+        assertThat(metadata, containsString("webclient"));
         assertThat(metadata, containsString("subject-mapping"));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));

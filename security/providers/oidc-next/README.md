@@ -18,6 +18,7 @@ The current implementation supports:
 - Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`.
 - ID Token validation for Authorization Code Flow.
 - Local authentication result storage in protected cookies.
+- Local OIDC logout endpoint that removes OIDC cookies.
 - Refresh-token based local authentication renewal.
 - Validation of refreshed access tokens when token validation is configured.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
@@ -30,7 +31,7 @@ The current implementation supports:
 The current implementation does not yet support:
 
 - UserInfo requests and UserInfo claim merge.
-- RP-Initiated Logout.
+- Building RP-Initiated Logout requests to the OpenID Provider End Session Endpoint.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
 - Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
@@ -160,6 +161,8 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .authorizationCode(authorizationCode -> authorizationCode
                         .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                         .scopes(List.of("openid", "profile", "email")))
+                .logout(logout -> logout
+                        .localEndpointUri(URI.create("/oidc/logout")))
                 .cookies(cookies -> cookies
                         .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
                 .buildPrototype())
@@ -168,7 +171,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 OidcProvider provider = OidcProvider.create(config);
 ```
 
-When Authorization Code Flow is enabled, register `OidcFeature` with WebServer routing so the callback route is
+When Authorization Code Flow or logout is enabled, register `OidcFeature` with WebServer routing so the local routes are
 installed:
 
 ```java
@@ -180,6 +183,8 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .authorizationCode(authorizationCode -> authorizationCode
                         .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                         .scopes(List.of("openid", "profile")))
+                .logout(logout -> logout
+                        .localEndpointUri(URI.create("/oidc/logout")))
                 .cookies(cookies -> cookies
                         .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
                 .buildPrototype())
@@ -280,8 +285,8 @@ endpoints:
   end-session-endpoint-uri: "https://issuer.example/logout"
 ```
 
-`user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata but their flows are not implemented
-yet.
+`user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata. UserInfo requests and OpenID
+Provider End Session Endpoint redirects are not implemented yet.
 
 If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
@@ -434,6 +439,38 @@ authorization-code:
   scopes: [ "openid", "profile" ]
   pkce-required: false
 ```
+
+## Local Logout Endpoint
+
+Configure `logout` to register the local `POST` logout endpoint in `OidcFeature`.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            client-secret: "${OIDC_CLIENT_SECRET}"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+              scopes: [ "openid", "profile" ]
+            logout:
+              local-endpoint-uri: "/oidc/logout"
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+When `logout` is configured and not explicitly disabled, `logout.local-endpoint-uri` defaults to `/oidc/logout`.
+The current endpoint requires a same-origin `Origin` or `Referer` header, removes the local authentication result cookie
+and the Authentication Request cookie, then returns `204 No Content`. This is local-only logout: it does not call the
+OpenID Provider End Session Endpoint, terminate the OP browser session, or revoke tokens. The endpoint resolves the
+tenant from the local authentication result cookie when possible; otherwise it removes the configured logout tenant
+cookie names for the requested logout path.
+
+OpenID Provider End Session Endpoint redirects, `id_token_hint`, `post_logout_redirect_uri`, and post-logout redirect
+allow-list validation are planned for the next logout slice.
 
 ## Token Endpoint Client Authentication
 
@@ -820,6 +857,7 @@ Tenant options:
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
+| `logout` | Local OIDC logout endpoint configuration. |
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
@@ -833,6 +871,13 @@ Tenant outbound options:
 | `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
+
+Logout options:
+
+| Key | Description |
+| --- | --- |
+| `enabled` | Whether local logout endpoint handling is enabled when `logout` is configured. Defaults to `true`. |
+| `local-endpoint-uri` | Local logout endpoint URI registered by `OidcFeature`. Defaults to `/oidc/logout`. |
 
 Common outbound target options:
 

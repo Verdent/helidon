@@ -959,7 +959,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void tokenTransportConfigDrivesStageOneBearerEvidence() {
+    void tokenTransportConfigDrivesBearerEvidence() {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                                                   .tenants(Map.of("default", jwtProtectedResourceTenant(it -> it
                                                           .authorizationHeaderEnabled(false)
@@ -1077,7 +1077,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void providerConfigDrivesStageOneClassificationDefaults() {
+    void protectedResourceDefaultsRequireBearerEvidence() {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                                                   .tenants(Map.of("default", jwtProtectedResourceTenant()))
                                                   .buildPrototype());
@@ -1102,7 +1102,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void generatedConfigMetadataContainsNewModel() throws IOException {
+    void generatedConfigMetadataContainsProviderModel() throws IOException {
         String metadata = configMetadata();
 
         assertThat(metadata, containsString("oidc-next"));
@@ -1110,7 +1110,6 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("query-parameter-enabled"));
         assertThat(metadata, containsString("token-validation"));
         assertThat(metadata, containsString("client-credentials-grant-enabled"));
-        assertThat(metadata.contains("form-encoded-body-enabled"), is(false));
         assertThat(metadata, containsString("pkce-required"));
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));

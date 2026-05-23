@@ -329,7 +329,8 @@ final class OidcConfigSupport {
                 });
         validateEndSession(tenant,
                            configuredAuthorizationCode,
-                           OidcLogoutSupport.enabledEndSession(Optional.of(logout)),
+                           logout.endSession()
+                                   .filter(OidcEndSessionConfig::enabled),
                            endpoints);
     }
 

@@ -158,7 +158,7 @@ class OidcFeatureRouteTest {
 
     @Test
     void redirectionEndpointRouteValidatesIdToken(URI serverUri) {
-        WebServer rpServer = redirectionEndpointServer(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(serverUri));
         try {
             URI callbackUri = callbackUri(rpServer);
             OidcTenantConfig tenant = tenantConfig(serverUri);
@@ -225,7 +225,7 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointRouteRejectsInvalidIdToken(URI serverUri) {
         tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken("other-nonce")).toString();
-        WebServer rpServer = redirectionEndpointServer(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(serverUri));
         try {
             URI callbackUri = callbackUri(rpServer);
             SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenantConfig(serverUri));
@@ -689,10 +689,11 @@ class OidcFeatureRouteTest {
                 .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
-            LocalAuthenticationCookie localAuthenticationCookie = localAuthenticationCookieWithToken(tenant, "default");
-            String localAuthenticationHeader = localAuthenticationCookie.cookie().name()
+            String rawIdToken = signedIdToken(NONCE);
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default", rawIdToken);
+            String localAuthenticationHeader = localAuthenticationCookie.name()
                     + "="
-                    + localAuthenticationCookie.cookie().value();
+                    + localAuthenticationCookie.value();
 
             try (HttpClientResponse response = WebClient.builder()
                     .baseUri(rpBaseUri(rpServer))
@@ -710,7 +711,7 @@ class OidcFeatureRouteTest {
                 assertThat(location.getAuthority(), is(END_SESSION_ENDPOINT_URI.getAuthority()));
                 assertThat(location.getPath(), is(END_SESSION_ENDPOINT_URI.getPath()));
                 UriQuery query = UriQuery.create(location);
-                assertThat(query.first("id_token_hint").orElse(""), is(localAuthenticationCookie.idToken()));
+                assertThat(query.first("id_token_hint").orElse(""), is(rawIdToken));
                 assertThat(query.first("post_logout_redirect_uri").orElse(""), is(POST_LOGOUT_REDIRECT_URI.toString()));
                 assertThat(query.first("state").orElse(""), is("logout-state"));
 
@@ -1209,10 +1210,6 @@ class OidcFeatureRouteTest {
                    is(true));
     }
 
-    private static WebServer redirectionEndpointServer(URI openIdProviderUri) {
-        return oidcFeatureServer(providerConfig(openIdProviderUri));
-    }
-
     private static WebServer oidcFeatureServer(OidcProviderConfig config) {
         HttpRouting.Builder routing = HttpRouting.builder();
         OidcFeature.create(config).setup(routing);
@@ -1257,13 +1254,11 @@ class OidcFeatureRouteTest {
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant, String tenantId) {
-        return localAuthenticationCookieWithToken(tenant, tenantId).cookie();
+        return localAuthenticationCookie(tenant, tenantId, signedIdToken(NONCE));
     }
 
-    private static LocalAuthenticationCookie localAuthenticationCookieWithToken(OidcTenantConfig tenant,
-                                                                               String tenantId) {
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant, String tenantId, String rawIdToken) {
         Instant now = Instant.now();
-        String rawIdToken = signedIdToken(NONCE);
         SignedJwt signedJwt = SignedJwt.parseToken(rawIdToken);
         OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, signedJwt, signedJwt.getJwt());
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(tenantId,
@@ -1275,9 +1270,8 @@ class OidcFeatureRouteTest {
                                                                                    now.minusSeconds(1),
                                                                                    now.plusSeconds(60),
                                                                                    now.plusSeconds(600));
-        return new LocalAuthenticationCookie(OidcCookieStateHandler.create(tenant)
-                                                     .createLocalAuthenticationResultCookie(result),
-                                             rawIdToken);
+        return OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(result);
     }
 
     private static String cookieHeader(SetCookie first, SetCookie second) {
@@ -1334,6 +1328,4 @@ class OidcFeatureRouteTest {
                 .tokenContent();
     }
 
-    private record LocalAuthenticationCookie(SetCookie cookie, String idToken) {
-    }
 }

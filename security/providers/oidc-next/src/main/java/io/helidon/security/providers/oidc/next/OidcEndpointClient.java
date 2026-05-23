@@ -163,28 +163,19 @@ final class OidcEndpointClient {
 
         try (HttpClientResponse response = request.submit(form.build())) {
             if (response.status().family() == Status.Family.SUCCESSFUL) {
-                return success(response, responseParser);
+                try {
+                    return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
+                } catch (RuntimeException e) {
+                    return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
+                }
             }
-            return error(response);
+            try {
+                return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
+            } catch (RuntimeException e) {
+                return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
+            }
         } catch (RuntimeException e) {
             return OidcTokenEndpointResult.failure("Token Endpoint is unavailable", e);
-        }
-    }
-
-    private OidcTokenEndpointResult success(HttpClientResponse response,
-                                            Function<JsonObject, OidcTokenResponse> responseParser) {
-        try {
-            return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
-        } catch (RuntimeException e) {
-            return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
-        }
-    }
-
-    private OidcTokenEndpointResult error(HttpClientResponse response) {
-        try {
-            return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
-        } catch (RuntimeException e) {
-            return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
         }
     }
 }

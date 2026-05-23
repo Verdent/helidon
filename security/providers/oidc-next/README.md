@@ -1,4 +1,4 @@
-# OIDC Provider User Guide
+# OIDC Next Provider User Guide
 
 This document describes the current `oidc-next` security provider implementation.
 
@@ -32,12 +32,10 @@ The current implementation supports:
 
 The current implementation does not yet support:
 
-- Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
 - Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
 - Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
   `endpoints.introspection-endpoint-uri` explicitly.
-- Refresh single-flight coordination for refresh-token rotation races.
 
 ## Configuration Shape
 

@@ -73,10 +73,6 @@ final class OidcTokenEndpointResult {
         return status == OidcTokenEndpointStatus.ERROR_RESPONSE;
     }
 
-    boolean failed() {
-        return status == OidcTokenEndpointStatus.FAILURE;
-    }
-
     String description() {
         return description;
     }

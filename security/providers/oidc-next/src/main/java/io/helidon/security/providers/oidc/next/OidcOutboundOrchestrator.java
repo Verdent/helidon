@@ -85,7 +85,7 @@ final class OidcOutboundOrchestrator {
         Optional<OidcOutboundPolicy> tenantPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
         if (!outboundTargetConfig.targets().isEmpty()) {
             return matchingTarget(outboundEnv)
-                    .flatMap(target -> targetPolicy(target)
+                    .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget)
                             .or(() -> targetAudiencePolicy(target, tenantPolicy))
                             .or(() -> tenantPolicy));
         }
@@ -119,10 +119,6 @@ final class OidcOutboundOrchestrator {
         return "https".equalsIgnoreCase(scheme);
     }
 
-    private Optional<OidcOutboundPolicy> targetPolicy(OutboundTarget target) {
-        return targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget);
-    }
-
     private Optional<OidcOutboundPolicy> targetAudiencePolicy(OutboundTarget target,
                                                              Optional<OidcOutboundPolicy> tenantPolicy) {
         if (tenantPolicy.filter(OidcOutboundPolicy::tokenPropagationEnabled).isEmpty()) {
@@ -143,19 +139,20 @@ final class OidcOutboundOrchestrator {
         Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
                 .filter(OidcTenantContext::ready)
                 .flatMap(readyTenant -> outboundPolicy(readyTenant.tenantConfig(), outboundEnv, outboundConfig));
-        OidcProtocolOperation operation = OidcRequestClassifier.classify(outboundPolicy);
-
-        return switch (operation) {
-            case TOKEN_PROPAGATION -> propagateToken(providerRequest, outboundEnv, outboundPolicy.orElseThrow());
-            case CLIENT_CREDENTIALS_GRANT -> secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv);
-            case AMBIGUOUS -> OidcResponseFactory.ambiguousOutboundRequest();
-            case BEARER_TOKEN_INVALID_REQUEST,
-                    BEARER_TOKEN_AUTHENTICATION,
-                    AUTHORIZATION_CODE_FLOW_INITIATION,
-                    AUTHORIZATION_RESPONSE,
-                    RP_INITIATED_LOGOUT,
-                    ABSTAIN -> OutboundSecurityResponse.abstain();
-        };
+        if (outboundPolicy.isEmpty()) {
+            return OutboundSecurityResponse.abstain();
+        }
+        OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
+        if (policy.tokenPropagationEnabled() && policy.clientCredentialsGrantEnabled()) {
+            return OidcResponseFactory.ambiguousOutboundRequest();
+        }
+        if (policy.tokenPropagationEnabled()) {
+            return propagateToken(providerRequest, outboundEnv, policy);
+        }
+        if (policy.clientCredentialsGrantEnabled()) {
+            return secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv);
+        }
+        return OutboundSecurityResponse.abstain();
     }
 
     private OutboundSecurityResponse propagateToken(ProviderRequest providerRequest,
@@ -184,7 +181,8 @@ final class OidcOutboundOrchestrator {
             return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
         }
 
-        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(tenantContext, now(outboundEnv));
+        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
+        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(tenantContext, now);
         if (!tokenResult.succeeded()) {
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
         }
@@ -236,12 +234,5 @@ final class OidcOutboundOrchestrator {
                     return false;
                 })
                 .orElse(false);
-    }
-
-    private Instant now(SecurityEnvironment outboundEnv) {
-        if (outboundEnv == null) {
-            return Instant.now();
-        }
-        return outboundEnv.time().toInstant();
     }
 }

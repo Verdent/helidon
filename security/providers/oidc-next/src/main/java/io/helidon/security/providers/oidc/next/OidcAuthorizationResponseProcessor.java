@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -48,21 +49,32 @@ final class OidcAuthorizationResponseProcessor {
         return new OidcAuthorizationResponseProcessor(config, tenantRuntimeRegistry);
     }
 
-    OidcAuthorizationResponseResult process(OidcAuthorizationResponseContext context) {
-        Optional<ParameterValue> stateValue = singleParameter(context.parameters(), STATE_PARAM);
+    OidcAuthorizationResponseResult process(UriQuery parameters,
+                                            Map<String, List<String>> cookies,
+                                            URI redirectionEndpointUri,
+                                            Instant now) {
+        Objects.requireNonNull(parameters);
+        Map<String, List<String>> responseCookies = Map.copyOf(Objects.requireNonNull(cookies));
+        Objects.requireNonNull(redirectionEndpointUri);
+        Objects.requireNonNull(now);
+
+        Optional<ParameterValue> stateValue = singleParameter(parameters, STATE_PARAM);
         if (stateValue.isEmpty()) {
-            return invalid("Authorization Response state is missing", List.of());
+            return OidcAuthorizationResponseResult.invalid("Authorization Response state is missing", List.of());
         }
         if (stateValue.orElseThrow().invalid()) {
-            return invalid("Authorization Response state must appear exactly once", List.of());
+            return OidcAuthorizationResponseResult.invalid("Authorization Response state must appear exactly once",
+                                                           List.of());
         }
 
-        List<StoredAuthenticationRequestState> storedStates = authenticationRequestStates(context.cookies());
+        List<StoredAuthenticationRequestState> storedStates = authenticationRequestStates(responseCookies);
         if (storedStates.isEmpty()) {
-            return invalid("Authentication Request state cookie is missing or invalid", List.of());
+            return OidcAuthorizationResponseResult.invalid("Authentication Request state cookie is missing or invalid",
+                                                           List.of());
         }
         if (storedStates.size() > 1) {
-            return invalid("Authentication Request state is ambiguous", stateRemovalCookies(storedStates));
+            return OidcAuthorizationResponseResult.invalid("Authentication Request state is ambiguous",
+                                                           stateRemovalCookies(storedStates));
         }
 
         StoredAuthenticationRequestState storedState = storedStates.get(0);
@@ -77,35 +89,45 @@ final class OidcAuthorizationResponseProcessor {
          * Quote: "The exact value received from the client".
          */
         if (!state.state().equals(stateValue.orElseThrow().value())) {
-            return invalid("Authorization Response state does not match Authentication Request state", stateRemovalCookie);
+            return OidcAuthorizationResponseResult.invalid(
+                    "Authorization Response state does not match Authentication Request state",
+                    stateRemovalCookie);
         }
-        if (context.now().isAfter(state.expiresAt())) {
-            return invalid("Authentication Request state has expired", stateRemovalCookie);
+        if (now.isAfter(state.expiresAt())) {
+            return OidcAuthorizationResponseResult.invalid("Authentication Request state has expired", stateRemovalCookie);
         }
-        if (!redirectionEndpointMatches(context.redirectionEndpointUri(), state.redirectionEndpointUri())) {
-            return invalid("Authorization Response Redirection Endpoint does not match Authentication Request state",
-                           stateRemovalCookie);
+        if (!redirectionEndpointMatches(redirectionEndpointUri, state.redirectionEndpointUri())) {
+            return OidcAuthorizationResponseResult.invalid(
+                    "Authorization Response Redirection Endpoint does not match Authentication Request state",
+                    stateRemovalCookie);
         }
 
-        Optional<ParameterValue> code = singleParameter(context.parameters(), CODE_PARAM);
-        Optional<ParameterValue> error = singleParameter(context.parameters(), ERROR_PARAM);
+        Optional<ParameterValue> code = singleParameter(parameters, CODE_PARAM);
+        Optional<ParameterValue> error = singleParameter(parameters, ERROR_PARAM);
         if (code.filter(ParameterValue::invalid).isPresent()) {
-            return invalid("Authorization Response code must appear exactly once", stateRemovalCookie);
+            return OidcAuthorizationResponseResult.invalid("Authorization Response code must appear exactly once",
+                                                           stateRemovalCookie);
         }
         if (error.filter(ParameterValue::invalid).isPresent()) {
-            return invalid("Authorization Response error must appear exactly once", stateRemovalCookie);
+            return OidcAuthorizationResponseResult.invalid("Authorization Response error must appear exactly once",
+                                                           stateRemovalCookie);
         }
         if (code.filter(ParameterValue::present).isPresent() && error.filter(ParameterValue::present).isPresent()) {
-            return invalid("Authorization Response cannot contain both code and error", stateRemovalCookie);
+            return OidcAuthorizationResponseResult.invalid("Authorization Response cannot contain both code and error",
+                                                           stateRemovalCookie);
         }
         if (error.filter(ParameterValue::present).isPresent()) {
-            Optional<ParameterValue> errorDescription = singleParameter(context.parameters(), ERROR_DESCRIPTION_PARAM);
-            Optional<ParameterValue> errorUri = singleParameter(context.parameters(), ERROR_URI_PARAM);
+            Optional<ParameterValue> errorDescription = singleParameter(parameters, ERROR_DESCRIPTION_PARAM);
+            Optional<ParameterValue> errorUri = singleParameter(parameters, ERROR_URI_PARAM);
             if (errorDescription.filter(ParameterValue::invalid).isPresent()) {
-                return invalid("Authorization Response error_description must appear exactly once", stateRemovalCookie);
+                return OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response error_description must appear exactly once",
+                        stateRemovalCookie);
             }
             if (errorUri.filter(ParameterValue::invalid).isPresent()) {
-                return invalid("Authorization Response error_uri must appear exactly once", stateRemovalCookie);
+                return OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response error_uri must appear exactly once",
+                        stateRemovalCookie);
             }
             /*
              * Spec: RFC 6749, 4.1.2.1 Error Response
@@ -115,14 +137,12 @@ final class OidcAuthorizationResponseProcessor {
             return OidcAuthorizationResponseResult.authorizationError(error.orElseThrow().value(),
                                                                       errorDescription.map(ParameterValue::value)
                                                                               .orElse(null),
-                                                                      errorUri.map(ParameterValue::value)
-                                                                              .orElse(null),
                                                                       storedState.tenantContext(),
                                                                       state,
                                                                       stateRemovalCookie);
         }
         if (code.filter(ParameterValue::present).isEmpty()) {
-            return invalid("Authorization Response code is missing", stateRemovalCookie);
+            return OidcAuthorizationResponseResult.invalid("Authorization Response code is missing", stateRemovalCookie);
         }
         /*
          * Spec: RFC 6749, 4.1.2 Authorization Response
@@ -138,28 +158,23 @@ final class OidcAuthorizationResponseProcessor {
     private List<StoredAuthenticationRequestState> authenticationRequestStates(Map<String, List<String>> cookies) {
         List<StoredAuthenticationRequestState> states = new ArrayList<>();
         for (String tenantId : config.tenants().keySet()) {
-            tenantRuntimeRegistry.tenantContext(tenantId)
-                    .filter(OidcTenantContext::ready)
-                    .ifPresent(tenantContext -> authenticationRequestStates(cookies, tenantContext, states));
+            Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(tenantId)
+                    .filter(OidcTenantContext::ready);
+            if (tenantContext.isEmpty()) {
+                continue;
+            }
+
+            OidcTenantContext readyTenant = tenantContext.orElseThrow();
+            OidcCookieStateHandler cookieStateHandler = readyTenant.cookieStateHandler();
+            String cookieName = cookieStateHandler.cookieConfig().authenticationRequestCookieName();
+            for (String cookieValue : cookies.getOrDefault(cookieName, List.of())) {
+                cookieStateHandler.decodeAuthenticationRequestState(cookieValue)
+                        .filter(state -> readyTenant.tenantId().equals(state.tenantId()))
+                        .map(state -> new StoredAuthenticationRequestState(readyTenant, state))
+                        .ifPresent(states::add);
+            }
         }
         return states;
-    }
-
-    private OidcAuthorizationResponseResult invalid(String description, List<SetCookie> stateCookies) {
-        return OidcAuthorizationResponseResult.invalid(description, stateCookies);
-    }
-
-    private void authenticationRequestStates(Map<String, List<String>> cookies,
-                                             OidcTenantContext tenantContext,
-                                             List<StoredAuthenticationRequestState> states) {
-        OidcCookieStateHandler cookieStateHandler = tenantContext.cookieStateHandler();
-        String cookieName = cookieStateHandler.cookieConfig().authenticationRequestCookieName();
-        for (String cookieValue : cookies.getOrDefault(cookieName, List.of())) {
-            cookieStateHandler.decodeAuthenticationRequestState(cookieValue)
-                    .filter(state -> tenantContext.tenantId().equals(state.tenantId()))
-                    .map(state -> new StoredAuthenticationRequestState(tenantContext, state))
-                    .ifPresent(states::add);
-        }
     }
 
     private List<SetCookie> stateRemovalCookies(List<StoredAuthenticationRequestState> states) {

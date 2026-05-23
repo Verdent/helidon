@@ -856,10 +856,6 @@ class OidcRefreshTokenManagerTest {
                         accessTokenExpiresAt));
     }
 
-    private static String signedIdToken() {
-        return signedIdToken(it -> { });
-    }
-
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {
         Instant now = Instant.now();
         Jwt.Builder builder = Jwt.builder()

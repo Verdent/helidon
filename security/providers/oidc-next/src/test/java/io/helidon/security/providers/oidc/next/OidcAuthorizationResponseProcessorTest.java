@@ -213,8 +213,7 @@ class OidcAuthorizationResponseProcessorTest {
                 .putTenant("second", authorizationCodeTenant("second-secret", OTHER_REDIRECTION_ENDPOINT_URI))
                 .putTenant("disabled", OidcTenantConfig.builder()
                         .enabled(false)
-                        .authorizationCode(it -> it.enabled(true)
-                                .redirectionEndpointUri(URI.create("https://rp.example/disabled/callback")))
+                        .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/disabled/callback")))
                         .buildPrototype())
                 .putTenant("bearer", OidcTenantConfig.create())
                 .buildPrototype();
@@ -266,8 +265,7 @@ class OidcAuthorizationResponseProcessorTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.enabled(true)
-                        .redirectionEndpointUri(redirectionEndpointUri))
+                .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
                 .cookies(it -> it.encryptionSecret(cookieSecret))
                 .buildPrototype();
     }

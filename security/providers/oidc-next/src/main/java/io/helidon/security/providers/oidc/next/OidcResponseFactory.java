@@ -131,18 +131,12 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static OutboundSecurityResponse tokenPropagationNotImplemented() {
-        return OutboundSecurityResponse.builder()
+    static OutboundSecurityResponse clientCredentialsGrantFailed(OidcTokenEndpointResult result) {
+        OutboundSecurityResponse.Builder builder = OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description("Token Propagation is not implemented yet")
-                .build();
-    }
-
-    static OutboundSecurityResponse clientCredentialsGrantNotImplemented() {
-        return OutboundSecurityResponse.builder()
-                .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description("Client Credentials Grant is not implemented yet")
-                .build();
+                .description(clientCredentialsFailureDescription(result));
+        result.cause().ifPresent(builder::throwable);
+        return builder.build();
     }
 
     static OutboundSecurityResponse ambiguousOutboundRequest() {
@@ -166,6 +160,15 @@ final class OidcResponseFactory {
             case FAILED -> "OIDC tenant initialization failed: " + tenantContext.tenantId();
             case READY -> "OIDC tenant is ready: " + tenantContext.tenantId();
         };
+    }
+
+    private static String clientCredentialsFailureDescription(OidcTokenEndpointResult result) {
+        return result.error()
+                .map(error -> error.errorDescription()
+                        .map(description -> error.error() + ": " + description)
+                        .orElse(error.error()))
+                .map(description -> "Client Credentials Grant failed: " + description)
+                .orElseGet(() -> "Client Credentials Grant failed: " + result.description());
     }
 
     private static String bearerChallenge(String error, String description) {

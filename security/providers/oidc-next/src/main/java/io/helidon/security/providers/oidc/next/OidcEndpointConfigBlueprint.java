@@ -69,12 +69,13 @@ interface OidcEndpointConfigBlueprint {
     Optional<URI> introspectionEndpointUri();
 
     /**
-     * Whether OpenID Connect endpoint URIs must use transport-layer security.
+     * Whether OpenID Connect endpoint URIs and OIDC outbound bearer-token targets must use transport-layer security.
      * <p>
-     * WARNING: Disabling this option permits using non-TLS endpoint URIs. This can expose access tokens, client
-     * credentials, and token signature verification keys, and is not compliant with OpenID Connect and OAuth endpoint
-     * TLS requirements. It should only be used for isolated tests or equivalent non-production environments where the
-     * endpoint and key source are controlled.
+     * WARNING: Disabling this option permits using non-TLS endpoint URIs and permits Token Propagation or Client
+     * Credentials Grant to attach Bearer tokens to non-HTTPS outbound target URIs. This can expose access tokens,
+     * client credentials, and token signature verification keys, and is not compliant with OpenID Connect and OAuth
+     * endpoint TLS requirements. It should only be used for isolated tests or equivalent non-production environments
+     * where the endpoint and key source are controlled.
      * <p>
      * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata,
      * <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">section 3</a>.
@@ -84,7 +85,7 @@ interface OidcEndpointConfigBlueprint {
      * <a href="https://www.rfc-editor.org/rfc/rfc7662.html#section-2">section 2</a>.
      * Quote: "MUST be protected by a transport-layer security mechanism".
      *
-     * @return whether OpenID Connect endpoint URIs must use transport-layer security
+     * @return whether OpenID Connect endpoint URIs and OIDC outbound bearer-token targets must use transport-layer security
      */
     @Option.Configured
     @Option.DefaultBoolean(true)

@@ -23,6 +23,7 @@ import java.util.function.Function;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.webclient.api.HttpClientRequest;
@@ -108,6 +109,44 @@ final class OidcEndpointClient {
                 .add("grant_type", "client_credentials");
 
         return submit(form, OidcTokenResponse::fromClientCredentialsJson);
+    }
+
+    Optional<JsonObject> userInfo(String accessToken) {
+        Optional<URI> endpointUri = metadata.userInfoEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return Optional.empty();
+        }
+
+        /*
+         * Spec: OpenID Connect Core 1.0, 5.3.1 UserInfo Request
+         * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoRequest
+         * Quotes: "The UserInfo Endpoint is an OAuth 2.0 Protected Resource";
+         * "Clients MUST send requests with a valid Access Token".
+         */
+        try (HttpClientResponse response = webClient.get()
+                .uri(endpointUri.orElseThrow())
+                .followRedirects(false)
+                .header(HeaderValues.ACCEPT_JSON)
+                .header(HeaderValues.CACHE_NO_CACHE)
+                .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+                .request()) {
+            if (response.status().family() == Status.Family.SUCCESSFUL) {
+                /*
+                 * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
+                 * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+                 * Quotes: "The UserInfo Endpoint MUST return a content-type header to indicate which format is being
+                 * returned"; "The content-type of the HTTP response MUST be `application/json` if the response body is
+                 * a text JSON object".
+                 */
+                if (response.headers().contentType().filter(HttpMediaTypes.JSON_PREDICATE::test).isEmpty()) {
+                    return Optional.empty();
+                }
+                return Optional.of(response.as(JsonObject.class));
+            }
+            return Optional.empty();
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     private OidcTokenEndpointResult submit(Parameters.Builder form,

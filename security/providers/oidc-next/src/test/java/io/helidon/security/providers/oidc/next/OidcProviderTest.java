@@ -459,6 +459,55 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationResultUserInfoDoesNotOverridePrincipalIdMapping() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+                .subjectMapping(mapping -> mapping
+                        .principalIdClaimPaths(List.of("tenant_user"))
+                        .principalNameClaimPaths(List.of("display_name"))
+                        .roleClaimPaths(List.of("groups"))));
+        OidcProvider provider = provider(tenant);
+        String idToken = signedIdToken(it -> it
+                .addPayloadClaim("tenant_user", "id-token-user-id")
+                .addPayloadClaim("display_name", "ID Token User")
+                .fullName("ID Token Full Name"));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        Instant now = Instant.now();
+        JsonObject userInfo = JsonObject.builder()
+                .set("sub", SUBJECT)
+                .set("tenant_user", "userinfo-user-id")
+                .set("display_name", "UserInfo User")
+                .setStrings("groups", List.of("userinfo-admin"))
+                .build();
+        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        userInfo,
+                        now,
+                        now.plusSeconds(3600),
+                        now.plusSeconds(600)));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is("id-token-user-id"));
+        assertThat(subject.principal().getName(), is("UserInfo User"));
+        assertThat(subject.principal().abacAttributeRaw("tenant_user"), is("userinfo-user-id"));
+        assertThat(subject.principal().abacAttributeRaw("full_name"), is("ID Token Full Name"));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                   is(List.of("userinfo-admin")));
+    }
+
+    @Test
     void localAuthenticationResultCookieRequiresConfiguredPrincipalIdClaim() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user"))));

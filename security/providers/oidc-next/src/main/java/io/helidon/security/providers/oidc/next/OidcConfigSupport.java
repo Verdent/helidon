@@ -135,6 +135,7 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
+            validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
@@ -272,6 +273,34 @@ final class OidcConfigSupport {
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validateUserInfo(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                         Optional<OidcUserInfoConfig> configuredUserInfo,
+                                         Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode,
+                                         OidcEndpointConfig endpoints) {
+        if (configuredUserInfo.isEmpty()) {
+            return;
+        }
+        OidcUserInfoConfig userInfo = configuredUserInfo.orElseThrow();
+        if (!userInfo.enabled()) {
+            return;
+        }
+
+        configuredAuthorizationCode
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "authorization-code must be configured when UserInfo is enabled"));
+        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+        Optional<URI> userInfoEndpointUri = endpoints.userInfoEndpointUri();
+        userInfoEndpointUri
+                .or(() -> wellKnownUri)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "user-info-endpoint-uri or well-known-uri must be configured when UserInfo is enabled"));
+        userInfoEndpointUri.ifPresent(uri -> validateUserInfoEndpointUri(uri, endpoints.tlsRequired()));
+        if (userInfoEndpointUri.isEmpty()) {
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
+        }
     }
 
     private static void validateLogout(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -517,6 +546,16 @@ final class OidcConfigSupport {
          */
         validateHttpsEndpointUri("end-session-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("end-session-endpoint-uri", uri);
+    }
+
+    static void validateUserInfoEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "This URL MUST use the `https` scheme".
+         */
+        validateHttpsEndpointUri("user-info-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("user-info-endpoint-uri", uri);
     }
 
     private static void validatePostLogoutRedirectUri(String configKey, URI uri, boolean tlsRequired) {

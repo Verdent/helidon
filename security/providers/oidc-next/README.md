@@ -10,7 +10,7 @@ one tenant is configured the provider automatically uses it as the default tenan
 The current implementation supports:
 
 - Protected Resource Bearer Token authentication.
-- Access-token validation by local JWT validation against an explicit or discovered JWKS URI.
+- Access-token validation by local JWT validation against an explicit JWKS URI or a JWKS URI from well-known metadata.
 - Access-token validation by OAuth 2.0 Token Introspection.
 - OpenID Connect Authorization Code Flow.
 - PKCE with `S256`, enabled by default.
@@ -33,7 +33,7 @@ The current implementation does not yet support:
 - RP-Initiated Logout.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
-- Discovery-backed introspection endpoint resolution for Protected Resource introspection. Configure
+- Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
   `endpoints.introspection-endpoint-uri` explicitly.
 - Refresh single-flight coordination for refresh-token rotation races.
 
@@ -220,7 +220,7 @@ OidcTenantConfig tenant = OidcTenantConfig.builder()
 ## WebClient Configuration
 
 Each tenant has one `webclient` configuration used for outbound requests to the OpenID Provider or Authorization Server:
-discovery, JWKS loading, Token Endpoint requests, and introspection.
+well-known metadata requests, JWKS loading, Token Endpoint requests, and introspection.
 
 ```yaml
 security:
@@ -271,7 +271,7 @@ OidcTenantConfig tenant = OidcTenantConfig.builder()
 
 ```yaml
 endpoints:
-  discovery-uri: "https://issuer.example/.well-known/openid-configuration"
+  well-known-uri: "https://issuer.example/.well-known/openid-configuration"
   authorization-endpoint-uri: "https://issuer.example/authorize"
   token-endpoint-uri: "https://issuer.example/token"
   jwks-uri: "https://issuer.example/jwks"
@@ -283,14 +283,14 @@ endpoints:
 `user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata but their flows are not implemented
 yet.
 
-If `issuer` is configured and `endpoints.discovery-uri` is omitted, the provider derives the discovery URI by appending
+If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
-Discovery is used by Authorization Code Flow when provider endpoint metadata is missing, by Client Credentials Grant
-when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
-`endpoints.jwks-uri` is not configured. The discovered metadata can provide `authorization_endpoint`, `token_endpoint`,
-and `jwks_uri`. When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead
-of discovery, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
+Well-known metadata is used by Authorization Code Flow when provider endpoint metadata is missing, by Client Credentials
+Grant when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
+`endpoints.jwks-uri` is not configured. It can provide `authorization_endpoint`, `token_endpoint`, and `jwks_uri`. When
+Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading well-known
+metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
 Protected Resource introspection still requires explicit `endpoints.introspection-endpoint-uri`.
 
@@ -318,9 +318,8 @@ security:
                 clock-skew: "PT1M"
 ```
 
-`issuer` or `endpoints.discovery-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
-provider loads the OpenID Provider Configuration and uses its `jwks_uri`. `audience` is required when audience validation
-is enabled.
+`issuer` or `endpoints.well-known-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
+provider loads well-known metadata and uses its `jwks_uri`. `audience` is required when audience validation is enabled.
 
 Audience validation is enabled by default. Disable it only when the deployment intentionally accepts tokens without a
 local audience check.
@@ -414,8 +413,8 @@ When `authorization-code` is configured and not explicitly disabled:
 - `authorization-code.redirection-endpoint-uri` is required.
 - `authorization-code.scopes` must contain `openid`.
 - `cookies.encryption-secret` is required.
-- An Authorization Endpoint and Token Endpoint are required, either explicitly or from discovery.
-- An issuer or discovery URI is required.
+- An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
+- An issuer or well-known URI is required.
 
 PKCE is enabled by default and uses `S256`.
 
@@ -546,7 +545,8 @@ the same Token Endpoint client authentication settings as Authorization Code Flo
 cached until it is close to expiration, then reacquired.
 
 Client Credentials Grant is only valid for confidential clients. Configure `client-id`, `client-secret`, and either
-`endpoints.token-endpoint-uri` or discovery. `token-endpoint-auth-method: NONE` is rejected for this grant.
+`endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint. `token-endpoint-auth-method: NONE`
+is rejected for this grant.
 
 If any `outbound` entry enables Client Credentials Grant directly, every enabled tenant in the provider must meet
 these Client Credentials prerequisites. Tenant resolution can select any enabled tenant for a matching outbound request,
@@ -816,7 +816,7 @@ Tenant options:
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`. |
-| `webclient` | WebClient configuration for discovery, JWKS, Token Endpoint, and introspection requests. |
+| `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, and introspection requests. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |

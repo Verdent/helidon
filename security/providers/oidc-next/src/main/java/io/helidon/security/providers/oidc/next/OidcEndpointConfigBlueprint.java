@@ -23,18 +23,18 @@ import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
 /**
- * OpenID Provider endpoint and discovery configuration.
+ * OpenID Provider endpoint and well-known metadata configuration.
  */
 @Prototype.Blueprint
 @Prototype.Configured
 interface OidcEndpointConfigBlueprint {
     /**
-     * OpenID Provider Configuration discovery URI.
+     * Well-known URI used to retrieve well-known metadata.
      *
-     * @return discovery URI
+     * @return well-known URI
      */
     @Option.Configured
-    Optional<URI> discoveryUri();
+    Optional<URI> wellKnownUri();
 
     /**
      * Authorization Endpoint URI.

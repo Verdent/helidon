@@ -73,12 +73,12 @@ class OidcJwtAccessTokenValidationTest {
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final URI MISSING_JWKS_URI = URI.create("file:///tmp/oidc-next-missing-jwks.json");
     private static final Instant TEST_INSTANT = Instant.parse("2026-05-21T00:00:00Z");
-    private static final AtomicInteger discoveryRequests = new AtomicInteger();
+    private static final AtomicInteger wellKnownRequests = new AtomicInteger();
     private static final AtomicInteger remoteJwkSetRequests = new AtomicInteger();
     private static final AtomicReference<Queue<String>> remoteJwkSetResponses =
             new AtomicReference<>(new ArrayDeque<>());
     private static final AtomicReference<String> providerMetadata = new AtomicReference<>();
-    private static final AtomicReference<String> discoveryWebClientHeader = new AtomicReference<>();
+    private static final AtomicReference<String> wellKnownWebClientHeader = new AtomicReference<>();
     private static final AtomicReference<String> remoteJwkSetWebClientHeader = new AtomicReference<>();
 
     private static JwkKeys signKeys;
@@ -86,7 +86,7 @@ class OidcJwtAccessTokenValidationTest {
     private static String verifyJwkSet;
 
     private URI remoteJwksUri;
-    private URI discoveryUri;
+    private URI wellKnownUri;
     @TempDir
     private Path tempDir;
 
@@ -104,8 +104,8 @@ class OidcJwtAccessTokenValidationTest {
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
-            discoveryRequests.incrementAndGet();
-            discoveryWebClientHeader.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
+            wellKnownRequests.incrementAndGet();
+            wellKnownWebClientHeader.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(providerMetadata.get());
         });
@@ -121,10 +121,10 @@ class OidcJwtAccessTokenValidationTest {
     @BeforeEach
     void setUp(URI serverUri) {
         remoteJwksUri = serverUri.resolve("jwks");
-        discoveryUri = serverUri.resolve(".well-known/openid-configuration");
-        discoveryRequests.set(0);
+        wellKnownUri = serverUri.resolve(".well-known/openid-configuration");
+        wellKnownRequests.set(0);
         remoteJwkSetRequests.set(0);
-        discoveryWebClientHeader.set("");
+        wellKnownWebClientHeader.set("");
         remoteJwkSetWebClientHeader.set("");
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of(verifyJwkSet)));
         providerMetadata.set(JsonObject.builder()
@@ -235,17 +235,17 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
-    void discoveredJwksEndpointAuthenticatesSubject() {
+    void wellKnownMetadataJwksEndpointAuthenticatesSubject() {
         String token = signedToken(it -> { });
 
         AuthenticationResponse response = authenticate(
-                discoveryProvider(tenant -> tenant.webClient(tenantWebClient())),
+                wellKnownProvider(tenant -> tenant.webClient(tenantWebClient())),
                 token);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(discoveryRequests.get(), is(1));
+        assertThat(wellKnownRequests.get(), is(1));
         assertThat(remoteJwkSetRequests.get(), is(1));
-        assertThat(discoveryWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+        assertThat(wellKnownWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
         assertThat(remoteJwkSetWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
@@ -484,14 +484,10 @@ class OidcJwtAccessTokenValidationTest {
         return provider(audienceValidationEnabled, true, jwksUri);
     }
 
-    private OidcProvider discoveryProvider() {
-        return discoveryProvider(tenant -> { });
-    }
-
-    private OidcProvider discoveryProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+    private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
                 .issuer(ISSUER)
-                .endpoints(it -> it.discoveryUri(discoveryUri)
+                .endpoints(it -> it.wellKnownUri(wellKnownUri)
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation
                         .method(OidcTokenValidationMethod.JWT)

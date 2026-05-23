@@ -23,7 +23,7 @@ import io.helidon.json.JsonObject;
 
 final class OidcProviderMetadata {
     private final Optional<URI> issuer;
-    private final Optional<URI> discoveryUri;
+    private final Optional<URI> wellKnownUri;
     private final Optional<URI> authorizationEndpointUri;
     private final Optional<URI> tokenEndpointUri;
     private final Optional<URI> jwkSetUri;
@@ -32,7 +32,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> endSessionEndpointUri;
 
     private OidcProviderMetadata(Optional<URI> issuer,
-                                 Optional<URI> discoveryUri,
+                                 Optional<URI> wellKnownUri,
                                  Optional<URI> authorizationEndpointUri,
                                  Optional<URI> tokenEndpointUri,
                                  Optional<URI> jwkSetUri,
@@ -40,7 +40,7 @@ final class OidcProviderMetadata {
                                  Optional<URI> userInfoEndpointUri,
                                  Optional<URI> endSessionEndpointUri) {
         this.issuer = issuer;
-        this.discoveryUri = discoveryUri;
+        this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
         this.tokenEndpointUri = tokenEndpointUri;
         this.jwkSetUri = jwkSetUri;
@@ -52,7 +52,7 @@ final class OidcProviderMetadata {
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
         OidcEndpointConfig endpoints = tenantConfig.endpoints();
         return create(tenantConfig.issuer(),
-                      discoveryUri(tenantConfig.issuer(), endpoints),
+                      wellKnownUri(tenantConfig.issuer(), endpoints),
                       endpoints.authorizationEndpointUri(),
                       endpoints.tokenEndpointUri(),
                       endpoints.jwksUri(),
@@ -62,7 +62,7 @@ final class OidcProviderMetadata {
     }
 
     static OidcProviderMetadata create(Optional<URI> issuer,
-                                       Optional<URI> discoveryUri,
+                                       Optional<URI> wellKnownUri,
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
                                        Optional<URI> jwkSetUri,
@@ -70,7 +70,7 @@ final class OidcProviderMetadata {
                                        Optional<URI> userInfoEndpointUri,
                                        Optional<URI> endSessionEndpointUri) {
         return new OidcProviderMetadata(issuer,
-                                        discoveryUri,
+                                        wellKnownUri,
                                         authorizationEndpointUri,
                                         tokenEndpointUri,
                                         jwkSetUri,
@@ -79,7 +79,7 @@ final class OidcProviderMetadata {
                                         endSessionEndpointUri);
     }
 
-    static OidcProviderMetadata fromDiscoveredJson(JsonObject json) {
+    static OidcProviderMetadata fromWellKnownMetadataJson(JsonObject json) {
         return create(uriValue(json, "issuer"),
                       Optional.empty(),
                       uriValue(json, "authorization_endpoint"),
@@ -90,24 +90,24 @@ final class OidcProviderMetadata {
                       uriValue(json, "end_session_endpoint"));
     }
 
-    OidcProviderMetadata mergeDiscovered(OidcProviderMetadata discoveredMetadata) {
-        validateDiscoveredIssuer(discoveredMetadata);
-        return create(issuer.or(discoveredMetadata::issuer),
-                      discoveryUri.or(discoveredMetadata::discoveryUri),
-                      authorizationEndpointUri.or(discoveredMetadata::authorizationEndpointUri),
-                      tokenEndpointUri.or(discoveredMetadata::tokenEndpointUri),
-                      jwkSetUri.or(discoveredMetadata::jwkSetUri),
-                      introspectionEndpointUri.or(discoveredMetadata::introspectionEndpointUri),
-                      userInfoEndpointUri.or(discoveredMetadata::userInfoEndpointUri),
-                      endSessionEndpointUri.or(discoveredMetadata::endSessionEndpointUri));
+    OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnownMetadata) {
+        validateWellKnownMetadataIssuer(wellKnownMetadata);
+        return create(issuer.or(wellKnownMetadata::issuer),
+                      wellKnownUri.or(wellKnownMetadata::wellKnownUri),
+                      authorizationEndpointUri.or(wellKnownMetadata::authorizationEndpointUri),
+                      tokenEndpointUri.or(wellKnownMetadata::tokenEndpointUri),
+                      jwkSetUri.or(wellKnownMetadata::jwkSetUri),
+                      introspectionEndpointUri.or(wellKnownMetadata::introspectionEndpointUri),
+                      userInfoEndpointUri.or(wellKnownMetadata::userInfoEndpointUri),
+                      endSessionEndpointUri.or(wellKnownMetadata::endSessionEndpointUri));
     }
 
     Optional<URI> issuer() {
         return issuer;
     }
 
-    Optional<URI> discoveryUri() {
-        return discoveryUri;
+    Optional<URI> wellKnownUri() {
+        return wellKnownUri;
     }
 
     Optional<URI> authorizationEndpointUri() {
@@ -134,16 +134,16 @@ final class OidcProviderMetadata {
         return endSessionEndpointUri;
     }
 
-    static Optional<URI> discoveryUri(Optional<URI> issuer, OidcEndpointConfig endpoints) {
+    static Optional<URI> wellKnownUri(Optional<URI> issuer, OidcEndpointConfig endpoints) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
          * Quotes: "concatenating the string `/.well-known/openid-configuration` to the Issuer";
          * "any terminating `/` MUST be removed before appending".
          */
-        Optional<URI> configuredDiscoveryUri = endpoints.discoveryUri();
-        if (configuredDiscoveryUri.isPresent()) {
-            return configuredDiscoveryUri;
+        Optional<URI> configuredWellKnownUri = endpoints.wellKnownUri();
+        if (configuredWellKnownUri.isPresent()) {
+            return configuredWellKnownUri;
         }
         if (issuer.isEmpty()) {
             return Optional.empty();
@@ -160,17 +160,17 @@ final class OidcProviderMetadata {
                 .map(URI::create);
     }
 
-    private void validateDiscoveredIssuer(OidcProviderMetadata discoveredMetadata) {
+    private void validateWellKnownMetadataIssuer(OidcProviderMetadata wellKnownMetadata) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4.3 OpenID Provider Configuration Validation
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation
          * Quotes: "`issuer` REQUIRED"; "Issuer value returned MUST be identical to the Issuer URL".
          */
-        URI discoveredIssuer = discoveredMetadata.issuer()
-                .orElseThrow(() -> new IllegalArgumentException("discovered issuer must be present"));
-        issuer.filter(configuredIssuer -> !configuredIssuer.equals(discoveredIssuer))
+        URI wellKnownMetadataIssuer = wellKnownMetadata.issuer()
+                .orElseThrow(() -> new IllegalArgumentException("well-known metadata issuer must be present"));
+        issuer.filter(configuredIssuer -> !configuredIssuer.equals(wellKnownMetadataIssuer))
                 .ifPresent(ignored -> {
-                    throw new IllegalArgumentException("discovered issuer must match configured issuer");
+                    throw new IllegalArgumentException("well-known metadata issuer must match configured issuer");
                 });
     }
 }

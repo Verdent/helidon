@@ -32,25 +32,25 @@ final class OidcProviderMetadataLoader {
     }
 
     OidcProviderMetadata load(OidcProviderMetadata staticMetadata) {
-        URI discoveryUri = staticMetadata.discoveryUri()
-                .orElseThrow(() -> new IllegalArgumentException("discovery-uri is not configured"));
+        URI wellKnownUri = staticMetadata.wellKnownUri()
+                .orElseThrow(() -> new IllegalArgumentException("well-known-uri is not configured"));
         try (HttpClientResponse response = webClient.get()
-                .uri(discoveryUri)
+                .uri(wellKnownUri)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .request()) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
-                throw new IllegalStateException("OpenID Provider Configuration is unavailable");
+                throw new IllegalStateException("well-known metadata is unavailable");
             }
             /*
              * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
              * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationResponse
              * Quote: "The response is a set of Claims about the OpenID Provider's configuration".
-             */
+            */
             JsonObject json = response.as(JsonObject.class);
-            return staticMetadata.mergeDiscovered(OidcProviderMetadata.fromDiscoveredJson(json));
+            return staticMetadata.mergeWellKnownMetadata(OidcProviderMetadata.fromWellKnownMetadataJson(json));
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to load OpenID Provider Configuration", e);
+            throw new IllegalStateException("Failed to load well-known metadata", e);
         }
     }
 }

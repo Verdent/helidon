@@ -609,7 +609,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void tokenPropagationIsClassifiedButDeferred() {
+    void tokenPropagationWithoutCurrentSubjectAbstains() {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagation());
@@ -619,13 +619,15 @@ class OidcProviderTest {
                                                                       outboundConfig);
 
         assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), is("Token Propagation is not implemented yet"));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 
     @Test
-    void clientCredentialsGrantIsClassifiedButDeferred() {
-        OidcProvider provider = providerWithTenant();
+    void clientCredentialsGrantWithoutTokenEndpointFails() {
+        OidcProvider provider = provider(OidcTenantConfig.builder()
+                                             .clientId("client-id")
+                                             .clientSecret("client-secret")
+                                             .buildPrototype());
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.clientCredentialsGrant());
 
@@ -635,7 +637,8 @@ class OidcProviderTest {
 
         assertThat(provider.isOutboundSupported(providerRequest, SecurityEnvironment.create(), outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), is("Client Credentials Grant is not implemented yet"));
+        assertThat(response.description().orElse(""),
+                   containsString("token-endpoint-uri or discovery-uri"));
     }
 
     @Test

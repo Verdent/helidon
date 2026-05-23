@@ -16,25 +16,61 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Optional;
+
+import io.helidon.security.providers.common.OutboundTarget;
+
 final class OidcOutboundPolicy {
     private final boolean tokenPropagation;
     private final boolean clientCredentialsGrant;
+    private final String audience;
 
-    private OidcOutboundPolicy(boolean tokenPropagation, boolean clientCredentialsGrant) {
+    private OidcOutboundPolicy(boolean tokenPropagation, boolean clientCredentialsGrant, String audience) {
         this.tokenPropagation = tokenPropagation;
         this.clientCredentialsGrant = clientCredentialsGrant;
+        this.audience = audience;
     }
 
     static OidcOutboundPolicy tokenPropagation() {
-        return new OidcOutboundPolicy(true, false);
+        return tokenPropagation(null);
+    }
+
+    static OidcOutboundPolicy tokenPropagation(String audience) {
+        return new OidcOutboundPolicy(true, false, audience);
     }
 
     static OidcOutboundPolicy clientCredentialsGrant() {
-        return new OidcOutboundPolicy(false, true);
+        return new OidcOutboundPolicy(false, true, null);
     }
 
     static OidcOutboundPolicy tokenPropagationAndClientCredentialsGrant() {
-        return new OidcOutboundPolicy(true, true);
+        return new OidcOutboundPolicy(true, true, null);
+    }
+
+    static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
+        return target.customObject(OidcOutboundTargetConfig.class)
+                .flatMap(OidcOutboundPolicy::fromTargetConfig)
+                .or(() -> target.getConfig()
+                        .map(OidcOutboundTargetConfig::create)
+                        .flatMap(OidcOutboundPolicy::fromTargetConfig));
+    }
+
+    static Optional<String> targetAudience(OutboundTarget target) {
+        return target.customObject(OidcOutboundTargetConfig.class)
+                .flatMap(OidcOutboundTargetConfig::audience)
+                .or(() -> target.getConfig()
+                        .map(OidcOutboundTargetConfig::create)
+                        .flatMap(OidcOutboundTargetConfig::audience));
+    }
+
+    static Optional<OidcOutboundPolicy> fromTargetConfig(OidcOutboundTargetConfig config) {
+        if (config.tokenPropagationEnabled()) {
+            return Optional.of(tokenPropagation(config.audience().orElse(null)));
+        }
+        if (config.clientCredentialsGrantEnabled()) {
+            return Optional.of(clientCredentialsGrant());
+        }
+        return Optional.empty();
     }
 
     boolean tokenPropagationEnabled() {
@@ -43,5 +79,9 @@ final class OidcOutboundPolicy {
 
     boolean clientCredentialsGrantEnabled() {
         return clientCredentialsGrant;
+    }
+
+    Optional<String> audience() {
+        return Optional.ofNullable(audience);
     }
 }

@@ -16,11 +16,14 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.security.providers.common.OutboundConfig;
+import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
 import io.helidon.security.spi.SecurityProvider;
@@ -67,6 +70,19 @@ interface OidcProviderConfigBlueprint extends Prototype.Factory<OidcProvider> {
     @Option.Configured
     @Option.Default("create()")
     OidcTenantResolutionConfig tenantResolution();
+
+    /**
+     * Outbound targets that may receive Token Propagation or Client Credentials Grant tokens.
+     * <p>
+     * Each target uses Helidon's common {@link OutboundTarget} matching keys, and can include OIDC-specific target
+     * options from {@link OidcOutboundTargetConfig}, such as {@code token-propagation-enabled},
+     * {@code client-credentials-grant-enabled}, and {@code audience}.
+     *
+     * @return outbound targets
+     */
+    @Option.Configured(OutboundConfig.CONFIG_OUTBOUND)
+    @Option.Singular("outboundTarget")
+    List<OutboundTarget> outboundTargets();
 
     /**
      * Configured tenants keyed by tenant id.

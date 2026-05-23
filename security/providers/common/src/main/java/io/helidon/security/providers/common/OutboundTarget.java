@@ -138,8 +138,8 @@ public final class OutboundTarget {
 
     private Pattern toPattern(String host) {
         //host is very limited in dictionary - dots, alphanum and dashes...
-        String pattern = host.replaceAll("\\.", "\\.");
-        pattern = pattern.replaceAll("\\*", ".*");
+        String pattern = host.replace(".", "\\.");
+        pattern = pattern.replace("*", ".*");
         return Pattern.compile(pattern);
     }
 
@@ -353,7 +353,7 @@ public final class OutboundTarget {
          * @param transport that is supported
          * @return updated builder instance
          */
-        @ConfiguredOption(key = "transport", kind = ConfiguredOption.Kind.LIST)
+        @ConfiguredOption(key = "transports", kind = ConfiguredOption.Kind.LIST)
         public Builder addTransport(String transport) {
             this.transports.add(transport);
             return this;

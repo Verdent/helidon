@@ -17,11 +17,14 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
 import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
@@ -35,7 +38,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @ServerTest
 class OidcProviderMetadataDiscoveryTest {
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
-    private static String providerMetadata;
+    private static final AtomicReference<String> PROVIDER_METADATA = new AtomicReference<>();
 
     private URI issuer;
     private URI authorizationEndpointUri;
@@ -47,7 +50,7 @@ class OidcProviderMetadataDiscoveryTest {
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> response
                 .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(providerMetadata));
+                .send(PROVIDER_METADATA.get()));
     }
 
     @BeforeEach
@@ -57,14 +60,14 @@ class OidcProviderMetadataDiscoveryTest {
         tokenEndpointUri = serverUri.resolve("token");
         jwksUri = serverUri.resolve("jwks");
         userInfoEndpointUri = serverUri.resolve("userinfo");
-        providerMetadata = JsonObject.builder()
+        PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
                 .set("jwks_uri", jwksUri.toString())
                 .set("userinfo_endpoint", userInfoEndpointUri.toString())
                 .build()
-                .toString();
+                .toString());
     }
 
     @Test
@@ -105,11 +108,41 @@ class OidcProviderMetadataDiscoveryTest {
     }
 
     @Test
+    void targetClientCredentialsGrantTenantLoadsTokenEndpointFromDiscovery() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .outboundTargets(List.of(clientCredentialsTarget()))
+                .buildPrototype();
+
+        OidcTenantContext context = OidcTenantRuntimeRegistry.create(providerConfig)
+                .tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
+                .orElseThrow();
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
+    }
+
+    private static OutboundTarget clientCredentialsTarget() {
+        return OutboundTarget.builder("api")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
+    }
+
+    @Test
     void jwtProtectedResourceTenantFailsWhenDiscoveredJwkSetUriIsMissing() {
-        providerMetadata = JsonObject.builder()
+        PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .build()
-                .toString();
+                .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer)
                 .endpoints(it -> it.tlsRequired(false))

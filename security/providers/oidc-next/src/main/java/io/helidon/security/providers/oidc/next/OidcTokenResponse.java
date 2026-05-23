@@ -67,6 +67,15 @@ final class OidcTokenResponse {
         return create(json, false);
     }
 
+    static OidcTokenResponse fromClientCredentialsJson(JsonObject json) {
+        /*
+         * Spec: RFC 6749, 4.4.3 Access Token Response
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.3
+         * Quotes: "the authorization server issues an access token"; "A refresh token SHOULD NOT be included."
+         */
+        return create(json, false);
+    }
+
     private static OidcTokenResponse create(JsonObject json, boolean requireIdToken) {
         String accessToken = requiredString(json, "access_token");
         String tokenType = requiredString(json, "token_type");

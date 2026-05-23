@@ -38,7 +38,7 @@ final class OidcTenantRuntimeRegistry {
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
-        return create(config, OidcTenantContextFactory.create());
+        return create(config, OidcTenantContextFactory.create(config));
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config,

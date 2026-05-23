@@ -22,12 +22,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.providers.common.OutboundTarget;
 
 import org.junit.jupiter.api.Test;
 
@@ -59,6 +61,7 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
+        assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
         assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
@@ -112,12 +115,19 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
                         Map.entry("tenants.default.subject-mapping.role-claim-paths.0", "realm_access.roles"),
                         Map.entry("tenants.default.subject-mapping.scope-claim-paths.0", "scp"),
-                        Map.entry("tenants.default.subject-mapping.scope-grants-enabled", "false"))))
+                        Map.entry("tenants.default.subject-mapping.scope-grants-enabled", "false"),
+                        Map.entry("outbound.0.name", "orders"),
+                        Map.entry("outbound.0.transports.0", "https"),
+                        Map.entry("outbound.0.hosts.0", "api.example.com"),
+                        Map.entry("outbound.0.paths.0", "/orders/.*"))))
                 .build();
 
         OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
 
         assertThat(providerConfig.defaultTenant().orElse(""), is("default"));
+        OutboundTarget outboundTarget = providerConfig.outboundTargets().getFirst();
+        assertThat(outboundTarget.name(), is("orders"));
+        assertThat(outboundTarget.hosts(), is(Set.of("api.example.com")));
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
@@ -708,6 +718,17 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void outboundTargetOperationsCannotBeAmbiguous() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcOutboundTargetConfig.builder()
+                                                               .tokenPropagationEnabled(true)
+                                                               .clientCredentialsGrantEnabled(true)
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("Token Propagation and Client Credentials Grant"));
+    }
+
+    @Test
     void clientCredentialsGrantRequiresClientAuthenticationAndTokenEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .outbound(it -> it.clientCredentialsGrantEnabled(true))
@@ -737,6 +758,37 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri"));
+    }
+
+    @Test
+    void targetClientCredentialsGrantRequiresClientAuthenticationAndTlsTokenEndpoint() {
+        Config noneAuthenticationConfig = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.client-id", "client-id"),
+                        Map.entry("tenants.default.token-endpoint-auth-method", "NONE"),
+                        Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
+                        Map.entry("outbound.0.name", "api"),
+                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                .build();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.create(noneAuthenticationConfig));
+
+        assertThat(thrown.getMessage(), containsString("Token Endpoint authentication cannot be NONE"));
+
+        Config insecureTokenEndpointConfig = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.client-id", "client-id"),
+                        Map.entry("tenants.default.client-secret", "client-secret-value"),
+                        Map.entry("tenants.default.endpoints.token-endpoint-uri", "http://issuer.example/token"),
+                        Map.entry("outbound.0.name", "api"),
+                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                .build();
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcProviderConfig.create(insecureTokenEndpointConfig));
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
     }
 
     @Test

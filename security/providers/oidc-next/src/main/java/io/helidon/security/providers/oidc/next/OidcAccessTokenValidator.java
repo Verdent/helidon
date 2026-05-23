@@ -19,5 +19,5 @@ package io.helidon.security.providers.oidc.next;
 interface OidcAccessTokenValidator {
     OidcTokenValidationMethod method();
 
-    OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext);
+    OidcValidationResult<OidcValidatedAccessToken> validate(String token, OidcTenantContext tenantContext);
 }

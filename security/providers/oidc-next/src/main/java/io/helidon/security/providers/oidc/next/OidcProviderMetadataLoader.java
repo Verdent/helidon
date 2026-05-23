@@ -36,6 +36,7 @@ final class OidcProviderMetadataLoader {
                 .orElseThrow(() -> new IllegalArgumentException("well-known-uri is not configured"));
         try (HttpClientResponse response = webClient.get()
                 .uri(wellKnownUri)
+                .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .request()) {

@@ -54,15 +54,11 @@ final class OidcJwkSetLoader {
     }
 
     private JsonObject loadFile(URI uri) {
-        try (InputStream inputStream = inputStream(uri)) {
+        try (InputStream inputStream = Files.newInputStream(Path.of(uri))) {
             return JsonParser.create(inputStream).readJsonObject();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load JWK Set", e);
         }
-    }
-
-    private InputStream inputStream(URI uri) throws IOException {
-        return Files.newInputStream(Path.of(uri));
     }
 
     private JsonObject loadRemote(URI uri) {

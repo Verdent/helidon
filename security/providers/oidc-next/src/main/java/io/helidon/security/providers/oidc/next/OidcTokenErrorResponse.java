@@ -25,13 +25,11 @@ final class OidcTokenErrorResponse {
     private final String error;
     private final String errorDescription;
     private final String errorUri;
-    private final JsonObject rawResponse;
 
-    private OidcTokenErrorResponse(String error, String errorDescription, String errorUri, JsonObject rawResponse) {
+    private OidcTokenErrorResponse(String error, String errorDescription, String errorUri) {
         this.error = error;
         this.errorDescription = errorDescription;
         this.errorUri = errorUri;
-        this.rawResponse = rawResponse;
     }
 
     static OidcTokenErrorResponse fromJson(JsonObject json) {
@@ -45,8 +43,7 @@ final class OidcTokenErrorResponse {
                 .orElseThrow(() -> new IllegalArgumentException("Token Endpoint Error Response is invalid"));
         return new OidcTokenErrorResponse(error,
                                           stringValue(json, "error_description").orElse(null),
-                                          stringValue(json, "error_uri").orElse(null),
-                                          json);
+                                          stringValue(json, "error_uri").orElse(null));
     }
 
     String error() {
@@ -59,10 +56,6 @@ final class OidcTokenErrorResponse {
 
     Optional<String> errorUri() {
         return Optional.ofNullable(errorUri);
-    }
-
-    JsonObject rawResponse() {
-        return rawResponse;
     }
 
     private static Optional<String> stringValue(JsonObject json, String name) {

@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,18 +64,31 @@ final class OidcAuthenticationOrchestrator {
             return OidcResponseFactory.tenantUnavailable(context.tenantContext().orElseThrow());
         }
 
-        OidcProtocolOperation operation = OidcRequestClassifier.classify(context);
+        if (context.bearerTokenInvalidRequest()) {
+            return OidcResponseFactory.invalidBearerTokenRequest(context.bearerTokenErrorDescription());
+        }
+        if (context.bearerTokenPresent()) {
+            return authenticateBearerToken(context);
+        }
+        if (context.authorizationResponsePresent()) {
+            return AuthenticationResponse.abstain();
+        }
 
-        return switch (operation) {
-            case BEARER_TOKEN_INVALID_REQUEST -> OidcResponseFactory.invalidBearerTokenRequest(
-                    context.bearerTokenErrorDescription());
-            case BEARER_TOKEN_AUTHENTICATION -> authenticateBearerToken(context);
-            case AUTHORIZATION_CODE_FLOW_INITIATION -> authenticateAuthorizationCodeFlow(context);
-            case AUTHORIZATION_RESPONSE, RP_INITIATED_LOGOUT -> AuthenticationResponse.abstain();
-            case TOKEN_PROPAGATION, CLIENT_CREDENTIALS_GRANT -> AuthenticationResponse.abstain();
-            case AMBIGUOUS -> authenticateAmbiguous(context);
-            case ABSTAIN -> AuthenticationResponse.abstain();
-        };
+        Optional<OidcEndpointPolicy> endpointPolicy = context.endpointPolicy();
+        if (endpointPolicy.isEmpty()) {
+            return AuthenticationResponse.abstain();
+        }
+        OidcEndpointPolicy policy = endpointPolicy.orElseThrow();
+        if (policy.bearerTokenAuthenticationEnabled() && policy.authorizationCodeFlowEnabled()) {
+            return authenticateAmbiguous(context);
+        }
+        if (policy.bearerTokenAuthenticationEnabled()) {
+            return authenticateBearerToken(context);
+        }
+        if (policy.authorizationCodeFlowEnabled()) {
+            return authenticateAuthorizationCodeFlow(context);
+        }
+        return AuthenticationResponse.abstain();
     }
 
     private AuthenticationResponse authenticateAuthorizationCodeFlow(OidcRequestContext context) {
@@ -102,6 +114,7 @@ final class OidcAuthenticationOrchestrator {
         }
 
         OidcTenantContext readyTenant = tenantContext.orElseThrow();
+        OidcCookieStateHandler cookieStateHandler = readyTenant.cookieStateHandler();
         Optional<OidcLocalAuthenticationResult> localAuthenticationResult = localAuthenticationResult(context,
                                                                                                       readyTenant);
         if (localAuthenticationResult.isEmpty()) {
@@ -111,7 +124,9 @@ final class OidcAuthenticationOrchestrator {
                 localAuthenticationResult.orElseThrow(),
                 readyTenant,
                 context.environment().time().toInstant());
-        Optional<String> removalCookie = localAuthenticationRemovalCookie(refreshResult, readyTenant);
+        Optional<String> removalCookie = refreshResult.removeCookie()
+                ? Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie().toString())
+                : Optional.empty();
         Optional<OidcLocalAuthenticationResult> refreshedAuthenticationResult = refreshResult.authenticationResult();
         if (refreshedAuthenticationResult.isEmpty()) {
             return LocalAuthentication.empty(removalCookie);
@@ -119,34 +134,15 @@ final class OidcAuthenticationOrchestrator {
         OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
         if (OidcSubjectMapper.principalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
             LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has no principal claim");
-            return LocalAuthentication.empty(Optional.of(readyTenant.cookieStateHandler()
-                                                                 .removeLocalAuthenticationResultCookie()
+            return LocalAuthentication.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
                                                                  .toString()));
         }
+        Optional<String> authenticationCookie = refreshResult.refreshed()
+                ? Optional.of(cookieStateHandler.createLocalAuthenticationResultCookie(result).toString())
+                : Optional.empty();
         return LocalAuthentication.response(OidcResponseFactory.localAuthenticationSucceeded(
                 OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
-                authenticationCookie(refreshResult, result, readyTenant)));
-    }
-
-    private Optional<String> localAuthenticationRemovalCookie(OidcRefreshTokenManager.RefreshResult refreshResult,
-                                                              OidcTenantContext tenantContext) {
-        if (!refreshResult.removeCookie()) {
-            return Optional.empty();
-        }
-        return Optional.of(tenantContext.cookieStateHandler()
-                                   .removeLocalAuthenticationResultCookie()
-                                   .toString());
-    }
-
-    private Optional<String> authenticationCookie(OidcRefreshTokenManager.RefreshResult refreshResult,
-                                                  OidcLocalAuthenticationResult authenticationResult,
-                                                  OidcTenantContext tenantContext) {
-        if (!refreshResult.refreshed()) {
-            return Optional.empty();
-        }
-        return Optional.of(tenantContext.cookieStateHandler()
-                                   .createLocalAuthenticationResultCookie(authenticationResult)
-                                   .toString());
+                authenticationCookie));
     }
 
     private Optional<OidcLocalAuthenticationResult> localAuthenticationResult(OidcRequestContext context,
@@ -191,7 +187,7 @@ final class OidcAuthenticationOrchestrator {
                 .method()
                 .map(accessTokenValidators::get);
         if (validator.isEmpty()) {
-            return OidcResponseFactory.bearerTokenValidationNotImplemented();
+            return OidcResponseFactory.bearerTokenValidationNotConfigured();
         }
         return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator.orElseThrow());
     }
@@ -215,17 +211,7 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {
-        EnumMap<OidcTokenValidationMethod, OidcAccessTokenValidator> validators =
-                new EnumMap<>(OidcTokenValidationMethod.class);
-        addAccessTokenValidator(validators, OidcJwtAccessTokenValidator.create());
-        addAccessTokenValidator(validators, OidcIntrospectionAccessTokenValidator.create());
-        return Map.copyOf(validators);
-    }
-
-    private static void addAccessTokenValidator(Map<OidcTokenValidationMethod, OidcAccessTokenValidator> validators,
-                                                OidcAccessTokenValidator validator) {
-        if (validators.put(validator.method(), validator) != null) {
-            throw new IllegalStateException("Duplicate access token validator for method: " + validator.method());
-        }
+        return Map.of(OidcTokenValidationMethod.JWT, OidcJwtAccessTokenValidator.create(),
+                      OidcTokenValidationMethod.INTROSPECTION, OidcIntrospectionAccessTokenValidator.create());
     }
 }

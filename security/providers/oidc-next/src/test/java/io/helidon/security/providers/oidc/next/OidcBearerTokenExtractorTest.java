@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.List;
 
 import io.helidon.common.uri.UriQuery;
@@ -194,8 +195,14 @@ class OidcBearerTokenExtractorTest {
 
     @Test
     void rejectsBareQueryParameterBearerTokenWithAnotherQueryToken() {
-        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.accessTokenQueryParameterBearerToken(
-                UriQuery.create("access_token&access_token=access-token"));
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource?access_token&access_token=access-token"))
+                        .queryParams(UriQuery.create("access_token&access_token=access-token"))
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .queryParameterEnabled(true)
+                        .buildPrototype());
 
         assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));

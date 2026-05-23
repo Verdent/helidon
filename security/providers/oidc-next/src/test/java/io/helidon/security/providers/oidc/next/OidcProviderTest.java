@@ -57,8 +57,6 @@ import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcProviderTest {
-    private static final String CURRENT_PROVIDER_CONFIG_KEY = "oidc";
-    private static final String OIDC_NEXT_PACKAGE = "io.helidon.security.providers.oidc.next";
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
@@ -81,8 +79,10 @@ class OidcProviderTest {
         OidcProviderService service = new OidcProviderService();
 
         assertThat(service.providerConfigKey(), is("oidc-next"));
+        assertThat(service.providerConfigKey(), is(not("oidc")));
         assertThat(service.providerClass() == OidcProvider.class, is(true));
         assertThat(service.create(Config.empty()), instanceOf(OidcProvider.class));
+        assertThat(OidcProvider.class.getPackageName(), is("io.helidon.security.providers.oidc.next"));
     }
 
     @Test
@@ -100,14 +100,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void stage0KeepsNewProviderIsolatedFromCurrentProvider() {
-        assertThat(OidcProvider.class.getPackageName(), is(OIDC_NEXT_PACKAGE));
-        assertThat(OidcProviderService.PROVIDER_CONFIG_KEY, is("oidc-next"));
-        assertThat(OidcProviderService.PROVIDER_CONFIG_KEY, is(not(CURRENT_PROVIDER_CONFIG_KEY)));
-    }
-
-    @Test
-    void providerAbstainsUntilFlowsAreImplemented() {
+    void providerWithoutRequestAbstains() {
         OidcProvider provider = OidcProvider.create();
 
         assertThat(provider.authenticate(null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
@@ -139,7 +132,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
-        assertThat(response.description().orElse(""), is("Bearer Token validation is not implemented yet"));
+        assertThat(response.description().orElse(""), is("Bearer Token validation is not configured"));
         assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).startsWith("Bearer "), is(true));
     }
 
@@ -241,7 +234,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
-        assertThat(response.description().orElse(""), is("Bearer Token validation is not implemented yet"));
+        assertThat(response.description().orElse(""), is("Bearer Token validation is not configured"));
     }
 
     @Test
@@ -261,7 +254,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void bothProtocolOperationsWithoutEvidenceFailsSafely() {
+    void bothEndpointModesWithoutEvidenceFailsSafely() {
         OidcProvider provider = providerWithTenant();
 
         AuthenticationResponse response = provider.authenticate(
@@ -269,7 +262,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(400));
-        assertThat(response.description().orElse(""), is("OIDC request cannot be classified by protocol operation"));
+        assertThat(response.description().orElse(""), is("OIDC request is ambiguous"));
     }
 
     @Test
@@ -693,7 +686,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void outboundProtocolOperationAmbiguityFailsSafely() {
+    void ambiguousOutboundPolicyFailsSafely() {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
@@ -705,8 +698,7 @@ class OidcProviderTest {
 
         assertThat(provider.isOutboundSupported(providerRequest, outboundEnv, outboundConfig), is(true));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""),
-                   is("OIDC outbound request cannot be classified by protocol operation"));
+        assertThat(response.description().orElse(""), is("OIDC outbound request is ambiguous"));
     }
 
     static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {

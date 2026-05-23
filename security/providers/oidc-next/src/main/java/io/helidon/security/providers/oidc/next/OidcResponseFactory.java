@@ -42,8 +42,8 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse bearerTokenValidationNotImplemented() {
-        String description = "Bearer Token validation is not implemented yet";
+    static AuthenticationResponse bearerTokenValidationNotConfigured() {
+        String description = "Bearer Token validation is not configured";
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
@@ -61,19 +61,18 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
-        return authorizationCodeFlowInitiated(request, Optional.empty());
-    }
-
     static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request,
                                                                  Optional<String> localAuthenticationRemovalCookie) {
+        List<String> cookies = new ArrayList<>(2);
+        localAuthenticationRemovalCookie.ifPresent(cookies::add);
+        cookies.add(request.stateCookie());
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
                 .statusCode(Status.SEE_OTHER_303.code())
                 .description("Redirecting to OpenID Provider Authorization Endpoint")
                 .responseHeader(HeaderNames.LOCATION.defaultCase(), request.authorizationUri().toString())
                 .responseHeader(HeaderNames.SET_COOKIE.defaultCase(),
-                                setCookies(request.stateCookie(), localAuthenticationRemovalCookie))
+                                List.copyOf(cookies))
                 .build();
     }
 
@@ -85,15 +84,11 @@ final class OidcResponseFactory {
         return builder.build();
     }
 
-    static AuthenticationResponse ambiguousRequest() {
-        return ambiguousRequest(Optional.empty());
-    }
-
     static AuthenticationResponse ambiguousRequest(Optional<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
-                .description("OIDC request cannot be classified by protocol operation");
+                .description("OIDC request is ambiguous");
         localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
                 HeaderNames.SET_COOKIE.defaultCase(),
                 cookie));
@@ -107,13 +102,6 @@ final class OidcResponseFactory {
                 .description(description)
                 .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_request", description))
                 .build();
-    }
-
-    private static List<String> setCookies(String stateCookie, Optional<String> localAuthenticationRemovalCookie) {
-        List<String> cookies = new ArrayList<>(2);
-        localAuthenticationRemovalCookie.ifPresent(cookies::add);
-        cookies.add(stateCookie);
-        return List.copyOf(cookies);
     }
 
     static AuthenticationResponse optional(String description) {
@@ -142,7 +130,7 @@ final class OidcResponseFactory {
     static OutboundSecurityResponse ambiguousOutboundRequest() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description("OIDC outbound request cannot be classified by protocol operation")
+                .description("OIDC outbound request is ambiguous")
                 .build();
     }
 

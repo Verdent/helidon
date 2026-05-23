@@ -21,9 +21,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.SetCookie;
@@ -59,7 +61,10 @@ class OidcFeatureRouteTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI END_SESSION_ENDPOINT_URI = URI.create("https://issuer.example/logout");
     private static final URI CONFIGURED_REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/logged-out");
+    private static final URI OTHER_POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/other-logged-out");
     private static final String COOKIE_SECRET = "test-cookie-secret";
     private static final String CLIENT_ID = "client-id";
     private static final String CLIENT_SECRET = "client-secret";
@@ -472,6 +477,359 @@ class OidcFeatureRouteTest {
         }
     }
 
+    @Test
+    void logoutEndpointRouteRedirectsToEndSessionEndpoint() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            LocalAuthenticationCookie localAuthenticationCookie = localAuthenticationCookieWithToken(tenant, "default");
+            String localAuthenticationHeader = localAuthenticationCookie.cookie().name()
+                    + "="
+                    + localAuthenticationCookie.cookie().value();
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .queryParam("state", "logout-state")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, localAuthenticationHeader)
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                assertThat(location.getScheme(), is(END_SESSION_ENDPOINT_URI.getScheme()));
+                assertThat(location.getAuthority(), is(END_SESSION_ENDPOINT_URI.getAuthority()));
+                assertThat(location.getPath(), is(END_SESSION_ENDPOINT_URI.getPath()));
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("id_token_hint").orElse(""), is(localAuthenticationCookie.idToken()));
+                assertThat(query.first("post_logout_redirect_uri").orElse(""), is(POST_LOGOUT_REDIRECT_URI.toString()));
+                assertThat(query.first("state").orElse(""), is("logout-state"));
+
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.size(), is(2));
+                assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteRejectsUnallowedPostLogoutRedirectUri() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .queryParam("post_logout_redirect_uri", "https://attacker.example/logged-out")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
+
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.size(), is(2));
+                assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteAcceptsAllowedPostLogoutRedirectUriFromRequest() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI)
+                .addAllowedPostLogoutRedirectUri(OTHER_POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .queryParam("post_logout_redirect_uri", OTHER_POST_LOGOUT_REDIRECT_URI.toString())
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("post_logout_redirect_uri").orElse(""),
+                           is(OTHER_POST_LOGOUT_REDIRECT_URI.toString()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteRejectsMissingIdTokenHintWhenRequired() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> { });
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .request()) {
+                assertThat(response.status(), is(Status.FORBIDDEN_403));
+                assertThat(response.as(String.class), is("id_token_hint is required for RP-Initiated Logout"));
+
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.size(), is(2));
+                assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteCanOmitIdTokenHintWhenConfigured() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .idTokenHintRequired(false)
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("id_token_hint").isEmpty(), is(true));
+                assertThat(query.first("client_id").orElse(""), is(CLIENT_ID));
+                assertThat(query.first("post_logout_redirect_uri").orElse(""), is(POST_LOGOUT_REDIRECT_URI.toString()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteRedirectsToDiscoveredEndSessionEndpoint() {
+        WebServer opServer = wellKnownEndSessionServer();
+        try {
+            URI issuer = issuerUri(opServer);
+            OidcTenantConfig tenant = tenantConfigWithDiscoveredEndSessionLogout(issuer, endSession -> endSession
+                    .idTokenHintRequired(false)
+                    .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+            WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+            try {
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .post("/oidc/logout")
+                        .followRedirects(false)
+                        .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                        .request()) {
+                    assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                    URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                    assertThat(location.getScheme(), is(issuer.getScheme()));
+                    assertThat(location.getAuthority(), is(issuer.getAuthority()));
+                    assertThat(location.getPath(), is("/logout"));
+                    UriQuery query = UriQuery.create(location);
+                    assertThat(query.first("client_id").orElse(""), is(CLIENT_ID));
+                    assertThat(query.first("post_logout_redirect_uri").orElse(""),
+                               is(POST_LOGOUT_REDIRECT_URI.toString()));
+                }
+            } finally {
+                rpServer.stop();
+            }
+        } finally {
+            opServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteAcceptsConfiguredPostLogoutRedirectUriFromRequest() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .queryParam("post_logout_redirect_uri", POST_LOGOUT_REDIRECT_URI.toString())
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("post_logout_redirect_uri").orElse(""),
+                           is(POST_LOGOUT_REDIRECT_URI.toString()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteRejectsInvalidPostLogoutRedirectUri() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+            String localAuthenticationHeader = localAuthenticationCookie.name()
+                    + "="
+                    + localAuthenticationCookie.value();
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .queryParam("post_logout_redirect_uri", "https://rp.example/%zz")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, localAuthenticationHeader)
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+            }
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .queryParam("post_logout_redirect_uri", "")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, localAuthenticationHeader)
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+            }
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post()
+                    .uri(URI.create("/oidc/logout?post_logout_redirect_uri=https%3A%2F%2Frp.example%2Flogged-out"
+                                            + "&post_logout_redirect_uri=https%3A%2F%2Frp.example%2Fother-logged-out"))
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, localAuthenticationHeader)
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteUsesLocalAuthenticationTenantForEndSessionRedirect() {
+        URI tenantAEndSessionEndpoint = URI.create("https://issuer.example/logout-a");
+        URI tenantBEndSessionEndpoint = URI.create("https://issuer.example/logout-b");
+        OidcTenantConfig tenantA = tenantConfigWithEndSessionLogout("state-a",
+                                                                    "auth",
+                                                                    "shared-cookie-secret",
+                                                                    tenantAEndSessionEndpoint,
+                                                                    endSession -> { });
+        OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
+                                                                    "auth",
+                                                                    "shared-cookie-secret",
+                                                                    tenantBEndSessionEndpoint,
+                                                                    endSession -> { });
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("tenant-a", tenantA)
+                .putTenant("tenant-b", tenantB)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenantB, "tenant-b");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                assertThat(location.getPath(), is(tenantBEndSessionEndpoint.getPath()));
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertRemovalCookie(cookies, "auth");
+                assertRemovalCookie(cookies, "state-b");
+                assertThat(cookies.stream().noneMatch(cookie -> cookie.startsWith("state-a=")), is(true));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteDoesNotRedirectWhenEndSessionTenantIsAmbiguous() {
+        OidcTenantConfig tenantA = tenantConfigWithEndSessionLogout("state-a",
+                                                                    "auth-a",
+                                                                    "tenant-a-secret",
+                                                                    URI.create("https://issuer.example/logout-a"),
+                                                                    endSession -> { });
+        OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
+                                                                    "auth-b",
+                                                                    "tenant-b-secret",
+                                                                    URI.create("https://issuer.example/logout-b"),
+                                                                    endSession -> { });
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("tenant-a", tenantA)
+                .putTenant("tenant-b", tenantB)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            SetCookie localAuthenticationCookieA = localAuthenticationCookie(tenantA, "tenant-a");
+            SetCookie localAuthenticationCookieB = localAuthenticationCookie(tenantB, "tenant-b");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, cookieHeader(localAuthenticationCookieA, localAuthenticationCookieB))
+                    .request()) {
+                assertThat(response.status(), is(Status.NO_CONTENT_204));
+                assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
     private static OidcProviderConfig providerConfig() {
         return OidcProviderConfig.builder()
                 .putTenant("default", tenantConfig())
@@ -512,6 +870,48 @@ class OidcFeatureRouteTest {
                                       "__Host-helidon-oidc-auth",
                                       COOKIE_SECRET,
                                       logout);
+    }
+
+    private static OidcTenantConfig tenantConfigWithEndSessionLogout(
+            Consumer<OidcEndSessionConfig.Builder> endSession) {
+        return tenantConfigWithEndSessionLogout("__Host-helidon-oidc-state",
+                                                "__Host-helidon-oidc-auth",
+                                                COOKIE_SECRET,
+                                                END_SESSION_ENDPOINT_URI,
+                                                endSession);
+    }
+
+    private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
+                                                                    String localAuthenticationCookieName,
+                                                                    String cookieSecret,
+                                                                    URI endSessionEndpointUri,
+                                                                    Consumer<OidcEndSessionConfig.Builder> endSession) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .endSessionEndpointUri(endSessionEndpointUri))
+                .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .logout(logout -> logout.endSession(endSession))
+                .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
+                        .localAuthenticationCookieName(localAuthenticationCookieName)
+                        .encryptionSecret(cookieSecret))
+                .buildPrototype();
+    }
+
+    private static OidcTenantConfig tenantConfigWithDiscoveredEndSessionLogout(
+            URI issuer,
+            Consumer<OidcEndSessionConfig.Builder> endSession) {
+        return OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId(CLIENT_ID)
+                .endpoints(it -> it.tlsRequired(false))
+                .logout(logout -> logout.endSession(endSession))
+                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .buildPrototype();
     }
 
     private static OidcTenantConfig tenantConfigWithLogout(String authenticationRequestCookieName,
@@ -585,6 +985,25 @@ class OidcFeatureRouteTest {
                 .start();
     }
 
+    private static WebServer wellKnownEndSessionServer() {
+        AtomicReference<URI> issuer = new AtomicReference<>();
+        HttpRouting.Builder routing = HttpRouting.builder();
+        routing.get("/.well-known/openid-configuration", (request, response) -> response
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(JsonObject.builder()
+                              .set("issuer", issuer.get().toString())
+                              .set("end_session_endpoint", issuer.get().resolve("/logout").toString())
+                              .build()
+                              .toString()));
+        WebServer server = WebServer.builder()
+                .addRouting(routing)
+                .port(0)
+                .build()
+                .start();
+        issuer.set(issuerUri(server));
+        return server;
+    }
+
     private static SetCookie authenticationRequestCookie(URI callbackUri, OidcTenantConfig tenant) {
         Instant now = Instant.now();
         URI originalUri = URI.create("https://rp.example/resource");
@@ -600,6 +1019,11 @@ class OidcFeatureRouteTest {
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant, String tenantId) {
+        return localAuthenticationCookieWithToken(tenant, tenantId).cookie();
+    }
+
+    private static LocalAuthenticationCookie localAuthenticationCookieWithToken(OidcTenantConfig tenant,
+                                                                               String tenantId) {
         Instant now = Instant.now();
         String rawIdToken = signedIdToken(NONCE);
         SignedJwt signedJwt = SignedJwt.parseToken(rawIdToken);
@@ -613,8 +1037,9 @@ class OidcFeatureRouteTest {
                                                                                    now.minusSeconds(1),
                                                                                    now.plusSeconds(60),
                                                                                    now.plusSeconds(600));
-        return OidcCookieStateHandler.create(tenant)
-                .createLocalAuthenticationResultCookie(result);
+        return new LocalAuthenticationCookie(OidcCookieStateHandler.create(tenant)
+                                                     .createLocalAuthenticationResultCookie(result),
+                                             rawIdToken);
     }
 
     private static String cookieHeader(SetCookie first, SetCookie second) {
@@ -637,6 +1062,10 @@ class OidcFeatureRouteTest {
     }
 
     private static URI rpBaseUri(WebServer server) {
+        return URI.create("http://localhost:" + server.port());
+    }
+
+    private static URI issuerUri(WebServer server) {
         return URI.create("http://localhost:" + server.port());
     }
 
@@ -665,5 +1094,8 @@ class OidcFeatureRouteTest {
                 .build();
         return SignedJwt.sign(jwt, signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private record LocalAuthenticationCookie(SetCookie cookie, String idToken) {
     }
 }

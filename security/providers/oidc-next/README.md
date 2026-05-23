@@ -19,6 +19,7 @@ The current implementation supports:
 - ID Token validation for Authorization Code Flow.
 - Local authentication result storage in protected cookies.
 - Local OIDC logout endpoint that removes OIDC cookies.
+- RP-Initiated Logout redirect to the OpenID Provider End Session Endpoint.
 - Refresh-token based local authentication renewal.
 - Validation of refreshed access tokens when token validation is configured.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
@@ -31,7 +32,6 @@ The current implementation supports:
 The current implementation does not yet support:
 
 - UserInfo requests and UserInfo claim merge.
-- Building RP-Initiated Logout requests to the OpenID Provider End Session Endpoint.
 - Provider profiles or flow-step customizer SPI.
 - DPoP, mTLS sender-constrained tokens, or token binding.
 - Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
@@ -285,17 +285,19 @@ endpoints:
   end-session-endpoint-uri: "https://issuer.example/logout"
 ```
 
-`user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata. UserInfo requests and OpenID
-Provider End Session Endpoint redirects are not implemented yet.
+`user-info-endpoint-uri` and `end-session-endpoint-uri` are represented in metadata. RP-Initiated Logout can use
+`end-session-endpoint-uri` directly or load `end_session_endpoint` from well-known metadata.
+`end-session-endpoint-uri` must use HTTPS unless `endpoints.tls-required` is disabled, and must not contain a fragment.
 
 If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
 Well-known metadata is used by Authorization Code Flow when provider endpoint metadata is missing, by Client Credentials
 Grant when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
-`endpoints.jwks-uri` is not configured. It can provide `authorization_endpoint`, `token_endpoint`, and `jwks_uri`. When
-Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading well-known
-metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
+`endpoints.jwks-uri` is not configured. It is also used by RP-Initiated Logout when `endpoints.end-session-endpoint-uri`
+is not configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, and `end_session_endpoint`.
+When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
+well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
 Protected Resource introspection still requires explicit `endpoints.introspection-endpoint-uri`.
 
@@ -463,14 +465,78 @@ security:
 ```
 
 When `logout` is configured and not explicitly disabled, `logout.local-endpoint-uri` defaults to `/oidc/logout`.
-The current endpoint requires a same-origin `Origin` or `Referer` header, removes the local authentication result cookie
-and the Authentication Request cookie, then returns `204 No Content`. This is local-only logout: it does not call the
-OpenID Provider End Session Endpoint, terminate the OP browser session, or revoke tokens. The endpoint resolves the
-tenant from the local authentication result cookie when possible; otherwise it removes the configured logout tenant
+The endpoint requires a same-origin `Origin` or `Referer` header, removes the local authentication result cookie and the
+Authentication Request cookie. For local-only logout, the endpoint then returns `204 No Content`. The endpoint resolves
+the tenant from the local authentication result cookie when possible; otherwise it removes the configured logout tenant
 cookie names for the requested logout path.
 
-OpenID Provider End Session Endpoint redirects, `id_token_hint`, `post_logout_redirect_uri`, and post-logout redirect
-allow-list validation are planned for the next logout slice.
+Add `logout.end-session` to redirect the User Agent to the OpenID Provider End Session Endpoint after local cookies are
+removed.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            endpoints:
+              end-session-endpoint-uri: "https://issuer.example/logout"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+            logout:
+              local-endpoint-uri: "/oidc/logout"
+              end-session:
+                post-logout-redirect-uri: "https://app.example/logged-out"
+                allowed-post-logout-redirect-uris:
+                  - "https://app.example/signed-out"
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+If `endpoints.end-session-endpoint-uri` is omitted, well-known metadata must be available from `issuer` or
+`endpoints.well-known-uri` and must contain `end_session_endpoint`.
+
+By default, the End Session request includes `id_token_hint` from the local authentication result cookie and fails with
+`403 Forbidden` when the ID Token is not available. Set `logout.end-session.id-token-hint-required: false` to allow an
+End Session request without `id_token_hint`; in that case `client-id` is required and the provider sends `client_id`
+when `id_token_hint` is omitted.
+
+The default `id-token-hint-required: true` mode requires Authorization Code Flow because the ID Token comes from local
+authentication result storage.
+
+The configured `post-logout-redirect-uri` is sent by default. A logout request may provide
+`post_logout_redirect_uri`; the provider accepts it only when it exactly matches the configured default URI or one of
+`allowed-post-logout-redirect-uris`. If `post_logout_redirect_uri` is accepted and the request contains `state`, the
+provider includes `state` in the End Session request.
+
+`endpoints.end-session-endpoint-uri`, `post-logout-redirect-uri`, and `allowed-post-logout-redirect-uris` must use
+HTTPS unless `endpoints.tls-required` is disabled, and must not contain fragments.
+
+If several tenants share a logout path and the request does not identify exactly one tenant through a local
+authentication result cookie, the endpoint only clears local cookies for the matching path tenants and returns
+`204 No Content`; it does not guess which OpenID Provider End Session Endpoint to use.
+
+Programmatic configuration:
+
+```java
+OidcTenantConfig tenant = OidcTenantConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .clientId("client-id")
+        .clientSecret("client-secret")
+        .endpoints(endpoints -> endpoints
+                .endSessionEndpointUri(URI.create("https://issuer.example/logout")))
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback")))
+        .logout(logout -> logout
+                .localEndpointUri(URI.create("/oidc/logout"))
+                .endSession(endSession -> endSession
+                        .postLogoutRedirectUri(URI.create("https://app.example/logged-out"))
+                        .addAllowedPostLogoutRedirectUri(URI.create("https://app.example/signed-out"))))
+        .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
+        .buildPrototype();
+```
 
 ## Token Endpoint Client Authentication
 
@@ -857,7 +923,7 @@ Tenant options:
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
-| `logout` | Local OIDC logout endpoint configuration. |
+| `logout` | OIDC logout endpoint configuration. |
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
@@ -878,6 +944,20 @@ Logout options:
 | --- | --- |
 | `enabled` | Whether local logout endpoint handling is enabled when `logout` is configured. Defaults to `true`. |
 | `local-endpoint-uri` | Local logout endpoint URI registered by `OidcFeature`. Defaults to `/oidc/logout`. |
+| `end-session` | RP-Initiated Logout End Session request configuration. If omitted, logout is local-only. |
+
+End Session options:
+
+| Key | Description |
+| --- | --- |
+| `enabled` | Whether End Session redirects are enabled when `end-session` is configured. Defaults to `true`. |
+| `id-token-hint-required` | Whether `id_token_hint` must be available from the local authentication result. Defaults to `true`. |
+| `post-logout-redirect-uri` | Default `post_logout_redirect_uri` sent to the OpenID Provider. |
+| `allowed-post-logout-redirect-uris` | Additional exact `post_logout_redirect_uri` values accepted from the local logout request. |
+
+When `id-token-hint-required` is `false`, `client-id` is required and sent as `client_id` if `id_token_hint` is omitted.
+Post-logout redirect URI values must use HTTPS unless `endpoints.tls-required` is disabled and must not contain
+fragments.
 
 Common outbound target options:
 

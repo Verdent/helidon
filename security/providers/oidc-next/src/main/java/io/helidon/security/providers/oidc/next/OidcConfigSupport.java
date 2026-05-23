@@ -135,7 +135,7 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
-            validateLogout(target.logout(), target.authorizationCode());
+            validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
             validateOutbound(target, target.outbound(), target.endpoints());
         }
@@ -274,8 +274,10 @@ final class OidcConfigSupport {
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
     }
 
-    private static void validateLogout(Optional<OidcLogoutConfig> configuredLogout,
-                                       Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode) {
+    private static void validateLogout(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                       Optional<OidcLogoutConfig> configuredLogout,
+                                       Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode,
+                                       OidcEndpointConfig endpoints) {
         if (configuredLogout.isEmpty()) {
             return;
         }
@@ -296,6 +298,49 @@ final class OidcConfigSupport {
                     throw new IllegalArgumentException(
                             "local-endpoint-uri must not use the same path as redirection-endpoint-uri");
                 });
+        validateEndSession(tenant,
+                           configuredAuthorizationCode,
+                           OidcLogoutSupport.enabledEndSession(Optional.of(logout)),
+                           endpoints);
+    }
+
+    private static void validateEndSession(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                           Optional<OidcAuthorizationCodeConfig> configuredAuthorizationCode,
+                                           Optional<OidcEndSessionConfig> configuredEndSession,
+                                           OidcEndpointConfig endpoints) {
+        if (configuredEndSession.isEmpty()) {
+            return;
+        }
+        OidcEndSessionConfig endSession = configuredEndSession.orElseThrow();
+        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+        Optional<URI> endSessionEndpointUri = endpoints.endSessionEndpointUri();
+        endSessionEndpointUri
+                .or(() -> wellKnownUri)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "end-session-endpoint-uri or well-known-uri must be configured when RP-Initiated Logout "
+                                + "is enabled"));
+        endSessionEndpointUri.ifPresent(uri -> validateEndSessionEndpointUri(uri, endpoints.tlsRequired()));
+        if (endSessionEndpointUri.isEmpty()) {
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, endpoints.tlsRequired()));
+        }
+        endSession.postLogoutRedirectUri()
+                .ifPresent(uri -> validatePostLogoutRedirectUri("post-logout-redirect-uri",
+                                                                uri,
+                                                                endpoints.tlsRequired()));
+        endSession.allowedPostLogoutRedirectUris()
+                .forEach(uri -> validatePostLogoutRedirectUri("allowed-post-logout-redirect-uris",
+                                                              uri,
+                                                              endpoints.tlsRequired()));
+        if (endSession.idTokenHintRequired()) {
+            configuredAuthorizationCode
+                    .filter(OidcAuthorizationCodeConfig::enabled)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "authorization-code must be configured when RP-Initiated Logout requires id_token_hint"));
+        } else {
+            tenant.clientId()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "client-id must be configured when RP-Initiated Logout can omit id_token_hint"));
+        }
     }
 
     private static void validateProtectedResource(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -461,6 +506,28 @@ final class OidcConfigSupport {
          * Quote: "This URL MUST use the `https` scheme".
          */
         validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
+    }
+
+    static void validateEndSessionEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect RP-Initiated Logout 1.0, 2.1 OpenID Provider Discovery Metadata
+         * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OPMetadata
+         * Quotes: "URL at the OP to which an RP can perform a redirect to request that the End-User be logged out";
+         * "This URL MUST use the `https` scheme"; "MAY contain port, path, and query parameter components".
+         */
+        validateHttpsEndpointUri("end-session-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("end-session-endpoint-uri", uri);
+    }
+
+    private static void validatePostLogoutRedirectUri(String configKey, URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect RP-Initiated Logout 1.0, 2 RP-Initiated Logout
+         * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+         * Quotes: "`post_logout_redirect_uri` value MUST have been previously registered with the OP";
+         * "This URI SHOULD use the `https` scheme".
+         */
+        validateHttpsEndpointUri(configKey, uri, tlsRequired, false);
+        validateNoFragment(configKey, uri);
     }
 
     private static void validateWellKnownUri(URI uri, boolean tlsRequired) {

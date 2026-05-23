@@ -195,7 +195,7 @@ final class OidcAuthenticationOrchestrator {
     private AuthenticationResponse authenticateBearerToken(String bearerToken,
                                                           OidcTenantContext tenantContext,
                                                           OidcAccessTokenValidator validator) {
-        OidcTokenValidationResult validationResult = validator.validate(bearerToken, tenantContext);
+        OidcValidationResult<OidcValidatedAccessToken> validationResult = validator.validate(bearerToken, tenantContext);
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(
                     OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),

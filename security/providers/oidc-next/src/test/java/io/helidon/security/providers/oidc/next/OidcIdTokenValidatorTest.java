@@ -65,7 +65,7 @@ class OidcIdTokenValidatorTest {
     void validIdTokenIsAccepted() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -77,7 +77,7 @@ class OidcIdTokenValidatorTest {
     void wrongIssuerIsRejected() {
         String idToken = signedIdToken(it -> it.issuer("https://other.example"));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -86,7 +86,7 @@ class OidcIdTokenValidatorTest {
     void wrongAudienceIsRejected() {
         String idToken = signedIdToken(it -> it.audience(List.of("other-client")));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -95,7 +95,7 @@ class OidcIdTokenValidatorTest {
     void missingAudienceIsRejected() {
         String idToken = signedIdToken(false, it -> { });
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -104,7 +104,7 @@ class OidcIdTokenValidatorTest {
     void wrongNonceIsRejected() {
         String idToken = signedIdToken(it -> it.nonce("other-nonce"));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -113,7 +113,7 @@ class OidcIdTokenValidatorTest {
     void missingNonceIsRejected() {
         String idToken = signedIdToken(it -> it.nonce(null));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -122,7 +122,7 @@ class OidcIdTokenValidatorTest {
     void multipleAudiencesRequireAuthorizedParty() {
         String idToken = signedIdToken(it -> it.addAudience("other-audience"));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -132,7 +132,7 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.addAudience("other-audience")
                 .addPayloadClaim("azp", CLIENT_ID));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertThat(result.succeeded(), is(true));
     }
@@ -141,7 +141,7 @@ class OidcIdTokenValidatorTest {
     void wrongAuthorizedPartyIsRejected() {
         String idToken = signedIdToken(it -> it.addPayloadClaim("azp", "other-client"));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -152,7 +152,7 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.issueTime(now.minus(2, ChronoUnit.HOURS))
                 .expirationTime(now.minus(5, ChronoUnit.MINUTES)));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -161,7 +161,7 @@ class OidcIdTokenValidatorTest {
     void missingExpirationIsRejected() {
         String idToken = signedIdToken(it -> it.expirationTime(null));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -170,7 +170,7 @@ class OidcIdTokenValidatorTest {
     void missingIssueTimeIsRejected() {
         String idToken = signedIdToken(it -> it.issueTime(null));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -179,7 +179,7 @@ class OidcIdTokenValidatorTest {
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
         String idToken = signedIdToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", it -> { });
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token JWS header is invalid");
     }
@@ -193,7 +193,7 @@ class OidcIdTokenValidatorTest {
                 + replacement
                 + idToken.substring(signatureStart + 1);
 
-        OidcIdTokenValidationResult result = validate(tampered);
+        var result = validate(tampered);
 
         assertFailure(result, "ID Token signature is invalid");
     }
@@ -202,7 +202,7 @@ class OidcIdTokenValidatorTest {
     void missingSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject(null));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -211,19 +211,19 @@ class OidcIdTokenValidatorTest {
     void blankSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject(" "));
 
-        OidcIdTokenValidationResult result = validate(idToken);
+        var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
     }
 
     @Test
     void malformedIdTokenIsRejected() {
-        OidcIdTokenValidationResult result = validate("not-a-jwt");
+        var result = validate("not-a-jwt");
 
         assertFailure(result, "ID Token is not a valid signed JWT");
     }
 
-    private OidcIdTokenValidationResult validate(String idToken) {
+    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken) {
         return validator.validate(idToken, tenantContext(), authenticationRequestState());
     }
 
@@ -294,7 +294,7 @@ class OidcIdTokenValidatorTest {
                 .tokenContent();
     }
 
-    private static void assertFailure(OidcIdTokenValidationResult result, String description) {
+    private static void assertFailure(OidcValidationResult<OidcValidatedIdToken> result, String description) {
         assertThat(result.succeeded(), is(false));
         assertThat(result.errorDescription().orElse(""), is(description));
     }

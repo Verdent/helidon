@@ -44,13 +44,13 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     }
 
     @Override
-    public OidcTokenValidationResult validate(String token, OidcTenantContext tenantContext) {
+    public OidcValidationResult<OidcValidatedAccessToken> validate(String token, OidcTenantContext tenantContext) {
         Optional<URI> endpointUri = tenantContext.metadata().introspectionEndpointUri();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         Optional<String> clientId = tenantConfig.clientId();
         Optional<String> clientSecret = tenantConfig.clientSecret();
         if (endpointUri.isEmpty() || clientId.isEmpty() || clientSecret.isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection is not configured");
+            return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
 
         try (HttpClientResponse response = request(tenantContext.webClient(),
@@ -60,55 +60,55 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                                                    clientSecret.orElseThrow())) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
                 if (response.status().code() >= 500) {
-                    return OidcTokenValidationResult.failure("Bearer Token introspection endpoint is unavailable");
+                    return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable");
                 }
-                return OidcTokenValidationResult.failure("Bearer Token introspection endpoint rejected the token");
+                return OidcValidationResult.failure("Bearer Token introspection endpoint rejected the token");
             }
 
             return validateResponse(token, tenantContext, response);
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection endpoint is unavailable", e);
+            return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable", e);
         }
     }
 
-    private OidcTokenValidationResult validateResponse(String token,
+    private OidcValidationResult<OidcValidatedAccessToken> validateResponse(String token,
                                                        OidcTenantContext tenantContext,
                                                        HttpClientResponse response) {
         JsonObject jsonObject;
         try {
             jsonObject = response.as(JsonObject.class);
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection response is invalid", e);
+            return OidcValidationResult.failure("Bearer Token introspection response is invalid", e);
         }
 
         try {
             Optional<Boolean> active = jsonObject.booleanValue("active");
             if (active.isEmpty()) {
-                return OidcTokenValidationResult.failure("Bearer Token introspection response is invalid");
+                return OidcValidationResult.failure("Bearer Token introspection response is invalid");
             }
             if (!active.orElseThrow()) {
-                return OidcTokenValidationResult.failure("Bearer Token introspection response is inactive");
+                return OidcValidationResult.failure("Bearer Token introspection response is inactive");
             }
 
             OidcValidatedIntrospection validated = OidcValidatedIntrospection.create(token, jsonObject);
-            OidcTokenValidationResult claimValidation = validateClaims(validated, tenantContext);
+            OidcValidationResult<OidcValidatedAccessToken> claimValidation = validateClaims(validated, tenantContext);
             if (!claimValidation.succeeded()) {
                 return claimValidation;
             }
-            return OidcTokenValidationResult.success(validated);
+            return OidcValidationResult.success(validated);
         } catch (RuntimeException e) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection response is invalid", e);
+            return OidcValidationResult.failure("Bearer Token introspection response is invalid", e);
         }
     }
 
-    private OidcTokenValidationResult validateClaims(OidcValidatedIntrospection validated,
+    private OidcValidationResult<OidcValidatedAccessToken> validateClaims(OidcValidatedIntrospection validated,
                                                      OidcTenantContext tenantContext) {
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
         Optional<String> expectedIssuer = tenantContext.metadata().issuer().map(Object::toString);
         Optional<String> expectedAudience = tokenValidation.audience();
         Instant now = Instant.now();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection is not configured");
+            return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
 
         JwtValidator.Builder builder = JwtValidator.builder()
@@ -121,18 +121,18 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         }
         Errors claimErrors = builder.build().validate(validated.jwt());
         if (!claimErrors.isValid()) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection claims are invalid");
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
         if (OidcSubjectMapper.principalId(validated.claims(), tenantContext.subjectMapping()).isEmpty()) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection response has no principal claim");
+            return OidcValidationResult.failure("Bearer Token introspection response has no principal claim");
         }
         if (validated.tokenType()
                 .filter(tokenType -> !"bearer".equalsIgnoreCase(tokenType))
                 .isPresent()) {
-            return OidcTokenValidationResult.failure("Bearer Token introspection claims are invalid");
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
-        return OidcTokenValidationResult.success(validated);
+        return OidcValidationResult.success(validated);
     }
 
     private HttpClientResponse request(WebClient webClient,

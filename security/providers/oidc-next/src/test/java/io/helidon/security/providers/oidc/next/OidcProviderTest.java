@@ -308,6 +308,25 @@ class OidcProviderTest {
     }
 
     @Test
+    void authorizationCodeFlowCanUsePlainPkceMethod() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceMethod(OidcPkceMethod.PLAIN));
+        OidcProvider provider = provider(tenant);
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .path("/resource")
+                        .transport("https")
+                        .build()));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(query.get("code_challenge_method"), is("plain"));
+        assertThat(query.get("code_challenge"), is(state.pkceVerifier().orElseThrow()));
+    }
+
+    @Test
     void authorizationCodeFlowCanDisablePkce() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false));
         OidcProvider provider = provider(tenant);

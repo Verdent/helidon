@@ -56,6 +56,7 @@ class OidcWellKnownMetadataLoadingTest {
     private URI authorizationEndpointUri;
     private URI tokenEndpointUri;
     private URI jwksUri;
+    private URI introspectionEndpointUri;
     private URI userInfoEndpointUri;
     private URI endSessionEndpointUri;
 
@@ -85,6 +86,7 @@ class OidcWellKnownMetadataLoadingTest {
         authorizationEndpointUri = serverUri.resolve("authorize");
         tokenEndpointUri = serverUri.resolve("token");
         jwksUri = serverUri.resolve("jwks");
+        introspectionEndpointUri = serverUri.resolve("introspect");
         userInfoEndpointUri = serverUri.resolve("userinfo");
         endSessionEndpointUri = serverUri.resolve("logout");
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -92,6 +94,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .set("authorization_endpoint", authorizationEndpointUri.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
                 .set("jwks_uri", jwksUri.toString())
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
                 .set("userinfo_endpoint", userInfoEndpointUri.toString())
                 .set("end_session_endpoint", endSessionEndpointUri.toString())
                 .build()
@@ -120,6 +123,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(authorizationEndpointUri)));
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
+        assertThat(context.metadata().introspectionEndpointUri(), is(Optional.of(introspectionEndpointUri)));
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
         assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
@@ -263,6 +267,47 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
+    }
+
+    @Test
+    void introspectionProtectedResourceTenantLoadsEndpointFromWellKnownMetadata() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().introspectionEndpointUri(), is(Optional.of(introspectionEndpointUri)));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void introspectionProtectedResourceTenantFailsWhenWellKnownMetadataEndpointIsMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
     @Test

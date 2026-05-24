@@ -22,6 +22,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.helidon.common.configurable.Resource;
+import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -39,6 +41,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
 class OidcWellKnownMetadataLoadingTest {
@@ -332,6 +336,62 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void mutualTlsTenantFailsWhenWellKnownMetadataTokenEndpointAliasHasFragment() {
+        URI httpsIssuer = URI.create("https://issuer.example");
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", httpsIssuer.toString())
+                .set("token_endpoint", httpsIssuer.resolve("/token").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", "https://issuer.example/mtls-token#fragment")
+                        .build())
+                .build());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(httpsIssuer)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContextFactory.validateMutualTlsMetadata(
+                                                               tenantConfig,
+                                                               metadata));
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must not include a fragment"));
+    }
+
+    @Test
+    void mutualTlsTenantFailsWhenWellKnownMetadataTokenEndpointAliasIsInsecure() {
+        URI httpsIssuer = URI.create("https://issuer.example");
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", httpsIssuer.toString())
+                .set("token_endpoint", httpsIssuer.resolve("/token").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", "http://issuer.example/mtls-token")
+                        .build())
+                .build());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(httpsIssuer)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContextFactory.validateMutualTlsMetadata(
+                                                               tenantConfig,
+                                                               metadata));
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+    }
+
+    @Test
     void wellKnownMetadataRedirectIsNotFollowedWhenTenantWebClientFollowsRedirects() {
         redirectLocation = issuer.resolve("/redirected-openid-configuration").toString();
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -362,6 +422,23 @@ class OidcWellKnownMetadataLoadingTest {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
                 .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig))
+                .buildPrototype();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
     }
 
     private static WebClientConfig redirectFollowingTenantWebClient() {

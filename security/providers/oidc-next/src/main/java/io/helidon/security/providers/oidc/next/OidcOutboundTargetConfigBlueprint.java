@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
 
+import io.helidon.builder.api.Description;
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
@@ -37,15 +38,20 @@ interface OidcOutboundTargetConfigBlueprint {
     boolean tokenPropagationEnabled();
 
     /**
-     * Whether Client Credentials Grant is enabled for this outbound target.
+     * Whether Client Credentials Grant is enabled for this outbound target; mutual TLS methods require enabled tenant
+     * {@code webclient.tls} and an HTTPS Token Endpoint or HTTPS well-known metadata.
      * <p>
      * If any provider-level outbound target enables Client Credentials Grant, every enabled tenant must satisfy the
      * Client Credentials prerequisites: {@code client-id}, client authentication other than {@code NONE}, a
-     * {@code client-secret} for client-secret based authentication, and either {@code endpoints.token-endpoint-uri} or
+     * {@code client-secret} for client-secret based authentication, {@code client-assertion.jwk} for
+     * {@code PRIVATE_KEY_JWT} or enabled tenant {@code webclient.tls} with private key plus certificate chain, an SSL
+     * context, or a custom TLS manager for mutual TLS authentication, and either {@code endpoints.token-endpoint-uri} or
      * well-known metadata.
      *
      * @return whether Client Credentials Grant is enabled
      */
+    @Description("Whether Client Credentials Grant is enabled for this outbound target; mutual TLS methods require "
+            + "enabled tenant webclient.tls and an HTTPS Token Endpoint or HTTPS well-known metadata.")
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean clientCredentialsGrantEnabled();

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.socket.SocketOptions;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
@@ -68,6 +69,7 @@ class OidcProviderConfigTest {
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
         OidcCookieConfig cookies = OidcCookieConfig.create();
         OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
+        OidcClientAssertionConfig clientAssertion = OidcClientAssertionConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -104,6 +106,16 @@ class OidcProviderConfigTest {
         assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
         assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
         assertThat(List.of(OidcPkceMethod.values()), is(List.of(OidcPkceMethod.PLAIN, OidcPkceMethod.S256)));
+        assertThat(clientAssertion.algorithm().isEmpty(), is(true));
+        assertThat(clientAssertion.keyId().isEmpty(), is(true));
+        assertThat(clientAssertion.jwk().isEmpty(), is(true));
+        assertThat(clientAssertion.lifetime(), is(Duration.ofMinutes(1)));
+        assertThat(List.of(OidcClientAuthenticationMethod.values()),
+                   is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+                              OidcClientAuthenticationMethod.CLIENT_SECRET_POST,
+                              OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
+                              OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                              OidcClientAuthenticationMethod.NONE)));
     }
 
     @Test
@@ -112,6 +124,15 @@ class OidcProviderConfigTest {
         assertThat(OidcPkceMethod.S256.wireName(), is("S256"));
         assertThat(OidcAuthenticationRequestFactory.codeChallenge("plain-verifier", OidcPkceMethod.PLAIN),
                    is("plain-verifier"));
+    }
+
+    @Test
+    void clientAuthenticationMethodsUseSpecWireNames() {
+        assertThat(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC.wireName(), is("client_secret_basic"));
+        assertThat(OidcClientAuthenticationMethod.CLIENT_SECRET_POST.wireName(), is("client_secret_post"));
+        assertThat(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT.wireName(), is("client_secret_jwt"));
+        assertThat(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT.wireName(), is("private_key_jwt"));
+        assertThat(OidcClientAuthenticationMethod.NONE.wireName(), is("none"));
     }
 
     @Test
@@ -135,6 +156,11 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.issuer", ISSUER.toString()),
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
+                        Map.entry("tenants.default.token-endpoint-auth-method", "PRIVATE_KEY_JWT"),
+                        Map.entry("tenants.default.client-assertion.algorithm", "RS256"),
+                        Map.entry("tenants.default.client-assertion.key-id", "sign-rsa"),
+                        Map.entry("tenants.default.client-assertion.jwk.resource-path", "oidc-next-sign-jwk.json"),
+                        Map.entry("tenants.default.client-assertion.lifetime", "PT2M"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("tenants.default.webclient.read-timeout", "PT2S"),
                         Map.entry("tenants.default.webclient.proxy.type", "HTTP"),
@@ -177,6 +203,12 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
+        assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
+        assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
+        assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));
+        assertThat(tenant.clientAssertion().jwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(tenant.clientAssertion().lifetime(), is(Duration.ofMinutes(2)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.webClient().readTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
         assertThat(tenant.webClient().proxy().type(), is(Proxy.ProxyType.HTTP));
@@ -933,6 +965,38 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowCanUseClientAssertionTokenEndpointAuthentication() {
+        OidcTenantConfig clientSecretJwt = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantConfig privateKeyJwt = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(clientSecretJwt.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT));
+        assertThat(privateKeyJwt.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
+    }
+
+    @Test
     void authorizationCodeFlowRequiresClientSecretForSecretTokenEndpointAuthentication() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -945,6 +1009,82 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresClientAssertionPrerequisites() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-secret"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.jwk"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientAssertion(it -> it.lifetime(Duration.ZERO))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.lifetime"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .clientAssertion(it -> it.algorithm("none"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .clientAssertion(it -> it.algorithm("RS256"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("HS256"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
     }
 
     @Test
@@ -1128,6 +1268,12 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
+        assertThat(metadata, containsString("client-assertion"));
+        assertThat(metadata, containsString("algorithm"));
+        assertThat(metadata, containsString("key-id"));
+        assertThat(metadata, containsString("jwk"));
+        assertThat(metadata, containsString("resource-path"));
+        assertThat(metadata, containsString("lifetime"));
         assertThat(metadata, containsString("path-template"));
         assertThat(metadata, containsString("webclient"));
         assertThat(metadata, containsString("subject-mapping"));

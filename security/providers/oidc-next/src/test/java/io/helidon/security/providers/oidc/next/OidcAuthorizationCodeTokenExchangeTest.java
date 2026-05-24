@@ -17,29 +17,39 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.Jwk;
+import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
 class OidcAuthorizationCodeTokenExchangeTest {
@@ -51,12 +61,23 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final String AUTHORIZATION_CODE = "authorization-code+value";
     private static final String PKCE_VERIFIER = "pkce-verifier+value";
     private static final String REFRESH_TOKEN = "refresh-token+value";
+    private static final String CLIENT_ASSERTION_TYPE =
+            "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
     private static volatile int responseStatus;
     private static volatile String responseBody;
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
+    private static JwkKeys signKeys;
+
     private URI tokenEndpointUri;
+
+    @BeforeAll
+    static void initClass() {
+        signKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+    }
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
@@ -185,6 +206,89 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void clientSecretJwtSendsClientAssertion() {
+        OidcTokenEndpointResult result = exchange(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT),
+                                                  PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().containsKey("client_secret"), is(false));
+        assertThat(request.formParameters().containsKey("client_id"), is(false));
+
+        String assertion = request.formParameters().get("client_assertion").get(0);
+        SignedJwt signedJwt = SignedJwt.parseToken(assertion);
+        signedJwt.verifySignature(null, clientSecretJwk()).checkValid();
+        assertClientAssertionClaims(signedJwt);
+        assertThat(signedJwt.getJwt().algorithm().orElse(""), is("HS256"));
+    }
+
+    @Test
+    void privateKeyJwtSendsClientAssertion() {
+        OidcTokenEndpointResult result = exchange(privateKeyJwtTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().containsKey("client_secret"), is(false));
+        assertThat(request.formParameters().containsKey("client_id"), is(false));
+
+        String assertion = request.formParameters().get("client_assertion").get(0);
+        SignedJwt signedJwt = SignedJwt.parseToken(assertion);
+        signedJwt.verifySignature(signKeys).checkValid();
+        assertClientAssertionClaims(signedJwt);
+        assertThat(signedJwt.getJwt().algorithm().orElse(""), is("RS256"));
+        assertThat(signedJwt.getJwt().keyId().orElse(""), is("sign-rsa"));
+    }
+
+    @Test
+    void privateKeyJwtReusesConfiguredJwkResource() {
+        OidcEndpointClient endpointClient = OidcTenantContext.ready("default", privateKeyJwtTenant())
+                .endpointClient();
+
+        OidcTokenEndpointResult first = endpointClient.exchangeAuthorizationCode(AUTHORIZATION_CODE,
+                                                                                 REDIRECTION_ENDPOINT_URI,
+                                                                                 Optional.of(PKCE_VERIFIER));
+        OidcTokenEndpointResult second = endpointClient.exchangeAuthorizationCode(AUTHORIZATION_CODE,
+                                                                                  REDIRECTION_ENDPOINT_URI,
+                                                                                  Optional.of(PKCE_VERIFIER));
+
+        assertThat(first.succeeded(), is(true));
+        assertThat(second.succeeded(), is(true));
+    }
+
+    @Test
+    void privateKeyJwtRejectsMismatchedConfiguredAlgorithm() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContext.ready("default",
+                                                                                    privateKeyJwtTenant("RS384")));
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
+    }
+
+    @Test
+    void privateKeyJwtRequiresKeyIdForMultiKeyJwk() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContext.ready("default",
+                                                                                    privateKeyJwtTenant("RS256",
+                                                                                                        null)));
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.key-id"));
+    }
+
+    @Test
+    void privateKeyJwtRejectsUnknownKeyId() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContext.ready("default",
+                                                                                    privateKeyJwtTenant("RS256",
+                                                                                                        "missing")));
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.key-id"));
+    }
+
+    @Test
     void tokenEndpointErrorResponseIsParsed() {
         responseStatus = 400;
         responseBody = JsonObject.builder()
@@ -267,6 +371,34 @@ class OidcAuthorizationCodeTokenExchangeTest {
         return tenant(false, OidcClientAuthenticationMethod.NONE);
     }
 
+    private OidcTenantConfig privateKeyJwtTenant() {
+        return privateKeyJwtTenant("RS256", "sign-rsa");
+    }
+
+    private OidcTenantConfig privateKeyJwtTenant(String algorithm) {
+        return privateKeyJwtTenant(algorithm, "sign-rsa");
+    }
+
+    private OidcTenantConfig privateKeyJwtTenant(String algorithm, String keyId) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(it -> {
+                    it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                            .algorithm(algorithm);
+                    if (keyId != null) {
+                        it.keyId(keyId);
+                    }
+                })
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
     private OidcTenantConfig tenant(boolean clientSecret, OidcClientAuthenticationMethod method) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -314,6 +446,30 @@ class OidcAuthorizationCodeTokenExchangeTest {
             result.put(name, parameters.all(name));
         }
         return result;
+    }
+
+    private void assertClientAssertionClaims(SignedJwt signedJwt) {
+        assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().subject().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().audience().orElseThrow(), is(List.of(tokenEndpointUri.toString())));
+        assertThat(signedJwt.getJwt().jwtId().isPresent(), is(true));
+        assertThat(signedJwt.getJwt().issueTime().isPresent(), is(true));
+        assertThat(signedJwt.getJwt().expirationTime().isPresent(), is(true));
+    }
+
+    private static Jwk clientSecretJwk() {
+        return JwkOctet.create(JsonObject.builder()
+                                      .set("kty", "oct")
+                                      .set("alg", "HS256")
+                                      .set("kid", "client-secret")
+                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                                      .build());
+    }
+
+    private static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
     }
 
     private record RecordedRequest(String method,

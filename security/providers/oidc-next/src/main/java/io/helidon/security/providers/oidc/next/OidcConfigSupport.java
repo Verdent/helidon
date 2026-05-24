@@ -134,6 +134,7 @@ final class OidcConfigSupport {
                                false);
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
+            validateClientAssertion(target.clientAssertion());
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
@@ -456,6 +457,7 @@ final class OidcConfigSupport {
         validateClientCredentialsGrant(tenant.clientId(),
                                        tenant.clientSecret(),
                                        tenant.tokenEndpointAuthenticationMethod(),
+                                       tenant.clientAssertion(),
                                        tenant.issuer(),
                                        endpoints,
                                        operation);
@@ -467,6 +469,7 @@ final class OidcConfigSupport {
         validateClientCredentialsGrant(tenant.clientId(),
                                        tenant.clientSecret(),
                                        tenant.tokenEndpointAuthenticationMethod(),
+                                       tenant.clientAssertion(),
                                        tenant.issuer(),
                                        endpoints,
                                        operation);
@@ -475,6 +478,7 @@ final class OidcConfigSupport {
     private static void validateClientCredentialsGrant(Optional<String> clientId,
                                                        Optional<String> clientSecret,
                                                        Optional<OidcClientAuthenticationMethod> authenticationMethod,
+                                                       OidcClientAssertionConfig clientAssertion,
                                                        Optional<URI> issuer,
                                                        OidcEndpointConfig endpoints,
                                                        String operation) {
@@ -486,7 +490,11 @@ final class OidcConfigSupport {
          */
         clientId.orElseThrow(() -> new IllegalArgumentException(
                 "client-id must be configured when " + operation + " is enabled"));
-        validateTokenEndpointAuthentication(clientSecret, authenticationMethod, true, operation);
+        validateTokenEndpointAuthentication(clientSecret,
+                                            authenticationMethod,
+                                            clientAssertion,
+                                            true,
+                                            operation);
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(issuer, endpoints);
         requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
                                    wellKnownUri,
@@ -635,12 +643,14 @@ final class OidcConfigSupport {
                                                             String operation) {
         validateTokenEndpointAuthentication(tenant.clientSecret(),
                                             tenant.tokenEndpointAuthenticationMethod(),
+                                            tenant.clientAssertion(),
                                             confidentialClientRequired,
                                             operation);
     }
 
     private static void validateTokenEndpointAuthentication(Optional<String> clientSecret,
                                                             Optional<OidcClientAuthenticationMethod> authenticationMethod,
+                                                            OidcClientAssertionConfig clientAssertion,
                                                             boolean confidentialClientRequired,
                                                             String operation) {
         OidcClientAuthenticationMethod method = authenticationMethod
@@ -653,6 +663,23 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-secret must be configured for " + method
                                 + " Token Endpoint authentication when " + operation + " is enabled"));
+        case CLIENT_SECRET_JWT -> {
+            clientSecret.orElseThrow(() -> new IllegalArgumentException(
+                    "client-secret must be configured for CLIENT_SECRET_JWT Token Endpoint authentication when "
+                            + operation + " is enabled"));
+            validateClientAssertionAlgorithm(clientAssertion,
+                                             OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
+                                             operation);
+        }
+        case PRIVATE_KEY_JWT -> {
+            clientAssertion.jwk()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "client-assertion.jwk must be configured for PRIVATE_KEY_JWT Token Endpoint authentication "
+                                    + "when " + operation + " is enabled"));
+            validateClientAssertionAlgorithm(clientAssertion,
+                                             OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                                             operation);
+        }
         case NONE -> {
             if (confidentialClientRequired) {
                 throw new IllegalArgumentException(
@@ -661,6 +688,49 @@ final class OidcConfigSupport {
         }
         default -> throw new IllegalStateException("Unexpected client authentication method: " + method);
         }
+    }
+
+    private static void validateClientAssertion(OidcClientAssertionConfig clientAssertion) {
+        if (clientAssertion.lifetime().isZero() || clientAssertion.lifetime().isNegative()) {
+            throw new IllegalArgumentException("client-assertion.lifetime must be positive");
+        }
+        clientAssertion.algorithm()
+                .filter(algorithm -> algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip())
+                        || "none".equalsIgnoreCase(algorithm))
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException(
+                            "client-assertion.algorithm must not be blank, padded, or none");
+                });
+        clientAssertion.keyId()
+                .filter(keyId -> keyId.isBlank() || !keyId.equals(keyId.strip()))
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException("client-assertion.key-id must not be blank or padded");
+                });
+    }
+
+    private static void validateClientAssertionAlgorithm(OidcClientAssertionConfig clientAssertion,
+                                                         OidcClientAuthenticationMethod method,
+                                                         String operation) {
+        clientAssertion.algorithm()
+                .filter(algorithm -> switch (method) {
+                case CLIENT_SECRET_JWT -> !OidcClientAuthenticationSupport.isClientSecretJwtAlgorithm(algorithm);
+                case PRIVATE_KEY_JWT -> !OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm);
+                default -> false;
+                })
+                .ifPresent(algorithm -> {
+                    String algorithms = switch (method) {
+                    case CLIENT_SECRET_JWT -> OidcClientAuthenticationSupport.clientSecretJwtAlgorithms();
+                    case PRIVATE_KEY_JWT -> OidcClientAuthenticationSupport.privateKeyJwtAlgorithms();
+                    default -> throw new IllegalStateException(
+                            "Unexpected client assertion authentication method: " + method);
+                    };
+                    throw new IllegalArgumentException("client-assertion.algorithm must be one of "
+                                                               + algorithms
+                                                               + " for " + method
+                                                               + " Token Endpoint authentication when "
+                                                               + operation + " is enabled");
+                });
     }
 
     @FunctionalInterface

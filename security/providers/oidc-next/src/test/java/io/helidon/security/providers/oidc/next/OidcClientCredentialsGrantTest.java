@@ -17,6 +17,8 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
@@ -37,6 +40,10 @@ import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.SecurityTime;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.Jwk;
+import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
@@ -45,6 +52,7 @@ import io.helidon.webserver.http.ServerResponse;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
@@ -63,6 +71,8 @@ class OidcClientCredentialsGrantTest {
     private static final String EXISTING_HEADER_VALUE = "existing-value";
     private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
     private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
+    private static final String CLIENT_ASSERTION_TYPE =
+            "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
 
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
@@ -76,9 +86,18 @@ class OidcClientCredentialsGrantTest {
     private static volatile boolean dynamicTokenResponse;
     private static volatile Integer dynamicExpiresIn;
 
+    private static JwkKeys signKeys;
+
     private URI issuer;
     private URI tokenEndpointUri;
     private URI redirectedTokenEndpointUri;
+
+    @BeforeAll
+    static void initClass() {
+        signKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+    }
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
@@ -169,6 +188,51 @@ class OidcClientCredentialsGrantTest {
         assertThat(request.formParameters(), is(Map.of("grant_type", List.of("client_credentials"),
                                                        "client_id", List.of(CLIENT_ID),
                                                        "client_secret", List.of(CLIENT_SECRET))));
+    }
+
+    @Test
+    void clientCredentialsGrantCanUseClientSecretJwt() {
+        OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("grant_type"), is(List.of("client_credentials")));
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().containsKey("client_secret"), is(false));
+        assertThat(request.formParameters().containsKey("client_id"), is(false));
+
+        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").get(0));
+        signedJwt.verifySignature(null, clientSecretJwk()).checkValid();
+        assertClientAssertionClaims(signedJwt);
+        assertThat(signedJwt.getJwt().algorithm().orElse(""), is("HS256"));
+    }
+
+    @Test
+    void clientCredentialsGrantCanUsePrivateKeyJwt() {
+        OidcProvider provider = provider(privateKeyJwtTenant());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("grant_type"), is(List.of("client_credentials")));
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().containsKey("client_secret"), is(false));
+        assertThat(request.formParameters().containsKey("client_id"), is(false));
+
+        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").get(0));
+        signedJwt.verifySignature(signKeys).checkValid();
+        assertClientAssertionClaims(signedJwt);
+        assertThat(signedJwt.getJwt().algorithm().orElse(""), is("RS256"));
+        assertThat(signedJwt.getJwt().keyId().orElse(""), is("sign-rsa"));
     }
 
     @Test
@@ -650,6 +714,19 @@ class OidcClientCredentialsGrantTest {
         return tenantBuilder.buildPrototype();
     }
 
+    private OidcTenantConfig privateKeyJwtTenant() {
+        return OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256"))
+                .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+    }
+
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
@@ -752,6 +829,30 @@ class OidcClientCredentialsGrantTest {
             result.put(name, parameters.all(name));
         }
         return result;
+    }
+
+    private void assertClientAssertionClaims(SignedJwt signedJwt) {
+        assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().subject().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().audience().orElseThrow(), is(List.of(tokenEndpointUri.toString())));
+        assertThat(signedJwt.getJwt().jwtId().isPresent(), is(true));
+        assertThat(signedJwt.getJwt().issueTime().isPresent(), is(true));
+        assertThat(signedJwt.getJwt().expirationTime().isPresent(), is(true));
+    }
+
+    private static Jwk clientSecretJwk() {
+        return JwkOctet.create(JsonObject.builder()
+                                      .set("kty", "oct")
+                                      .set("alg", "HS256")
+                                      .set("kid", "client-secret")
+                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                                      .build());
+    }
+
+    private static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
     }
 
     private record RecordedRequest(String method,

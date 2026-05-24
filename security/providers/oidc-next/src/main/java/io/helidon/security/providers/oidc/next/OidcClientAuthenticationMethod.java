@@ -18,20 +18,76 @@ package io.helidon.security.providers.oidc.next;
 
 /**
  * Token Endpoint client authentication method.
+ * <p>
+ * These are the Token Endpoint Authentication Method values defined by OpenID Connect Core 1.0, section
+ * {@code 9 Client Authentication}. The {@linkplain #wireName() wire name} is the value used by OpenID Provider
+ * metadata {@code token_endpoint_auth_methods_supported} and Dynamic Client Registration
+ * {@code token_endpoint_auth_method}.
+ *
+ * @see <a href="https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication">
+ * OpenID Connect Core 1.0, 9 Client Authentication</a>
+ * @see <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">
+ * OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata</a>
+ * @see <a href="https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata">
+ * OpenID Connect Dynamic Client Registration 1.0, 2 Client Metadata</a>
  */
 public enum OidcClientAuthenticationMethod {
     /**
-     * Client authenticates with HTTP Basic using {@code client_id} and {@code client_secret}.
+     * {@code client_secret_basic}.
+     * <p>
+     * Client authenticates with HTTP Basic using {@code client_id} and {@code client_secret}, as defined by
+     * OAuth 2.0 {@code 2.3.1 Client Password}. This corresponds to the OpenID Connect Core
+     * {@code client_secret_basic} Token Endpoint Authentication Method value.
      */
-    CLIENT_SECRET_BASIC,
+    CLIENT_SECRET_BASIC("client_secret_basic"),
 
     /**
-     * Client authenticates with {@code client_id} and {@code client_secret} in the form body.
+     * {@code client_secret_post}.
+     * <p>
+     * Client authenticates with {@code client_id} and {@code client_secret} in the Token Endpoint form body, as
+     * allowed by OAuth 2.0 {@code 2.3.1 Client Password}. This corresponds to the OpenID Connect Core
+     * {@code client_secret_post} Token Endpoint Authentication Method value.
      */
-    CLIENT_SECRET_POST,
+    CLIENT_SECRET_POST("client_secret_post"),
 
     /**
-     * Client does not authenticate at the Token Endpoint and sends only {@code client_id}.
+     * {@code client_secret_jwt}.
+     * <p>
+     * Client authenticates with {@code client_assertion_type} and {@code client_assertion}; the assertion is a JWT
+     * signed with a MAC using the {@code client_secret} as the symmetric key. This corresponds to the OpenID Connect
+     * Core {@code client_secret_jwt} Token Endpoint Authentication Method value.
      */
-    NONE
+    CLIENT_SECRET_JWT("client_secret_jwt"),
+
+    /**
+     * {@code private_key_jwt}.
+     * <p>
+     * Client authenticates with {@code client_assertion_type} and {@code client_assertion}; the assertion is a JWT
+     * signed with a private key registered for the client. This corresponds to the OpenID Connect Core
+     * {@code private_key_jwt} Token Endpoint Authentication Method value.
+     */
+    PRIVATE_KEY_JWT("private_key_jwt"),
+
+    /**
+     * {@code none}.
+     * <p>
+     * Client does not authenticate at the Token Endpoint and sends only {@code client_id}. This corresponds to the
+     * OpenID Connect Core {@code none} Token Endpoint Authentication Method value used for public clients.
+     */
+    NONE("none");
+
+    private final String wireName;
+
+    OidcClientAuthenticationMethod(String wireName) {
+        this.wireName = wireName;
+    }
+
+    /**
+     * Method name used by OpenID Provider metadata and Dynamic Client Registration.
+     *
+     * @return method wire name
+     */
+    public String wireName() {
+        return wireName;
+    }
 }

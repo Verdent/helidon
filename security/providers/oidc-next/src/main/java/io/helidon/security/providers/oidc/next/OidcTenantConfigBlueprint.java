@@ -64,10 +64,14 @@ interface OidcTenantConfigBlueprint {
     Optional<String> clientSecret();
 
     /**
-     * Token Endpoint client authentication method.
+     * Token Endpoint client authentication method; mutual TLS methods require enabled tenant {@code webclient.tls} with
+     * private key plus certificate chain, an SSL context, or a custom TLS manager.
      * <p>
      * When omitted, the provider uses {@link OidcClientAuthenticationMethod#CLIENT_SECRET_BASIC} if
      * {@link #clientSecret()} is configured, otherwise {@link OidcClientAuthenticationMethod#NONE}.
+     * {@link OidcClientAuthenticationMethod#TLS_CLIENT_AUTH} and
+     * {@link OidcClientAuthenticationMethod#SELF_SIGNED_TLS_CLIENT_AUTH} require enabled tenant
+     * {@code webclient.tls} with private key plus certificate chain, an SSL context, or a custom TLS manager.
      *
      * @return Token Endpoint client authentication method
      */
@@ -86,10 +90,15 @@ interface OidcTenantConfigBlueprint {
     OidcClientAssertionConfig clientAssertion();
 
     /**
-     * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server.
+     * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server; for RFC 8705
+     * mutual TLS, TLS must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS
+     * manager.
      * <p>
      * This client is used for well-known metadata requests, JSON Web Key Set loading, Token Endpoint
-     * requests, introspection, and UserInfo requests.
+     * requests, introspection, and UserInfo requests. When using
+     * {@link OidcClientAuthenticationMethod#TLS_CLIENT_AUTH} or
+     * {@link OidcClientAuthenticationMethod#SELF_SIGNED_TLS_CLIENT_AUTH}, tenant {@code webclient.tls} must be
+     * enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager.
      *
      * @return WebClient configuration
      */

@@ -93,6 +93,15 @@ final class OidcClientAuthenticationSupport {
             form.add("client_assertion_type", CLIENT_ASSERTION_TYPE)
                     .add("client_assertion", clientAssertion(tokenEndpointUri));
         }
+        case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
+            /*
+             * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication
+             * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
+             * Quotes: "MUST have been established or re-established with mutual-TLS X.509 certificate
+             * authentication"; "the client MUST include the "client_id" parameter".
+             */
+            form.add("client_id", clientId);
+        }
         case NONE -> {
             /*
              * Spec: RFC 6749, 3.2.1 Client Authentication
@@ -104,6 +113,11 @@ final class OidcClientAuthenticationSupport {
         default -> throw new IllegalStateException("Unexpected client authentication method: "
                                                            + method);
         }
+    }
+
+    boolean usesMutualTls() {
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
     static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(OidcTenantConfig tenantConfig) {

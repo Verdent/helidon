@@ -136,7 +136,15 @@ final class OidcEndpointClient {
 
     private OidcTokenEndpointResult submit(Parameters.Builder form,
                                            Function<JsonObject, OidcTokenResponse> responseParser) {
-        Optional<URI> endpointUri = metadata.tokenEndpointUri();
+        /*
+         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+         * Quote: "MUST use the alias URL of the endpoint within the "mtls_endpoint_aliases", when present, in
+         * preference to the endpoint URL of the same name at the top level of metadata".
+         */
+        Optional<URI> endpointUri = clientAuthentication.usesMutualTls()
+                ? metadata.mutualTlsTokenEndpointUri().or(metadata::tokenEndpointUri)
+                : metadata.tokenEndpointUri();
         if (endpointUri.isEmpty()) {
             return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
         }

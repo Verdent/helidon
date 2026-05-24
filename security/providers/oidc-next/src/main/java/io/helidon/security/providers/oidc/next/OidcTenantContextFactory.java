@@ -60,6 +60,7 @@ final class OidcTenantContextFactory {
                 validateIntrospectionMetadata(tenantConfig, metadata);
                 validateUserInfoMetadata(tenantConfig, metadata);
                 validateEndSessionMetadata(tenantConfig, metadata);
+                validateMutualTlsMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
                 LOGGER.log(System.Logger.Level.DEBUG, "OIDC tenant initialization failed: " + tenantId, e);
@@ -196,6 +197,24 @@ final class OidcTenantContextFactory {
                                              "well-known metadata end_session_endpoint must be present for "
                                                      + "RP-Initiated Logout");
                                  });
+    }
+
+    static void validateMutualTlsMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
+        if (method != OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                && method != OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+         * Quote: "`mtls_endpoint_aliases` consists of one or more endpoint aliases".
+         */
+        metadata.mutualTlsTokenEndpointUri()
+                .or(metadata::tokenEndpointUri)
+                .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(uri, true));
     }
 
     @FunctionalInterface

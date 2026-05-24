@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
+import io.helidon.common.tls.ConfiguredTlsManager;
+import io.helidon.common.tls.TlsConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
@@ -241,6 +243,9 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-id must be configured when Authorization Code Flow is enabled"));
         validateTokenEndpointAuthentication(tenant, false, "Authorization Code Flow");
+        boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
+                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
+                                                        tenant.tokenEndpointAuthenticationMethod());
         authorizationCode.redirectionEndpointUri()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
@@ -255,7 +260,8 @@ final class OidcConfigSupport {
                                    wellKnownUri,
                                    "token-endpoint-uri",
                                    "Authorization Code Flow",
-                                   endpoints.tlsRequired(),
+                                   tokenEndpointTlsRequired,
+                                   tokenEndpointTlsRequired,
                                    OidcConfigSupport::validateTokenEndpointUri);
         tenant.issuer()
                 .or(endpoints::wellKnownUri)
@@ -458,6 +464,7 @@ final class OidcConfigSupport {
                                        tenant.clientSecret(),
                                        tenant.tokenEndpointAuthenticationMethod(),
                                        tenant.clientAssertion(),
+                                       tenant.webClient(),
                                        tenant.issuer(),
                                        endpoints,
                                        operation);
@@ -470,6 +477,7 @@ final class OidcConfigSupport {
                                        tenant.clientSecret(),
                                        tenant.tokenEndpointAuthenticationMethod(),
                                        tenant.clientAssertion(),
+                                       tenant.webClient(),
                                        tenant.issuer(),
                                        endpoints,
                                        operation);
@@ -479,6 +487,7 @@ final class OidcConfigSupport {
                                                        Optional<String> clientSecret,
                                                        Optional<OidcClientAuthenticationMethod> authenticationMethod,
                                                        OidcClientAssertionConfig clientAssertion,
+                                                       WebClientConfig webClient,
                                                        Optional<URI> issuer,
                                                        OidcEndpointConfig endpoints,
                                                        String operation) {
@@ -493,14 +502,18 @@ final class OidcConfigSupport {
         validateTokenEndpointAuthentication(clientSecret,
                                             authenticationMethod,
                                             clientAssertion,
+                                            webClient,
                                             true,
                                             operation);
+        boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
+                || mutualTlsTokenEndpointAuthentication(clientSecret, authenticationMethod);
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(issuer, endpoints);
         requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
                                    wellKnownUri,
                                    "token-endpoint-uri",
                                    operation,
-                                   endpoints.tlsRequired(),
+                                   tokenEndpointTlsRequired,
+                                   tokenEndpointTlsRequired,
                                    OidcConfigSupport::validateTokenEndpointUri);
     }
 
@@ -510,13 +523,29 @@ final class OidcConfigSupport {
                                                    String operation,
                                                    boolean tlsRequired,
                                                    EndpointUriValidator endpointValidator) {
+        requireEndpointOrWellKnown(endpointUri,
+                                   wellKnownUri,
+                                   endpointConfigKey,
+                                   operation,
+                                   tlsRequired,
+                                   tlsRequired,
+                                   endpointValidator);
+    }
+
+    private static void requireEndpointOrWellKnown(Optional<URI> endpointUri,
+                                                   Optional<URI> wellKnownUri,
+                                                   String endpointConfigKey,
+                                                   String operation,
+                                                   boolean endpointTlsRequired,
+                                                   boolean wellKnownTlsRequired,
+                                                   EndpointUriValidator endpointValidator) {
         endpointUri
                 .or(() -> wellKnownUri)
                 .orElseThrow(() -> new IllegalArgumentException(
                         endpointConfigKey + " or well-known-uri must be configured when " + operation + " is enabled"));
-        endpointUri.ifPresent(uri -> endpointValidator.validate(uri, tlsRequired));
+        endpointUri.ifPresent(uri -> endpointValidator.validate(uri, endpointTlsRequired));
         if (endpointUri.isEmpty()) {
-            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, tlsRequired));
+            wellKnownUri.ifPresent(uri -> validateWellKnownUri(uri, wellKnownTlsRequired));
         }
     }
 
@@ -644,6 +673,7 @@ final class OidcConfigSupport {
         validateTokenEndpointAuthentication(tenant.clientSecret(),
                                             tenant.tokenEndpointAuthenticationMethod(),
                                             tenant.clientAssertion(),
+                                            tenant.webClient(),
                                             confidentialClientRequired,
                                             operation);
     }
@@ -651,6 +681,7 @@ final class OidcConfigSupport {
     private static void validateTokenEndpointAuthentication(Optional<String> clientSecret,
                                                             Optional<OidcClientAuthenticationMethod> authenticationMethod,
                                                             OidcClientAssertionConfig clientAssertion,
+                                                            WebClientConfig webClient,
                                                             boolean confidentialClientRequired,
                                                             String operation) {
         OidcClientAuthenticationMethod method = authenticationMethod
@@ -680,6 +711,9 @@ final class OidcConfigSupport {
                                              OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
                                              operation);
         }
+        case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
+            validateMutualTlsClientAuthentication(webClient, method, operation);
+        }
         case NONE -> {
             if (confidentialClientRequired) {
                 throw new IllegalArgumentException(
@@ -688,6 +722,39 @@ final class OidcConfigSupport {
         }
         default -> throw new IllegalStateException("Unexpected client authentication method: " + method);
         }
+    }
+
+    private static void validateMutualTlsClientAuthentication(WebClientConfig webClient,
+                                                              OidcClientAuthenticationMethod method,
+                                                              String operation) {
+        TlsConfig tls = webClient.tls().prototype();
+        /*
+         * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
+         * Quote: "the TLS connection between the client and the authorization server MUST have been established or
+         * re-established with mutual-TLS X.509 certificate authentication".
+         */
+        if (tls.enabled()
+                && (tls.sslContext().isPresent()
+                        || tls.privateKey().isPresent() && !tls.privateKeyCertChain().isEmpty()
+                        || !(tls.manager() instanceof ConfiguredTlsManager))) {
+            return;
+        }
+        throw new IllegalArgumentException(
+                "webclient.tls must be enabled and private-key plus certificate chain, ssl-context, or custom manager "
+                        + "must be configured for " + method + " Token Endpoint authentication when " + operation
+                        + " is enabled");
+    }
+
+    private static boolean mutualTlsTokenEndpointAuthentication(Optional<String> clientSecret,
+                                                               Optional<OidcClientAuthenticationMethod> authenticationMethod) {
+        OidcClientAuthenticationMethod method = authenticationMethod
+                .orElseGet(() -> clientSecret
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
     private static void validateClientAssertion(OidcClientAssertionConfig clientAssertion) {

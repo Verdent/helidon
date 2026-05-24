@@ -26,6 +26,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> wellKnownUri;
     private final Optional<URI> authorizationEndpointUri;
     private final Optional<URI> tokenEndpointUri;
+    private final Optional<URI> mutualTlsTokenEndpointUri;
     private final Optional<URI> jwkSetUri;
     private final Optional<URI> introspectionEndpointUri;
     private final Optional<URI> userInfoEndpointUri;
@@ -35,6 +36,7 @@ final class OidcProviderMetadata {
                                  Optional<URI> wellKnownUri,
                                  Optional<URI> authorizationEndpointUri,
                                  Optional<URI> tokenEndpointUri,
+                                 Optional<URI> mutualTlsTokenEndpointUri,
                                  Optional<URI> jwkSetUri,
                                  Optional<URI> introspectionEndpointUri,
                                  Optional<URI> userInfoEndpointUri,
@@ -43,6 +45,7 @@ final class OidcProviderMetadata {
         this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
         this.tokenEndpointUri = tokenEndpointUri;
+        this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
         this.jwkSetUri = jwkSetUri;
         this.introspectionEndpointUri = introspectionEndpointUri;
         this.userInfoEndpointUri = userInfoEndpointUri;
@@ -55,6 +58,7 @@ final class OidcProviderMetadata {
                       wellKnownUri(tenantConfig.issuer(), endpoints),
                       endpoints.authorizationEndpointUri(),
                       endpoints.tokenEndpointUri(),
+                      Optional.empty(),
                       endpoints.jwksUri(),
                       endpoints.introspectionEndpointUri(),
                       endpoints.userInfoEndpointUri(),
@@ -69,10 +73,31 @@ final class OidcProviderMetadata {
                                        Optional<URI> introspectionEndpointUri,
                                        Optional<URI> userInfoEndpointUri,
                                        Optional<URI> endSessionEndpointUri) {
+        return create(issuer,
+                      wellKnownUri,
+                      authorizationEndpointUri,
+                      tokenEndpointUri,
+                      Optional.empty(),
+                      jwkSetUri,
+                      introspectionEndpointUri,
+                      userInfoEndpointUri,
+                      endSessionEndpointUri);
+    }
+
+    static OidcProviderMetadata create(Optional<URI> issuer,
+                                       Optional<URI> wellKnownUri,
+                                       Optional<URI> authorizationEndpointUri,
+                                       Optional<URI> tokenEndpointUri,
+                                       Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> jwkSetUri,
+                                       Optional<URI> introspectionEndpointUri,
+                                       Optional<URI> userInfoEndpointUri,
+                                       Optional<URI> endSessionEndpointUri) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
                                         tokenEndpointUri,
+                                        mutualTlsTokenEndpointUri,
                                         jwkSetUri,
                                         introspectionEndpointUri,
                                         userInfoEndpointUri,
@@ -84,6 +109,7 @@ final class OidcProviderMetadata {
                       Optional.empty(),
                       uriValue(json, "authorization_endpoint"),
                       uriValue(json, "token_endpoint"),
+                      mutualTlsTokenEndpointUri(json),
                       uriValue(json, "jwks_uri"),
                       uriValue(json, "introspection_endpoint"),
                       uriValue(json, "userinfo_endpoint"),
@@ -96,6 +122,9 @@ final class OidcProviderMetadata {
                       wellKnownUri.or(wellKnownMetadata::wellKnownUri),
                       authorizationEndpointUri.or(wellKnownMetadata::authorizationEndpointUri),
                       tokenEndpointUri.or(wellKnownMetadata::tokenEndpointUri),
+                      mutualTlsTokenEndpointUri.or(() -> tokenEndpointUri.isPresent()
+                              ? Optional.empty()
+                              : wellKnownMetadata.mutualTlsTokenEndpointUri()),
                       jwkSetUri.or(wellKnownMetadata::jwkSetUri),
                       introspectionEndpointUri.or(wellKnownMetadata::introspectionEndpointUri),
                       userInfoEndpointUri.or(wellKnownMetadata::userInfoEndpointUri),
@@ -116,6 +145,10 @@ final class OidcProviderMetadata {
 
     Optional<URI> tokenEndpointUri() {
         return tokenEndpointUri;
+    }
+
+    Optional<URI> mutualTlsTokenEndpointUri() {
+        return mutualTlsTokenEndpointUri;
     }
 
     Optional<URI> jwkSetUri() {
@@ -158,6 +191,16 @@ final class OidcProviderMetadata {
     private static Optional<URI> uriValue(JsonObject json, String name) {
         return json.stringValue(name)
                 .map(URI::create);
+    }
+
+    private static Optional<URI> mutualTlsTokenEndpointUri(JsonObject json) {
+        /*
+         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+         * Quotes: "`mtls_endpoint_aliases`"; "`token_endpoint`".
+         */
+        return json.objectValue("mtls_endpoint_aliases")
+                .flatMap(aliases -> uriValue(aliases, "token_endpoint"));
     }
 
     private void validateWellKnownMetadataIssuer(OidcProviderMetadata wellKnownMetadata) {

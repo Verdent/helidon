@@ -19,9 +19,9 @@ package io.helidon.security.providers.oidc.next;
 /**
  * Token Endpoint client authentication method.
  * <p>
- * These are the Token Endpoint Authentication Method values defined by OpenID Connect Core 1.0, section
- * {@code 9 Client Authentication}. The {@linkplain #wireName() wire name} is the value used by OpenID Provider
- * metadata {@code token_endpoint_auth_methods_supported} and Dynamic Client Registration
+ * These are Token Endpoint Authentication Method values defined by OpenID Connect Core 1.0, section
+ * {@code 9 Client Authentication}, and OAuth extension specifications. The {@linkplain #wireName() wire name} is the
+ * value used by OpenID Provider metadata {@code token_endpoint_auth_methods_supported} and Dynamic Client Registration
  * {@code token_endpoint_auth_method}.
  *
  * @see <a href="https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication">
@@ -30,6 +30,8 @@ package io.helidon.security.providers.oidc.next;
  * OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata</a>
  * @see <a href="https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata">
  * OpenID Connect Dynamic Client Registration 1.0, 2 Client Metadata</a>
+ * @see <a href="https://www.rfc-editor.org/rfc/rfc8705.html#section-2">
+ * RFC 8705, 2 Mutual TLS for OAuth Client Authentication</a>
  */
 public enum OidcClientAuthenticationMethod {
     /**
@@ -67,6 +69,24 @@ public enum OidcClientAuthenticationMethod {
      * {@code private_key_jwt} Token Endpoint Authentication Method value.
      */
     PRIVATE_KEY_JWT("private_key_jwt"),
+
+    /**
+     * {@code tls_client_auth}: PKI mutual TLS client authentication.
+     * <p>
+     * Client authenticates with a mutual TLS client certificate whose subject or subject alternative name matches
+     * client metadata registered with the Authorization Server. This corresponds to the RFC 8705
+     * {@code tls_client_auth} Token Endpoint Authentication Method value.
+     */
+    TLS_CLIENT_AUTH("tls_client_auth"),
+
+    /**
+     * {@code self_signed_tls_client_auth}: self-signed certificate mutual TLS client authentication.
+     * <p>
+     * Client authenticates with a mutual TLS client certificate that matches a self-signed certificate or public key
+     * registered with the Authorization Server. This corresponds to the RFC 8705
+     * {@code self_signed_tls_client_auth} Token Endpoint Authentication Method value.
+     */
+    SELF_SIGNED_TLS_CLIENT_AUTH("self_signed_tls_client_auth"),
 
     /**
      * {@code none}.

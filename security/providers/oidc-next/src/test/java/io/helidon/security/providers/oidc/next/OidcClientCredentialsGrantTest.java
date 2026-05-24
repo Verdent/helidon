@@ -28,6 +28,9 @@ import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.Tls;
+import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderName;
@@ -46,11 +49,14 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webserver.WebServer;
+import io.helidon.webserver.WebServerConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
+import io.helidon.webserver.testing.junit5.SetUpServer;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,9 +94,17 @@ class OidcClientCredentialsGrantTest {
 
     private static JwkKeys signKeys;
 
+    private final URI mutualTlsServerUri;
+
     private URI issuer;
     private URI tokenEndpointUri;
+    private URI secureTokenEndpointUri;
+    private URI mutualTlsTokenEndpointUri;
     private URI redirectedTokenEndpointUri;
+
+    OidcClientCredentialsGrantTest(WebServer server) {
+        mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
+    }
 
     @BeforeAll
     static void initClass() {
@@ -105,13 +119,30 @@ class OidcClientCredentialsGrantTest {
                 .header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(providerMetadata));
         routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
+        routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/redirected-token", OidcClientCredentialsGrantTest::handleRedirectedTokenEndpoint);
+    }
+
+    @SetUpRoute("mtls")
+    static void mutualTlsRouting(HttpRouting.Builder routing) {
+        routing.get("/.well-known/openid-configuration", (request, response) -> response
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(providerMetadata));
+        routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
+        routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
+    }
+
+    @SetUpServer
+    static void server(WebServerConfig.Builder builder) {
+        builder.putSocket("mtls", socket -> socket.tls(serverTls()));
     }
 
     @BeforeEach
     void setUp(URI serverUri) {
         issuer = URI.create(serverUri.toString().substring(0, serverUri.toString().length() - 1));
         tokenEndpointUri = serverUri.resolve("token");
+        secureTokenEndpointUri = mutualTlsServerUri.resolve("token");
+        mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("mtls-token");
         redirectedTokenEndpointUri = serverUri.resolve("redirected-token");
         responseStatus = 200;
         responseBody = tokenResponse("access-token", 600).toString();
@@ -233,6 +264,135 @@ class OidcClientCredentialsGrantTest {
         assertClientAssertionClaims(signedJwt);
         assertThat(signedJwt.getJwt().algorithm().orElse(""), is("RS256"));
         assertThat(signedJwt.getJwt().keyId().orElse(""), is("sign-rsa"));
+    }
+
+    @Test
+    void clientCredentialsGrantCanUseTlsClientAuth() {
+        OidcProvider provider = provider(mutualTlsTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("client_credentials"),
+                                                       "client_id", List.of(CLIENT_ID))));
+    }
+
+    @Test
+    void clientCredentialsGrantCanUseSelfSignedTlsClientAuth() {
+        OidcProvider provider = provider(mutualTlsTenant(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("client_credentials"),
+                                                       "client_id", List.of(CLIENT_ID))));
+    }
+
+    @Test
+    void tlsClientAuthUsesWellKnownTokenEndpointAlias() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
+                        .build())
+                .build()
+                .toString();
+        OidcProvider provider = provider(mutualTlsTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
+    }
+
+    @Test
+    void selfSignedTlsClientAuthUsesWellKnownTokenEndpointAlias() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
+                        .build())
+                .build()
+                .toString();
+        OidcProvider provider = provider(mutualTlsTenantFromWellKnown(
+                OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
+    }
+
+    @Test
+    void mutualTlsClientCredentialsGrantUsesWellKnownTokenEndpointWhenAliasIsMissing() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", secureTokenEndpointUri.toString())
+                .build()
+                .toString();
+        OidcProvider provider = provider(mutualTlsTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().path(), is("/token"));
+    }
+
+    @Test
+    void explicitMutualTlsTokenEndpointOverridesWellKnownTokenEndpointAlias() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("userinfo_endpoint", issuer.resolve("/userinfo").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
+                        .build())
+                .build()
+                .toString();
+        OidcProvider provider = provider(mutualTlsTenantWithExplicitTokenEndpointAndUserInfo());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().path(), is("/token"));
+    }
+
+    @Test
+    void nonMutualTlsClientCredentialsGrantIgnoresWellKnownTokenEndpointAlias() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
+                        .build())
+                .build()
+                .toString();
+        OidcProvider provider = provider(confidentialTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().path(), is("/token"));
     }
 
     @Test
@@ -655,6 +815,7 @@ class OidcClientCredentialsGrantTest {
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         int requestNumber = REQUEST_COUNT.incrementAndGet();
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
+                                                request.requestedUri().path().path(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
                                                 request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
@@ -727,9 +888,76 @@ class OidcClientCredentialsGrantTest {
                 .buildPrototype();
     }
 
+    private OidcTenantConfig mutualTlsTenant(OidcClientAuthenticationMethod method) {
+        return OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(method)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(secureTokenEndpointUri)
+                        .tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig mutualTlsTenantFromWellKnown() {
+        return mutualTlsTenantFromWellKnown(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH);
+    }
+
+    private OidcTenantConfig mutualTlsTenantFromWellKnown(OidcClientAuthenticationMethod method) {
+        return OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(method)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.wellKnownUri(mutualTlsServerUri.resolve(".well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig mutualTlsTenantWithExplicitTokenEndpointAndUserInfo() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(secureTokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
+                .userInfo(it -> { })
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig confidentialTenantFromWellKnown() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer)
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+    }
+
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig)
+                        .trust(trust -> trust
+                                .keystore(store -> store
+                                        .passphrase("password")
+                                        .trustStore(true)
+                                        .keystore(Resource.create("client.p12")))))
                 .buildPrototype();
     }
 
@@ -738,6 +966,36 @@ class OidcClientCredentialsGrantTest {
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
                 .followRedirects(true)
                 .buildPrototype();
+    }
+
+    private static Tls serverTls() {
+        Keys privateKeyConfig = serverKeys();
+        return Tls.builder()
+                .clientAuth(TlsClientAuth.REQUIRED)
+                .privateKey(privateKeyConfig)
+                .privateKeyCertChain(privateKeyConfig)
+                .trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("server.p12"))))
+                .build();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+    }
+
+    private static Keys serverKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("server.p12")))
+                .build();
     }
 
     private static OutboundTarget clientCredentialsTarget() {
@@ -856,6 +1114,7 @@ class OidcClientCredentialsGrantTest {
     }
 
     private record RecordedRequest(String method,
+                                   String path,
                                    String authorization,
                                    String contentType,
                                    String tenantWebClientHeader,

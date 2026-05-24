@@ -19,15 +19,25 @@ package io.helidon.security.providers.oidc.next;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.X509KeyManager;
+import javax.net.ssl.X509TrustManager;
+
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.pki.Keys;
 import io.helidon.common.socket.SocketOptions;
+import io.helidon.common.tls.Tls;
+import io.helidon.common.tls.TlsConfig;
+import io.helidon.common.tls.TlsManager;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.security.SecurityEnvironment;
@@ -115,6 +125,8 @@ class OidcProviderConfigTest {
                               OidcClientAuthenticationMethod.CLIENT_SECRET_POST,
                               OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
                               OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                              OidcClientAuthenticationMethod.TLS_CLIENT_AUTH,
+                              OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH,
                               OidcClientAuthenticationMethod.NONE)));
     }
 
@@ -132,7 +144,36 @@ class OidcProviderConfigTest {
         assertThat(OidcClientAuthenticationMethod.CLIENT_SECRET_POST.wireName(), is("client_secret_post"));
         assertThat(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT.wireName(), is("client_secret_jwt"));
         assertThat(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT.wireName(), is("private_key_jwt"));
+        assertThat(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH.wireName(), is("tls_client_auth"));
+        assertThat(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH.wireName(),
+                   is("self_signed_tls_client_auth"));
         assertThat(OidcClientAuthenticationMethod.NONE.wireName(), is("none"));
+    }
+
+    @Test
+    void mutualTlsClientAuthenticationMethodsCanBeReadFromConfig() {
+        Config tlsClientAuth = Config.builder()
+                .sources(ConfigSources.create(Map.of("tenants.default.client-id", "client-id",
+                                                     "tenants.default.token-endpoint-auth-method", "TLS_CLIENT_AUTH")))
+                .build();
+        Config selfSignedTlsClientAuth = Config.builder()
+                .sources(ConfigSources.create(Map.of("tenants.default.client-id", "client-id",
+                                                     "tenants.default.token-endpoint-auth-method",
+                                                     "SELF_SIGNED_TLS_CLIENT_AUTH")))
+                .build();
+
+        assertThat(OidcProviderConfig.create(tlsClientAuth)
+                           .tenants()
+                           .get("default")
+                           .tokenEndpointAuthenticationMethod()
+                           .orElseThrow(),
+                   is(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
+        assertThat(OidcProviderConfig.create(selfSignedTlsClientAuth)
+                           .tenants()
+                           .get("default")
+                           .tokenEndpointAuthenticationMethod()
+                           .orElseThrow(),
+                   is(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
     }
 
     @Test
@@ -997,6 +1038,130 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowCanUseMutualTlsTokenEndpointAuthentication() {
+        OidcTenantConfig tlsClientAuth = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+        OidcTenantConfig selfSignedTlsClientAuth = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(tlsClientAuth.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
+        assertThat(selfSignedTlsClientAuth.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
+    }
+
+    @Test
+    void mutualTlsClientAuthenticationAcceptsDocumentedWebClientTlsShapes() {
+        OidcTenantConfig sslContextTenant = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(sslContextMutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+        OidcTenantConfig customManagerTenant = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
+                .webClient(customManagerMutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+
+        assertThat(sslContextTenant.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
+        assertThat(customManagerTenant.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresMutualTlsWebClientTls() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("webclient.tls"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
+                .webClient(disabledTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("webclient.tls must be enabled"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+
+        Config missingMutualTlsWebClientConfig = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.client-id", "client-id"),
+                        Map.entry("tenants.default.token-endpoint-auth-method", "SELF_SIGNED_TLS_CLIENT_AUTH"),
+                        Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
+                        Map.entry("outbound.0.name", "api"),
+                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                .build();
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcProviderConfig.create(missingMutualTlsWebClientConfig));
+
+        assertThat(thrown.getMessage(), containsString("webclient.tls"));
+
+        OidcTenantConfig insecureMutualTlsEndpointTenant = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .buildPrototype();
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcProviderConfig.builder()
+                                      .putTenant("default", insecureMutualTlsEndpointTenant)
+                                      .outboundTargets(List.of(clientCredentialsTarget()))
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+    }
+
+    @Test
     void authorizationCodeFlowRequiresClientSecretForSecretTokenEndpointAuthentication() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -1197,6 +1362,48 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("webclient.tls"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(URI.create("http://issuer.example"))
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tlsRequired(false))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("well-known-uri must use https"));
+
+        OidcTenantConfig mutualTlsClientCredentials = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+
+        assertThat(mutualTlsClientCredentials.tokenEndpointAuthenticationMethod().orElseThrow(),
+                   is(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
     }
 
     @Test
@@ -1268,6 +1475,10 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
+        assertThat(metadata, containsString("TLS_CLIENT_AUTH"));
+        assertThat(metadata, containsString("SELF_SIGNED_TLS_CLIENT_AUTH"));
+        assertThat(metadata, containsString("private key plus certificate chain"));
+        assertThat(metadata, containsString("HTTPS well-known metadata"));
         assertThat(metadata, containsString("client-assertion"));
         assertThat(metadata, containsString("algorithm"));
         assertThat(metadata, containsString("key-id"));
@@ -1304,6 +1515,97 @@ class OidcProviderConfigTest {
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig sslContextMutualTlsWebClient() {
+        SSLContext sslContext = defaultSslContext();
+        return WebClientConfig.builder()
+                .tls(tls -> tls.sslContext(sslContext))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig customManagerMutualTlsWebClient() {
+        return WebClientConfig.builder()
+                .tls(tls -> tls.manager(new TestTlsManager()))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig disabledTlsWebClient() {
+        return WebClientConfig.builder()
+                .tls(tls -> tls.enabled(false))
+                .buildPrototype();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+    }
+
+    private static OutboundTarget clientCredentialsTarget() {
+        return OutboundTarget.builder("api")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
+    }
+
+    private static SSLContext defaultSslContext() {
+        try {
+            return SSLContext.getDefault();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static final class TestTlsManager implements TlsManager {
+        private SSLContext sslContext;
+
+        @Override
+        public String name() {
+            return "test";
+        }
+
+        @Override
+        public String type() {
+            return "test";
+        }
+
+        @Override
+        public void init(TlsConfig tls) {
+            sslContext = defaultSslContext();
+        }
+
+        @Override
+        public void reload(Tls tls) {
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            return sslContext;
+        }
+
+        @Override
+        public Optional<X509KeyManager> keyManager() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<X509TrustManager> trustManager() {
+            return Optional.empty();
+        }
     }
 
     private static String configMetadata() throws IOException {

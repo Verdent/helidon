@@ -27,6 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.Tls;
+import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
@@ -34,11 +37,15 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
+import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webserver.WebServer;
+import io.helidon.webserver.WebServerConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
+import io.helidon.webserver.testing.junit5.SetUpServer;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,7 +77,14 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private static JwkKeys signKeys;
 
+    private final URI mutualTlsServerUri;
+
     private URI tokenEndpointUri;
+    private URI mutualTlsTokenEndpointUri;
+
+    OidcAuthorizationCodeTokenExchangeTest(WebServer server) {
+        mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
+    }
 
     @BeforeAll
     static void initClass() {
@@ -84,9 +98,20 @@ class OidcAuthorizationCodeTokenExchangeTest {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
     }
 
+    @SetUpRoute("mtls")
+    static void mutualTlsRouting(HttpRouting.Builder routing) {
+        routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
+    }
+
+    @SetUpServer
+    static void server(WebServerConfig.Builder builder) {
+        builder.putSocket("mtls", socket -> socket.tls(serverTls()));
+    }
+
     @BeforeEach
     void setUp(URI serverUri) {
         tokenEndpointUri = serverUri.resolve("token");
+        mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
         responseStatus = 200;
         responseBody = validTokenResponse().toString();
         RECORDED_REQUEST.set(null);
@@ -177,6 +202,21 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void refreshTokenGrantWithMutualTlsSendsClientIdInForm() {
+        responseBody = validRefreshResponse().toString();
+
+        OidcTokenEndpointResult result = refresh(mutualTlsTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH),
+                                                 REFRESH_TOKEN);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
+                                                       "refresh_token", List.of(REFRESH_TOKEN),
+                                                       "client_id", List.of(CLIENT_ID))));
+    }
+
+    @Test
     void publicClientSendsClientIdInForm() {
         OidcTokenEndpointResult result = exchange(publicTenant(), null);
 
@@ -203,6 +243,37 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code_verifier", List.of(PKCE_VERIFIER),
                                                        "client_id", List.of(CLIENT_ID),
                                                        "client_secret", List.of(CLIENT_SECRET))));
+    }
+
+    @Test
+    void tlsClientAuthSendsClientIdInForm() {
+        OidcTokenEndpointResult result = exchange(mutualTlsTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH),
+                                                  PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("authorization_code"),
+                                                       "code", List.of(AUTHORIZATION_CODE),
+                                                       "redirect_uri", List.of(REDIRECTION_ENDPOINT_URI.toString()),
+                                                       "code_verifier", List.of(PKCE_VERIFIER),
+                                                       "client_id", List.of(CLIENT_ID))));
+    }
+
+    @Test
+    void selfSignedTlsClientAuthSendsClientIdInForm() {
+        OidcTokenEndpointResult result = exchange(
+                mutualTlsTenant(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH),
+                PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("grant_type", List.of("authorization_code"),
+                                                       "code", List.of(AUTHORIZATION_CODE),
+                                                       "redirect_uri", List.of(REDIRECTION_ENDPOINT_URI.toString()),
+                                                       "code_verifier", List.of(PKCE_VERIFIER),
+                                                       "client_id", List.of(CLIENT_ID))));
     }
 
     @Test
@@ -371,6 +442,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
         return tenant(false, OidcClientAuthenticationMethod.NONE);
     }
 
+    private OidcTenantConfig mutualTlsTenant(OidcClientAuthenticationMethod method) {
+        return tenant(false, method);
+    }
+
     private OidcTenantConfig privateKeyJwtTenant() {
         return privateKeyJwtTenant("RS256", "sign-rsa");
     }
@@ -411,14 +486,65 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .update(builder -> {
                     if (method != null) {
                         builder.tokenEndpointAuthenticationMethod(method);
+                        if (method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH) {
+                            builder.webClient(mutualTlsWebClient());
+                        }
                     }
                 })
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(tokenEndpointUri)
+                        .tokenEndpointUri(method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                                                  || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH
+                                                  ? mutualTlsTokenEndpointUri
+                                                  : tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig)
+                        .trust(trust -> trust
+                                .keystore(store -> store
+                                        .passphrase("password")
+                                        .trustStore(true)
+                                        .keystore(Resource.create("client.p12")))))
+                .buildPrototype();
+    }
+
+    private static Tls serverTls() {
+        Keys privateKeyConfig = serverKeys();
+        return Tls.builder()
+                .clientAuth(TlsClientAuth.REQUIRED)
+                .privateKey(privateKeyConfig)
+                .privateKeyCertChain(privateKeyConfig)
+                .trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("server.p12"))))
+                .build();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+    }
+
+    private static Keys serverKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("server.p12")))
+                .build();
     }
 
     private static JsonObject validTokenResponse() {

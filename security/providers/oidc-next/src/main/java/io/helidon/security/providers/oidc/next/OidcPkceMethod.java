@@ -21,7 +21,29 @@ package io.helidon.security.providers.oidc.next;
  */
 public enum OidcPkceMethod {
     /**
+     * Plain code challenge method.
+     * <p>
+     * This method is intended only for compatibility with authorization servers that do not support S256.
+     */
+    PLAIN("plain"),
+
+    /**
      * SHA-256 based code challenge method.
      */
-    S256
+    S256("S256");
+
+    private final String wireName;
+
+    OidcPkceMethod(String wireName) {
+        this.wireName = wireName;
+    }
+
+    /**
+     * Method name used in the {@code code_challenge_method} authorization request parameter.
+     *
+     * @return method wire name
+     */
+    public String wireName() {
+        return wireName;
+    }
 }

@@ -57,6 +57,7 @@ final class OidcTenantContextFactory {
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
+                validateIntrospectionMetadata(tenantConfig, metadata);
                 validateUserInfoMetadata(tenantConfig, metadata);
                 validateEndSessionMetadata(tenantConfig, metadata);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
@@ -78,6 +79,10 @@ final class OidcTenantContextFactory {
                 .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()
                 && (staticMetadata.issuer().isEmpty() || staticMetadata.jwkSetUri().isEmpty())) {
+            return true;
+        }
+        if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isPresent()
+                && staticMetadata.introspectionEndpointUri().isEmpty()) {
             return true;
         }
         Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
@@ -120,6 +125,31 @@ final class OidcTenantContextFactory {
                                      throw new IllegalStateException(
                                              "well-known metadata jwks_uri must be present for JWT access-token "
                                                      + "validation");
+                                 });
+    }
+
+    private static void validateIntrospectionMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .orElseGet(OidcTokenValidationConfig::create);
+        if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isEmpty()) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "`introspection_endpoint` OPTIONAL.  URL of the authorization server's OAuth 2.0 introspection
+         * endpoint".
+         */
+        metadata.introspectionEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateIntrospectionEndpointUri(
+                                         uri,
+                                         tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata introspection_endpoint must be present for "
+                                                     + "introspection");
                                  });
     }
 

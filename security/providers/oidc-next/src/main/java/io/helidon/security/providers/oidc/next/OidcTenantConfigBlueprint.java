@@ -75,6 +75,17 @@ interface OidcTenantConfigBlueprint {
     Optional<OidcClientAuthenticationMethod> tokenEndpointAuthenticationMethod();
 
     /**
+     * Token Endpoint client assertion configuration used by
+     * {@link OidcClientAuthenticationMethod#CLIENT_SECRET_JWT} and
+     * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT}.
+     *
+     * @return Token Endpoint client assertion configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcClientAssertionConfig clientAssertion();
+
+    /**
      * WebClient configuration used for outbound requests to the OpenID Provider or Authorization Server.
      * <p>
      * This client is used for well-known metadata requests, JSON Web Key Set loading, Token Endpoint

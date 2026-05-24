@@ -15,7 +15,8 @@ The current implementation supports:
 - OpenID Connect Authorization Code Flow.
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
-- Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`.
+- Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`,
+  `PRIVATE_KEY_JWT`, or `NONE`.
 - ID Token validation for Authorization Code Flow.
 - Local authentication result storage in protected cookies.
 - Local OIDC logout endpoint that removes OIDC cookies.
@@ -92,6 +93,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.security.Security;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
@@ -619,6 +621,8 @@ Available values:
 
 - `CLIENT_SECRET_BASIC`: send `client_id` and `client_secret` using HTTP Basic authentication.
 - `CLIENT_SECRET_POST`: send `client_id` and `client_secret` in the form body.
+- `CLIENT_SECRET_JWT`: send a JWT client assertion signed with `client-secret`.
+- `PRIVATE_KEY_JWT`: send a JWT client assertion signed with configured private JWK material.
 - `NONE`: send only `client_id`; use for public clients.
 
 When omitted, the provider uses:
@@ -647,6 +651,74 @@ security:
               scopes: [ "openid", "profile" ]
             cookies:
               encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+Example using `client_secret_jwt`:
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            client-secret: "${OIDC_CLIENT_SECRET}"
+            token-endpoint-auth-method: CLIENT_SECRET_JWT
+            client-assertion:
+              algorithm: HS256
+              lifetime: "PT1M"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+Example using `private_key_jwt`:
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            token-endpoint-auth-method: PRIVATE_KEY_JWT
+            client-assertion:
+              jwk:
+                resource-path: "private-client-jwks.json"
+              key-id: "client-signing-key"
+              algorithm: RS256
+              lifetime: "PT1M"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+`client_secret_jwt` and `private_key_jwt` send `client_assertion_type` with
+`urn:ietf:params:oauth:client-assertion-type:jwt-bearer` and a signed `client_assertion` JWT. The assertion uses
+`client-id` as `iss` and `sub`, the Token Endpoint URI as `aud`, and includes `iat`, `exp`, and `jti`.
+For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if the Authorization Server expects a
+`kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required, `algorithm` must match the selected JWK
+algorithm, and `key-id` is required when the configured JWK Set contains more than one key.
+
+Programmatic `private_key_jwt` configuration:
+
+```java
+OidcTenantConfig tenant = OidcTenantConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+        .clientAssertion(clientAssertion -> clientAssertion
+                .jwk(Resource.create("private-client-jwks.json"))
+                .keyId("client-signing-key")
+                .algorithm("RS256"))
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback")))
+        .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
+        .buildPrototype();
 ```
 
 Example public client:
@@ -715,9 +787,10 @@ Client Credentials Grant obtains an access token from the Token Endpoint with `g
 the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
 cached until it is close to expiration, then reacquired.
 
-Client Credentials Grant is only valid for confidential clients. Configure `client-id`, `client-secret`, and either
-`endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint. `token-endpoint-auth-method: NONE`
-is rejected for this grant.
+Client Credentials Grant is only valid for confidential clients. Configure `client-id`, either
+`endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint, and the prerequisites for the
+selected Token Endpoint client authentication method. Secret-based methods require `client-secret`; `PRIVATE_KEY_JWT`
+requires `client-assertion.jwk`. `token-endpoint-auth-method: NONE` is rejected for this grant.
 
 If any `outbound` entry enables Client Credentials Grant directly, every enabled tenant in the provider must meet
 these Client Credentials prerequisites. Tenant resolution can select any enabled tenant for a matching outbound request,
@@ -986,7 +1059,8 @@ Tenant options:
 | `issuer` | Expected Issuer Identifier. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
-| `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`. |
+| `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, or `NONE`. |
+| `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
@@ -1006,6 +1080,15 @@ Tenant outbound options:
 | `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
+
+Client assertion options:
+
+| Key | Description |
+| --- | --- |
+| `algorithm` | JWS `alg` header used to sign the client assertion. Defaults to `HS256` for `CLIENT_SECRET_JWT`; for `PRIVATE_KEY_JWT`, defaults to the selected JWK algorithm and must match it when configured. |
+| `key-id` | JWS `kid` header. For `PRIVATE_KEY_JWT`, selects the signing key and is required when `jwk` contains multiple keys. For `CLIENT_SECRET_JWT`, written to the assertion header when configured. |
+| `jwk` | Private JWK Set resource used to sign `PRIVATE_KEY_JWT` assertions. |
+| `lifetime` | Assertion lifetime used to calculate `exp`. Defaults to `PT1M`. |
 
 Authorization Code Flow options:
 

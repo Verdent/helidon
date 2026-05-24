@@ -31,16 +31,16 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcEndpointClient {
-    private final OidcTenantConfig tenantConfig;
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
+    private final OidcClientAuthenticationSupport clientAuthentication;
 
     OidcEndpointClient(OidcTenantConfig tenantConfig,
                        OidcProviderMetadata metadata,
                        WebClient webClient) {
-        this.tenantConfig = tenantConfig;
         this.metadata = metadata;
         this.webClient = webClient;
+        this.clientAuthentication = OidcClientAuthenticationSupport.create(tenantConfig);
     }
 
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
@@ -140,26 +140,28 @@ final class OidcEndpointClient {
         if (endpointUri.isEmpty()) {
             return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
         }
-        HttpClientRequest request = webClient.post()
-                .uri(endpointUri.orElseThrow())
-                .followRedirects(false)
-                .header(HeaderValues.ACCEPT_JSON)
-                .header(HeaderValues.CACHE_NO_CACHE)
-                .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
-        OidcClientAuthenticationSupport.applyTokenEndpointAuthentication(tenantConfig, form, request);
+        try {
+            HttpClientRequest request = webClient.post()
+                    .uri(endpointUri.orElseThrow())
+                    .followRedirects(false)
+                    .header(HeaderValues.ACCEPT_JSON)
+                    .header(HeaderValues.CACHE_NO_CACHE)
+                    .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
+            clientAuthentication.applyTokenEndpointAuthentication(endpointUri.orElseThrow(), form, request);
 
-        try (HttpClientResponse response = request.submit(form.build())) {
-            if (response.status().family() == Status.Family.SUCCESSFUL) {
-                try {
-                    return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
-                } catch (RuntimeException e) {
-                    return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
+            try (HttpClientResponse response = request.submit(form.build())) {
+                if (response.status().family() == Status.Family.SUCCESSFUL) {
+                    try {
+                        return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
+                    } catch (RuntimeException e) {
+                        return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
+                    }
                 }
-            }
-            try {
-                return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
-            } catch (RuntimeException e) {
-                return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
+                try {
+                    return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
+                } catch (RuntimeException e) {
+                    return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
+                }
             }
         } catch (RuntimeException e) {
             return OidcTokenEndpointResult.failure("Token Endpoint is unavailable", e);

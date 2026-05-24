@@ -16,7 +16,7 @@ The current implementation supports:
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
 - Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`,
-  `PRIVATE_KEY_JWT`, or `NONE`.
+  `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`.
 - ID Token validation for Authorization Code Flow.
 - Local authentication result storage in protected cookies.
 - Local OIDC logout endpoint that removes OIDC cookies.
@@ -300,7 +300,10 @@ Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resour
 `endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
-`userinfo_endpoint`, and `end_session_endpoint`.
+`userinfo_endpoint`, `end_session_endpoint`, and `mtls_endpoint_aliases.token_endpoint`.
+For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
+the Token Endpoint URI itself is loaded from well-known metadata. An explicit `endpoints.token-endpoint-uri` is treated
+as the configured Token Endpoint and is not replaced by the alias.
 When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
@@ -623,6 +626,12 @@ Available values:
 - `CLIENT_SECRET_POST`: send `client_id` and `client_secret` in the form body.
 - `CLIENT_SECRET_JWT`: send a JWT client assertion signed with `client-secret`.
 - `PRIVATE_KEY_JWT`: send a JWT client assertion signed with configured private JWK material.
+- `TLS_CLIENT_AUTH`: use the RFC 8705 PKI Mutual-TLS Method and send `client_id` in the form body. The certificate
+  identity is matched by the Authorization Server against the client's registered subject or subject alternative name
+  metadata.
+- `SELF_SIGNED_TLS_CLIENT_AUTH`: use the RFC 8705 Self-Signed Certificate Mutual-TLS Method and send `client_id` in the
+  form body. The certificate or public key is matched by the Authorization Server against the client's registered
+  self-signed certificate metadata.
 - `NONE`: send only `client_id`; use for public clients.
 
 When omitted, the provider uses:
@@ -703,6 +712,45 @@ security:
 For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if the Authorization Server expects a
 `kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required, `algorithm` must match the selected JWK
 algorithm, and `key-id` is required when the configured JWK Set contains more than one key.
+
+Example using `tls_client_auth`:
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        tenants:
+          web:
+            issuer: "https://issuer.example"
+            client-id: "${OIDC_CLIENT_ID}"
+            token-endpoint-auth-method: TLS_CLIENT_AUTH
+            webclient:
+              tls:
+                trust:
+                  keystore:
+                    passphrase: "${OIDC_TLS_TRUST_STORE_PASSWORD}"
+                    trust-store: true
+                    resource:
+                      resource-path: "issuer-trust.p12"
+                private-key:
+                  keystore:
+                    passphrase: "${OIDC_TLS_CLIENT_KEY_STORE_PASSWORD}"
+                    resource:
+                      resource-path: "oidc-client.p12"
+            authorization-code:
+              redirection-endpoint-uri: "https://app.example/oidc/callback"
+            cookies:
+              encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+For `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH`, the OIDC provider sends `client_id` in the Token Endpoint form
+and relies on enabled tenant `webclient.tls` for the mutual TLS client certificate proof. Configure private key plus
+certificate chain, an SSL context, or a custom TLS manager. The `private-key` TLS block supplies the client
+certificate/key used for mutual TLS. The `trust` TLS block validates the Authorization Server certificate. When
+well-known metadata supplies both `token_endpoint` and `mtls_endpoint_aliases.token_endpoint`, mTLS Token Endpoint
+requests use the alias unless `endpoints.token-endpoint-uri` is explicitly configured. RFC 8705 Token Endpoint client
+authentication always requires an HTTPS Token Endpoint. If the Token Endpoint is loaded from well-known metadata, the
+well-known URI must also use HTTPS. `endpoints.tls-required: false` does not relax these mTLS requirements.
 
 Programmatic `private_key_jwt` configuration:
 
@@ -790,7 +838,10 @@ cached until it is close to expiration, then reacquired.
 Client Credentials Grant is only valid for confidential clients. Configure `client-id`, either
 `endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint, and the prerequisites for the
 selected Token Endpoint client authentication method. Secret-based methods require `client-secret`; `PRIVATE_KEY_JWT`
-requires `client-assertion.jwk`. `token-endpoint-auth-method: NONE` is rejected for this grant.
+requires `client-assertion.jwk`; mutual TLS methods require enabled tenant `webclient.tls` with private key plus
+certificate chain, an SSL context, or a custom TLS manager. The provider relies on Helidon WebClient TLS for the
+certificate handshake, and the Token Endpoint must use HTTPS. `token-endpoint-auth-method: NONE` is rejected for this
+grant.
 
 If any `outbound` entry enables Client Credentials Grant directly, every enabled tenant in the provider must meet
 these Client Credentials prerequisites. Tenant resolution can select any enabled tenant for a matching outbound request,
@@ -1026,7 +1077,7 @@ endpoints:
   tls-required: true
 ```
 
-For isolated tests, the TLS requirement can be disabled.
+For isolated tests, the TLS requirement can be disabled for non-mTLS endpoint validation.
 
 ```yaml
 endpoints:
@@ -1036,7 +1087,9 @@ endpoints:
 
 Do not disable TLS in production. Disabling TLS can expose access tokens, client credentials, and token signature
 verification keys. Outbound targets that carry tokens should normally be constrained with `transports: [ "https" ]` even
-though HTTPS is enforced by default.
+though HTTPS is enforced by default. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` still require an HTTPS Token
+Endpoint and HTTPS well-known metadata when discovery supplies that endpoint, because mutual TLS client authentication
+cannot happen over HTTP.
 
 ## Configuration Reference
 
@@ -1059,9 +1112,9 @@ Tenant options:
 | `issuer` | Expected Issuer Identifier. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
-| `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, or `NONE`. |
+| `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. |
-| `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. |
+| `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
@@ -1077,7 +1130,7 @@ Tenant outbound options:
 | Key | Description |
 | --- | --- |
 | `token-propagation-enabled` | Enables Token Propagation for this tenant. This is applied only through matching `outbound`. |
-| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
+| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
 
@@ -1142,7 +1195,7 @@ OIDC outbound target options:
 | Key | Description |
 | --- | --- |
 | `token-propagation-enabled` | Use Token Propagation for this outbound target. |
-| `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. |
+| `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 | `audience` | Expected `aud` claim for Token Propagation to this outbound target. |
 
 Token validation options:

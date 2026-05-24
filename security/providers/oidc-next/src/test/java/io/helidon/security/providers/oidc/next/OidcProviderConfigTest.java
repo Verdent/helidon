@@ -103,8 +103,15 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.subjectMapping().principalIdClaimPaths(), is(subjectMapping.principalIdClaimPaths()));
         assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
         assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
-        assertThat(OidcPkceMethod.values().length, is(1));
-        assertThat(OidcPkceMethod.values()[0], is(OidcPkceMethod.S256));
+        assertThat(List.of(OidcPkceMethod.values()), is(List.of(OidcPkceMethod.PLAIN, OidcPkceMethod.S256)));
+    }
+
+    @Test
+    void pkceMethodsUseSpecWireNames() {
+        assertThat(OidcPkceMethod.PLAIN.wireName(), is("plain"));
+        assertThat(OidcPkceMethod.S256.wireName(), is("S256"));
+        assertThat(OidcAuthenticationRequestFactory.codeChallenge("plain-verifier", OidcPkceMethod.PLAIN),
+                   is("plain-verifier"));
     }
 
     @Test
@@ -133,6 +140,11 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.webclient.proxy.type", "HTTP"),
                         Map.entry("tenants.default.webclient.proxy.host", "proxy.example.com"),
                         Map.entry("tenants.default.webclient.proxy.port", "8080"),
+                        Map.entry("tenants.default.authorization-code.redirection-endpoint-uri",
+                                  REDIRECTION_ENDPOINT_URI.toString()),
+                        Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
+                        Map.entry("tenants.default.cookies.encryption-secret",
+                                  "this-secret-is-long-enough-for-config-test"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
                         Map.entry("tenants.default.logout.enabled", "false"),
@@ -170,6 +182,9 @@ class OidcProviderConfigTest {
         assertThat(tenant.webClient().proxy().type(), is(Proxy.ProxyType.HTTP));
         assertThat(tenant.webClient().proxy().host(), is("proxy.example.com"));
         assertThat(tenant.webClient().proxy().port(), is(8080));
+        OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
+        assertThat(authorizationCode.redirectionEndpointUri().orElseThrow(), is(REDIRECTION_ENDPOINT_URI));
+        assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
@@ -387,7 +402,6 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("issuer or well-known-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .protectedResource(it -> it.enabled(false)
@@ -467,7 +481,7 @@ class OidcProviderConfigTest {
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
+        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri or well-known-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
@@ -498,16 +512,16 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void introspectionRejectsWellKnownUriOnlyUntilWellKnownMetadataLoadingExists() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+    void introspectionCanUseWellKnownMetadata() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.wellKnownUri(URI.create("https://issuer.example/.well-known/openid-configuration")))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience("api://default")))
-                .buildPrototype());
+                .buildPrototype();
 
-        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri"));
+        assertThat(tenant.endpoints().introspectionEndpointUri().isEmpty(), is(true));
     }
 
     @Test

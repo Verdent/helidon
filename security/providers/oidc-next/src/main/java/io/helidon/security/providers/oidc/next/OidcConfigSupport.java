@@ -412,10 +412,13 @@ final class OidcConfigSupport {
              * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.1
              * Quote: "MUST also require some form of authorization".
              */
-            URI introspectionEndpointUri = endpoints.introspectionEndpointUri()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "introspection-endpoint-uri must be configured when introspection is enabled"));
-            validateIntrospectionEndpointUri(introspectionEndpointUri, endpoints.tlsRequired());
+            Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+            requireEndpointOrWellKnown(endpoints.introspectionEndpointUri(),
+                                       wellKnownUri,
+                                       "introspection-endpoint-uri",
+                                       "introspection",
+                                       endpoints.tlsRequired(),
+                                       OidcConfigSupport::validateIntrospectionEndpointUri);
             tenant.clientId()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "client-id must be configured when introspection is enabled"));
@@ -583,7 +586,7 @@ final class OidcConfigSupport {
         validateNoFragment("token-endpoint-uri", uri);
     }
 
-    private static void validateIntrospectionEndpointUri(URI uri, boolean tlsRequired) {
+    static void validateIntrospectionEndpointUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: RFC 7662, 2 Introspection Endpoint
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2

@@ -13,7 +13,7 @@ The current implementation supports:
 - Access-token validation by local JWT validation against an explicit JWKS URI or a JWKS URI from well-known metadata.
 - Access-token validation by OAuth 2.0 Token Introspection.
 - OpenID Connect Authorization Code Flow.
-- PKCE with `S256`, enabled by default.
+- PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
 - Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, or `NONE`.
 - ID Token validation for Authorization Code Flow.
@@ -34,8 +34,6 @@ The current implementation does not yet support:
 
 - DPoP, mTLS sender-constrained tokens, or token binding.
 - Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
-- Loading the introspection endpoint URI from well-known metadata for Protected Resource introspection. Configure
-  `endpoints.introspection-endpoint-uri` explicitly.
 
 ## Configuration Shape
 
@@ -295,14 +293,14 @@ If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provide
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
 Well-known metadata is used by Authorization Code Flow when provider endpoint URIs are missing, by Client Credentials
-Grant when `endpoints.token-endpoint-uri` is not configured, and by Protected Resource JWT validation when
-`endpoints.jwks-uri` is not configured. It is also used by RP-Initiated Logout when `endpoints.end-session-endpoint-uri`
-is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not configured. It can provide
-`authorization_endpoint`, `token_endpoint`, `jwks_uri`, `userinfo_endpoint`, and `end_session_endpoint`.
+Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT validation when
+`endpoints.jwks-uri` is not configured, and by Protected Resource introspection when
+`endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
+`endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
+configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
+`userinfo_endpoint`, and `end_session_endpoint`.
 When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
-
-Protected Resource introspection still requires explicit `endpoints.introspection-endpoint-uri`.
 
 `authorization-code.redirection-endpoint-uri` is not under `endpoints` because it is the client callback endpoint, not
 an OpenID Provider endpoint.
@@ -364,7 +362,7 @@ security:
 ```
 
 Introspection currently uses HTTP Basic client authentication and requires `client-id`, `client-secret`, and
-`endpoints.introspection-endpoint-uri`.
+either `endpoints.introspection-endpoint-uri` or well-known metadata that provides `introspection_endpoint`.
 
 Audience validation is enabled by default. Introspection responses with an `aud` claim must contain the configured
 expected audience. If the Authorization Server omits `aud` from introspection responses, disable audience validation
@@ -434,6 +432,15 @@ authorization-code:
   scopes: [ "openid", "profile" ]
   pkce-required: true
   pkce-method: S256
+```
+
+Use `pkce-method: plain` only for compatibility with an authorization server that cannot process `S256`.
+
+```yaml
+authorization-code:
+  redirection-endpoint-uri: "https://app.example/oidc/callback"
+  scopes: [ "openid", "profile" ]
+  pkce-method: plain
 ```
 
 PKCE can be disabled for compatibility with providers that cannot process it.
@@ -999,6 +1006,16 @@ Tenant outbound options:
 | `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `outbound`, this can apply tenant-wide. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
+
+Authorization Code Flow options:
+
+| Key | Description |
+| --- | --- |
+| `enabled` | Whether Authorization Code Flow initiation is enabled when `authorization-code` is configured. Defaults to `true`. |
+| `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Required when Authorization Code Flow is enabled. |
+| `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]` and must contain `openid`. |
+| `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. |
+| `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. |
 
 UserInfo options:
 

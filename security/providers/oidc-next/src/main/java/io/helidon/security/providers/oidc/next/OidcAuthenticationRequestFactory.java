@@ -81,6 +81,7 @@ final class OidcAuthenticationRequestFactory {
 
     static String codeChallenge(String verifier, OidcPkceMethod method) {
         return switch (method) {
+        case PLAIN -> verifier;
         case S256 -> base64Url(sha256(verifier));
         };
     }
@@ -111,10 +112,12 @@ final class OidcAuthenticationRequestFactory {
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.1
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2
              * Quotes: "high-entropy cryptographic random STRING"; "32-octet sequence";
-             * "code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))"; "MUST use \"S256\"".
+             * "code_challenge = code_verifier";
+             * "code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))";
+             * "If the client is capable of using \"S256\", it MUST use \"S256\"".
              */
             query.set("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
-                    .set("code_challenge_method", authorizationCode.pkceMethod().name());
+                    .set("code_challenge_method", authorizationCode.pkceMethod().wireName());
         }
 
         return URI.create(authorizationEndpointUri

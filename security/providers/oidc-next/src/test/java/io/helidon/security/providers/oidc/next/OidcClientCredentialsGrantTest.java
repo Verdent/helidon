@@ -620,12 +620,12 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("tenants.default.client-secret", CLIENT_SECRET),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", tokenEndpointUri.toString()),
                         Map.entry("tenants.default.endpoints.tls-required", "false"),
-                        Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.transports.0", "https"),
-                        Map.entry("outbound.0.hosts.0", "api.example.com"),
-                        Map.entry("outbound.0.paths.0", "/resource"),
-                        Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "api"),
+                        Map.entry("tenants.default.outbound.targets.0.transports.0", "https"),
+                        Map.entry("tenants.default.outbound.targets.0.hosts.0", "api.example.com"),
+                        Map.entry("tenants.default.outbound.targets.0.paths.0", "/resource"),
+                        Map.entry("tenants.default.outbound.targets.0.methods.0", "GET"),
+                        Map.entry("tenants.default.outbound.targets.0.client-credentials-grant-enabled", "true"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
         SecurityEnvironment outboundEnv = outboundEnvironment();
@@ -649,12 +649,12 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("tenants.default.client-id", CLIENT_ID),
                         Map.entry("tenants.default.client-secret", CLIENT_SECRET),
                         Map.entry("tenants.default.endpoints.tls-required", "false"),
-                        Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.transports.0", "https"),
-                        Map.entry("outbound.0.hosts.0", "api.example.com"),
-                        Map.entry("outbound.0.paths.0", "/resource"),
-                        Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "api"),
+                        Map.entry("tenants.default.outbound.targets.0.transports.0", "https"),
+                        Map.entry("tenants.default.outbound.targets.0.hosts.0", "api.example.com"),
+                        Map.entry("tenants.default.outbound.targets.0.paths.0", "/resource"),
+                        Map.entry("tenants.default.outbound.targets.0.methods.0", "GET"),
+                        Map.entry("tenants.default.outbound.targets.0.client-credentials-grant-enabled", "true"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
 
@@ -1024,9 +1024,13 @@ class OidcClientCredentialsGrantTest {
     }
 
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
+        OidcTenantConfig tenantWithTargets = OidcTenantConfig.builder()
+                .from(tenant)
+                .outbound(it -> it.from(tenant.outbound())
+                        .targets(List.of(outboundTargets)))
+                .buildPrototype();
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", tenant)
-                                           .outboundTargets(List.of(outboundTargets))
+                                           .putTenant("default", tenantWithTargets)
                                            .buildPrototype());
     }
 

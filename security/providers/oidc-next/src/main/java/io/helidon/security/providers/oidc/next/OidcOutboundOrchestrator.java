@@ -39,25 +39,16 @@ import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcOutboundOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
-    private final OutboundConfig outboundTargetConfig;
+    private final ConcurrentMap<OidcOutboundConfig, OutboundConfig> outboundConfigCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache = new ConcurrentHashMap<>();
     private final OidcClientCredentialsTokenManager clientCredentialsTokenManager = new OidcClientCredentialsTokenManager();
 
-    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry,
-                                     List<OutboundTarget> outboundTargets) {
+    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
-        OutboundConfig.Builder builder = OutboundConfig.builder();
-        outboundTargets.forEach(builder::addTarget);
-        this.outboundTargetConfig = builder.build();
-    }
-
-    static OidcOutboundOrchestrator create(OidcProviderConfig config,
-                                           OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcOutboundOrchestrator(tenantRuntimeRegistry, config.outboundTargets());
     }
 
     static OidcOutboundOrchestrator create(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcOutboundOrchestrator(tenantRuntimeRegistry, List.of());
+        return new OidcOutboundOrchestrator(tenantRuntimeRegistry);
     }
 
     boolean isSupported(ProviderRequest providerRequest,
@@ -83,8 +74,9 @@ final class OidcOutboundOrchestrator {
         }
 
         Optional<OidcOutboundPolicy> tenantPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
-        if (!outboundTargetConfig.targets().isEmpty()) {
-            return matchingTarget(outboundEnv)
+        OidcOutboundConfig outbound = tenantConfig.outbound();
+        if (!outbound.targets().isEmpty()) {
+            return matchingTarget(outbound, outboundEnv)
                     .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget)
                             .or(() -> targetAudiencePolicy(target, tenantPolicy))
                             .or(() -> tenantPolicy));
@@ -95,7 +87,7 @@ final class OidcOutboundOrchestrator {
         return tenantPolicy;
     }
 
-    private Optional<OutboundTarget> matchingTarget(SecurityEnvironment outboundEnv) {
+    private Optional<OutboundTarget> matchingTarget(OidcOutboundConfig outbound, SecurityEnvironment outboundEnv) {
         if (outboundEnv == null || outboundEnv.targetUri() == null) {
             return Optional.empty();
         }
@@ -105,7 +97,14 @@ final class OidcOutboundOrchestrator {
                 : outboundEnv.derive()
                         .transport(targetScheme.toLowerCase(Locale.ROOT))
                         .build();
-        return outboundTargetConfig.findTarget(targetEnv);
+        return outboundConfigCache.computeIfAbsent(outbound, OidcOutboundOrchestrator::outboundTargetConfig)
+                .findTarget(targetEnv);
+    }
+
+    private static OutboundConfig outboundTargetConfig(OidcOutboundConfig outbound) {
+        OutboundConfig.Builder builder = OutboundConfig.builder();
+        outbound.targets().forEach(builder::addTarget);
+        return builder.build();
     }
 
     private boolean outboundTargetTlsAllowed(OidcTenantConfig tenantConfig, SecurityEnvironment outboundEnv) {

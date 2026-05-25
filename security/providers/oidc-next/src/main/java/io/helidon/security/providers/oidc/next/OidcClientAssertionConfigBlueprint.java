@@ -74,6 +74,7 @@ interface OidcClientAssertionConfigBlueprint {
      * @return private JWK Set resource
      */
     @Option.Configured
+    @Option.Confidential
     Optional<Resource> jwk();
 
     /**

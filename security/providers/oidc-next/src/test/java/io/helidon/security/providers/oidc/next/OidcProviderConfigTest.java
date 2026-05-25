@@ -249,6 +249,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
         assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));
         assertThat(tenant.clientAssertion().jwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().lifetime(), is(Duration.ofMinutes(2)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.webClient().readTimeout().orElseThrow(), is(Duration.ofSeconds(2)));

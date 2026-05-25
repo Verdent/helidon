@@ -80,11 +80,11 @@ class OidcProviderConfigTest {
         OidcCookieConfig cookies = OidcCookieConfig.create();
         OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
         OidcClientAssertionConfig clientAssertion = OidcClientAssertionConfig.create();
+        OidcOutboundConfig outbound = OidcOutboundConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
-        assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
         assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
@@ -120,6 +120,7 @@ class OidcProviderConfigTest {
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
         assertThat(clientAssertion.lifetime(), is(Duration.ofMinutes(1)));
+        assertThat(outbound.targets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
                    is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
                               OidcClientAuthenticationMethod.CLIENT_SECRET_POST,
@@ -229,19 +230,19 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.subject-mapping.role-claim-paths.0", "realm_access.roles"),
                         Map.entry("tenants.default.subject-mapping.scope-claim-paths.0", "scp"),
                         Map.entry("tenants.default.subject-mapping.scope-grants-enabled", "false"),
-                        Map.entry("outbound.0.name", "orders"),
-                        Map.entry("outbound.0.transports.0", "https"),
-                        Map.entry("outbound.0.hosts.0", "api.example.com"),
-                        Map.entry("outbound.0.paths.0", "/orders/.*"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "orders"),
+                        Map.entry("tenants.default.outbound.targets.0.transports.0", "https"),
+                        Map.entry("tenants.default.outbound.targets.0.hosts.0", "api.example.com"),
+                        Map.entry("tenants.default.outbound.targets.0.paths.0", "/orders/.*"))))
                 .build();
 
         OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
 
         assertThat(providerConfig.defaultTenant().orElse(""), is("default"));
-        OutboundTarget outboundTarget = providerConfig.outboundTargets().getFirst();
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+        OutboundTarget outboundTarget = tenant.outbound().targets().getFirst();
         assertThat(outboundTarget.name(), is("orders"));
         assertThat(outboundTarget.hosts(), is(Set.of("api.example.com")));
-        OidcTenantConfig tenant = providerConfig.tenants().get("default");
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
@@ -1136,8 +1137,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.token-endpoint-auth-method", "SELF_SIGNED_TLS_CLIENT_AUTH"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
-                        Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "api"),
+                        Map.entry("tenants.default.outbound.targets.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
         thrown = assertThrows(IllegalArgumentException.class,
@@ -1145,18 +1146,14 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
 
-        OidcTenantConfig insecureMutualTlsEndpointTenant = OidcTenantConfig.builder()
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
-                .webClient(mutualTlsWebClient())
-                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
-                        .tlsRequired(false))
-                .buildPrototype();
-
         thrown = assertThrows(IllegalArgumentException.class,
-                              () -> OidcProviderConfig.builder()
-                                      .putTenant("default", insecureMutualTlsEndpointTenant)
-                                      .outboundTargets(List.of(clientCredentialsTarget()))
+                              () -> OidcTenantConfig.builder()
+                                      .clientId("client-id")
+                                      .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                                      .webClient(mutualTlsWebClient())
+                                      .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                                              .tlsRequired(false))
+                                      .outbound(it -> it.targets(List.of(clientCredentialsTarget())))
                                       .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
@@ -1414,8 +1411,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.token-endpoint-auth-method", "NONE"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
-                        Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "api"),
+                        Map.entry("tenants.default.outbound.targets.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -1428,8 +1425,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", "http://issuer.example/token"),
-                        Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "api"),
+                        Map.entry("tenants.default.outbound.targets.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
         thrown = assertThrows(IllegalArgumentException.class,

@@ -312,13 +312,13 @@ class OidcTokenPropagationTest {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
                         Map.entry("tenants.default.enabled", "true"),
-                        Map.entry("outbound.0.name", "orders"),
-                        Map.entry("outbound.0.transports.0", "https"),
-                        Map.entry("outbound.0.hosts.0", "api.example.com"),
-                        Map.entry("outbound.0.paths.0", "/orders/.*"),
-                        Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.token-propagation-enabled", "true"),
-                        Map.entry("outbound.0.audience", "api://orders"))))
+                        Map.entry("tenants.default.outbound.targets.0.name", "orders"),
+                        Map.entry("tenants.default.outbound.targets.0.transports.0", "https"),
+                        Map.entry("tenants.default.outbound.targets.0.hosts.0", "api.example.com"),
+                        Map.entry("tenants.default.outbound.targets.0.paths.0", "/orders/.*"),
+                        Map.entry("tenants.default.outbound.targets.0.methods.0", "GET"),
+                        Map.entry("tenants.default.outbound.targets.0.token-propagation-enabled", "true"),
+                        Map.entry("tenants.default.outbound.targets.0.audience", "api://orders"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
         ProviderRequest request = providerRequest(subject("api://orders"));
@@ -338,9 +338,13 @@ class OidcTokenPropagationTest {
     }
 
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
+        OidcTenantConfig tenantWithTargets = OidcTenantConfig.builder()
+                .from(tenant)
+                .outbound(it -> it.from(tenant.outbound())
+                        .targets(List.of(outboundTargets)))
+                .buildPrototype();
         return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", tenant)
-                                           .outboundTargets(List.of(outboundTargets))
+                                           .putTenant("default", tenantWithTargets)
                                            .buildPrototype());
     }
 

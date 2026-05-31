@@ -31,7 +31,11 @@ final class OidcTenantContextFactory {
     }
 
     static OidcTenantContextFactory create() {
-        return create(defaultInitializer());
+        return create(false);
+    }
+
+    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant) {
+        return create(defaultInitializer(outboundTargetClientCredentialsGrant));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -46,13 +50,14 @@ final class OidcTenantContextFactory {
                                       "Tenant initializer must return a context");
     }
 
-    private static TenantInitializer defaultInitializer() {
+    private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant) {
         return (tenantId, tenantConfig) -> {
             try {
                 WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
                 OidcProviderMetadata metadata = needsWellKnownMetadata(tenantConfig,
-                                                                       staticMetadata)
+                                                                       staticMetadata,
+                                                                       outboundTargetClientCredentialsGrant)
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateJwtMetadata(tenantConfig, metadata);
@@ -69,7 +74,8 @@ final class OidcTenantContextFactory {
     }
 
     private static boolean needsWellKnownMetadata(OidcTenantConfig tenantConfig,
-                                                 OidcProviderMetadata staticMetadata) {
+                                                 OidcProviderMetadata staticMetadata,
+                                                 boolean outboundTargetClientCredentialsGrant) {
         if (staticMetadata.wellKnownUri().isEmpty()) {
             return false;
         }
@@ -101,8 +107,7 @@ final class OidcTenantContextFactory {
         if (endSession.isPresent() && staticMetadata.endSessionEndpointUri().isEmpty()) {
             return true;
         }
-        return (tenantConfig.outbound().clientCredentialsGrantEnabled()
-                || OidcConfigSupport.targetClientCredentialsGrantEnabled(tenantConfig.outbound().targets()))
+        return (tenantConfig.outbound().clientCredentialsGrantEnabled() || outboundTargetClientCredentialsGrant)
                 && staticMetadata.tokenEndpointUri().isEmpty();
     }
 

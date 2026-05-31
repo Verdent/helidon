@@ -38,7 +38,9 @@ final class OidcTenantRuntimeRegistry {
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
-        return create(config, OidcTenantContextFactory.create());
+        return create(config,
+                      OidcTenantContextFactory.create(
+                              OidcConfigSupport.targetClientCredentialsGrantEnabled(config.outboundTargets())));
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config,

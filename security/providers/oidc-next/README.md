@@ -789,13 +789,13 @@ security:
 
 ## Outbound Token Propagation And Client Credentials
 
-Outbound target selection uses Helidon's common `OutboundTarget` model. Configure targets under tenant
-`outbound.targets`. A target can match by transport, host, path, and method. Targets are tenant-local because the
-selected tenant supplies the issuer, client credentials, Token Endpoint, TLS settings, and audience policy used for the
-outbound action.
+Outbound target selection uses Helidon's common `OutboundTarget` model. Configure targets as the provider-level
+`outbound` list. A target can match by transport, host, path, and method. The matching target selects the OIDC outbound
+action; the resolved tenant supplies the issuer, client credentials, Token Endpoint, and TLS settings used to perform
+that action.
 
 Token Propagation sends the current user `TokenCredential` as `Authorization: Bearer <access-token>`. It is never applied
-tenant-wide without a matching outbound target.
+without a matching outbound target.
 
 ```yaml
 security:
@@ -805,11 +805,11 @@ security:
           web:
             outbound:
               token-propagation-enabled: true
-              targets:
-                - name: orders-api
-                  transports: [ "https" ]
-                  hosts: [ "orders.internal.example" ]
-                  paths: [ "/orders/.*" ]
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
 ```
 
 Target configuration can select the OIDC outbound strategy directly and can restrict propagated tokens by audience. If an
@@ -824,14 +824,13 @@ security:
         tenants:
           web:
             issuer: "https://issuer.example"
-            outbound:
-              targets:
-                - name: orders-api
-                  transports: [ "https" ]
-                  hosts: [ "orders.internal.example" ]
-                  paths: [ "/orders/.*" ]
-                  token-propagation-enabled: true
-                  audience: "api://orders"
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
+            token-propagation-enabled: true
+            audience: "api://orders"
 ```
 
 Client Credentials Grant obtains an access token from the Token Endpoint with `grant_type=client_credentials` and applies
@@ -846,8 +845,8 @@ certificate chain, an SSL context, or a custom TLS manager. The provider relies 
 certificate handshake, and the Token Endpoint must use HTTPS. `token-endpoint-auth-method: NONE` is rejected for this
 grant.
 
-If any tenant `outbound.targets` entry enables Client Credentials Grant directly, that tenant must meet these Client
-Credentials prerequisites.
+If any provider `outbound` target enables Client Credentials Grant directly, each enabled tenant must meet these Client
+Credentials prerequisites because the resolved tenant supplies the Token Endpoint and client authentication settings.
 
 ```yaml
 security:
@@ -860,18 +859,17 @@ security:
             token-endpoint-auth-method: CLIENT_SECRET_BASIC
             endpoints:
               token-endpoint-uri: "https://issuer.example/token"
-            outbound:
-              targets:
-                - name: inventory-api
-                  transports: [ "https" ]
-                  hosts: [ "inventory.internal.example" ]
-                  client-credentials-grant-enabled: true
+        outbound:
+          - name: inventory-api
+            transports: [ "https" ]
+            hosts: [ "inventory.internal.example" ]
+            client-credentials-grant-enabled: true
 ```
 
-If `client-credentials-grant-enabled` is configured directly on a tenant and no tenant `outbound.targets` are
-configured, the provider can apply Client Credentials Grant tenant-wide. Configure targets when outbound tokens must be
-limited to specific
-downstream services.
+If `client-credentials-grant-enabled` is configured directly on a tenant and no provider `outbound` targets are
+configured, the provider can apply Client Credentials Grant tenant-wide. When provider `outbound` targets are configured,
+tenant-level outbound policy applies only through matching targets that do not select a target-level policy. Configure
+targets when outbound tokens must be limited to specific downstream services.
 
 Programmatic outbound target configuration:
 
@@ -891,8 +889,8 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
 OidcProviderConfig config = OidcProviderConfig.builder()
         .putTenant("web", OidcTenantConfig.builder()
                 .issuer(URI.create("https://issuer.example"))
-                .outbound(outbound -> outbound.targets(List.of(ordersApi)))
                 .buildPrototype())
+        .outboundTargets(List.of(ordersApi))
         .buildPrototype();
 ```
 
@@ -1104,6 +1102,7 @@ Provider options:
 | `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one tenant is configured. |
 | `tenant-resolution` | Tenant resolution rules. |
 | `tenants` | Map of tenant id to tenant configuration. |
+| `outbound` | Provider-level outbound target list using Helidon's common `OutboundTarget` model. Targets can match transport, host, path, and method, and may select Token Propagation or Client Credentials Grant. |
 
 Tenant options:
 
@@ -1130,9 +1129,8 @@ Tenant outbound options:
 
 | Key | Description |
 | --- | --- |
-| `token-propagation-enabled` | Enables Token Propagation for this tenant. This is applied only through matching `targets`. |
-| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without `targets`, this can apply tenant-wide. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
-| `targets` | Tenant-local outbound target list. Targets can match transport, host, path, and method, and may select Token Propagation or Client Credentials Grant. |
+| `token-propagation-enabled` | Enables Token Propagation for this tenant. This is applied only through matching provider-level `outbound` targets. |
+| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without provider-level `outbound` targets, this can apply tenant-wide. With provider-level targets, this applies only through matching targets that do not select a target-level policy. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 
 Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
 

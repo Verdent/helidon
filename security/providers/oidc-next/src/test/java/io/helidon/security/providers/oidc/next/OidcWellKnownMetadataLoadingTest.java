@@ -321,10 +321,10 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .endpoints(it -> it.tlsRequired(false))
-                .outbound(it -> it.targets(List.of(clientCredentialsTarget())))
                 .buildPrototype();
         OidcProviderConfig providerConfig = OidcProviderConfig.builder()
                 .putTenant("tenant", tenantConfig)
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype();
 
         OidcTenantContext context = OidcTenantRuntimeRegistry.create(providerConfig)

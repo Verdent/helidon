@@ -39,16 +39,21 @@ import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcOutboundOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
-    private final ConcurrentMap<OidcOutboundConfig, OutboundConfig> outboundConfigCache = new ConcurrentHashMap<>();
+    private final OutboundConfig outboundConfig;
     private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache = new ConcurrentHashMap<>();
     private final OidcClientCredentialsTokenManager clientCredentialsTokenManager = new OidcClientCredentialsTokenManager();
 
-    private OidcOutboundOrchestrator(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    private OidcOutboundOrchestrator(OidcProviderConfig providerConfig,
+                                     OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
+        OutboundConfig.Builder outboundConfig = OutboundConfig.builder();
+        providerConfig.outboundTargets().forEach(outboundConfig::addTarget);
+        this.outboundConfig = outboundConfig.build();
     }
 
-    static OidcOutboundOrchestrator create(OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcOutboundOrchestrator(tenantRuntimeRegistry);
+    static OidcOutboundOrchestrator create(OidcProviderConfig providerConfig,
+                                           OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        return new OidcOutboundOrchestrator(providerConfig, tenantRuntimeRegistry);
     }
 
     boolean isSupported(ProviderRequest providerRequest,
@@ -61,22 +66,21 @@ final class OidcOutboundOrchestrator {
 
     private Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenantConfig,
                                                        SecurityEnvironment outboundEnv,
-                                                       EndpointConfig outboundConfig) {
+                                                       EndpointConfig endpointConfig) {
         if (!outboundTargetTlsAllowed(tenantConfig, outboundEnv)) {
             return Optional.empty();
         }
 
-        Optional<OidcOutboundPolicy> endpointPolicy = outboundConfig == null
+        Optional<OidcOutboundPolicy> endpointPolicy = endpointConfig == null
                 ? Optional.empty()
-                : outboundConfig.instance(OidcOutboundPolicy.class);
+                : endpointConfig.instance(OidcOutboundPolicy.class);
         if (endpointPolicy.isPresent()) {
             return endpointPolicy;
         }
 
         Optional<OidcOutboundPolicy> tenantPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
-        OidcOutboundConfig outbound = tenantConfig.outbound();
-        if (!outbound.targets().isEmpty()) {
-            return matchingTarget(outbound, outboundEnv)
+        if (!outboundConfig.targets().isEmpty()) {
+            return matchingTarget(outboundEnv)
                     .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget)
                             .or(() -> targetAudiencePolicy(target, tenantPolicy))
                             .or(() -> tenantPolicy));
@@ -87,7 +91,7 @@ final class OidcOutboundOrchestrator {
         return tenantPolicy;
     }
 
-    private Optional<OutboundTarget> matchingTarget(OidcOutboundConfig outbound, SecurityEnvironment outboundEnv) {
+    private Optional<OutboundTarget> matchingTarget(SecurityEnvironment outboundEnv) {
         if (outboundEnv == null || outboundEnv.targetUri() == null) {
             return Optional.empty();
         }
@@ -97,14 +101,7 @@ final class OidcOutboundOrchestrator {
                 : outboundEnv.derive()
                         .transport(targetScheme.toLowerCase(Locale.ROOT))
                         .build();
-        return outboundConfigCache.computeIfAbsent(outbound, OidcOutboundOrchestrator::outboundTargetConfig)
-                .findTarget(targetEnv);
-    }
-
-    private static OutboundConfig outboundTargetConfig(OidcOutboundConfig outbound) {
-        OutboundConfig.Builder builder = OutboundConfig.builder();
-        outbound.targets().forEach(builder::addTarget);
-        return builder.build();
+        return outboundConfig.findTarget(targetEnv);
     }
 
     private boolean outboundTargetTlsAllowed(OidcTenantConfig tenantConfig, SecurityEnvironment outboundEnv) {

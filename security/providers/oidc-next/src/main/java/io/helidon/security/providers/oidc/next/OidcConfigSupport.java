@@ -107,6 +107,15 @@ final class OidcConfigSupport {
                 }
             });
 
+            if (targetClientCredentialsGrantEnabled(target.outboundTargets())) {
+                target.tenants()
+                        .values()
+                        .stream()
+                        .filter(OidcTenantConfig::enabled)
+                        .forEach(tenant -> validateClientCredentialsGrant(tenant,
+                                                                          tenant.endpoints(),
+                                                                          "Client Credentials Grant"));
+            }
         }
     }
 
@@ -439,7 +448,7 @@ final class OidcConfigSupport {
                     "Token Propagation and Client Credentials Grant cannot both be enabled without target selection");
         }
 
-        if (!outbound.clientCredentialsGrantEnabled() && !targetClientCredentialsGrantEnabled(outbound.targets())) {
+        if (!outbound.clientCredentialsGrantEnabled()) {
             return;
         }
 

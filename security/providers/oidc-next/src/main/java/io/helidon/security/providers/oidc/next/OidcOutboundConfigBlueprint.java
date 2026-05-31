@@ -16,12 +16,9 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.List;
-
 import io.helidon.builder.api.Description;
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-import io.helidon.security.providers.common.OutboundTarget;
 
 /**
  * Outbound OIDC/OAuth configuration.
@@ -55,17 +52,4 @@ interface OidcOutboundConfigBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean clientCredentialsGrantEnabled();
-
-    /**
-     * Outbound targets that may receive Token Propagation or Client Credentials Grant tokens for this tenant.
-     * <p>
-     * Each target uses Helidon's common {@link OutboundTarget} matching keys, and can include OIDC-specific target
-     * options from {@link OidcOutboundTargetConfig}, such as {@code token-propagation-enabled},
-     * {@code client-credentials-grant-enabled}, and {@code audience}.
-     *
-     * @return outbound targets for this tenant
-     */
-    @Option.Configured
-    @Option.Singular("target")
-    List<OutboundTarget> targets();
 }

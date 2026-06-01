@@ -80,7 +80,6 @@ class OidcProviderConfigTest {
         OidcCookieConfig cookies = OidcCookieConfig.create();
         OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
         OidcClientAssertionConfig clientAssertion = OidcClientAssertionConfig.create();
-        OidcOutboundConfig outbound = OidcOutboundConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -120,8 +119,6 @@ class OidcProviderConfigTest {
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
         assertThat(clientAssertion.lifetime(), is(Duration.ofMinutes(1)));
-        assertThat(outbound.tokenPropagationEnabled(), is(false));
-        assertThat(outbound.clientCredentialsGrantEnabled(), is(false));
         assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
                    is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -284,6 +281,105 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void singleTenantCanBeReadFromProviderRootConfig() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("issuer", ISSUER.toString()),
+                        Map.entry("client-id", "client-id"),
+                        Map.entry("client-secret", "client-secret-value"),
+                        Map.entry("endpoints.jwks-uri", JWKS_URI.toString()),
+                        Map.entry("protected-resource.token-validation.method", "JWT"),
+                        Map.entry("protected-resource.token-validation.audience", AUDIENCE))))
+                .build();
+
+        OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+
+        assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
+        assertThat(tenant.clientId().orElseThrow(), is("client-id"));
+        assertThat(tenant.clientSecret().orElseThrow(), is("client-secret-value"));
+        assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
+        assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
+                   is(OidcTokenValidationMethod.JWT));
+    }
+
+    @Test
+    void singleTenantCanBeBuiltFromProviderRootBuilder() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .buildPrototype();
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+
+        assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
+        assertThat(tenant.clientId().orElseThrow(), is("client-id"));
+        assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
+        assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
+                   is(OidcTokenValidationMethod.JWT));
+    }
+
+    @Test
+    void singleTenantRootBuilderCanBeReusedAndCopied() {
+        OidcProviderConfig.Builder builder = OidcProviderConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id");
+
+        OidcProviderConfig first = builder.buildPrototype();
+        OidcProviderConfig second = builder.buildPrototype();
+        OidcProviderConfig copy = OidcProviderConfig.builder()
+                .from(first)
+                .buildPrototype();
+
+        assertThat(second.tenants().get("default"), is(first.tenants().get("default")));
+        assertThat(copy.tenants().get("default"), is(first.tenants().get("default")));
+    }
+
+    @Test
+    void singleTenantRootBuilderDetectsNestedOnlyConfiguration() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .webClient(WebClientConfig.builder()
+                        .connectTimeout(Duration.ofSeconds(2))
+                        .buildPrototype())
+                .buildPrototype();
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+
+        assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
+        assertThat(tenant.webClient().connectTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
+    }
+
+    @Test
+    void singleTenantRootConfigUsesDefaultTenantNameWhenConfigured() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("default-tenant", "web",
+                                                     "issuer", ISSUER.toString())))
+                .build();
+
+        OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
+
+        assertThat(providerConfig.defaultTenant().orElseThrow(), is("web"));
+        assertThat(providerConfig.tenants().containsKey("web"), is(true));
+    }
+
+    @Test
+    void singleTenantRootConfigCannotBeCombinedWithTenants() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("issuer", ISSUER.toString(),
+                                                     "tenants.default.issuer", ISSUER.toString())))
+                .build();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.create(config));
+
+        assertThat(thrown.getMessage(), containsString("Root tenant configuration"));
+    }
+
+    @Test
     void tenantWebClientUsesOidcDefaultReadTimeoutUnlessConfigured() {
         OidcTenantConfig defaultTenant = OidcTenantConfig.create();
         OidcTenantConfig configuredTenant = OidcTenantConfig.builder()
@@ -315,13 +411,11 @@ class OidcProviderConfigTest {
                 .enabled(false)
                 .protectedResource(OidcProtectedResourceConfig.create())
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
 
         assertThat(tenant.enabled(), is(false));
         assertThat(tenant.protectedResource().orElseThrow().enabled(), is(true));
         assertThat(tenant.authorizationCode().orElseThrow().enabled(), is(true));
-        assertThat(tenant.outbound().clientCredentialsGrantEnabled(), is(true));
     }
 
     @Test
@@ -1171,14 +1265,18 @@ class OidcProviderConfigTest {
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(sslContextMutualTlsWebClient())
                 .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcTenantConfig customManagerTenant = OidcTenantConfig.builder()
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(customManagerMutualTlsWebClient())
                 .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+
+        OidcProviderConfig.builder()
+                .putTenant("ssl-context", sslContextTenant)
+                .putTenant("custom-manager", customManagerTenant)
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype();
 
         assertThat(sslContextTenant.tokenEndpointAuthenticationMethod().orElseThrow(),
@@ -1408,16 +1506,6 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void tenantWideOutboundOperationsCannotBeAmbiguous() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .outbound(it -> it.tokenPropagationEnabled(true)
-                        .clientCredentialsGrantEnabled(true))
-                .buildPrototype());
-
-        assertThat(thrown.getMessage(), containsString("Token Propagation and Client Credentials Grant"));
-    }
-
-    @Test
     void outboundTargetOperationsCannotBeAmbiguous() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundTargetConfig.builder()
@@ -1430,62 +1518,75 @@ class OidcProviderConfigTest {
 
     @Test
     void clientCredentialsGrantRequiresClientAuthenticationAndTokenEndpoint() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.create())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-id"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .clientId("client-id")
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId("client-id")
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("Token Endpoint authentication"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId("client-id")
+                        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .clientId("client-id")
-                .clientSecret("client-secret-value")
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId("client-id")
+                        .clientSecret("client-secret-value")
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
-                .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId("client-id")
+                        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                        .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
-                .webClient(mutualTlsWebClient())
-                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
-                        .tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId("client-id")
+                        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                                .tlsRequired(false))
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(URI.create("http://issuer.example"))
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
-                .webClient(mutualTlsWebClient())
-                .endpoints(it -> it.tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .issuer(URI.create("http://issuer.example"))
+                        .clientId("client-id")
+                        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.tlsRequired(false))
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("well-known-uri must use https"));
@@ -1495,7 +1596,11 @@ class OidcProviderConfigTest {
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
                 .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
+                .buildPrototype();
+
+        OidcProviderConfig.builder()
+                .putTenant("default", mutualTlsClientCredentials)
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype();
 
         assertThat(mutualTlsClientCredentials.tokenEndpointAuthenticationMethod().orElseThrow(),

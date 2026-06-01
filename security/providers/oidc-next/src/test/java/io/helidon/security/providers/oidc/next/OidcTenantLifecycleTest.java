@@ -47,7 +47,6 @@ class OidcTenantLifecycleTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .enabled(false)
                 .protectedResource(OidcProtectedResourceConfig.create())
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant", tenant)

@@ -112,8 +112,7 @@ final class OidcTenantContextFactory {
         if (endSession.isPresent() && staticMetadata.endSessionEndpointUri().isEmpty()) {
             return true;
         }
-        return (tenantConfig.outbound().clientCredentialsGrantEnabled() || outboundTargetClientCredentialsGrant)
-                && staticMetadata.tokenEndpointUri().isEmpty();
+        return outboundTargetClientCredentialsGrant && staticMetadata.tokenEndpointUri().isEmpty();
     }
 
     private static void validateIssuerMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
@@ -155,7 +154,7 @@ final class OidcTenantContextFactory {
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
                                                                OidcProviderMetadata metadata,
                                                                boolean outboundTargetClientCredentialsGrant) {
-        if (!tenantConfig.outbound().clientCredentialsGrantEnabled() && !outboundTargetClientCredentialsGrant) {
+        if (!outboundTargetClientCredentialsGrant) {
             return;
         }
 

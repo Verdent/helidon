@@ -55,14 +55,6 @@ final class OidcOutboundPolicy {
                         .flatMap(OidcOutboundPolicy::fromTargetConfig));
     }
 
-    static Optional<String> targetAudience(OutboundTarget target) {
-        return target.customObject(OidcOutboundTargetConfig.class)
-                .flatMap(OidcOutboundTargetConfig::audience)
-                .or(() -> target.getConfig()
-                        .map(OidcOutboundTargetConfig::create)
-                        .flatMap(OidcOutboundTargetConfig::audience));
-    }
-
     static Optional<OidcOutboundPolicy> fromTargetConfig(OidcOutboundTargetConfig config) {
         if (config.tokenPropagationEnabled()) {
             return Optional.of(tokenPropagation(config.audience().orElse(null)));

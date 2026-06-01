@@ -78,17 +78,11 @@ final class OidcOutboundOrchestrator {
             return endpointPolicy;
         }
 
-        Optional<OidcOutboundPolicy> tenantPolicy = OidcConfigSupport.outboundPolicy(tenantConfig);
         if (!outboundConfig.targets().isEmpty()) {
             return matchingTarget(outboundEnv)
-                    .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget)
-                            .or(() -> targetAudiencePolicy(target, tenantPolicy))
-                            .or(() -> tenantPolicy));
+                    .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget));
         }
-        if (tenantPolicy.filter(OidcOutboundPolicy::tokenPropagationEnabled).isPresent()) {
-            return Optional.empty();
-        }
-        return tenantPolicy;
+        return Optional.empty();
     }
 
     private Optional<OutboundTarget> matchingTarget(SecurityEnvironment outboundEnv) {
@@ -113,15 +107,6 @@ final class OidcOutboundOrchestrator {
         }
         String scheme = outboundEnv.targetUri().getScheme();
         return "https".equalsIgnoreCase(scheme);
-    }
-
-    private Optional<OidcOutboundPolicy> targetAudiencePolicy(OutboundTarget target,
-                                                             Optional<OidcOutboundPolicy> tenantPolicy) {
-        if (tenantPolicy.filter(OidcOutboundPolicy::tokenPropagationEnabled).isEmpty()) {
-            return Optional.empty();
-        }
-        return OidcOutboundPolicy.targetAudience(target)
-                .map(OidcOutboundPolicy::tokenPropagation);
     }
 
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
@@ -164,27 +149,41 @@ final class OidcOutboundOrchestrator {
 
     private OutboundSecurityResponse secureWithClientCredentials(OidcTenantContext tenantContext,
                                                                  SecurityEnvironment outboundEnv) {
+        OidcTenantContext clientCredentialsContext;
         try {
             OidcConfigSupport.validateClientCredentialsGrant(tenantContext.tenantConfig(),
                                                              tenantContext.tenantConfig().endpoints(),
                                                              "Client Credentials Grant");
-            tenantContext.metadata()
-                    .tokenEndpointUri()
-                    .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(
-                            uri,
-                            tenantContext.tenantConfig().endpoints().tlsRequired()));
+            clientCredentialsContext = clientCredentialsContext(tenantContext);
         } catch (RuntimeException e) {
             return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
         }
 
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
-        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(tenantContext, now);
+        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext, now);
         if (!tokenResult.succeeded()) {
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
         }
 
         OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
         return OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv, tokenResponse.accessToken()));
+    }
+
+    private OidcTenantContext clientCredentialsContext(OidcTenantContext tenantContext) {
+        OidcProviderMetadata metadata = tenantContext.metadata();
+        if (metadata.tokenEndpointUri().isEmpty() && metadata.wellKnownUri().isPresent()) {
+            metadata = new OidcProviderMetadataLoader(tenantContext.webClient()).load(metadata);
+        }
+        metadata.tokenEndpointUri()
+                .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                        uri,
+                        OidcConfigSupport.tokenEndpointTlsRequired(tenantContext.tenantConfig())));
+        return metadata == tenantContext.metadata()
+                ? tenantContext
+                : OidcTenantContext.ready(tenantContext.tenantId(),
+                                          tenantContext.tenantConfig(),
+                                          metadata,
+                                          tenantContext.webClient());
     }
 
     private Map<String, List<String>> headersWithBearer(SecurityEnvironment outboundEnv, String token) {

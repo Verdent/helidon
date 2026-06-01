@@ -50,7 +50,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationOnlyAppliesToMatchingOutboundTarget() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
 
@@ -64,8 +64,24 @@ class OidcTokenPropagationTest {
     }
 
     @Test
+    void rootSingleTenantOutboundTargetSupportsTokenPropagationWithoutNamedTenant() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .outboundTargets(List.of(ordersTarget()))
+                .buildPrototype());
+        ProviderRequest request = providerRequest(subject("api://orders"));
+        SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
+
+        var response = provider.outboundSecurity(request, outboundEnv, EndpointConfig.create());
+
+        assertThat(provider.isOutboundSupported(request, outboundEnv, EndpointConfig.create()), is(true));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer " + ACCESS_TOKEN)));
+    }
+
+    @Test
     void tokenPropagationReplacesExistingAuthorizationHeaderCaseInsensitively() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                 .targetUri(URI.create("https://api.example.com/orders/42"))
@@ -85,7 +101,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationCanUseRawTokenCredentialWithoutParsedClaims() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subjectWithRawToken());
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
 
@@ -98,7 +114,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationMatchesHttpsUriWhenEnvironmentTransportIsStale() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                 .targetUri(URI.create("https://api.example.com/orders/42"))
@@ -117,7 +133,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationMatchesUppercaseHttpsUriScheme() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("HTTPS://api.example.com/orders/42", "/orders/42");
 
@@ -131,7 +147,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationDoesNotApplyToArbitraryHost() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://other.example.com/orders/42", "/orders/42");
 
@@ -143,7 +159,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationDoesNotApplyWhenTransportDiffersFromUriScheme() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                 .targetUri(URI.create("http://api.example.com/orders/42"))
@@ -160,7 +176,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationDoesNotApplyToHttpTargetWhenTlsIsRequired() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTargetForAllTransports());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTargetForAllTransports());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("http://api.example.com/orders/42", "/orders/42");
 
@@ -211,7 +227,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationDoesNotApplyToOtherPath() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/billing/42", "/billing/42");
 
@@ -223,7 +239,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationDoesNotApplyToOtherMethod() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTarget());
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42", "POST");
 
@@ -235,7 +251,7 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationRequiresConfiguredTarget() {
-        OidcProvider provider = provider(tenantWithTokenPropagation());
+        OidcProvider provider = provider(OidcTenantConfig.create());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
 
@@ -296,18 +312,6 @@ class OidcTokenPropagationTest {
     }
 
     @Test
-    void targetAudienceRestrictsTenantTokenPropagation() {
-        OidcProvider provider = provider(tenantWithTokenPropagation(), ordersTargetAudienceOnly("api://billing"));
-        ProviderRequest request = providerRequest(subject("api://orders"));
-        SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
-
-        var response = provider.outboundSecurity(request, outboundEnv, EndpointConfig.create());
-
-        assertThat(provider.isOutboundSupported(request, outboundEnv, EndpointConfig.create()), is(true));
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
-    }
-
-    @Test
     void targetConfigurationCanSelectTokenPropagationAndAudience() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
@@ -331,12 +335,6 @@ class OidcTokenPropagationTest {
                    is(List.of("Bearer " + ACCESS_TOKEN)));
     }
 
-    private static OidcTenantConfig tenantWithTokenPropagation() {
-        return OidcTenantConfig.builder()
-                .outbound(it -> it.tokenPropagationEnabled(true))
-                .buildPrototype();
-    }
-
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenant)
@@ -350,6 +348,10 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .tokenPropagationEnabled(true)
+                                      .buildPrototype())
                 .build();
     }
 
@@ -358,18 +360,9 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .build();
-    }
-
-    private static OutboundTarget ordersTargetAudienceOnly(String audience) {
-        return OutboundTarget.builder("orders")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/orders/.*")
-                .addMethod("GET")
                 .customObject(OidcOutboundTargetConfig.class,
                               OidcOutboundTargetConfig.builder()
-                                      .audience(audience)
+                                      .tokenPropagationEnabled(true)
                                       .buildPrototype())
                 .build();
     }

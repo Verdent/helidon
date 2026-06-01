@@ -23,7 +23,6 @@ import java.util.function.Function;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
-import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.webclient.api.HttpClientRequest;
@@ -123,7 +122,7 @@ final class OidcEndpointClient {
                  * returned"; "The content-type of the HTTP response MUST be `application/json` if the response body is
                  * a text JSON object".
                  */
-                if (response.headers().contentType().filter(HttpMediaTypes.JSON_PREDICATE::test).isEmpty()) {
+                if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
                     return Optional.empty();
                 }
                 return Optional.of(response.as(JsonObject.class));
@@ -159,11 +158,19 @@ final class OidcEndpointClient {
 
             try (HttpClientResponse response = request.submit(form.build())) {
                 if (response.status().family() == Status.Family.SUCCESSFUL) {
+                    if (!OidcHttpResponseValidation.hasJsonContentType(response)
+                            || !OidcHttpResponseValidation.hasNoStoreCacheControl(response)
+                            || !OidcHttpResponseValidation.hasNoCachePragma(response)) {
+                        return OidcTokenEndpointResult.failure("Token Endpoint response is invalid");
+                    }
                     try {
                         return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
                     } catch (RuntimeException e) {
                         return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
                     }
+                }
+                if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
+                    return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid");
                 }
                 try {
                     return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));

@@ -135,6 +135,7 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateClientAssertion(target.clientAssertion());
+            target.issuer().ifPresent(uri -> validateIssuerUri(uri, target.endpoints().tlsRequired()));
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
@@ -244,9 +245,10 @@ final class OidcConfigSupport {
         boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
                 || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
                                                         tenant.tokenEndpointAuthenticationMethod());
-        authorizationCode.redirectionEndpointUri()
+        URI redirectionEndpointUri = authorizationCode.redirectionEndpointUri()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
+        validateRedirectionEndpointUri(redirectionEndpointUri, endpoints.tlsRequired());
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
         requireEndpointOrWellKnown(endpoints.authorizationEndpointUri(),
                                    wellKnownUri,
@@ -547,7 +549,7 @@ final class OidcConfigSupport {
         }
     }
 
-    private static void validateAuthorizationEndpointUri(URI uri, boolean tlsRequired) {
+    static void validateAuthorizationEndpointUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
@@ -559,6 +561,30 @@ final class OidcConfigSupport {
          */
         validateHttpsEndpointUri("authorization-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("authorization-endpoint-uri", uri);
+    }
+
+    static void validateIssuerUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "URL using the `https` scheme"; "no query or fragment components".
+         */
+        validateHttpsEndpointUri("issuer", uri, tlsRequired, false);
+        validateNoQuery("issuer", uri);
+        validateNoFragment("issuer", uri);
+    }
+
+    private static void validateRedirectionEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: RFC 6749, 3.1.2 Redirection Endpoint
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2
+         * Quotes: "MUST be an absolute URI"; "MUST NOT include a fragment component".
+         */
+        if (!uri.isAbsolute()) {
+            throw new IllegalArgumentException("redirection-endpoint-uri must be an absolute URI: " + uri);
+        }
+        validateHttpsEndpointUri("redirection-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("redirection-endpoint-uri", uri);
     }
 
     static void validateJwksUri(URI uri, boolean tlsRequired) {
@@ -648,6 +674,12 @@ final class OidcConfigSupport {
     private static void validateNoFragment(String configKey, URI uri) {
         if (uri.getRawFragment() != null) {
             throw new IllegalArgumentException(configKey + " must not include a fragment component: " + uri);
+        }
+    }
+
+    private static void validateNoQuery(String configKey, URI uri) {
+        if (uri.getRawQuery() != null) {
+            throw new IllegalArgumentException(configKey + " must not include a query component: " + uri);
         }
     }
 

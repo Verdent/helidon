@@ -391,6 +391,42 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void missingIssueTimeIsRejected() {
+        String token = signedToken(it -> it.issueTime(null));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void missingJwtIdIsRejected() {
+        String token = signedToken(it -> it.jwtId(null));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void missingClientIdIsRejected() {
+        String token = signedToken(it -> it.removePayloadClaim("client_id"));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void blankClientIdIsRejected() {
+        String token = signedToken(it -> it.addPayloadClaim("client_id", " "));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
         String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", it -> { });
 
@@ -570,6 +606,8 @@ class OidcJwtAccessTokenValidationTest {
                 .keyId(keyId)
                 .issueTime(now)
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .jwtId("jwt-id")
+                .addPayloadClaim("client_id", "calling-client")
                 .addAudience(AUDIENCE);
         if (accessTokenType) {
             builder.type("at+jwt");

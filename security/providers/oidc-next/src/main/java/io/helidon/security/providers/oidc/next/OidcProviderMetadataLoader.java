@@ -46,8 +46,12 @@ final class OidcProviderMetadataLoader {
             /*
              * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
              * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationResponse
-             * Quote: "The response is a set of Claims about the OpenID Provider's configuration".
-            */
+             * Quotes: "The response is a set of Claims about the OpenID Provider's configuration";
+             * "MUST be returned using the `application/json` content type".
+             */
+            if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
+                throw new IllegalStateException("well-known metadata response must be application/json");
+            }
             JsonObject json = response.as(JsonObject.class);
             return staticMetadata.mergeWellKnownMetadata(OidcProviderMetadata.fromWellKnownMetadataJson(json));
         } catch (RuntimeException e) {

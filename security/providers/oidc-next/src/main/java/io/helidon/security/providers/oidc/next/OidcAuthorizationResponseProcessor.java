@@ -131,11 +131,29 @@ final class OidcAuthorizationResponseProcessor {
             /*
              * Spec: RFC 6749, 4.1.2.1 Error Response
              * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2.1
-             * Quotes: "`error` REQUIRED"; "`state` REQUIRED if a `state` parameter was present".
+             * Quotes: "`error` REQUIRED"; "`state` REQUIRED if a `state` parameter was present";
+             * "MUST NOT include characters outside"; "MUST conform to the URI-reference syntax".
              */
-            return OidcAuthorizationResponseResult.authorizationError(error.orElseThrow().value(),
-                                                                      errorDescription.map(ParameterValue::value)
-                                                                              .orElse(null),
+            String errorValue = error.orElseThrow().value();
+            if (!OidcOAuthErrorFields.validError(errorValue)) {
+                return OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response error contains invalid characters",
+                        stateRemovalCookie);
+            }
+            Optional<String> errorDescriptionValue = errorDescription.map(ParameterValue::value);
+            if (errorDescriptionValue.filter(value -> !OidcOAuthErrorFields.validErrorDescription(value)).isPresent()) {
+                return OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response error_description contains invalid characters",
+                        stateRemovalCookie);
+            }
+            Optional<String> errorUriValue = errorUri.map(ParameterValue::value);
+            if (errorUriValue.filter(value -> !OidcOAuthErrorFields.validErrorUri(value)).isPresent()) {
+                return OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response error_uri is invalid",
+                        stateRemovalCookie);
+            }
+            return OidcAuthorizationResponseResult.authorizationError(errorValue,
+                                                                      errorDescriptionValue.orElse(null),
                                                                       storedState.tenantContext(),
                                                                       state,
                                                                       stateRemovalCookie);

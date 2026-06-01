@@ -186,6 +186,67 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     @Test
+    void authorizationErrorResponseRejectsInvalidErrorCharacters() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("error=access%5Cdenied&state=stored-state"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response error contains invalid characters"));
+    }
+
+    @Test
+    void authorizationErrorResponseRejectsInvalidErrorDescriptionCharacters() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("error=access_denied"
+                                                                                 + "&error_description=bad%22value"
+                                                                                 + "&state=stored-state"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response error_description contains invalid characters"));
+    }
+
+    @Test
+    void authorizationErrorResponseRejectsInvalidErrorUri() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("error=access_denied"
+                                                                                 + "&error_uri=https://issuer.example/error%20docs"
+                                                                                 + "&state=stored-state"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response error_uri is invalid"));
+    }
+
+    @Test
     void redirectionEndpointMismatchFailsAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);

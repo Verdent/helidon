@@ -1183,6 +1183,8 @@ class OidcFeatureRouteTest {
 
     private static void tokenEndpointResponse(ServerResponse response) {
         response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .header(HeaderNames.CACHE_CONTROL, "no-store")
+                .header(HeaderNames.PRAGMA, "no-cache")
                 .send(tokenEndpointResponseBody);
     }
 

@@ -516,6 +516,52 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void issuerRejectsInsecureUriByDefault() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(URI.create("http://issuer.example"))
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("issuer must use https"));
+    }
+
+    @Test
+    void endpointTlsRequirementCanBeDisabledForIssuer() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(URI.create("http://issuer.example"))
+                .endpoints(it -> it.jwksUri(JWKS_URI)
+                        .tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
+    void issuerRejectsQueryAndFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(URI.create("https://issuer.example?tenant=default"))
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("issuer must not include a query"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(URI.create("https://issuer.example#fragment"))
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("issuer must not include a fragment"));
+    }
+
+    @Test
     void jwtValidationCanExplicitlyDisableAudienceValidation() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -648,6 +694,54 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri"));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsInvalidRedirectionEndpointUri() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("/oidc/callback")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must be an absolute URI"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback#fragment")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must not include a fragment"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("http://rp.example/oidc/callback")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must use https"));
+    }
+
+    @Test
+    void endpointTlsRequirementCanBeDisabledForRedirectionEndpoint() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("http://rp.example/oidc/callback")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(tenant.endpoints().tlsRequired(), is(false));
     }
 
     @Test

@@ -60,6 +60,11 @@ final class OidcTenantContextFactory {
                                                                        outboundTargetClientCredentialsGrant)
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
+                validateIssuerMetadata(tenantConfig, metadata);
+                validateAuthorizationCodeMetadata(tenantConfig, metadata);
+                validateClientCredentialsGrantMetadata(tenantConfig,
+                                                       metadata,
+                                                       outboundTargetClientCredentialsGrant);
                 validateJwtMetadata(tenantConfig, metadata);
                 validateIntrospectionMetadata(tenantConfig, metadata);
                 validateUserInfoMetadata(tenantConfig, metadata);
@@ -109,6 +114,76 @@ final class OidcTenantContextFactory {
         }
         return (tenantConfig.outbound().clientCredentialsGrantEnabled() || outboundTargetClientCredentialsGrant)
                 && staticMetadata.tokenEndpointUri().isEmpty();
+    }
+
+    private static void validateIssuerMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        metadata.issuer()
+                .ifPresent(uri -> OidcConfigSupport.validateIssuerUri(uri, tenantConfig.endpoints().tlsRequired()));
+    }
+
+    private static void validateAuthorizationCodeMetadata(OidcTenantConfig tenantConfig,
+                                                          OidcProviderMetadata metadata) {
+        if (tenantConfig.authorizationCode().filter(OidcAuthorizationCodeConfig::enabled).isEmpty()) {
+            return;
+        }
+
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "`authorization_endpoint` REQUIRED"; "`token_endpoint` ... REQUIRED unless".
+         */
+        metadata.authorizationEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateAuthorizationEndpointUri(
+                                         uri,
+                                         tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata authorization_endpoint must be present for "
+                                                     + "Authorization Code Flow");
+                                 });
+        metadata.tokenEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                                         uri,
+                                         tokenEndpointTlsRequired(tenantConfig)),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata token_endpoint must be present for "
+                                                     + "Authorization Code Flow");
+                                 });
+    }
+
+    private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
+                                                               OidcProviderMetadata metadata,
+                                                               boolean outboundTargetClientCredentialsGrant) {
+        if (!tenantConfig.outbound().clientCredentialsGrantEnabled() && !outboundTargetClientCredentialsGrant) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "`token_endpoint` OPTIONAL.  URL of the authorization server's OAuth 2.0 token endpoint".
+         */
+        metadata.tokenEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                                         uri,
+                                         tokenEndpointTlsRequired(tenantConfig)),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata token_endpoint must be present for "
+                                                     + "Client Credentials Grant");
+                                 });
+    }
+
+    private static boolean tokenEndpointTlsRequired(OidcTenantConfig tenantConfig) {
+        return tenantConfig.endpoints().tlsRequired() || mutualTlsTokenEndpointAuthentication(tenantConfig);
+    }
+
+    private static boolean mutualTlsTokenEndpointAuthentication(OidcTenantConfig tenantConfig) {
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
     private static void validateJwtMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
@@ -204,10 +279,7 @@ final class OidcTenantContextFactory {
     }
 
     static void validateMutualTlsMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        OidcClientAuthenticationMethod method =
-                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
-        if (method != OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                && method != OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH) {
+        if (!mutualTlsTokenEndpointAuthentication(tenantConfig)) {
             return;
         }
 

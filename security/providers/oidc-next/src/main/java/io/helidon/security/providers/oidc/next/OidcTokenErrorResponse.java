@@ -41,9 +41,20 @@ final class OidcTokenErrorResponse {
         String error = stringValue(json, "error")
                 .filter(value -> !value.isBlank())
                 .orElseThrow(() -> new IllegalArgumentException("Token Endpoint Error Response is invalid"));
+        if (!OidcOAuthErrorFields.validError(error)) {
+            throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
+        }
+        String errorDescription = stringValue(json, "error_description").orElse(null);
+        if (errorDescription != null && !OidcOAuthErrorFields.validErrorDescription(errorDescription)) {
+            throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
+        }
+        String errorUri = stringValue(json, "error_uri").orElse(null);
+        if (errorUri != null && !OidcOAuthErrorFields.validErrorUri(errorUri)) {
+            throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
+        }
         return new OidcTokenErrorResponse(error,
-                                          stringValue(json, "error_description").orElse(null),
-                                          stringValue(json, "error_uri").orElse(null));
+                                          errorDescription,
+                                          errorUri);
     }
 
     String error() {

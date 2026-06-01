@@ -73,7 +73,7 @@ final class OidcTenantContextFactory {
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
                 LOGGER.log(System.Logger.Level.DEBUG, "OIDC tenant initialization failed: " + tenantId, e);
-                return OidcTenantContext.failed(tenantId, tenantConfig);
+                return OidcTenantContext.failed(tenantId, tenantConfig, e);
             }
         };
     }

@@ -151,6 +151,10 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
+        Throwable failureCause = context.failureCause().orElseThrow();
+        assertThat(failureCause.getMessage(), is("Failed to load well-known metadata"));
+        assertThat(failureCause.getCause().getMessage(),
+                   is("well-known metadata response must be application/json"));
     }
 
     @Test

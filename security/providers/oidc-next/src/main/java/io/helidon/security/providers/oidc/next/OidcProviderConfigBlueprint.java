@@ -34,7 +34,7 @@ import io.helidon.security.spi.SecurityProvider;
 @Prototype.Blueprint(decorator = OidcConfigSupport.ProviderDecorator.class)
 @Prototype.Configured(value = OidcProviderService.PROVIDER_CONFIG_KEY, root = false)
 @Prototype.Provides({SecurityProvider.class, AuthenticationProvider.class, OutboundSecurityProvider.class})
-interface OidcProviderConfigBlueprint extends Prototype.Factory<OidcProvider> {
+interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, Prototype.Factory<OidcProvider> {
 
     /**
      * Provider name used by Helidon Security.

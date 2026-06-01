@@ -547,7 +547,6 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
                 .mergeWellKnownMetadata(wellKnownMetadata);
@@ -575,7 +574,6 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
                 .mergeWellKnownMetadata(wellKnownMetadata);

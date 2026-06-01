@@ -161,9 +161,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void clientCredentialsGrantObtainsTokenAndUsesClientSecretBasic() {
-        OidcProvider provider = provider(confidentialTenant(null,
-                                                           true,
-                                                           tenant -> tenant.webClient(tenantWebClient())));
+        OidcProvider provider = provider(confidentialTenant(null, tenant -> tenant.webClient(tenantWebClient())));
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(), outboundEnv, EndpointConfig.create());
@@ -396,8 +394,24 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void endpointClientCredentialsGrantCanUseWellKnownMetadataTokenEndpoint() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", confidentialTenantFromWellKnown())
+                .buildPrototype());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      clientCredentialsEndpointConfig());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token")));
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
     void outboundTargetCanSelectClientCredentialsGrant() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -413,7 +427,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantMatchesHttpsUriWhenEnvironmentTransportIsStale() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                 .targetUri(URI.create("https://api.example.com/resource"))
                 .transport("http")
@@ -434,7 +448,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantMatchesUppercaseHttpsUriScheme() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = outboundEnvironment("HTTPS://api.example.com/resource", "/resource");
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -450,7 +464,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantDoesNotApplyToOtherHost() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = outboundEnvironment("https://other.example.com/resource", "/resource");
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -464,7 +478,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantDoesNotApplyWhenTransportDiffersFromUriScheme() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                 .targetUri(URI.create("http://api.example.com/resource"))
                 .transport("https")
@@ -501,32 +515,31 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
-    void tenantWideClientCredentialsGrantDoesNotApplyToHttpWhenTlsIsRequired() {
+    void endpointClientCredentialsGrantDoesNotApplyToHttpWhenTlsIsRequired() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.tokenEndpointUri(URI.create("https://issuer.example/token")))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProvider provider = provider(tenant);
         SecurityEnvironment outboundEnv = outboundEnvironment("http://api.example.com/resource", "/resource");
+        EndpointConfig outboundConfig = clientCredentialsEndpointConfig();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnv,
-                                                                      EndpointConfig.create());
+                                                                      outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, outboundConfig), is(false));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 
     @Test
-    void tenantWideClientCredentialsGrantDoesNotApplyWhenTargetUriIsMissingAndTlsIsRequired() {
+    void endpointClientCredentialsGrantDoesNotApplyWhenTargetUriIsMissingAndTlsIsRequired() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.tokenEndpointUri(URI.create("https://issuer.example/token")))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProvider provider = provider(tenant);
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
@@ -534,23 +547,23 @@ class OidcClientCredentialsGrantTest {
                 .path("/resource")
                 .method("GET")
                 .build();
+        EndpointConfig outboundConfig = clientCredentialsEndpointConfig();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnv,
-                                                                      EndpointConfig.create());
+                                                                      outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, outboundConfig), is(false));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 
     @Test
-    void tenantWideClientCredentialsGrantDoesNotApplyWhenTargetUriHasNoSchemeAndTlsIsRequired() {
+    void endpointClientCredentialsGrantDoesNotApplyWhenTargetUriHasNoSchemeAndTlsIsRequired() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.tokenEndpointUri(URI.create("https://issuer.example/token")))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
         OidcProvider provider = provider(tenant);
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
@@ -559,19 +572,20 @@ class OidcClientCredentialsGrantTest {
                 .path("/resource")
                 .method("GET")
                 .build();
+        EndpointConfig outboundConfig = clientCredentialsEndpointConfig();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnv,
-                                                                      EndpointConfig.create());
+                                                                      outboundConfig);
 
-        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, EndpointConfig.create()), is(false));
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnv, outboundConfig), is(false));
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 
     @Test
     void clientCredentialsGrantCanUseHttpOutboundTargetWhenTlsRequirementIsDisabled() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTargetForAllTransports());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTargetForAllTransports());
         SecurityEnvironment outboundEnv = outboundEnvironment("http://api.example.com/resource", "/resource");
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -586,7 +600,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantDoesNotApplyToOtherPath() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/other", "/other");
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -600,7 +614,7 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void outboundTargetClientCredentialsGrantDoesNotApplyToOtherMethod() {
-        OidcProvider provider = provider(confidentialTenantWithoutOutbound(), clientCredentialsTarget());
+        OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/resource", "/resource", "POST");
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -778,7 +792,6 @@ class OidcClientCredentialsGrantTest {
                 .toString();
         OidcProvider provider = provider(confidentialTenant(
                 OidcClientAuthenticationMethod.CLIENT_SECRET_POST,
-                true,
                 tenant -> tenant.webClient(redirectFollowingTenantWebClient())));
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -794,10 +807,12 @@ class OidcClientCredentialsGrantTest {
 
     @Test
     void missingTokenEndpointMapsToOutboundFailure() {
-        OidcProvider provider = provider(OidcTenantConfig.builder()
-                                         .clientId(CLIENT_ID)
-                                         .clientSecret(CLIENT_SECRET)
-                                         .buildPrototype());
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .clientId(CLIENT_ID)
+                        .clientSecret(CLIENT_SECRET)
+                        .buildPrototype())
+                .buildPrototype());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
                 .build();
@@ -846,19 +861,10 @@ class OidcClientCredentialsGrantTest {
     }
 
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method) {
-        return confidentialTenant(method, true);
-    }
-
-    private OidcTenantConfig confidentialTenantWithoutOutbound() {
-        return confidentialTenant(null, false);
-    }
-
-    private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method, boolean outboundEnabled) {
-        return confidentialTenant(method, outboundEnabled, tenant -> { });
+        return confidentialTenant(method, tenant -> { });
     }
 
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method,
-                                                boolean outboundEnabled,
                                                 Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
@@ -869,12 +875,7 @@ class OidcClientCredentialsGrantTest {
                     }
                 })
                 .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
-                        .tlsRequired(false))
-                .update(builder -> {
-                    if (outboundEnabled) {
-                        builder.outbound(it -> it.clientCredentialsGrantEnabled(true));
-                    }
-                });
+                        .tlsRequired(false));
         tenantCustomizer.accept(tenantBuilder);
         return tenantBuilder.buildPrototype();
     }
@@ -888,7 +889,6 @@ class OidcClientCredentialsGrantTest {
                         .algorithm("RS256"))
                 .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
     }
 
@@ -899,7 +899,6 @@ class OidcClientCredentialsGrantTest {
                 .webClient(mutualTlsWebClient())
                 .endpoints(it -> it.tokenEndpointUri(secureTokenEndpointUri)
                         .tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
     }
 
@@ -915,7 +914,6 @@ class OidcClientCredentialsGrantTest {
                 .webClient(mutualTlsWebClient())
                 .endpoints(it -> it.wellKnownUri(mutualTlsServerUri.resolve(".well-known/openid-configuration"))
                         .tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
     }
 
@@ -931,7 +929,6 @@ class OidcClientCredentialsGrantTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
                 .userInfo(it -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
     }
 
@@ -941,7 +938,6 @@ class OidcClientCredentialsGrantTest {
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.tlsRequired(false))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
     }
 
@@ -1028,10 +1024,19 @@ class OidcClientCredentialsGrantTest {
     }
 
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
+        List<OutboundTarget> targets = outboundTargets.length == 0
+                ? List.of(clientCredentialsTarget())
+                : List.of(outboundTargets);
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenant)
-                                           .outboundTargets(List.of(outboundTargets))
+                                           .outboundTargets(targets)
                                            .buildPrototype());
+    }
+
+    private static EndpointConfig clientCredentialsEndpointConfig() {
+        return EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .build();
     }
 
     private static ProviderRequest providerRequest() {

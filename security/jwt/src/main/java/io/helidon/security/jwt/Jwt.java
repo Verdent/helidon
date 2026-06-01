@@ -235,6 +235,8 @@ public class Jwt {
     private final Optional<byte[]> cHash;
     //Use of the nonce Claim is REQUIRED for hybrid flow.
     private final Optional<String> nonce;
+    private final boolean serializeDerivedClaims;
+    private final boolean userPrincipalExplicit;
 
     /**
      * Create a token based on json.
@@ -295,6 +297,8 @@ public class Jwt {
         this.userPrincipal = JwtUtil.getString(payloadJson, USER_PRINCIPAL)
                 .or(() -> preferredUsername)
                 .or(() -> subject);
+        this.serializeDerivedClaims = true;
+        this.userPrincipalExplicit = payloadJson.containsKey(USER_PRINCIPAL);
     }
 
     private Jwt(Builder builder) {
@@ -345,6 +349,9 @@ public class Jwt {
                 .or(() -> toOptionalString(builder.payloadClaims, USER_PRINCIPAL))
                 .or(() -> preferredUsername)
                 .or(() -> subject);
+        this.serializeDerivedClaims = builder.serializeDerivedClaims;
+        this.userPrincipalExplicit = builder.userPrincipal.isPresent()
+                || builder.payloadClaims.containsKey(USER_PRINCIPAL);
 
         this.userGroups = builder.userGroups;
     }
@@ -782,7 +789,9 @@ public class Jwt {
         this.issueTime.ifPresent(it -> objectBuilder.set(ISSUED_AT, it.getEpochSecond()));
         this.notBefore.ifPresent(it -> objectBuilder.set(NOT_BEFORE, it.getEpochSecond()));
         this.subject.ifPresent(it -> objectBuilder.set(SUBJECT, it));
-        this.userPrincipal.ifPresent(it -> objectBuilder.set(USER_PRINCIPAL, it));
+        if (serializeDerivedClaims || userPrincipalExplicit) {
+            this.userPrincipal.ifPresent(it -> objectBuilder.set(USER_PRINCIPAL, it));
+        }
         this.userGroups.ifPresent(it -> objectBuilder.set(USER_GROUPS, JsonArray.createStrings(it)));
         this.audience.ifPresent(it -> objectBuilder.set(AUDIENCE, JsonArray.createStrings(it)));
         this.jwtId.ifPresent(it -> objectBuilder.set(JWT_ID, it));
@@ -852,6 +861,7 @@ public class Jwt {
         private Optional<byte[]> cHash = Optional.empty();
         private Optional<String> nonce = Optional.empty();
         private Optional<List<String>> scopes = Optional.empty();
+        private boolean serializeDerivedClaims = true;
 
         private Builder() {
         }
@@ -1043,6 +1053,20 @@ public class Jwt {
          */
         public Builder userPrincipal(String principal) {
             this.userPrincipal = Optional.ofNullable(principal);
+            return this;
+        }
+
+        /**
+         * Whether to serialize claims that are derived from fallback rules instead of being explicitly configured.
+         * This currently affects the MicroProfile JWT {@code upn} claim, which is resolved from
+         * {@code preferred_username} and then {@code sub} when {@code upn} is not explicitly configured.
+         * Defaults to {@code true} for backward compatibility. Explicitly configured claims are always serialized.
+         *
+         * @param serializeDerivedClaims whether to serialize derived claims
+         * @return updated builder instance
+         */
+        public Builder serializeDerivedClaims(boolean serializeDerivedClaims) {
+            this.serializeDerivedClaims = serializeDerivedClaims;
             return this;
         }
 

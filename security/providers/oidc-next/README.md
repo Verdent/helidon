@@ -2,8 +2,8 @@
 
 This document describes the current `oidc-next` security provider implementation.
 
-The provider is tenant based. Even a single-tenant application configures one tenant under `tenants`, but when exactly
-one tenant is configured the provider automatically uses it as the default tenant.
+Single-tenant applications configure tenant options directly under `oidc-next`. Multi-tenant applications configure
+named tenants under `tenants` and use `default-tenant` or `tenant-resolution` to select one for each request.
 
 ## Supported Use Cases
 
@@ -44,12 +44,10 @@ The provider config key is `oidc-next`.
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
+        issuer: "https://issuer.example"
 ```
 
-For a single tenant, `default-tenant` is optional. The only configured tenant is selected automatically.
+For a single tenant, no `tenants` or `default-tenant` block is required.
 `protected-resource` and `authorization-code` are not configured by default. Adding either block enables that part of the
 provider unless the block explicitly sets `enabled: false`.
 
@@ -57,15 +55,13 @@ provider unless the block explicitly sets `enabled: false`.
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
-            endpoints:
-              jwks-uri: "https://issuer.example/jwks"
-            protected-resource:
-              token-validation:
-                method: JWT
-                audience: "api://orders"
+        issuer: "https://issuer.example"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: "api://orders"
 ```
 
 For multiple tenants, configure `default-tenant` or tenant resolution.
@@ -101,7 +97,6 @@ import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
-import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClientConfig;
@@ -113,16 +108,14 @@ Create a JWT Protected Resource provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .putTenant("main", OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example"))
-                .endpoints(endpoints -> endpoints
-                        .jwksUri(URI.create("https://issuer.example/jwks")))
-                .protectedResource(protectedResource -> protectedResource
-                        .tokenValidation(tokenValidation -> tokenValidation
-                                .method(OidcTokenValidationMethod.JWT)
-                                .audience("api://orders")
-                                .allowedAlgorithms(List.of("RS256"))))
-                .buildPrototype())
+        .issuer(URI.create("https://issuer.example"))
+        .endpoints(endpoints -> endpoints
+                .jwksUri(URI.create("https://issuer.example/jwks")))
+        .protectedResource(protectedResource -> protectedResource
+                .tokenValidation(tokenValidation -> tokenValidation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://orders")
+                        .allowedAlgorithms(List.of("RS256"))))
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
@@ -132,17 +125,15 @@ Create an introspection Protected Resource provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .putTenant("main", OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example"))
-                .clientId(System.getenv("OIDC_CLIENT_ID"))
-                .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
-                .endpoints(endpoints -> endpoints
-                        .introspectionEndpointUri(URI.create("https://issuer.example/oauth2/introspect")))
-                .protectedResource(protectedResource -> protectedResource
-                        .tokenValidation(tokenValidation -> tokenValidation
-                                .method(OidcTokenValidationMethod.INTROSPECTION)
-                                .audience("api://orders")))
-                .buildPrototype())
+        .issuer(URI.create("https://issuer.example"))
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .endpoints(endpoints -> endpoints
+                .introspectionEndpointUri(URI.create("https://issuer.example/oauth2/introspect")))
+        .protectedResource(protectedResource -> protectedResource
+                .tokenValidation(tokenValidation -> tokenValidation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://orders")))
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
@@ -152,19 +143,17 @@ Create an Authorization Code Flow provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .putTenant("web", OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example"))
-                .clientId(System.getenv("OIDC_CLIENT_ID"))
-                .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                .authorizationCode(authorizationCode -> authorizationCode
-                        .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
-                        .scopes(List.of("openid", "profile", "email")))
-                .logout(logout -> logout
-                        .localEndpointUri(URI.create("/oidc/logout")))
-                .cookies(cookies -> cookies
-                        .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
-                .buildPrototype())
+        .issuer(URI.create("https://issuer.example"))
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
+                .scopes(List.of("openid", "profile", "email")))
+        .logout(logout -> logout
+                .localEndpointUri(URI.create("/oidc/logout")))
+        .cookies(cookies -> cookies
+                .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
@@ -175,18 +164,16 @@ installed:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .putTenant("web", OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example"))
-                .clientId(System.getenv("OIDC_CLIENT_ID"))
-                .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
-                .authorizationCode(authorizationCode -> authorizationCode
-                        .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
-                        .scopes(List.of("openid", "profile")))
-                .logout(logout -> logout
-                        .localEndpointUri(URI.create("/oidc/logout")))
-                .cookies(cookies -> cookies
-                        .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
-                .buildPrototype())
+        .issuer(URI.create("https://issuer.example"))
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
+                .scopes(List.of("openid", "profile")))
+        .logout(logout -> logout
+                .localEndpointUri(URI.create("/oidc/logout")))
+        .cookies(cookies -> cookies
+                .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
         .buildPrototype();
 
 Security security = Security.builder()
@@ -204,7 +191,7 @@ WebServer.builder()
 Programmatic subject mapping uses the same claim path names as YAML:
 
 ```java
-OidcTenantConfig tenant = OidcTenantConfig.builder()
+OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .endpoints(endpoints -> endpoints
                 .jwksUri(URI.create("https://issuer.example/jwks")))
@@ -230,19 +217,17 @@ well-known metadata requests, JWKS loading, Token Endpoint requests, introspecti
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
-            webclient:
-              connect-timeout: "PT3S"
-              read-timeout: "PT10S"
-              proxy:
-                type: HTTP
-                host: "proxy.example.com"
-                port: 8080
-              tls:
-                protocols: [ "TLSv1.3" ]
-                cipher-suite: [ "TLS_AES_128_GCM_SHA256" ]
+        issuer: "https://issuer.example"
+        webclient:
+          connect-timeout: "PT3S"
+          read-timeout: "PT10S"
+          proxy:
+            type: HTTP
+            host: "proxy.example.com"
+            port: 8080
+          tls:
+            protocols: [ "TLSv1.3" ]
+            cipher-suite: [ "TLS_AES_128_GCM_SHA256" ]
 ```
 
 Use this for HTTP client behavior such as proxy, no-proxy, private trust material, mTLS, TLS protocols/ciphers, DNS,
@@ -256,7 +241,7 @@ enabled.
 Programmatic WebClient configuration:
 
 ```java
-OidcTenantConfig tenant = OidcTenantConfig.builder()
+OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .webClient(WebClientConfig.builder()
                 .connectTimeout(Duration.ofSeconds(3))
@@ -318,17 +303,15 @@ Use `method: JWT` to validate Bearer access tokens locally as signed JWTs agains
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
-            endpoints:
-              jwks-uri: "https://issuer.example/jwks"
-            protected-resource:
-              token-validation:
-                method: JWT
-                audience: "api://orders"
-                allowed-algorithms: [ "RS256" ]
-                clock-skew: "PT1M"
+        issuer: "https://issuer.example"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: "api://orders"
+            allowed-algorithms: [ "RS256" ]
+            clock-skew: "PT1M"
 ```
 
 `issuer` or `endpoints.well-known-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
@@ -353,17 +336,15 @@ validation.
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            endpoints:
-              introspection-endpoint-uri: "https://issuer.example/oauth2/introspect"
-            protected-resource:
-              token-validation:
-                method: INTROSPECTION
-                audience: "api://orders"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        endpoints:
+          introspection-endpoint-uri: "https://issuer.example/oauth2/introspect"
+        protected-resource:
+          token-validation:
+            method: INTROSPECTION
+            audience: "api://orders"
 ```
 
 Introspection currently uses HTTP Basic client authentication and requires `client-id`, `client-secret`, and
@@ -408,16 +389,14 @@ Enable Authorization Code Flow for browser login and local authentication cookie
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile", "email" ]
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile", "email" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 When `authorization-code` is configured and not explicitly disabled:
@@ -465,20 +444,18 @@ Configure `user-info` to request UserInfo after Authorization Code Flow token ex
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            endpoints:
-              user-info-endpoint-uri: "https://issuer.example/userinfo"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile", "email" ]
-            user-info:
-              enabled: true
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        endpoints:
+          user-info-endpoint-uri: "https://issuer.example/userinfo"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile", "email" ]
+        user-info:
+          enabled: true
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 When `user-info` is configured and not explicitly disabled:
@@ -501,7 +478,7 @@ after the refreshed UserInfo `sub` matches the ID Token `sub`.
 Programmatic configuration:
 
 ```java
-OidcTenantConfig tenant = OidcTenantConfig.builder()
+OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .clientId("client-id")
         .clientSecret("client-secret")
@@ -523,18 +500,16 @@ Configure `logout` to register the local `POST` logout endpoint in `OidcFeature`
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile" ]
-            logout:
-              local-endpoint-uri: "/oidc/logout"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        logout:
+          local-endpoint-uri: "/oidc/logout"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 When `logout` is configured and not explicitly disabled, `logout.local-endpoint-uri` defaults to `/oidc/logout`.
@@ -550,22 +525,20 @@ removed.
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            endpoints:
-              end-session-endpoint-uri: "https://issuer.example/logout"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-            logout:
-              local-endpoint-uri: "/oidc/logout"
-              end-session:
-                post-logout-redirect-uri: "https://app.example/logged-out"
-                allowed-post-logout-redirect-uris:
-                  - "https://app.example/signed-out"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        endpoints:
+          end-session-endpoint-uri: "https://issuer.example/logout"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+        logout:
+          local-endpoint-uri: "/oidc/logout"
+          end-session:
+            post-logout-redirect-uri: "https://app.example/logged-out"
+            allowed-post-logout-redirect-uris:
+              - "https://app.example/signed-out"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 If `endpoints.end-session-endpoint-uri` is omitted, well-known metadata must be available from `issuer` or
@@ -594,7 +567,7 @@ authentication result cookie, the endpoint only clears local cookies for the mat
 Programmatic configuration:
 
 ```java
-OidcTenantConfig tenant = OidcTenantConfig.builder()
+OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .clientId("client-id")
         .clientSecret("client-secret")
@@ -645,21 +618,19 @@ Example using `client_secret_post`:
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            token-endpoint-auth-method: CLIENT_SECRET_POST
-            endpoints:
-              authorization-endpoint-uri: "https://issuer.example/authorize"
-              token-endpoint-uri: "https://issuer.example/token"
-              jwks-uri: "https://issuer.example/jwks"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile" ]
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        token-endpoint-auth-method: CLIENT_SECRET_POST
+        endpoints:
+          authorization-endpoint-uri: "https://issuer.example/authorize"
+          token-endpoint-uri: "https://issuer.example/token"
+          jwks-uri: "https://issuer.example/jwks"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 Example using `client_secret_jwt`:
@@ -668,19 +639,17 @@ Example using `client_secret_jwt`:
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            token-endpoint-auth-method: CLIENT_SECRET_JWT
-            client-assertion:
-              algorithm: HS256
-              lifetime: "PT1M"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        token-endpoint-auth-method: CLIENT_SECRET_JWT
+        client-assertion:
+          algorithm: HS256
+          lifetime: "PT1M"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 Example using `private_key_jwt`:
@@ -689,21 +658,19 @@ Example using `private_key_jwt`:
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            token-endpoint-auth-method: PRIVATE_KEY_JWT
-            client-assertion:
-              jwk:
-                resource-path: "private-client-jwks.json"
-              key-id: "client-signing-key"
-              algorithm: RS256
-              lifetime: "PT1M"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        token-endpoint-auth-method: PRIVATE_KEY_JWT
+        client-assertion:
+          jwk:
+            resource-path: "private-client-jwks.json"
+          key-id: "client-signing-key"
+          algorithm: RS256
+          lifetime: "PT1M"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 `client_secret_jwt` and `private_key_jwt` send `client_assertion_type` with
@@ -719,28 +686,26 @@ Example using `tls_client_auth`:
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            token-endpoint-auth-method: TLS_CLIENT_AUTH
-            webclient:
-              tls:
-                trust:
-                  keystore:
-                    passphrase: "${OIDC_TLS_TRUST_STORE_PASSWORD}"
-                    trust-store: true
-                    resource:
-                      resource-path: "issuer-trust.p12"
-                private-key:
-                  keystore:
-                    passphrase: "${OIDC_TLS_CLIENT_KEY_STORE_PASSWORD}"
-                    resource:
-                      resource-path: "oidc-client.p12"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        token-endpoint-auth-method: TLS_CLIENT_AUTH
+        webclient:
+          tls:
+            trust:
+              keystore:
+                passphrase: "${OIDC_TLS_TRUST_STORE_PASSWORD}"
+                trust-store: true
+                resource:
+                  resource-path: "issuer-trust.p12"
+            private-key:
+              keystore:
+                passphrase: "${OIDC_TLS_CLIENT_KEY_STORE_PASSWORD}"
+                resource:
+                  resource-path: "oidc-client.p12"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 For `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH`, the OIDC provider sends `client_id` in the Token Endpoint form
@@ -755,7 +720,7 @@ well-known URI must also use HTTPS. `endpoints.tls-required: false` does not rel
 Programmatic `private_key_jwt` configuration:
 
 ```java
-OidcTenantConfig tenant = OidcTenantConfig.builder()
+OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
@@ -775,16 +740,14 @@ Example public client:
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            token-endpoint-auth-method: NONE
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile" ]
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        token-endpoint-auth-method: NONE
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 ## Outbound Token Propagation And Client Credentials
@@ -801,29 +764,24 @@ without a matching outbound target.
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            outbound:
-              token-propagation-enabled: true
+        issuer: "https://issuer.example"
         outbound:
           - name: orders-api
             transports: [ "https" ]
             hosts: [ "orders.internal.example" ]
             paths: [ "/orders/.*" ]
+            token-propagation-enabled: true
 ```
 
 Target configuration can select the OIDC outbound strategy directly and can restrict propagated tokens by audience. If an
 audience is configured, the current JWT or introspection-backed access token must contain that `aud` value, otherwise the
-provider abstains. A target can also configure only `audience` when Token Propagation is enabled on the tenant; the
-matching target then supplies the audience restriction for that tenant-level propagation policy.
+provider abstains.
 
 ```yaml
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
+        issuer: "https://issuer.example"
         outbound:
           - name: orders-api
             transports: [ "https" ]
@@ -852,13 +810,11 @@ Credentials prerequisites because the resolved tenant supplies the Token Endpoin
 security:
   providers:
     - oidc-next:
-        tenants:
-          service:
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            token-endpoint-auth-method: CLIENT_SECRET_BASIC
-            endpoints:
-              token-endpoint-uri: "https://issuer.example/token"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        token-endpoint-auth-method: CLIENT_SECRET_BASIC
+        endpoints:
+          token-endpoint-uri: "https://issuer.example/token"
         outbound:
           - name: inventory-api
             transports: [ "https" ]
@@ -866,10 +822,8 @@ security:
             client-credentials-grant-enabled: true
 ```
 
-If `client-credentials-grant-enabled` is configured directly on a tenant and no provider `outbound` targets are
-configured, the provider can apply Client Credentials Grant tenant-wide. When provider `outbound` targets are configured,
-tenant-level outbound policy applies only through matching targets that do not select a target-level policy. Configure
-targets when outbound tokens must be limited to specific downstream services.
+Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
+`OidcOutboundPolicy`.
 
 Programmatic outbound target configuration:
 
@@ -887,9 +841,7 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .build();
 
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .putTenant("web", OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example"))
-                .buildPrototype())
+        .issuer(URI.create("https://issuer.example"))
         .outboundTargets(List.of(ordersApi))
         .buildPrototype();
 ```
@@ -925,23 +877,21 @@ and should not accept Bearer Token Protected Resource requests.
 security:
   providers:
     - oidc-next:
-        tenants:
-          web:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            endpoints:
-              jwks-uri: "https://issuer.example/jwks"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile" ]
-            protected-resource:
-              enabled: false
-              token-validation:
-                method: JWT
-                audience: "api://orders"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        protected-resource:
+          enabled: false
+          token-validation:
+            method: JWT
+            audience: "api://orders"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 Refreshed ID Tokens are validated before storage. The provider rejects refreshed ID Tokens that unexpectedly change
@@ -998,22 +948,20 @@ A tenant may enable Authorization Code Flow and Protected Resource authenticatio
 security:
   providers:
     - oidc-next:
-        tenants:
-          main:
-            issuer: "https://issuer.example"
-            client-id: "${OIDC_CLIENT_ID}"
-            client-secret: "${OIDC_CLIENT_SECRET}"
-            endpoints:
-              jwks-uri: "https://issuer.example/jwks"
-            authorization-code:
-              redirection-endpoint-uri: "https://app.example/oidc/callback"
-              scopes: [ "openid", "profile" ]
-            protected-resource:
-              token-validation:
-                method: JWT
-                audience: "api://orders"
-            cookies:
-              encryption-secret: "${OIDC_COOKIE_SECRET}"
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: "api://orders"
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
 When Bearer token evidence is present, the provider treats the request as Bearer Token authentication. Otherwise it can
@@ -1099,12 +1047,13 @@ Provider options:
 | --- | --- |
 | `provider-name` | Provider name used by Helidon Security. Defaults to `oidc-next`. |
 | `optional` | Whether authentication failures may be treated as optional by the provider. Defaults to `false`. |
-| `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one tenant is configured. |
+| `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one named tenant is configured. In root single-tenant config, this optionally names the synthetic tenant. |
 | `tenant-resolution` | Tenant resolution rules. |
-| `tenants` | Map of tenant id to tenant configuration. |
+| `tenants` | Map of tenant id to tenant configuration for multi-tenant applications. Do not combine this with root tenant options. |
 | `outbound` | Provider-level outbound target list using Helidon's common `OutboundTarget` model. Targets can match transport, host, path, and method, and may select Token Propagation or Client Credentials Grant. |
 
-Tenant options:
+Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for
+multi-tenant applications:
 
 | Key | Description |
 | --- | --- |
@@ -1123,16 +1072,6 @@ Tenant options:
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
-| `outbound` | Tenant outbound configuration. Enables Token Propagation or Client Credentials Grant. |
-
-Tenant outbound options:
-
-| Key | Description |
-| --- | --- |
-| `token-propagation-enabled` | Enables Token Propagation for this tenant. This is applied only through matching provider-level `outbound` targets. |
-| `client-credentials-grant-enabled` | Enables Client Credentials Grant for this tenant. Without provider-level `outbound` targets, this can apply tenant-wide. With provider-level targets, this applies only through matching targets that do not select a target-level policy. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
-
-Tenant-wide Token Propagation and Client Credentials Grant cannot both be enabled without target selection.
 
 Client assertion options:
 

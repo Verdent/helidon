@@ -23,14 +23,38 @@ import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Prototype;
+import io.helidon.config.Config;
 import io.helidon.common.tls.ConfiguredTlsManager;
 import io.helidon.common.tls.TlsConfig;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
 
 final class OidcConfigSupport {
+    private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final String TENANT_VARIABLE = "{tenant}";
+    private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
+                                                                        "issuer",
+                                                                        "client-id",
+                                                                        "client-secret",
+                                                                        "token-endpoint-auth-method",
+                                                                        "client-assertion",
+                                                                        "webclient",
+                                                                        "endpoints",
+                                                                        "protected-resource",
+                                                                        "authorization-code",
+                                                                        "logout",
+                                                                        "user-info",
+                                                                        "token-transport",
+                                                                        "subject-mapping",
+                                                                        "cookies");
+    private static final OidcClientAssertionConfig DEFAULT_CLIENT_ASSERTION = OidcClientAssertionConfig.create();
+    private static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
+    private static final OidcEndpointConfig DEFAULT_ENDPOINTS = OidcEndpointConfig.create();
+    private static final OidcTokenTransportConfig DEFAULT_TOKEN_TRANSPORT = OidcTokenTransportConfig.create();
+    private static final OidcSubjectMappingConfig DEFAULT_SUBJECT_MAPPING = OidcSubjectMappingConfig.create();
+    private static final OidcCookieConfig DEFAULT_COOKIES = OidcCookieConfig.create();
     private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT =
             WebClientConfig.create().socketOptions().readTimeout();
@@ -58,23 +82,6 @@ final class OidcConfigSupport {
         return Optional.empty();
     }
 
-    static Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenant) {
-        OidcOutboundConfig outbound = tenant.outbound();
-        boolean tokenPropagation = outbound.tokenPropagationEnabled();
-        boolean clientCredentialsGrant = outbound.clientCredentialsGrantEnabled();
-
-        if (tokenPropagation && clientCredentialsGrant) {
-            return Optional.of(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
-        }
-        if (tokenPropagation) {
-            return Optional.of(OidcOutboundPolicy.tokenPropagation());
-        }
-        if (clientCredentialsGrant) {
-            return Optional.of(OidcOutboundPolicy.clientCredentialsGrant());
-        }
-        return Optional.empty();
-    }
-
     static boolean targetClientCredentialsGrantEnabled(List<OutboundTarget> outboundTargets) {
         return outboundTargets.stream()
                 .map(OidcOutboundPolicy::fromTarget)
@@ -97,6 +104,19 @@ final class OidcConfigSupport {
     static final class ProviderDecorator implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {
         @Override
         public void decorate(OidcProviderConfig.BuilderBase<?, ?> target) {
+            boolean singleTenantConfigured = singleTenantConfigured(target);
+            if (singleTenantConfigured) {
+                String singleTenantId = target.defaultTenant().orElse(DEFAULT_SINGLE_TENANT_ID);
+                OidcTenantConfig singleTenant = singleTenant(target);
+                if (target.tenants().isEmpty()) {
+                    target.putTenant(singleTenantId, singleTenant);
+                } else if (target.config().map(config -> config.get("tenants").exists()).orElse(false)
+                        || target.tenants().size() != 1
+                        || !singleTenant.equals(target.tenants().get(singleTenantId))) {
+                    throw new IllegalArgumentException("Root tenant configuration cannot be combined with tenants");
+                }
+            }
+
             if (target.defaultTenant().isEmpty() && target.tenants().size() == 1) {
                 target.defaultTenant(target.tenants().keySet().iterator().next());
             }
@@ -117,6 +137,88 @@ final class OidcConfigSupport {
                                                                           "Client Credentials Grant"));
             }
         }
+    }
+
+    private static boolean singleTenantConfigured(OidcProviderConfig.BuilderBase<?, ?> target) {
+        return target.config()
+                .filter(OidcConfigSupport::rootTenantConfigPresent)
+                .isPresent()
+                || rootTenantOptionsChanged(target)
+                || (target.tenants().isEmpty() && !target.outboundTargets().isEmpty());
+    }
+
+    private static boolean rootTenantConfigPresent(Config config) {
+        return ROOT_TENANT_CONFIG_KEYS.stream()
+                .map(config::get)
+                .anyMatch(Config::exists);
+    }
+
+    private static boolean rootTenantOptionsChanged(OidcProviderConfig.BuilderBase<?, ?> target) {
+        return !target.enabled()
+                || target.issuer().isPresent()
+                || target.clientId().isPresent()
+                || target.clientSecret().isPresent()
+                || target.tokenEndpointAuthenticationMethod().isPresent()
+                || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
+                || webClientOptionsChanged(target.webClient())
+                || !DEFAULT_ENDPOINTS.equals(target.endpoints())
+                || target.protectedResource().isPresent()
+                || target.authorizationCode().isPresent()
+                || target.logout().isPresent()
+                || target.userInfo().isPresent()
+                || !DEFAULT_TOKEN_TRANSPORT.equals(target.tokenTransport())
+                || !DEFAULT_SUBJECT_MAPPING.equals(target.subjectMapping())
+                || !DEFAULT_COOKIES.equals(target.cookies());
+    }
+
+    private static boolean webClientOptionsChanged(WebClientConfig webClient) {
+        return webClient.readTimeout().isPresent()
+                || webClient.connectTimeout().isPresent()
+                || !WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT.equals(webClient.socketOptions().readTimeout())
+                || !DEFAULT_WEBCLIENT.socketOptions().connectTimeout().equals(webClient.socketOptions().connectTimeout())
+                || webClient.followRedirects() != DEFAULT_WEBCLIENT.followRedirects()
+                || webClient.maxRedirects() != DEFAULT_WEBCLIENT.maxRedirects()
+                || webClient.keepAlive() != DEFAULT_WEBCLIENT.keepAlive()
+                || proxyOptionsChanged(webClient.proxy())
+                || !DEFAULT_WEBCLIENT.tls().equals(webClient.tls())
+                || webClient.baseUri().isPresent()
+                || webClient.baseAddress().isPresent()
+                || !webClient.defaultHeadersMap().isEmpty()
+                || !webClient.headers().isEmpty()
+                || !webClient.properties().isEmpty()
+                || !DEFAULT_WEBCLIENT.protocolConfigs().equals(webClient.protocolConfigs())
+                || !webClient.protocolPreference().isEmpty();
+    }
+
+    private static boolean proxyOptionsChanged(Proxy proxy) {
+        Proxy defaultProxy = DEFAULT_WEBCLIENT.proxy();
+        return proxy.type() != defaultProxy.type()
+                || proxy.port() != defaultProxy.port()
+                || !Optional.ofNullable(defaultProxy.host()).equals(Optional.ofNullable(proxy.host()))
+                || !defaultProxy.username().equals(proxy.username())
+                || defaultProxy.password().isPresent() != proxy.password().isPresent();
+    }
+
+    private static OidcTenantConfig singleTenant(OidcProviderConfig.BuilderBase<?, ?> target) {
+        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
+                .enabled(target.enabled())
+                .clientAssertion(target.clientAssertion())
+                .webClient(target.webClient())
+                .endpoints(target.endpoints())
+                .tokenTransport(target.tokenTransport())
+                .subjectMapping(target.subjectMapping())
+                .cookies(target.cookies());
+
+        target.issuer().ifPresent(tenant::issuer);
+        target.clientId().ifPresent(tenant::clientId);
+        target.clientSecret().ifPresent(tenant::clientSecret);
+        target.tokenEndpointAuthenticationMethod().ifPresent(tenant::tokenEndpointAuthenticationMethod);
+        target.protectedResource().ifPresent(tenant::protectedResource);
+        target.authorizationCode().ifPresent(tenant::authorizationCode);
+        target.logout().ifPresent(tenant::logout);
+        target.userInfo().ifPresent(tenant::userInfo);
+
+        return tenant.buildPrototype();
     }
 
     static final class TenantDecorator implements Prototype.BuilderDecorator<OidcTenantConfig.BuilderBase<?, ?>> {
@@ -140,7 +242,6 @@ final class OidcConfigSupport {
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
-            validateOutbound(target, target.outbound(), target.endpoints());
         }
     }
 
@@ -442,21 +543,6 @@ final class OidcConfigSupport {
         }
     }
 
-    private static void validateOutbound(OidcTenantConfig.BuilderBase<?, ?> tenant,
-                                         OidcOutboundConfig outbound,
-                                         OidcEndpointConfig endpoints) {
-        if (outbound.tokenPropagationEnabled() && outbound.clientCredentialsGrantEnabled()) {
-            throw new IllegalArgumentException(
-                    "Token Propagation and Client Credentials Grant cannot both be enabled without target selection");
-        }
-
-        if (!outbound.clientCredentialsGrantEnabled()) {
-            return;
-        }
-
-        validateClientCredentialsGrant(tenant, endpoints, "Client Credentials Grant");
-    }
-
     static void validateClientCredentialsGrant(OidcTenantConfig tenant,
                                                OidcEndpointConfig endpoints,
                                                String operation) {
@@ -470,17 +556,9 @@ final class OidcConfigSupport {
                                        operation);
     }
 
-    private static void validateClientCredentialsGrant(OidcTenantConfig.BuilderBase<?, ?> tenant,
-                                                       OidcEndpointConfig endpoints,
-                                                       String operation) {
-        validateClientCredentialsGrant(tenant.clientId(),
-                                       tenant.clientSecret(),
-                                       tenant.tokenEndpointAuthenticationMethod(),
-                                       tenant.clientAssertion(),
-                                       tenant.webClient(),
-                                       tenant.issuer(),
-                                       endpoints,
-                                       operation);
+    static boolean tokenEndpointTlsRequired(OidcTenantConfig tenant) {
+        return tenant.endpoints().tlsRequired()
+                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(), tenant.tokenEndpointAuthenticationMethod());
     }
 
     private static void validateClientCredentialsGrant(Optional<String> clientId,

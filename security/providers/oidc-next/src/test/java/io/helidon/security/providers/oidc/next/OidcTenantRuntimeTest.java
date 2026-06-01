@@ -17,11 +17,13 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.providers.common.OutboundTarget;
 
 import org.junit.jupiter.api.Test;
 
@@ -237,7 +239,10 @@ class OidcTenantRuntimeTest {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                 .tenantResolution(it -> it.headerName("X-Tenant"))
                 .putTenant("client", clientCredentialsTenant())
-                .putTenant("other", OidcTenantConfig.create())
+                .putTenant("other", OidcTenantConfig.builder()
+                        .enabled(false)
+                        .buildPrototype())
+                .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype());
 
         var providerRequest = request(SecurityEnvironment.builder()
@@ -261,8 +266,20 @@ class OidcTenantRuntimeTest {
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .outbound(it -> it.clientCredentialsGrantEnabled(true))
                 .buildPrototype();
+    }
+
+    private static OutboundTarget clientCredentialsTarget() {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
     }
 
     private static ProviderRequest request(SecurityEnvironment environment) {

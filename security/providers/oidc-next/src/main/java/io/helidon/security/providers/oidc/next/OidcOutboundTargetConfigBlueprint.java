@@ -41,8 +41,8 @@ interface OidcOutboundTargetConfigBlueprint {
      * Whether Client Credentials Grant is enabled for this outbound target; mutual TLS methods require enabled tenant
      * {@code webclient.tls} and an HTTPS Token Endpoint or HTTPS well-known metadata.
      * <p>
-     * If any tenant outbound target enables Client Credentials Grant, that tenant must satisfy the Client Credentials
-     * prerequisites: {@code client-id}, client authentication other than {@code NONE}, a
+     * If any provider outbound target enables Client Credentials Grant, each enabled tenant must satisfy the Client
+     * Credentials prerequisites: {@code client-id}, client authentication other than {@code NONE}, a
      * {@code client-secret} for client-secret based authentication, {@code client-assertion.jwk} for
      * {@code PRIVATE_KEY_JWT} or enabled tenant {@code webclient.tls} with private key plus certificate chain, an SSL
      * context, or a custom TLS manager for mutual TLS authentication, and either {@code endpoints.token-endpoint-uri} or
@@ -59,8 +59,7 @@ interface OidcOutboundTargetConfigBlueprint {
     /**
      * Expected access-token audience for Token Propagation to this outbound target.
      * <p>
-     * When Token Propagation is enabled on the tenant and this target matches, this value restricts the propagated token
-     * even when {@code token-propagation-enabled} is not set on the target itself.
+     * This value is used only when {@code token-propagation-enabled} is enabled on the same outbound target.
      *
      * @return expected audience
      */

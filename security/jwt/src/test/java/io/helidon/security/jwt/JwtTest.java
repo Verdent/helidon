@@ -119,6 +119,55 @@ public class JwtTest {
     }
 
     @Test
+    public void testSerializeDerivedClaims() {
+        Jwt defaultJwt = Jwt.builder()
+                .subject("subject")
+                .build();
+
+        assertThat(defaultJwt.userPrincipal(), is(Optional.of("subject")));
+        assertThat(defaultJwt.payloadJsonObject().stringValue(Jwt.USER_PRINCIPAL), is(Optional.of("subject")));
+
+        Jwt exactJwt = Jwt.builder()
+                .subject("subject")
+                .serializeDerivedClaims(false)
+                .build();
+
+        assertThat(exactJwt.userPrincipal(), is(Optional.of("subject")));
+        assertThat(exactJwt.payloadJsonObject().containsKey(Jwt.USER_PRINCIPAL), is(false));
+
+        Jwt preferredUsernameJwt = Jwt.builder()
+                .preferredUsername("preferred")
+                .serializeDerivedClaims(false)
+                .build();
+
+        assertThat(preferredUsernameJwt.userPrincipal(), is(Optional.of("preferred")));
+        assertThat(preferredUsernameJwt.payloadJsonObject().containsKey(Jwt.USER_PRINCIPAL), is(false));
+        assertThat(preferredUsernameJwt.payloadJsonObject().stringValue(Jwt.PREFERRED_USERNAME),
+                   is(Optional.of("preferred")));
+    }
+
+    @Test
+    public void testExplicitUserPrincipalSerializedWithDerivedClaimsDisabled() {
+        Jwt explicitPrincipalJwt = Jwt.builder()
+                .subject("subject")
+                .userPrincipal("principal")
+                .serializeDerivedClaims(false)
+                .build();
+
+        assertThat(explicitPrincipalJwt.payloadJsonObject().stringValue(Jwt.USER_PRINCIPAL),
+                   is(Optional.of("principal")));
+
+        Jwt explicitPayloadClaimJwt = Jwt.builder()
+                .subject("subject")
+                .addPayloadClaim(Jwt.USER_PRINCIPAL, "payload-principal")
+                .serializeDerivedClaims(false)
+                .build();
+
+        assertThat(explicitPayloadClaimJwt.payloadJsonObject().stringValue(Jwt.USER_PRINCIPAL),
+                   is(Optional.of("payload-principal")));
+    }
+
+    @Test
     public void testHelidonJsonApis() {
         Jwt jwt = Jwt.builder()
                 .algorithm(JwkRSA.ALG_RS256)

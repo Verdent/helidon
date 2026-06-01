@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.configurable.Resource;
@@ -682,6 +683,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(signedJwt.getJwt().jwtId().isPresent(), is(true));
         assertThat(signedJwt.getJwt().issueTime().isPresent(), is(true));
         assertThat(signedJwt.getJwt().expirationTime().isPresent(), is(true));
+        assertThat(signedJwt.getJwt().payloadClaimsJson().keySet(), is(Set.of("iss", "sub", "aud", "jti", "iat", "exp")));
     }
 
     private static Jwk clientSecretJwk() {

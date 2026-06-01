@@ -169,7 +169,8 @@ final class OidcClientAuthenticationSupport {
                 .addAudience(tokenEndpointUri.toString())
                 .issueTime(now)
                 .expirationTime(now.plus(assertion.lifetime()))
-                .jwtId(UUID.randomUUID().toString());
+                .jwtId(UUID.randomUUID().toString())
+                .serializeDerivedClaims(false);
         if (method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT) {
             Optional.ofNullable(jwk.keyId()).ifPresent(jwt::keyId);
         } else {

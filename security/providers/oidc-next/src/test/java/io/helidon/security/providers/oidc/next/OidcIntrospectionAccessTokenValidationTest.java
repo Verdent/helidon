@@ -70,6 +70,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     private static int responseStatus;
     private static String responseBody;
+    private static String responseContentType;
     private static String redirectLocation;
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
@@ -93,6 +94,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         redirectedIntrospectionEndpointUri = serverUri.resolve("redirected-introspect");
         responseStatus = 200;
         responseBody = validResponse(it -> { }).toString();
+        responseContentType = "application/json";
         redirectLocation = null;
         REDIRECTED_REQUEST_COUNT.set(0);
         RECORDED_REQUEST.set(null);
@@ -322,6 +324,15 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void introspectionResponseWithoutJsonContentTypeIsRejected() {
+        responseContentType = "text/plain";
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+    }
+
+    @Test
     void nonSuccessfulIntrospectionResponseIsRejected() {
         responseStatus = 400;
         responseBody = JsonObject.builder()
@@ -371,8 +382,10 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
                                                 request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
                                                 formParameters(request.content().as(Parameters.class))));
-        response.status(responseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON);
+        response.status(responseStatus);
+        if (responseContentType != null) {
+            response.header(HeaderNames.CONTENT_TYPE, responseContentType);
+        }
         if (redirectLocation != null) {
             response.header(HeaderNames.LOCATION, redirectLocation);
         }

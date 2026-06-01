@@ -638,9 +638,11 @@ class OidcRefreshTokenManagerTest {
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         RECORDED_REQUEST.set(new RecordedRequest(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
-                                                formParameters(request.content().as(Parameters.class))));
+                                                 formParameters(request.content().as(Parameters.class))));
         response.status(responseStatus)
                 .header(HeaderValues.CONTENT_TYPE_JSON)
+                .header(HeaderNames.CACHE_CONTROL, "no-store")
+                .header(HeaderNames.PRAGMA, "no-cache")
                 .send(responseBody);
     }
 
@@ -828,6 +830,8 @@ class OidcRefreshTokenManagerTest {
                 .keyId("verify-rsa")
                 .issueTime(now)
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .jwtId("jwt-id")
+                .addPayloadClaim("client_id", CLIENT_ID)
                 .addAudience(AUDIENCE);
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId("sign-rsa").orElseThrow())

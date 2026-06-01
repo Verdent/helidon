@@ -300,7 +300,7 @@ class OidcClientCredentialsGrantTest {
     void tlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("token_endpoint", secureTokenEndpointUri.toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
                         .build())
@@ -320,7 +320,7 @@ class OidcClientCredentialsGrantTest {
     void selfSignedTlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("token_endpoint", secureTokenEndpointUri.toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
                         .build())
@@ -824,7 +824,9 @@ class OidcClientCredentialsGrantTest {
                 ? tokenResponse("access-token-" + requestNumber, dynamicExpiresIn).toString()
                 : responseBody;
         response.status(responseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON);
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .header(HeaderNames.CACHE_CONTROL, "no-store")
+                .header(HeaderNames.PRAGMA, "no-cache");
         if (redirectLocation != null) {
             response.header(HeaderNames.LOCATION, redirectLocation);
         }
@@ -834,6 +836,8 @@ class OidcClientCredentialsGrantTest {
     private static void handleRedirectedTokenEndpoint(ServerRequest request, ServerResponse response) {
         REDIRECTED_REQUEST_COUNT.incrementAndGet();
         response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .header(HeaderNames.CACHE_CONTROL, "no-store")
+                .header(HeaderNames.PRAGMA, "no-cache")
                 .send(tokenResponse("redirected-access-token", 600));
     }
 

@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
+import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.JwtScope;
 import io.helidon.security.jwt.JwtValidator;
@@ -120,14 +121,28 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         Instant now = Instant.now();
         JwtValidator.Builder builder = JwtValidator.builder()
                 .addExpirationValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
+                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
                 .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addValidator((jwt, collector) -> {
                     if (jwt.subject().filter(subject -> !subject.isBlank()).isEmpty()) {
                         collector.fatal(jwt, "JWT subject claim is mandatory");
                     }
-                }, "sub");
+                }, "sub")
+                .addValidator((jwt, collector) -> {
+                    if (jwt.jwtId().filter(jwtId -> !jwtId.isBlank()).isEmpty()) {
+                        collector.fatal(jwt, "JWT jti claim is mandatory");
+                    }
+                }, "jti")
+                .addValidator((jwt, collector) -> {
+                    if (jwt.payloadClaimValue("client_id")
+                            .filter(value -> value.type() == JsonValueType.STRING)
+                            .map(value -> value.asString().value())
+                            .filter(clientId -> !clientId.isBlank())
+                            .isEmpty()) {
+                        collector.fatal(jwt, "JWT client_id claim is mandatory");
+                    }
+                }, "client_id");
         if (tokenValidation.audienceValidationEnabled()) {
             expectedAudience.ifPresent(builder::addAudienceValidator);
         }

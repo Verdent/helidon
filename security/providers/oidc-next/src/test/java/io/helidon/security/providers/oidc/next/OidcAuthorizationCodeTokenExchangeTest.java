@@ -31,7 +31,6 @@ import io.helidon.common.pki.Keys;
 import io.helidon.common.tls.Tls;
 import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.http.HeaderNames;
-import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
@@ -73,6 +72,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private static volatile int responseStatus;
     private static volatile String responseBody;
+    private static volatile String responseContentType;
+    private static volatile String responseCacheControl;
+    private static volatile String responsePragma;
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
     private static JwkKeys signKeys;
@@ -114,6 +116,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
         responseStatus = 200;
         responseBody = validTokenResponse().toString();
+        responseContentType = "application/json";
+        responseCacheControl = "no-store";
+        responsePragma = "no-cache";
         RECORDED_REQUEST.set(null);
     }
 
@@ -394,11 +399,99 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void successfulTokenResponseRequiresJsonContentType() {
+        responseContentType = "text/plain";
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint response is invalid"));
+    }
+
+    @Test
+    void successfulTokenResponseRequiresNoStoreCacheControl() {
+        responseCacheControl = "private";
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint response is invalid"));
+    }
+
+    @Test
+    void successfulTokenResponseRequiresNoCachePragma() {
+        responsePragma = "cache";
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint response is invalid"));
+    }
+
+    @Test
     void malformedTokenEndpointErrorResponseFails() {
         responseStatus = 400;
         responseBody = "{not-json";
 
         OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
+    }
+
+    @Test
+    void tokenEndpointErrorResponseRequiresJsonContentType() {
+        responseStatus = 400;
+        responseContentType = "text/plain";
+        responseBody = JsonObject.builder()
+                .set("error", "invalid_grant")
+                .build()
+                .toString();
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
+    }
+
+    @Test
+    void tokenEndpointErrorResponseRejectsInvalidErrorCharacters() {
+        responseStatus = 400;
+        responseBody = JsonObject.builder()
+                .set("error", "invalid\\grant")
+                .build()
+                .toString();
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
+
+        responseBody = JsonObject.builder()
+                .set("error", "invalid_grant")
+                .set("error_description", "invalid \"grant\"")
+                .build()
+                .toString();
+
+        result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
+
+        responseBody = JsonObject.builder()
+                .set("error", "invalid_grant")
+                .set("error_uri", "https://issuer.example/error docs")
+                .build()
+                .toString();
+
+        result = exchange(confidentialTenant(), PKCE_VERIFIER);
 
         assertThat(result.succeeded(), is(false));
         assertThat(result.errorResponse(), is(false));
@@ -411,9 +504,17 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
                                                 request.headers().get(HeaderNames.CACHE_CONTROL).allValues(),
                                                 formParameters(request.content().as(Parameters.class))));
-        response.status(responseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(responseBody);
+        response.status(responseStatus);
+        if (responseContentType != null) {
+            response.header(HeaderNames.CONTENT_TYPE, responseContentType);
+        }
+        if (responseCacheControl != null) {
+            response.header(HeaderNames.CACHE_CONTROL, responseCacheControl);
+        }
+        if (responsePragma != null) {
+            response.header(HeaderNames.PRAGMA, responsePragma);
+        }
+        response.send(responseBody);
     }
 
     private OidcTokenEndpointResult exchange(OidcTenantConfig tenantConfig, String pkceVerifier) {

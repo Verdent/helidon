@@ -151,6 +151,32 @@ class OidcBearerTokenExtractorTest {
     }
 
     @Test
+    void rejectsAuthorizationHeaderBearerTokenWithInvalidCharacters() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .header("Authorization", "Bearer access,token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
+    }
+
+    @Test
+    void rejectsAuthorizationHeaderBearerTokenWithMisplacedPadding() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .header("Authorization", "Bearer access=token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
+    }
+
+    @Test
     void rejectsTabSeparatedAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
@@ -168,6 +194,21 @@ class OidcBearerTokenExtractorTest {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
                         .queryParam("access_token", " ")
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .queryParameterEnabled(true)
+                        .buildPrototype());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in query parameter"));
+    }
+
+    @Test
+    void rejectsQueryParameterBearerTokenWithInvalidCharacters() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .queryParam("access_token", "access,token")
                         .build(),
                 OidcTokenTransportConfig.builder()
                         .queryParameterEnabled(true)

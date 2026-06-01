@@ -96,15 +96,17 @@ class OidcTenantLifecycleTest {
     @Test
     void failedTenantContextIsCached() {
         AtomicInteger attempts = new AtomicInteger();
+        RuntimeException failureCause = new IllegalStateException("tenant failed");
         OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, tenantConfig) -> {
             attempts.incrementAndGet();
-            return OidcTenantContext.failed(tenantId, tenantConfig);
+            return OidcTenantContext.failed(tenantId, tenantConfig, failureCause);
         });
 
         OidcTenantContext first = registry.tenantContext("tenant").orElseThrow();
         OidcTenantContext second = registry.tenantContext("tenant").orElseThrow();
 
         assertThat(first.state(), is(OidcTenantState.FAILED));
+        assertThat(first.failureCause().orElseThrow(), sameInstance(failureCause));
         assertThat(second, sameInstance(first));
         assertThat(attempts.get(), is(1));
         assertThat(registry.cachedTenantCount(), is(1));
@@ -222,10 +224,13 @@ class OidcTenantLifecycleTest {
 
     @Test
     void failedTenantFailsPredictably() {
+        RuntimeException failureCause = new IllegalStateException("tenant failed");
         OidcProviderConfig config = providerConfig(OidcTenantConfig.create());
+        OidcTenantContextFactory.TenantInitializer initializer = (tenantId, tenantConfig) ->
+                OidcTenantContext.failed(tenantId, tenantConfig, failureCause);
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 config,
-                OidcTenantContextFactory.create(OidcTenantContext::failed));
+                OidcTenantContextFactory.create(initializer));
         OidcAuthenticationOrchestrator authentication = OidcAuthenticationOrchestrator.create(config, registry);
         OidcOutboundOrchestrator outbound = OidcOutboundOrchestrator.create(config, registry);
         ProviderRequest request = OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
@@ -243,9 +248,11 @@ class OidcTenantLifecycleTest {
         assertThat(authenticationResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(authenticationResponse.statusCode().orElse(-1), is(503));
         assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
+        assertThat(authenticationResponse.throwable().isEmpty(), is(true));
         assertThat(outbound.isSupported(request, outboundEnv, outboundConfig), is(true));
         assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(outboundResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
+        assertThat(outboundResponse.throwable().isEmpty(), is(true));
     }
 
     @Test
@@ -267,6 +274,7 @@ class OidcTenantLifecycleTest {
         assertThrows(IllegalStateException.class, failed::jwkSetManager);
         assertThrows(IllegalStateException.class, notReady::tokenValidation);
         assertThrows(IllegalStateException.class, failed::cookieStateHandler);
+        assertThat(failed.failureCause().isEmpty(), is(true));
     }
 
     private static OidcTenantRuntimeRegistry registryWithInitializer(

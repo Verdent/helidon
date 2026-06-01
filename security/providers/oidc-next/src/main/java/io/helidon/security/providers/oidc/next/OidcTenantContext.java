@@ -25,18 +25,21 @@ final class OidcTenantContext {
     private final OidcTenantConfig tenantConfig;
     private final OidcTenantState state;
     private final Optional<RuntimeResources> runtimeResources;
+    private final Throwable failureCause;
 
     private OidcTenantContext(String tenantId,
                               OidcTenantConfig tenantConfig,
                               OidcTenantState state,
                               OidcProviderMetadata readyMetadata,
-                              WebClient readyWebClient) {
+                              WebClient readyWebClient,
+                              Throwable failureCause) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.state = state;
         this.runtimeResources = state == OidcTenantState.READY
                 ? Optional.of(RuntimeResources.create(tenantId, tenantConfig, readyMetadata, readyWebClient))
                 : Optional.empty();
+        this.failureCause = failureCause;
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
@@ -54,19 +57,23 @@ final class OidcTenantContext {
                                    OidcTenantConfig tenantConfig,
                                    OidcProviderMetadata metadata,
                                    WebClient webClient) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata, webClient);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata, webClient, null);
     }
 
     static OidcTenantContext notReady(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null, null);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null, null, null);
     }
 
     static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null, null);
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null, null, null);
     }
 
     static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null, null);
+        return failed(tenantId, tenantConfig, null);
+    }
+
+    static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig, Throwable failureCause) {
+        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null, null, failureCause);
     }
 
     String tenantId() {
@@ -79,6 +86,10 @@ final class OidcTenantContext {
 
     OidcTenantState state() {
         return state;
+    }
+
+    Optional<Throwable> failureCause() {
+        return Optional.ofNullable(failureCause);
     }
 
     boolean ready() {

@@ -89,7 +89,7 @@ public final class OidcFeature implements HttpFeature {
                 .map(OidcTenantConfig::authorizationCode)
                 .flatMap(Optional::stream)
                 .filter(OidcAuthorizationCodeConfig::enabled)
-                .flatMap(authorizationCode -> authorizationCode.redirectionEndpointUri().stream())
+                .map(OidcConfigSupport::redirectionEndpointUri)
                 .map(OidcUri::path)
                 .forEach(paths::add);
         return Set.copyOf(paths);

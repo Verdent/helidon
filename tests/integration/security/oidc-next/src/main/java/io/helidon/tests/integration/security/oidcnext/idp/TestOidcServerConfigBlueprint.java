@@ -93,6 +93,9 @@ interface TestOidcTokenDefaultsBlueprint {
 
 @Prototype.Blueprint
 interface TestOidcTokenConfigBlueprint {
+    @Option.DefaultBoolean(false)
+    boolean opaque();
+
     @Option.Default("PT1H")
     Duration expiresIn();
 
@@ -113,6 +116,9 @@ interface TestOidcRefreshTokenConfigBlueprint {
 
     @Option.DefaultBoolean(false)
     boolean rotate();
+
+    @Option.DefaultBoolean(false)
+    boolean idTokenEnabled();
 }
 
 @Prototype.Blueprint
@@ -124,6 +130,8 @@ interface TestOidcEndpointsConfigBlueprint {
     Optional<TestOidcEndpointHandler<TestOidcTokenEndpointContext>> token();
 
     Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> jwks();
+
+    Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> introspection();
 
     Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> userinfo();
 

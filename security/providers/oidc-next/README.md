@@ -148,7 +148,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
         .authorizationCode(authorizationCode -> authorizationCode
-                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile", "email")))
         .logout(logout -> logout
                 .localEndpointUri(URI.create("/oidc/logout")))
@@ -168,7 +167,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .authorizationCode(authorizationCode -> authorizationCode
-                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile")))
         .logout(logout -> logout
                 .localEndpointUri(URI.create("/oidc/logout")))
@@ -293,7 +291,8 @@ When Authorization Code Flow is configured with explicit Authorization and Token
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 
 `authorization-code.redirection-endpoint-uri` is not under `endpoints` because it is the client callback endpoint, not
-an OpenID Provider endpoint.
+an OpenID Provider endpoint. It defaults to `/oidc/callback`; local paths are resolved from the incoming request origin
+before they are sent to the OpenID Provider as `redirect_uri`.
 
 ## Protected Resource With JWT Validation
 
@@ -393,7 +392,6 @@ security:
         client-id: "${OIDC_CLIENT_ID}"
         client-secret: "${OIDC_CLIENT_SECRET}"
         authorization-code:
-          redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile", "email" ]
         cookies:
           encryption-secret: "${OIDC_COOKIE_SECRET}"
@@ -402,17 +400,20 @@ security:
 When `authorization-code` is configured and not explicitly disabled:
 
 - `client-id` is required.
-- `authorization-code.redirection-endpoint-uri` is required.
+- `authorization-code.redirection-endpoint-uri` defaults to `/oidc/callback`.
 - `authorization-code.scopes` must contain `openid`.
 - `cookies.encryption-secret` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
 
+The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
+`redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure
+`authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
+
 PKCE is enabled by default and uses `S256`.
 
 ```yaml
 authorization-code:
-  redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-required: true
   pkce-method: S256
@@ -422,7 +423,6 @@ Use `pkce-method: plain` only for compatibility with an authorization server tha
 
 ```yaml
 authorization-code:
-  redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-method: plain
 ```
@@ -431,7 +431,6 @@ PKCE can be disabled for compatibility with providers that cannot process it.
 
 ```yaml
 authorization-code:
-  redirection-endpoint-uri: "https://app.example/oidc/callback"
   scopes: [ "openid", "profile" ]
   pkce-required: false
 ```
@@ -1188,7 +1187,7 @@ Authorization Code Flow options:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether Authorization Code Flow initiation is enabled when `authorization-code` is configured. Defaults to `true`. |
-| `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Required when Authorization Code Flow is enabled. |
+| `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]` and must contain `openid`. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. |

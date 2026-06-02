@@ -44,6 +44,7 @@ interface OidcAuthorizationCodeConfigBlueprint {
      * @return Redirection Endpoint URI
      */
     @Option.Configured
+    @Option.Default("/oidc/callback")
     Optional<URI> redirectionEndpointUri();
 
     /**

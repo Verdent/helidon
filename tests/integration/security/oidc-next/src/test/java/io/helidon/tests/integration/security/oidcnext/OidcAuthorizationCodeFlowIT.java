@@ -17,6 +17,7 @@
 package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
+import java.time.Duration;
 
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
@@ -35,14 +36,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 class OidcAuthorizationCodeFlowIT {
     @Test
     void browserAuthorizationCodeFlowAuthenticatesProtectedResource() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user
                         .subject("alice-id")
                         .password("secret")
@@ -54,15 +50,14 @@ class OidcAuthorizationCodeFlowIT {
                 .browserLogin(true)
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
 
                 URI resourceUri = rpBaseUri.resolve("/resource");
                 try (HttpClientResponse response = browser.get(resourceUri)) {
@@ -105,6 +100,122 @@ class OidcAuthorizationCodeFlowIT {
                 assertThat(idp.userInfoRequests().size(), is(1));
             } finally {
                 rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void authorizationCodeFlowAuthenticatesWithOpaqueAccessToken() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user
+                        .subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .tokenDefaults(tokens -> tokens
+                        .accessToken(accessToken -> accessToken.opaque(true))
+                        .idToken(id -> id.includeUserClaims("preferred_username")))
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
+                                                                                                      it -> {
+                                                                                                      });
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/resource"));
+            try {
+                BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                URI resourceUri = rpBaseUri.resolve("/resource");
+                URI callback = authorizeWithoutBrowser(browser, resourceUri);
+
+                try (HttpClientResponse callbackResponse = browser.get(callback)) {
+                    assertThat(callbackResponse.status(), is(Status.SEE_OTHER_303));
+                }
+
+                try (HttpClientResponse authenticated = browser.get(resourceUri)) {
+                    assertThat(authenticated.status(), is(Status.OK_200));
+                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                }
+
+                assertThat(idp.tokenRequests().size(), is(1));
+                assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
+                           is("authorization_code"));
+                assertThat(idp.userInfoRequests().size(), is(1));
+                String userInfoToken = idp.userInfoRequests().getFirst().bearerToken().orElseThrow();
+                assertThat(userInfoToken.startsWith("opaque-access-"), is(true));
+                assertThat(userInfoToken.contains("."), is(false));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void authorizationCodeFlowRefreshesOpaqueAccessToken() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user
+                        .subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .tokenDefaults(tokens -> tokens
+                        .accessToken(accessToken -> accessToken
+                                .opaque(true)
+                                .expiresIn(Duration.ZERO))
+                        .idToken(id -> id.includeUserClaims("preferred_username"))
+                        .refreshToken(refresh -> refresh
+                                .enabled(true)
+                                .idTokenEnabled(true)))
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
+                                                                                                      it -> {
+                                                                                                      });
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/resource"));
+            try {
+                BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                URI resourceUri = rpBaseUri.resolve("/resource");
+                URI callback = authorizeWithoutBrowser(browser, resourceUri);
+
+                try (HttpClientResponse callbackResponse = browser.get(callback)) {
+                    assertThat(callbackResponse.status(), is(Status.SEE_OTHER_303));
+                }
+
+                try (HttpClientResponse authenticated = browser.get(resourceUri)) {
+                    assertThat(authenticated.status(), is(Status.OK_200));
+                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                }
+
+                assertThat(idp.tokenRequests().size(), is(2));
+                assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
+                           is("authorization_code"));
+                assertThat(idp.tokenRequests().get(1).formParam("grant_type").orElse(""), is("refresh_token"));
+                assertThat(idp.userInfoRequests().size(), is(2));
+                String initialUserInfoToken = idp.userInfoRequests().getFirst().bearerToken().orElseThrow();
+                String refreshedUserInfoToken = idp.userInfoRequests().get(1).bearerToken().orElseThrow();
+                assertThat(initialUserInfoToken.startsWith("opaque-access-"), is(true));
+                assertThat(refreshedUserInfoToken.startsWith("opaque-access-"), is(true));
+                assertThat(initialUserInfoToken.equals(refreshedUserInfoToken), is(false));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    private static URI authorizeWithoutBrowser(BrowserSession browser, URI resourceUri) {
+        try (HttpClientResponse start = browser.get(resourceUri)) {
+            assertThat(start.status(), is(Status.SEE_OTHER_303));
+            URI authorizationUri = URI.create(start.headers().first(HeaderNames.LOCATION).orElseThrow());
+
+            try (HttpClientResponse authorization = browser.get(authorizationUri)) {
+                assertThat(authorization.status(), is(Status.SEE_OTHER_303));
+                return URI.create(authorization.headers().first(HeaderNames.LOCATION).orElseThrow());
             }
         }
     }

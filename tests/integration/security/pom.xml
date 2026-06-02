@@ -36,5 +36,6 @@
 
     <modules>
         <module>gh2455</module>
+        <module>oidc-next</module>
     </modules>
 </project>

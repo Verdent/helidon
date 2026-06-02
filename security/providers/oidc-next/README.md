@@ -940,6 +940,107 @@ subject-mapping:
   scope-grants-enabled: false
 ```
 
+### Custom Claims And ABAC
+
+OIDC custom claims are copied to the Helidon principal as ABAC attributes. Claims selected by
+`role-claim-paths` are also added as role grants. For Protected Resource authentication, claims selected by
+`scope-claim-paths` are added as scope grants when `scope-grants-enabled` is `true`. For Authorization Code Flow local
+authentication, scope grants come from the Token Endpoint scope value stored in the local authentication result.
+
+For IDCS or IAM tenants, configure the claim paths to match the actual token or UserInfo claim names used by the
+tenant. The names below are examples only.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile", "email", "mcp.tools.read" ]
+        subject-mapping:
+          principal-id-claim-paths: [ "sub" ]
+          principal-name-claim-paths: [ "preferred_username", "email" ]
+          role-claim-paths: [ "groups", "idcs_groups", "iam.groups" ]
+          scope-claim-paths: [ "scope", "scp" ]
+          scope-grants-enabled: true
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+If the custom claims are returned only by the UserInfo Endpoint, enable UserInfo and include the same claim paths in
+`subject-mapping`.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile", "email" ]
+        user-info:
+          enabled: true
+        subject-mapping:
+          role-claim-paths: [ "iam.groups" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+After authentication, the application can authorize with Helidon roles, scopes, or custom principal attributes. For
+example, WebServer path rules can require roles or scopes produced by the OIDC mapping:
+
+```yaml
+security:
+  web-server.paths:
+    - path: "/mcp/admin/*"
+      roles-allowed: [ "mcp_admin" ]
+    - path: "/mcp/tools/read/*"
+      abac.scopes: [ "mcp.tools.read" ]
+```
+
+Application code can read custom claims from the current subject:
+
+```java
+boolean financeUser = context.user()
+        .map(Subject::principal)
+        .flatMap(principal -> principal.abacAttribute("department"))
+        .filter("finance"::equals)
+        .isPresent();
+```
+
+Programmatic subject mapping uses the same claim path names:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .clientId("client-id")
+        .clientSecret("client-secret")
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
+                .scopes(List.of("openid", "profile", "email", "mcp.tools.read")))
+        .subjectMapping(subjectMapping -> subjectMapping
+                .principalIdClaimPaths(List.of("sub"))
+                .principalNameClaimPaths(List.of("preferred_username", "email"))
+                .roleClaimPaths(List.of("groups", "idcs_groups", "iam.groups"))
+                .scopeClaimPaths(List.of("scope", "scp"))
+                .scopeGrantsEnabled(true))
+        .cookies(cookies -> cookies
+                .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
+        .buildPrototype();
+```
+
+Claim-path limitations:
+
+- Dots in claim paths mean nested JSON objects, for example `iam.groups`.
+- Literal claim names containing dots cannot be selected as one path segment.
+- Role and scope claim values must be strings or arrays of strings.
+- Object-array claims such as `groups: [{ "name": "mcp_admin" }]` are not flattened by subject mapping.
+
 ## Combining Browser Login And API Bearer Tokens
 
 A tenant may enable Authorization Code Flow and Protected Resource authentication at the same time.

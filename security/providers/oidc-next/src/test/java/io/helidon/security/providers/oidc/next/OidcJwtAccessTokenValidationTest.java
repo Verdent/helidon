@@ -28,9 +28,16 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.http.HeaderName;
@@ -61,6 +68,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 class OidcJwtAccessTokenValidationTest {
@@ -80,6 +89,8 @@ class OidcJwtAccessTokenValidationTest {
     private static final AtomicReference<String> providerMetadata = new AtomicReference<>();
     private static final AtomicReference<String> wellKnownWebClientHeader = new AtomicReference<>();
     private static final AtomicReference<String> remoteJwkSetWebClientHeader = new AtomicReference<>();
+    private static final AtomicReference<CountDownLatch> remoteJwkSetRequestLatch = new AtomicReference<>();
+    private static final AtomicReference<CountDownLatch> remoteJwkSetResponseLatch = new AtomicReference<>();
 
     private static JwkKeys signKeys;
     private static URI jwksUri;
@@ -112,6 +123,21 @@ class OidcJwtAccessTokenValidationTest {
         routing.get("/jwks", (request, response) -> {
             remoteJwkSetRequests.incrementAndGet();
             remoteJwkSetWebClientHeader.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
+            CountDownLatch requestLatch = remoteJwkSetRequestLatch.get();
+            if (requestLatch != null) {
+                requestLatch.countDown();
+            }
+            CountDownLatch responseLatch = remoteJwkSetResponseLatch.get();
+            if (responseLatch != null) {
+                try {
+                    if (!responseLatch.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out waiting to release JWK Set response");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while waiting to release JWK Set response", e);
+                }
+            }
             String jwkSet = remoteJwkSetResponses.get().poll();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(jwkSet == null ? emptyJwkSet() : jwkSet);
@@ -132,6 +158,8 @@ class OidcJwtAccessTokenValidationTest {
                 .set("jwks_uri", remoteJwksUri.toString())
                 .build()
                 .toString());
+        remoteJwkSetRequestLatch.set(null);
+        remoteJwkSetResponseLatch.set(null);
     }
 
     @Test
@@ -290,9 +318,44 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
-        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void unknownKeyIdRefreshUsesConfiguredInterval() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .unknownKeyIdRefreshInterval(Duration.ofSeconds(30))
+                .buildPrototype();
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+        clock.advance(Duration.ofSeconds(29));
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void unknownKeyIdRefreshCanBeDisabled() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .unknownKeyIdRefreshEnabled(false)
+                .buildPrototype();
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
     }
 
     @Test
@@ -303,12 +366,12 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
 
         manager.jwkKeys();
-        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
-        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
     }
 
@@ -320,11 +383,172 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
 
         manager.jwkKeys();
-        clock.advance(OidcJwkSetManager.UNKNOWN_KEY_ID_REFRESH_INTERVAL);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void refreshIntervalReloadsCachedJwkSet() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(30))
+                .buildPrototype();
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
+
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+        clock.advance(Duration.ofSeconds(29));
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(false));
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void failedRefreshUsesStaleJwkSetWhenConfigured() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, verifyJwkSet);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(30))
+                .buildPrototype();
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
+
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+        Files.delete(jwkSet);
+        clock.advance(Duration.ofSeconds(30));
+
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void failedRefreshFailsWhenStaleJwkSetIsDisabled() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, verifyJwkSet);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(30))
+                .staleOnError(false)
+                .buildPrototype();
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
+
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+        Files.delete(jwkSet);
+        clock.advance(Duration.ofSeconds(30));
+
+        assertThrows(IllegalStateException.class, manager::jwkKeys);
+        assertThrows(IllegalStateException.class, manager::jwkKeys);
+        Files.writeString(jwkSet, verifyJwkSet);
+        clock.advance(Duration.ofSeconds(30));
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void concurrentColdJwkSetLoadIsSingleFlight() throws Exception {
+        int threads = 32;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet)));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, Clock.systemUTC());
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = IntStream.range(0, threads)
+                    .mapToObj(ignored -> executor.submit(() -> {
+                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        return manager.jwkKeys();
+                    }))
+                    .toList();
+
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+            for (Future<JwkKeys> future : futures) {
+                assertThat(future.get().forKeyId("verify-rsa").isPresent(), is(true));
+            }
+        }
+
+        assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
+    void concurrentRefreshIntervalReloadIsSingleFlight() throws Exception {
+        int threads = 32;
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(1))
+                .buildPrototype();
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(emptyJwkSet(), verifyJwkSet)));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(false));
+        assertThat(remoteJwkSetRequests.get(), is(1));
+
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        clock.advance(Duration.ofSeconds(1));
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = IntStream.range(0, threads)
+                    .mapToObj(ignored -> executor.submit(() -> {
+                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        return manager.jwkKeys();
+                    }))
+                    .toList();
+
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+            for (Future<JwkKeys> future : futures) {
+                future.get();
+            }
+        }
+
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+        assertThat(remoteJwkSetRequests.get(), is(2));
+    }
+
+    @Test
+    void concurrentUnknownKeyIdRefreshIsSingleFlight() throws Exception {
+        int threads = 32;
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(emptyJwkSet(), verifyJwkSet)));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock);
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(false));
+        assertThat(remoteJwkSetRequests.get(), is(1));
+
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = IntStream.range(0, threads)
+                    .mapToObj(ignored -> executor.submit(() -> {
+                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        return manager.jwkKeys(Optional.of("verify-rsa"));
+                    }))
+                    .toList();
+
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+            for (Future<JwkKeys> future : futures) {
+                assertThat(future.get().forKeyId("verify-rsa").isPresent(), is(true));
+            }
+        }
+
+        assertThat(remoteJwkSetRequests.get(), is(2));
     }
 
     @Test
@@ -598,6 +822,10 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private static OidcJwkSetManager jwkSetManager(URI jwksUri, Clock clock) {
+        return jwkSetManager(jwksUri, clock, OidcJwkSetConfig.create());
+    }
+
+    private static OidcJwkSetManager jwkSetManager(URI jwksUri, Clock clock, OidcJwkSetConfig config) {
         OidcProviderMetadata metadata = OidcProviderMetadata.create(Optional.of(ISSUER),
                                                                     Optional.empty(),
                                                                     Optional.empty(),
@@ -606,7 +834,7 @@ class OidcJwtAccessTokenValidationTest {
                                                                     Optional.empty(),
                                                                     Optional.empty(),
                                                                     Optional.empty());
-        return OidcJwkSetManager.create("default", metadata, clock);
+        return OidcJwkSetManager.create("default", metadata, clock, config);
     }
 
     private static String signedToken(Consumer<Jwt.Builder> customizer) {

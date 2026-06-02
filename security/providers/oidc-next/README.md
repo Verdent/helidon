@@ -58,6 +58,9 @@ security:
         issuer: "https://issuer.example"
         endpoints:
           jwks-uri: "https://issuer.example/jwks"
+        jwk-set:
+          unknown-key-id-refresh-interval: "PT30S"
+          refresh-interval: "PT1H"
         protected-resource:
           token-validation:
             method: JWT
@@ -119,6 +122,24 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
+```
+
+Configure JWK Set reload policy programmatically:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .endpoints(endpoints -> endpoints
+                .jwksUri(URI.create("https://issuer.example/jwks")))
+        .jwkSet(jwkSet -> jwkSet
+                .unknownKeyIdRefreshInterval(Duration.ofSeconds(30))
+                .refreshInterval(Duration.ofHours(1))
+                .staleOnError(true))
+        .protectedResource(protectedResource -> protectedResource
+                .tokenValidation(tokenValidation -> tokenValidation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://orders")))
+        .buildPrototype();
 ```
 
 Create an introspection Protected Resource provider:
@@ -352,6 +373,43 @@ protected-resource:
     method: JWT
     audience-validation-enabled: false
 ```
+
+### JWK Set Reload Policy
+
+The `jwk-set` block configures how the provider reloads the JSON Web Key Set used for ID Token and JWT access-token
+signature validation. This is tenant configuration, so single-tenant applications place it directly under `oidc-next`;
+multi-tenant applications place it under each tenant that needs a custom policy.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        jwk-set:
+          unknown-key-id-refresh-enabled: true
+          unknown-key-id-refresh-interval: "PT30S"
+          refresh-interval: "PT1H"
+          stale-on-error: true
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: "api://orders"
+```
+
+`unknown-key-id-refresh-enabled` reloads the JWK Set when a token uses a `kid` that is not present in the cached keys.
+This supports Authorization Server key rotation. `unknown-key-id-refresh-interval` rate-limits those reload attempts;
+the default is `PT5M`.
+
+`refresh-interval` enables lazy periodic refresh. No background thread is started. The provider checks the cache age
+during token validation and refreshes only when a request needs keys after the interval has elapsed.
+
+Refreshes are coordinated as single-flight operations for concurrent requests. The cached-key fast path does not take
+the refresh lock. When many virtual threads hit a cold cache, expired cache, or unknown `kid` at the same time, only one
+thread loads the JWK Set from the remote endpoint for that refresh opportunity. With `stale-on-error: true`, requests
+may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
+requests to fail until the next configured refresh interval permits another reload attempt.
 
 ## Protected Resource With Introspection
 
@@ -1213,6 +1271,7 @@ multi-tenant applications:
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
+| `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
@@ -1230,6 +1289,15 @@ Client assertion options:
 | `key-id` | JWS `kid` header. For `PRIVATE_KEY_JWT`, selects the signing key and is required when `jwk` contains multiple keys. For `CLIENT_SECRET_JWT`, written to the assertion header when configured. |
 | `jwk` | Private JWK Set resource used to sign `PRIVATE_KEY_JWT` assertions. |
 | `lifetime` | Assertion lifetime used to calculate `exp`. Defaults to `PT1M`. |
+
+JWK Set options:
+
+| Key | Description |
+| --- | --- |
+| `unknown-key-id-refresh-enabled` | Whether an unknown JWT `kid` triggers a JWK Set reload attempt. Defaults to `true`. |
+| `unknown-key-id-refresh-interval` | Minimum interval between unknown-`kid` reload attempts. Defaults to `PT5M`. |
+| `refresh-interval` | Optional lazy JWK Set refresh interval. If configured, cached keys older than this interval are refreshed during token validation. No background thread is started. |
+| `stale-on-error` | Whether cached keys may still be used when a reload fails. Defaults to `true`; initial loading still fails when no cached keys exist. |
 
 Authorization Code Flow options:
 

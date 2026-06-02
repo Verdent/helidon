@@ -105,6 +105,15 @@ interface OidcTenantConfigOptionsBlueprint {
     WebClientConfig webClient();
 
     /**
+     * JSON Web Key Set reload policy.
+     *
+     * @return JWK Set reload policy
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcJwkSetConfig jwkSet();
+
+    /**
      * OpenID Provider endpoint and well-known metadata settings.
      *
      * @return endpoint configuration

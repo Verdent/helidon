@@ -17,8 +17,11 @@
 package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.helidon.http.HeaderNames;
+import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
@@ -64,6 +67,53 @@ class OidcAccessTokenValidationIT {
 
                 assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
                            is("client_credentials"));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void protectedResourceReloadsJwksWhenAccessTokenKeyIdIsUnknown() {
+        AtomicInteger jwksResponses = new AtomicInteger();
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(SERVICE_CLIENT, SERVICE_SECRET)
+                .defaultScopes("service.read")
+                .endpoints(endpoints -> endpoints.jwks(ctx -> {
+                    if (jwksResponses.getAndIncrement() == 0) {
+                        ctx.response()
+                                .header(HeaderValues.CONTENT_TYPE_JSON)
+                                .send("{\"keys\":[]}");
+                        return;
+                    }
+                    ctx.sendDefault();
+                }))
+                .build()) {
+            String accessToken = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.protectedResourceProviderConfig(
+                    idp,
+                    SERVICE_CLIENT,
+                    null,
+                    SERVICE_CLIENT,
+                    OidcTokenValidationMethod.JWT,
+                    tenant -> tenant.jwkSet(jwkSet -> jwkSet.unknownKeyIdRefreshInterval(Duration.ZERO)));
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/api"));
+            try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                WebClient client = WebClient.builder()
+                        .baseUri(rpBaseUri)
+                        .build();
+
+                try (HttpClientResponse response = client.get("/api")
+                        .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+                        .request()) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.as(String.class), is("service-client|service-client|"));
+                }
+
+                assertThat(idp.jwksRequests().size(), is(2));
             } finally {
                 rpServer.stop();
             }

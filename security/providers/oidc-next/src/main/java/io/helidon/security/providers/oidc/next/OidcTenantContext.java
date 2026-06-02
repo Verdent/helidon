@@ -160,7 +160,7 @@ final class OidcTenantContext {
             return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
-                                        OidcJwkSetManager.create(tenantId, metadata, webClient),
+                                        OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
                                         OidcCookieStateHandler.create(tenantConfig),
                                         webClient);
         }

@@ -331,12 +331,35 @@ class OidcProviderTest {
     }
 
     @Test
-    void authorizationCodeFlowResolvesLocalRedirectionEndpointFromHostHeader() {
+    void authorizationCodeFlowResolvesLocalRedirectionEndpointFromDiscoveredTargetUri() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code
                 .redirectionEndpointUri(URI.create("/oidc/callback")));
         OidcProvider provider = provider(tenant);
         SecurityEnvironment environment = SecurityEnvironment.builder()
-                .targetUri(URI.create("https://internal.example/resource"))
+                .targetUri(URI.create("https://rp.example/external/resource"))
+                .path("/resource")
+                .transport("http")
+                .header("Host", "internal.example:8080")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        URI resolvedRedirectionEndpointUri = URI.create("https://rp.example/oidc/callback");
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.originalUri(), is(URI.create("https://rp.example/external/resource")));
+        assertThat(state.redirectionEndpointUri(), is(resolvedRedirectionEndpointUri));
+    }
+
+    @Test
+    void authorizationCodeFlowFallsBackToHostHeaderForLocalRedirectionEndpoint() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
                 .path("/resource")
                 .transport("https")
                 .header("Host", "rp.example:8443")

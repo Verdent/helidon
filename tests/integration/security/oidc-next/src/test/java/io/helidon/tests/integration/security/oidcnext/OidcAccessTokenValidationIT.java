@@ -21,6 +21,7 @@ import java.net.URI;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
+import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
@@ -37,9 +38,6 @@ class OidcAccessTokenValidationIT {
 
     @Test
     void protectedResourceValidatesJwtAccessTokenThroughJwks() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(SERVICE_CLIENT, SERVICE_SECRET)
                 .defaultScopes("service.read")
@@ -49,10 +47,10 @@ class OidcAccessTokenValidationIT {
                                                                                                       SERVICE_CLIENT,
                                                                                                       SERVICE_CLIENT);
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/api"));
             try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 WebClient client = WebClient.builder()
                         .baseUri(rpBaseUri)
                         .build();
@@ -66,6 +64,84 @@ class OidcAccessTokenValidationIT {
 
                 assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
                            is("client_credentials"));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void protectedResourceValidatesOpaqueAccessTokenThroughIntrospection() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(SERVICE_CLIENT, SERVICE_SECRET)
+                .defaultScopes("service.read")
+                .tokenDefaults(tokens -> tokens
+                        .accessToken(accessToken -> accessToken.opaque(true)))
+                .build()) {
+            String accessToken = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.protectedResourceProviderConfig(
+                    idp,
+                    SERVICE_CLIENT,
+                    SERVICE_SECRET,
+                    SERVICE_CLIENT,
+                    OidcTokenValidationMethod.INTROSPECTION);
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/api"));
+            try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                WebClient client = WebClient.builder()
+                        .baseUri(rpBaseUri)
+                        .build();
+
+                try (HttpClientResponse response = client.get("/api")
+                        .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+                        .request()) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.as(String.class), is("service-client|service-client|"));
+                }
+
+                assertThat(accessToken.startsWith("opaque-access-"), is(true));
+                assertThat(accessToken.contains("."), is(false));
+                assertThat(idp.introspectionRequests().size(), is(1));
+                assertThat(idp.introspectionRequests().getFirst().formParam("token").orElse(""), is(accessToken));
+                assertThat(idp.introspectionRequests().getFirst().formParam("token_type_hint").orElse(""),
+                           is("access_token"));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void protectedResourceRejectsUnknownOpaqueAccessTokenThroughIntrospection() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(SERVICE_CLIENT, SERVICE_SECRET)
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.protectedResourceProviderConfig(
+                    idp,
+                    SERVICE_CLIENT,
+                    SERVICE_SECRET,
+                    SERVICE_CLIENT,
+                    OidcTokenValidationMethod.INTROSPECTION);
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/api"));
+            try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                WebClient client = WebClient.builder()
+                        .baseUri(rpBaseUri)
+                        .build();
+
+                try (HttpClientResponse response = client.get("/api")
+                        .header(HeaderNames.AUTHORIZATION, "Bearer unknown-opaque-token")
+                        .request()) {
+                    assertThat(response.status(), is(Status.UNAUTHORIZED_401));
+                }
+
+                assertThat(idp.introspectionRequests().size(), is(1));
+                assertThat(idp.introspectionRequests().getFirst().formParam("token").orElse(""),
+                           is("unknown-opaque-token"));
             } finally {
                 rpServer.stop();
             }

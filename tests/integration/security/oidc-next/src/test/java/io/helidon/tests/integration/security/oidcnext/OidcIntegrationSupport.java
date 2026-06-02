@@ -16,8 +16,6 @@
 
 package io.helidon.tests.integration.security.oidcnext;
 
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -59,19 +57,18 @@ final class OidcIntegrationSupport {
     private OidcIntegrationSupport() {
     }
 
-    static int reservePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+    static OidcProviderConfig authorizationCodeProviderConfig(TestOidcServer idp,
+                                                              Consumer<OidcAuthorizationCodeConfig.Builder>
+                                                                      authorizationCodeCustomizer) {
+        return authorizationCodeProviderConfig(idp, authorizationCodeCustomizer, tenant -> {
+        });
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig(TestOidcServer idp,
-                                                              URI callbackUri,
                                                               Consumer<OidcAuthorizationCodeConfig.Builder>
-                                                                      authorizationCodeCustomizer) {
-        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                                                                      authorizationCodeCustomizer,
+                                                              Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(idp.issuer())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
@@ -79,41 +76,51 @@ final class OidcIntegrationSupport {
                         .authorizationEndpointUri(idp.authorizationEndpointUri())
                         .tokenEndpointUri(idp.tokenEndpointUri())
                         .jwksUri(idp.jwksUri())
+                        .introspectionEndpointUri(idp.introspectionEndpointUri())
                         .userInfoEndpointUri(idp.userInfoEndpointUri())
                         .tlsRequired(false))
                 .authorizationCode(authorizationCode -> {
-                    authorizationCode.redirectionEndpointUri(callbackUri)
-                            .scopes(List.of("openid", "profile"));
+                    authorizationCode.scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
                 .userInfo(userInfo -> {
                 })
-                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET))
-                .buildPrototype();
+                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET));
+        tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
-                .putTenant("default", tenant)
+                .putTenant("default", tenant.buildPrototype())
                 .buildPrototype();
     }
 
     static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp, String clientId, String audience) {
-        OidcTenantConfig tenant = OidcTenantConfig.builder()
+        return protectedResourceProviderConfig(idp, clientId, null, audience, OidcTokenValidationMethod.JWT);
+    }
+
+    static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp,
+                                                              String clientId,
+                                                              String clientSecret,
+                                                              String audience,
+                                                              OidcTokenValidationMethod method) {
+        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(idp.issuer())
                 .clientId(clientId)
                 .endpoints(endpoints -> endpoints
                         .jwksUri(idp.jwksUri())
+                        .introspectionEndpointUri(idp.introspectionEndpointUri())
                         .tlsRequired(false))
                 .protectedResource(resource -> resource
                         .tokenValidation(validation -> validation
-                                .method(OidcTokenValidationMethod.JWT)
-                                .audience(audience)))
-                .buildPrototype();
+                                .method(method)
+                                .audience(audience)));
+        if (clientSecret != null) {
+            tenant.clientSecret(clientSecret);
+        }
         return OidcProviderConfig.builder()
-                .putTenant("default", tenant)
+                .putTenant("default", tenant.buildPrototype())
                 .buildPrototype();
     }
 
     static WebServer rpServer(OidcProviderConfig providerConfig,
-                              int port,
                               Consumer<HttpRouting.Builder> routeCustomizer) {
         Security security = Security.builder()
                 .addProvider(OidcProvider.create(providerConfig), "oidc-next")
@@ -122,13 +129,17 @@ final class OidcIntegrationSupport {
         OidcFeature.create(providerConfig).setup(routing);
         routeCustomizer.accept(routing);
         return WebServer.builder()
-                .port(port)
+                .port(0)
                 .addFeature(SecurityFeature.builder()
                                     .security(security)
                                     .build())
                 .addRouting(routing)
                 .build()
                 .start();
+    }
+
+    static URI rpBaseUri(WebServer server) {
+        return URI.create("http://localhost:" + server.port());
     }
 
     static void protectedRoute(HttpRouting.Builder routing, String path) {

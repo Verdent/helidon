@@ -769,7 +769,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void authorizationCodeFlowRequiresRedirectionEndpointAndClient() {
+    void authorizationCodeFlowRequiresClientAndDefaultsRedirectionEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
@@ -779,28 +779,45 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("client-id"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
-                .buildPrototype());
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
 
-        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri"));
+        assertThat(tenant.authorizationCode().orElseThrow().redirectionEndpointUri().orElseThrow(),
+                   is(URI.create("/oidc/callback")));
     }
 
     @Test
     void authorizationCodeFlowRejectsInvalidRedirectionEndpointUri() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+        OidcTenantConfig localRedirectionEndpointTenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("/oidc/callback")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(localRedirectionEndpointTenant.authorizationCode()
+                           .orElseThrow()
+                           .redirectionEndpointUri()
+                           .orElseThrow(),
+                   is(URI.create("/oidc/callback")));
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("oidc/callback")))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must be an absolute URI"));
+        assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must be an absolute URI or local absolute path"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER)

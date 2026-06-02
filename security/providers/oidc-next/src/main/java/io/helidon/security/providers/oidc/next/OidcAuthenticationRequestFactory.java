@@ -23,8 +23,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
+import java.util.Locale;
 
 import io.helidon.common.uri.UriQueryWriteable;
+import io.helidon.http.HeaderNames;
 import io.helidon.http.SetCookie;
 import io.helidon.security.SecurityEnvironment;
 
@@ -48,8 +51,14 @@ final class OidcAuthenticationRequestFactory {
         URI authorizationEndpointUri = tenantContext.metadata()
                 .authorizationEndpointUri()
                 .orElseThrow(() -> new IllegalStateException("authorization-endpoint-uri is not configured"));
-        URI redirectionEndpointUri = authorizationCode.redirectionEndpointUri()
-                .orElseThrow(() -> new IllegalStateException("redirection-endpoint-uri is not configured"));
+        URI redirectionEndpointUri = resolveRedirectionEndpointUri(
+                OidcConfigSupport.redirectionEndpointUri(authorizationCode),
+                context.environment());
+        if (tenantConfig.endpoints().tlsRequired() && !"https".equalsIgnoreCase(redirectionEndpointUri.getScheme())) {
+            throw new IllegalStateException(
+                    "redirection-endpoint-uri must use https unless endpoints.tls-required is disabled: "
+                            + redirectionEndpointUri);
+        }
 
         String state = randomValue();
         String nonce = randomValue();
@@ -131,6 +140,28 @@ final class OidcAuthenticationRequestFactory {
             return targetUri;
         }
         return URI.create(environment.path().orElse("/"));
+    }
+
+    private URI resolveRedirectionEndpointUri(URI configuredUri, SecurityEnvironment environment) {
+        if (configuredUri.isAbsolute()) {
+            return configuredUri;
+        }
+        return requestOrigin(environment).resolve(configuredUri);
+    }
+
+    private URI requestOrigin(SecurityEnvironment environment) {
+        List<String> host = environment.headers().get(HeaderNames.HOST.defaultCase());
+        if (host != null && !host.isEmpty()) {
+            return URI.create(environment.transport().toLowerCase(Locale.ROOT) + "://" + host.getFirst());
+        }
+
+        URI targetUri = environment.targetUri();
+        if (targetUri != null && targetUri.getScheme() != null && targetUri.getRawAuthority() != null) {
+            return URI.create(targetUri.getScheme() + "://" + targetUri.getRawAuthority());
+        }
+
+        throw new IllegalStateException(
+                "Host header or target URI is required when redirection-endpoint-uri is configured as a local path");
     }
 
     private String randomValue() {

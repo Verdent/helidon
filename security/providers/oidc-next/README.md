@@ -158,8 +158,8 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 OidcProvider provider = OidcProvider.create(config);
 ```
 
-When Authorization Code Flow or logout is enabled, register `OidcFeature` with WebServer routing so the local routes are
-installed:
+When Authorization Code Flow or logout is enabled, register `OidcFeature` as a WebServer feature so the local routes are
+installed. This registration form also applies the configured `socket`:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
@@ -182,9 +182,36 @@ WebServer.builder()
         .addFeature(SecurityFeature.builder()
                 .security(security)
                 .build())
-        .routing(routing -> routing.addFeature(OidcFeature.create(config)))
+        .addFeature(OidcFeature.create(config))
         .build();
 ```
+
+To register the local OIDC routes on a named WebServer socket, configure `socket` on the provider and register
+`OidcFeature` as a WebServer feature. The socket name must match a configured `server.sockets[].name`.
+
+```yaml
+server:
+  port: 8080
+  sockets:
+    - name: public
+      port: 8443
+
+security:
+  providers:
+    - oidc-next:
+        socket: public
+        socket-required: true
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        authorization-code:
+          scopes: [ "openid", "profile" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+`socket-required` defaults to `true` for named OIDC sockets. Set it to `false` only if the feature may fall back to the
+default WebServer socket when the named socket is absent.
 
 Programmatic subject mapping uses the same claim path names as YAML:
 
@@ -1167,6 +1194,8 @@ Provider options:
 | --- | --- |
 | `provider-name` | Provider name used by Helidon Security. Defaults to `oidc-next`. |
 | `optional` | Whether authentication failures may be treated as optional by the provider. Defaults to `false`. |
+| `socket` | WebServer socket name used by `OidcFeature` when it is registered as a WebServer feature. Defaults to the WebServer default socket. |
+| `socket-required` | Whether the configured named socket must exist. Defaults to `true`; has no effect when `socket` is omitted or set to `@default`. |
 | `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one named tenant is configured. In root single-tenant config, this optionally names the synthetic tenant. |
 | `tenant-resolution` | Tenant resolution rules. |
 | `tenants` | Map of tenant id to tenant configuration for multi-tenant applications. Do not combine this with root tenant options. |

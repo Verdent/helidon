@@ -58,6 +58,7 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
 class OidcFeatureRouteTest {
@@ -126,6 +127,94 @@ class OidcFeatureRouteTest {
                 .request()) {
             assertThat(response.status(), is(Status.BAD_REQUEST_400));
             assertThat(response.as(String.class), is("Authorization Response is invalid"));
+        }
+    }
+
+    @Test
+    void featureRegistersRoutesOnConfiguredSocket() {
+        OidcTenantConfig tenant = tenantConfigWithLogout();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .socket("oidc")
+                .putTenant("default", tenant)
+                .buildPrototype();
+        WebServer server = WebServer.builder()
+                .port(0)
+                .putSocket("oidc", socket -> socket.name("oidc").port(0))
+                .addFeature(OidcFeature.create(config))
+                .build()
+                .start();
+        WebClient client = WebClient.create();
+        try {
+            try (HttpClientResponse response = client.get("http://localhost:" + server.port("oidc") + "/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("Authorization Response is invalid"));
+            }
+            try (HttpClientResponse response = client.get("http://localhost:" + server.port() + "/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .request()) {
+                assertThat(response.status(), is(Status.NOT_FOUND_404));
+            }
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+            try (HttpClientResponse response = client.post("http://localhost:" + server.port("oidc") + "/oidc/logout")
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.FORBIDDEN_403));
+            }
+            try (HttpClientResponse response = client.post("http://localhost:" + server.port() + "/oidc/logout")
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.NOT_FOUND_404));
+            }
+        } finally {
+            client.closeResource();
+            server.stop();
+        }
+    }
+
+    @Test
+    void featureRejectsMissingRequiredSocket() {
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .socket("oidc")
+                .putTenant("default", tenantConfig())
+                .buildPrototype();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> WebServer.builder()
+                                                               .port(0)
+                                                               .addFeature(OidcFeature.create(config))
+                                                               .build());
+
+        assertThat(thrown.getMessage(), containsString("socket \"oidc\""));
+        assertThat(thrown.getMessage(), containsString("must be present"));
+    }
+
+    @Test
+    void featureFallsBackToDefaultSocketWhenConfiguredSocketIsNotRequired() {
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .socket("oidc")
+                .socketRequired(false)
+                .putTenant("default", tenantConfig())
+                .buildPrototype();
+        WebServer server = WebServer.builder()
+                .port(0)
+                .addFeature(OidcFeature.create(config))
+                .build()
+                .start();
+        WebClient client = WebClient.create();
+        try {
+            try (HttpClientResponse response = client.get("http://localhost:" + server.port() + "/oidc/callback")
+                    .queryParam("code", "authorization-code")
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("Authorization Response is invalid"));
+            }
+        } finally {
+            client.closeResource();
+            server.stop();
         }
     }
 

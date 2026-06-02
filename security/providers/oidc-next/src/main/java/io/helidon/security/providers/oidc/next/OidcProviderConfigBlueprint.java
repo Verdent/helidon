@@ -27,6 +27,7 @@ import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
 import io.helidon.security.spi.SecurityProvider;
+import io.helidon.webserver.WebServer;
 
 /**
  * Configuration of the new OIDC security provider.
@@ -53,6 +54,31 @@ interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, 
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean optional();
+
+    /**
+     * WebServer socket name used by {@link OidcFeature} when it is registered as a WebServer feature with
+     * {@code WebServer.Builder#addFeature}.
+     * <p>
+     * If omitted, the feature is registered on the default WebServer socket.
+     *
+     * @return WebServer socket name
+     * @see WebServer#DEFAULT_SOCKET_NAME
+     */
+    @Option.Configured
+    Optional<String> socket();
+
+    /**
+     * Whether the WebServer socket configured by {@link #socket()} must exist.
+     * <p>
+     * Defaults to {@code true}; this prevents an explicitly configured OIDC callback/logout socket from silently
+     * falling back to {@value WebServer#DEFAULT_SOCKET_NAME}. This option has no effect when {@link #socket()} is
+     * omitted or set to {@value WebServer#DEFAULT_SOCKET_NAME}.
+     *
+     * @return whether the configured socket must exist
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean socketRequired();
 
     /**
      * Default tenant id.

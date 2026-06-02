@@ -197,4 +197,44 @@ class OidcAccessTokenValidationIT {
             }
         }
     }
+
+    @Test
+    void protectedResourceRejectsExpiredOpaqueAccessTokenThroughIntrospection() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(SERVICE_CLIENT, SERVICE_SECRET)
+                .defaultScopes("service.read")
+                .tokenDefaults(tokens -> tokens
+                        .accessToken(accessToken -> accessToken
+                                .opaque(true)
+                                .expiresIn(Duration.ZERO)))
+                .build()) {
+            String accessToken = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.protectedResourceProviderConfig(
+                    idp,
+                    SERVICE_CLIENT,
+                    SERVICE_SECRET,
+                    SERVICE_CLIENT,
+                    OidcTokenValidationMethod.INTROSPECTION);
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/api"));
+            try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                WebClient client = WebClient.builder()
+                        .baseUri(rpBaseUri)
+                        .build();
+
+                try (HttpClientResponse response = client.get("/api")
+                        .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+                        .request()) {
+                    assertThat(response.status(), is(Status.UNAUTHORIZED_401));
+                }
+
+                assertThat(idp.introspectionRequests().size(), is(1));
+                assertThat(idp.introspectionRequests().getFirst().formParam("token").orElse(""), is(accessToken));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
 }

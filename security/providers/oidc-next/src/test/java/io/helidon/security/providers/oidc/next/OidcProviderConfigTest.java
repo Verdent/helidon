@@ -81,6 +81,7 @@ class OidcProviderConfigTest {
         OidcCookieConfig cookies = OidcCookieConfig.create();
         OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
         OidcClientAssertionConfig clientAssertion = OidcClientAssertionConfig.create();
+        OidcJwkSetConfig jwkSet = OidcJwkSetConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -122,6 +123,10 @@ class OidcProviderConfigTest {
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
         assertThat(clientAssertion.lifetime(), is(Duration.ofMinutes(1)));
+        assertThat(jwkSet.unknownKeyIdRefreshEnabled(), is(true));
+        assertThat(jwkSet.unknownKeyIdRefreshInterval(), is(Duration.ofMinutes(5)));
+        assertThat(jwkSet.refreshInterval().isEmpty(), is(true));
+        assertThat(jwkSet.staleOnError(), is(true));
         assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
                    is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -205,6 +210,10 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-assertion.key-id", "sign-rsa"),
                         Map.entry("tenants.default.client-assertion.jwk.resource-path", "oidc-next-sign-jwk.json"),
                         Map.entry("tenants.default.client-assertion.lifetime", "PT2M"),
+                        Map.entry("tenants.default.jwk-set.unknown-key-id-refresh-enabled", "false"),
+                        Map.entry("tenants.default.jwk-set.unknown-key-id-refresh-interval", "PT30S"),
+                        Map.entry("tenants.default.jwk-set.refresh-interval", "PT10M"),
+                        Map.entry("tenants.default.jwk-set.stale-on-error", "false"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("tenants.default.webclient.read-timeout", "PT2S"),
                         Map.entry("tenants.default.webclient.proxy.type", "HTTP"),
@@ -258,6 +267,10 @@ class OidcProviderConfigTest {
         assertThat(tenant.clientAssertion().jwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().lifetime(), is(Duration.ofMinutes(2)));
+        assertThat(tenant.jwkSet().unknownKeyIdRefreshEnabled(), is(false));
+        assertThat(tenant.jwkSet().unknownKeyIdRefreshInterval(), is(Duration.ofSeconds(30)));
+        assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(10)));
+        assertThat(tenant.jwkSet().staleOnError(), is(false));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.webClient().readTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
         assertThat(tenant.webClient().proxy().type(), is(Proxy.ProxyType.HTTP));
@@ -294,6 +307,7 @@ class OidcProviderConfigTest {
                         Map.entry("issuer", ISSUER.toString()),
                         Map.entry("client-id", "client-id"),
                         Map.entry("client-secret", "client-secret-value"),
+                        Map.entry("jwk-set.refresh-interval", "PT15M"),
                         Map.entry("endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("protected-resource.token-validation.method", "JWT"),
                         Map.entry("protected-resource.token-validation.audience", AUDIENCE))))
@@ -306,6 +320,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElseThrow(), is("client-id"));
         assertThat(tenant.clientSecret().orElseThrow(), is("client-secret-value"));
+        assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(15)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
@@ -416,6 +431,33 @@ class OidcProviderConfigTest {
                                                        () -> OidcProviderConfig.create(config));
 
         assertThat(thrown.getMessage(), containsString("Root tenant configuration"));
+    }
+
+    @Test
+    void jwkSetRejectsNegativeUnknownKeyIdRefreshInterval() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantConfig.builder()
+                                                               .jwkSet(it -> it.unknownKeyIdRefreshInterval(
+                                                                       Duration.ofSeconds(-1)))
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("unknown-key-id-refresh-interval"));
+    }
+
+    @Test
+    void jwkSetRejectsNonPositiveRefreshInterval() {
+        IllegalArgumentException zero = assertThrows(IllegalArgumentException.class,
+                                                     () -> OidcTenantConfig.builder()
+                                                             .jwkSet(it -> it.refreshInterval(Duration.ZERO))
+                                                             .buildPrototype());
+        IllegalArgumentException negative = assertThrows(IllegalArgumentException.class,
+                                                         () -> OidcTenantConfig.builder()
+                                                                 .jwkSet(it -> it.refreshInterval(
+                                                                         Duration.ofSeconds(-1)))
+                                                                 .buildPrototype());
+
+        assertThat(zero.getMessage(), containsString("jwk-set.refresh-interval"));
+        assertThat(negative.getMessage(), containsString("jwk-set.refresh-interval"));
     }
 
     @Test

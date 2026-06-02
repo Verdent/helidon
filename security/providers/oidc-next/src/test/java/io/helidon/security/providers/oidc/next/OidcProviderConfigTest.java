@@ -45,6 +45,7 @@ import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webserver.WebServer;
 
 import org.junit.jupiter.api.Test;
 
@@ -83,6 +84,8 @@ class OidcProviderConfigTest {
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
+        assertThat(providerConfig.socket().isEmpty(), is(true));
+        assertThat(providerConfig.socketRequired(), is(true));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
@@ -229,6 +232,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.subject-mapping.role-claim-paths.0", "realm_access.roles"),
                         Map.entry("tenants.default.subject-mapping.scope-claim-paths.0", "scp"),
                         Map.entry("tenants.default.subject-mapping.scope-grants-enabled", "false"),
+                        Map.entry("socket", "oidc"),
+                        Map.entry("socket-required", "false"),
                         Map.entry("outbound.0.name", "orders"),
                         Map.entry("outbound.0.transports.0", "https"),
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
@@ -238,6 +243,8 @@ class OidcProviderConfigTest {
         OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
 
         assertThat(providerConfig.defaultTenant().orElse(""), is("default"));
+        assertThat(providerConfig.socket().orElse(""), is("oidc"));
+        assertThat(providerConfig.socketRequired(), is(false));
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
         OutboundTarget outboundTarget = providerConfig.outboundTargets().getFirst();
         assertThat(outboundTarget.name(), is("orders"));
@@ -364,6 +371,38 @@ class OidcProviderConfigTest {
 
         assertThat(providerConfig.defaultTenant().orElseThrow(), is("web"));
         assertThat(providerConfig.tenants().containsKey("web"), is(true));
+    }
+
+    @Test
+    void featureUsesDefaultSocketWhenProviderSocketIsNotConfigured() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.create();
+        OidcFeature feature = OidcFeature.create(providerConfig);
+
+        assertThat(feature.socket(), is(WebServer.DEFAULT_SOCKET_NAME));
+        assertThat(feature.socketRequired(), is(false));
+    }
+
+    @Test
+    void featureUsesConfiguredSocket() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .socket("oidc")
+                .buildPrototype();
+        OidcFeature feature = OidcFeature.create(providerConfig);
+
+        assertThat(feature.socket(), is("oidc"));
+        assertThat(feature.socketRequired(), is(true));
+    }
+
+    @Test
+    void featureCanAllowConfiguredSocketFallback() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .socket("oidc")
+                .socketRequired(false)
+                .buildPrototype();
+        OidcFeature feature = OidcFeature.create(providerConfig);
+
+        assertThat(feature.socket(), is("oidc"));
+        assertThat(feature.socketRequired(), is(false));
     }
 
     @Test

@@ -27,15 +27,17 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
 import io.helidon.http.PathMatchers;
 import io.helidon.http.Status;
+import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
+import io.helidon.webserver.spi.ServerFeature;
 
 /**
  * OpenID Connect HTTP feature for Redirection Endpoint and logout routes.
  */
-public final class OidcFeature implements HttpFeature {
+public final class OidcFeature implements HttpFeature, ServerFeature {
     private static final System.Logger LOGGER = System.getLogger(OidcFeature.class.getName());
 
     private final OidcProviderConfig config;
@@ -78,6 +80,40 @@ public final class OidcFeature implements HttpFeature {
         logoutEndpointPaths().forEach(path -> routing.route(Method.POST,
                                                             PathMatchers.exact(path),
                                                             logoutHandler::process));
+    }
+
+    @Override
+    public void setup(ServerFeatureContext featureContext) {
+        String featureSocket = socket();
+        if (!featureContext.socketExists(featureSocket)) {
+            if (socketRequired()) {
+                throw new IllegalArgumentException("OIDC feature is configured to use socket \""
+                                                           + featureSocket
+                                                           + "\" and it must be present, but it is not");
+            }
+            featureSocket = WebServer.DEFAULT_SOCKET_NAME;
+        }
+        setup(featureContext.socket(featureSocket).httpRouting());
+    }
+
+    @Override
+    public String socket() {
+        return config.socket().orElse(WebServer.DEFAULT_SOCKET_NAME);
+    }
+
+    @Override
+    public boolean socketRequired() {
+        return !WebServer.DEFAULT_SOCKET_NAME.equals(socket()) && config.socketRequired();
+    }
+
+    @Override
+    public String name() {
+        return config.providerName();
+    }
+
+    @Override
+    public String type() {
+        return OidcProviderService.PROVIDER_CONFIG_KEY;
     }
 
     Set<String> redirectionEndpointPaths() {

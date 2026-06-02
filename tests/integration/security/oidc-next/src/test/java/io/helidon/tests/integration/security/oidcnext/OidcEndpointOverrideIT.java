@@ -21,11 +21,14 @@ import java.net.URI;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
+import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.tests.integration.security.oidcnext.OidcIntegrationSupport.BrowserSession;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcTokenResponse;
 import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
 
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,27 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcEndpointOverrideIT {
+    @Test
+    void metadataEndpointIncludesAdditiveCustomClaims() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .metadata("authorization_response_iss_parameter_supported", true)
+                .metadata("custom_metadata", "custom")
+                .build()) {
+            WebClient client = WebClient.builder()
+                    .baseUri(idp.issuer())
+                    .build();
+
+            try (HttpClientResponse response = client.get("/.well-known/openid-configuration").request()) {
+                assertThat(response.status(), is(Status.OK_200));
+                JsonObject metadata = JsonParser.create(response.as(String.class)).readJsonObject();
+                assertThat(metadata.stringValue("issuer").orElseThrow(), is(idp.issuer().toString()));
+                assertThat(metadata.booleanValue("authorization_response_iss_parameter_supported").orElseThrow(),
+                           is(true));
+                assertThat(metadata.stringValue("custom_metadata").orElseThrow(), is("custom"));
+            }
+        }
+    }
+
     @Test
     void tokenEndpointOverrideCanBreakResponseExactly() {
         try (TestOidcServer idp = TestOidcServer.builder()

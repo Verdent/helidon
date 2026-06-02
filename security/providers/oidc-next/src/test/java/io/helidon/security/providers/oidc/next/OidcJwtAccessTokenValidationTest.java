@@ -190,6 +190,38 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void idcsIamStyleSubjectMappingSupportsCustomClaimAbac() {
+        String token = signedToken(it -> it
+                .preferredUsername("mcp-user")
+                .addScope("mcp.tools.write")
+                .addPayloadClaim("department", "finance")
+                .addPayloadClaim("groups", List.of("mcp_user"))
+                .addPayloadClaim("idcs_groups", "mcp_admin")
+                .addPayloadClaim("iam", JsonObject.builder()
+                        .setStrings("groups", List.of("mcp_tools"))
+                        .build())
+                .addPayloadClaim("scp", List.of("mcp.tools.read")));
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping
+                        .principalIdClaimPaths(List.of("sub"))
+                        .principalNameClaimPaths(List.of("preferred_username", "email"))
+                        .roleClaimPaths(List.of("groups", "idcs_groups", "iam.groups"))
+                        .scopeClaimPaths(List.of("scope", "scp"))
+                        .scopeGrantsEnabled(true))), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().getName(), is("mcp-user"));
+        assertThat(subject.principal().abacAttributeRaw("department"), is("finance"));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                   is(List.of("mcp_user", "mcp_admin", "mcp_tools")));
+        assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("mcp.tools.write", "mcp.tools.read")));
+    }
+
+    @Test
     void customPrincipalIdClaimIsRequiredForJwtAccessToken() {
         String token = signedToken(it -> { });
 

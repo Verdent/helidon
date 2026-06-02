@@ -101,6 +101,16 @@ final class OidcIntegrationSupport {
                                                               String clientSecret,
                                                               String audience,
                                                               OidcTokenValidationMethod method) {
+        return protectedResourceProviderConfig(idp, clientId, clientSecret, audience, method, tenant -> {
+        });
+    }
+
+    static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp,
+                                                              String clientId,
+                                                              String clientSecret,
+                                                              String audience,
+                                                              OidcTokenValidationMethod method,
+                                                              Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(idp.issuer())
                 .clientId(clientId)
@@ -115,6 +125,7 @@ final class OidcIntegrationSupport {
         if (clientSecret != null) {
             tenant.clientSecret(clientSecret);
         }
+        tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())
                 .buildPrototype();

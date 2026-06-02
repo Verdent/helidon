@@ -42,6 +42,7 @@ final class OidcConfigSupport {
                                                                         "token-endpoint-auth-method",
                                                                         "client-assertion",
                                                                         "webclient",
+                                                                        "jwk-set",
                                                                         "endpoints",
                                                                         "protected-resource",
                                                                         "authorization-code",
@@ -52,6 +53,7 @@ final class OidcConfigSupport {
                                                                         "cookies");
     private static final OidcClientAssertionConfig DEFAULT_CLIENT_ASSERTION = OidcClientAssertionConfig.create();
     private static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
+    private static final OidcJwkSetConfig DEFAULT_JWK_SET = OidcJwkSetConfig.create();
     private static final OidcEndpointConfig DEFAULT_ENDPOINTS = OidcEndpointConfig.create();
     private static final OidcTokenTransportConfig DEFAULT_TOKEN_TRANSPORT = OidcTokenTransportConfig.create();
     private static final OidcSubjectMappingConfig DEFAULT_SUBJECT_MAPPING = OidcSubjectMappingConfig.create();
@@ -162,6 +164,7 @@ final class OidcConfigSupport {
                 || target.tokenEndpointAuthenticationMethod().isPresent()
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || webClientOptionsChanged(target.webClient())
+                || !DEFAULT_JWK_SET.equals(target.jwkSet())
                 || !DEFAULT_ENDPOINTS.equals(target.endpoints())
                 || target.protectedResource().isPresent()
                 || target.authorizationCode().isPresent()
@@ -205,6 +208,7 @@ final class OidcConfigSupport {
                 .enabled(target.enabled())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())
+                .jwkSet(target.jwkSet())
                 .endpoints(target.endpoints())
                 .tokenTransport(target.tokenTransport())
                 .subjectMapping(target.subjectMapping())
@@ -238,12 +242,24 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateClientAssertion(target.clientAssertion());
+            validateJwkSet(target.jwkSet());
             target.issuer().ifPresent(uri -> validateIssuerUri(uri, target.endpoints().tlsRequired()));
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
         }
+    }
+
+    private static void validateJwkSet(OidcJwkSetConfig jwkSet) {
+        if (jwkSet.unknownKeyIdRefreshInterval().isNegative()) {
+            throw new IllegalArgumentException("jwk-set.unknown-key-id-refresh-interval must not be negative");
+        }
+        jwkSet.refreshInterval()
+                .filter(interval -> interval.isZero() || interval.isNegative())
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
+                });
     }
 
     static final class OutboundTargetDecorator

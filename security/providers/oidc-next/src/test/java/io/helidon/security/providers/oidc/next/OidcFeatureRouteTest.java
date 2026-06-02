@@ -24,10 +24,12 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.AllowList;
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.RequestedUriDiscoveryContext;
 import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
@@ -216,6 +218,38 @@ class OidcFeatureRouteTest {
                 Instant accessTokenExpiresAt = credential.getExpTime().orElseThrow();
                 assertThat(!accessTokenExpiresAt.isBefore(beforeCallback.plusSeconds(600)), is(true));
                 assertThat(!accessTokenExpiresAt.isAfter(Instant.now().plusSeconds(600)), is(true));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRouteUsesRequestedUriDiscoveryBehindReverseProxy(URI serverUri) {
+        URI externalOriginalUri = URI.create("https://app.example/external/resource");
+        URI externalCallbackUri = URI.create("https://app.example/external/oidc/callback");
+        OidcTenantConfig tenant = tenantConfig(serverUri, authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        WebServer rpServer = oidcFeatureServerWithRequestedUriDiscovery(providerConfig(tenant));
+        try {
+            SetCookie stateCookie = authenticationRequestCookie(externalCallbackUri, tenant, externalOriginalUri);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.X_FORWARDED_HOST, "app.example")
+                    .header(HeaderNames.X_FORWARDED_PROTO, "https")
+                    .header(HeaderNames.X_FORWARDED_PREFIX, "/external")
+                    .header(HeaderNames.X_FORWARDED_FOR, "client.example,proxy.example")
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(response.headers().first(HeaderNames.LOCATION).orElse(""),
+                           is(externalOriginalUri.toString()));
             }
         } finally {
             rpServer.stop();
@@ -1150,6 +1184,11 @@ class OidcFeatureRouteTest {
     }
 
     private static OidcTenantConfig tenantConfig(URI openIdProviderUri) {
+        return tenantConfig(openIdProviderUri, authorizationCode -> { });
+    }
+
+    private static OidcTenantConfig tenantConfig(URI openIdProviderUri,
+                                                Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCode) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId(CLIENT_ID)
@@ -1158,8 +1197,11 @@ class OidcFeatureRouteTest {
                         .tokenEndpointUri(openIdProviderUri.resolve("token"))
                         .jwksUri(openIdProviderUri.resolve("jwks"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
-                        .scopes(List.of("openid", "profile")))
+                .authorizationCode(it -> {
+                    it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                            .scopes(List.of("openid", "profile"));
+                    authorizationCode.accept(it);
+                })
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }
@@ -1222,6 +1264,25 @@ class OidcFeatureRouteTest {
                 .start();
     }
 
+    private static WebServer oidcFeatureServerWithRequestedUriDiscovery(OidcProviderConfig config) {
+        HttpRouting.Builder routing = HttpRouting.builder();
+        OidcFeature.create(config).setup(routing);
+        return WebServer.builder()
+                .addRouting(routing)
+                .requestedUriDiscoveryContext(RequestedUriDiscoveryContext.builder()
+                                                      .enabled(true)
+                                                      .addDiscoveryType(RequestedUriDiscoveryContext
+                                                                                .RequestedUriDiscoveryType
+                                                                                .X_FORWARDED)
+                                                      .trustedProxies(AllowList.builder()
+                                                                              .allowAll(true)
+                                                                              .build())
+                                                      .build())
+                .port(0)
+                .build()
+                .start();
+    }
+
     private static WebServer wellKnownEndSessionServer() {
         AtomicReference<URI> issuer = new AtomicReference<>();
         HttpRouting.Builder routing = HttpRouting.builder();
@@ -1242,8 +1303,13 @@ class OidcFeatureRouteTest {
     }
 
     private static SetCookie authenticationRequestCookie(URI callbackUri, OidcTenantConfig tenant) {
+        return authenticationRequestCookie(callbackUri, tenant, URI.create("https://rp.example/resource"));
+    }
+
+    private static SetCookie authenticationRequestCookie(URI callbackUri,
+                                                        OidcTenantConfig tenant,
+                                                        URI originalUri) {
         Instant now = Instant.now();
-        URI originalUri = URI.create("https://rp.example/resource");
         return OidcCookieStateHandler.create(tenant)
                 .createAuthenticationRequestCookie(OidcAuthenticationRequestState.create("default",
                                                                                          STATE,

@@ -435,6 +435,26 @@ authorization-code:
   pkce-required: false
 ```
 
+### Reverse Proxies
+
+When Authorization Code Flow runs behind a reverse proxy, configure Helidon WebServer requested URI discovery so the
+provider sees the external request URI. The provider stores that URI in Authentication Request state and redirects back
+to it after the Authorization Response is processed. The default local redirection endpoint path is also resolved from
+that discovered external origin.
+
+```yaml
+server:
+  requested-uri-discovery:
+    types: x-forwarded
+    trusted-proxies:
+      allow:
+        exact: "traefik.internal"
+```
+
+For path-prefix deployments, the proxy should send `X-Forwarded-Host`, `X-Forwarded-Proto`,
+`X-Forwarded-Prefix`, and `X-Forwarded-For`. Configure `trusted-proxies` for the proxy hosts or addresses that are
+allowed to provide those headers.
+
 ## UserInfo
 
 Configure `user-info` to request UserInfo after Authorization Code Flow token exchange and ID Token validation.

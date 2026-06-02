@@ -150,14 +150,14 @@ final class OidcAuthenticationRequestFactory {
     }
 
     private URI requestOrigin(SecurityEnvironment environment) {
-        List<String> host = environment.headers().get(HeaderNames.HOST.defaultCase());
-        if (host != null && !host.isEmpty()) {
-            return URI.create(environment.transport().toLowerCase(Locale.ROOT) + "://" + host.getFirst());
-        }
-
         URI targetUri = environment.targetUri();
         if (targetUri != null && targetUri.getScheme() != null && targetUri.getRawAuthority() != null) {
             return URI.create(targetUri.getScheme() + "://" + targetUri.getRawAuthority());
+        }
+
+        List<String> host = environment.headers().get(HeaderNames.HOST.defaultCase());
+        if (host != null && !host.isEmpty()) {
+            return URI.create(environment.transport().toLowerCase(Locale.ROOT) + "://" + host.getFirst());
         }
 
         throw new IllegalStateException(

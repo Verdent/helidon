@@ -34,6 +34,7 @@ import io.helidon.webclient.api.WebClientConfig;
 final class OidcConfigSupport {
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final String TENANT_VARIABLE = "{tenant}";
+    static final URI DEFAULT_REDIRECTION_ENDPOINT_URI = URI.create("/oidc/callback");
     private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
                                                                         "issuer",
                                                                         "client-id",
@@ -346,10 +347,7 @@ final class OidcConfigSupport {
         boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
                 || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
                                                         tenant.tokenEndpointAuthenticationMethod());
-        URI redirectionEndpointUri = authorizationCode.redirectionEndpointUri()
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "redirection-endpoint-uri must be configured when Authorization Code Flow is enabled"));
-        validateRedirectionEndpointUri(redirectionEndpointUri, endpoints.tlsRequired());
+        validateRedirectionEndpointUri(redirectionEndpointUri(authorizationCode), endpoints.tlsRequired());
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
         requireEndpointOrWellKnown(endpoints.authorizationEndpointUri(),
                                    wellKnownUri,
@@ -417,7 +415,7 @@ final class OidcConfigSupport {
         validateLocalEndpointUri("local-endpoint-uri", logout.localEndpointUri());
         configuredAuthorizationCode
                 .filter(OidcAuthorizationCodeConfig::enabled)
-                .flatMap(OidcAuthorizationCodeConfig::redirectionEndpointUri)
+                .map(OidcConfigSupport::redirectionEndpointUri)
                 .map(OidcUri::path)
                 .filter(logout.localEndpointUri().getPath()::equals)
                 .ifPresent(ignored -> {
@@ -543,6 +541,11 @@ final class OidcConfigSupport {
         }
     }
 
+    static URI redirectionEndpointUri(OidcAuthorizationCodeConfig authorizationCode) {
+        return authorizationCode.redirectionEndpointUri()
+                .orElse(DEFAULT_REDIRECTION_ENDPOINT_URI);
+    }
+
     static void validateClientCredentialsGrant(OidcTenantConfig tenant,
                                                OidcEndpointConfig endpoints,
                                                String operation) {
@@ -657,11 +660,24 @@ final class OidcConfigSupport {
          * Spec: RFC 6749, 3.1.2 Redirection Endpoint
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2
          * Quotes: "MUST be an absolute URI"; "MUST NOT include a fragment component".
+         *
+         * A local absolute path is accepted as Helidon shorthand. It is resolved to an absolute URI from the incoming
+         * request origin before it is sent as the Authentication Request `redirect_uri`.
          */
-        if (!uri.isAbsolute()) {
-            throw new IllegalArgumentException("redirection-endpoint-uri must be an absolute URI: " + uri);
+        if (uri.isAbsolute()) {
+            validateHttpsEndpointUri("redirection-endpoint-uri", uri, tlsRequired, false);
+            validateNoFragment("redirection-endpoint-uri", uri);
+            return;
         }
-        validateHttpsEndpointUri("redirection-endpoint-uri", uri, tlsRequired, false);
+        if (uri.getRawAuthority() != null) {
+            throw new IllegalArgumentException("redirection-endpoint-uri must be an absolute URI or local absolute path: "
+                                                       + uri);
+        }
+        String path = uri.getPath();
+        if (path == null || path.isEmpty() || !path.startsWith("/")) {
+            throw new IllegalArgumentException("redirection-endpoint-uri must be an absolute URI or local absolute path: "
+                                                       + uri);
+        }
         validateNoFragment("redirection-endpoint-uri", uri);
     }
 

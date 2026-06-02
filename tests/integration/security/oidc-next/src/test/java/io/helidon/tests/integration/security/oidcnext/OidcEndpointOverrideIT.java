@@ -36,14 +36,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 class OidcEndpointOverrideIT {
     @Test
     void tokenEndpointOverrideCanBreakResponseExactly() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user.subject("alice-id"))
                 .defaultScopes("openid", "profile")
                 .endpoints(endpoints -> endpoints.token(ctx -> ctx.response()
@@ -52,15 +47,14 @@ class OidcEndpointOverrideIT {
                         .send("{\"access_token\":\"literal\",\"token_type\":\"Bearer\"}")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 URI callback = authorizeWithoutBrowser(browser, rpBaseUri.resolve("/resource"));
 
                 try (HttpClientResponse response = browser.get(callback)) {
@@ -76,14 +70,9 @@ class OidcEndpointOverrideIT {
 
     @Test
     void tokenEndpointOverrideCanReuseDefaultTokenIssuer() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user.subject("alice-id"))
                 .defaultScopes("openid", "profile")
                 .endpoints(endpoints -> endpoints.token(ctx -> {
@@ -92,15 +81,14 @@ class OidcEndpointOverrideIT {
                 }))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 URI callback = authorizeWithoutBrowser(browser, rpBaseUri.resolve("/resource"));
 
                 try (HttpClientResponse response = browser.get(callback)) {

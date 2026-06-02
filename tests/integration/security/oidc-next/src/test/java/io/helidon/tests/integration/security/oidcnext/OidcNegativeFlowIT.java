@@ -43,27 +43,22 @@ class OidcNegativeFlowIT {
 
     @Test
     void authorizationCallbackWithTamperedStateIsRejected() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user.subject("alice-id"))
                 .defaultScopes("openid", "profile")
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
+                URI callbackUri = rpBaseUri.resolve("/oidc/callback");
                 URI callback = authorizeWithoutBrowser(browser, rpBaseUri.resolve("/resource"));
                 URI tamperedCallback = callbackWithState(callbackUri, callback, "tampered-state");
 
@@ -81,14 +76,9 @@ class OidcNegativeFlowIT {
 
     @Test
     void tokenEndpointErrorResponseFailsAuthorizationCallback() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user.subject("alice-id"))
                 .defaultScopes("openid", "profile")
                 .endpoints(endpoints -> endpoints.token(ctx -> ctx.response()
@@ -101,15 +91,14 @@ class OidcNegativeFlowIT {
                                       .toString())))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 URI callback = authorizeWithoutBrowser(browser, rpBaseUri.resolve("/resource"));
 
                 try (HttpClientResponse response = browser.get(callback)) {
@@ -126,14 +115,9 @@ class OidcNegativeFlowIT {
 
     @Test
     void invalidIdTokenFailsAuthorizationCallback() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-        URI callbackUri = rpBaseUri.resolve("/oidc/callback");
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
-                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET)
-                        .redirectUri(callbackUri))
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user.subject("alice-id"))
                 .defaultScopes("openid", "profile")
                 .endpoints(endpoints -> endpoints.token(ctx -> {
@@ -154,15 +138,14 @@ class OidcNegativeFlowIT {
                 }))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      callbackUri,
                                                                                                       it -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));
             try {
                 BrowserSession browser = new BrowserSession();
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 URI callback = authorizeWithoutBrowser(browser, rpBaseUri.resolve("/resource"));
 
                 try (HttpClientResponse response = browser.get(callback)) {
@@ -179,9 +162,6 @@ class OidcNegativeFlowIT {
 
     @Test
     void protectedResourceRejectsJwtAccessTokenWithWrongAudience() {
-        int rpPort = OidcIntegrationSupport.reservePort();
-        URI rpBaseUri = URI.create("http://localhost:" + rpPort);
-
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(SERVICE_CLIENT, SERVICE_SECRET)
                 .defaultScopes("service.read")
@@ -193,10 +173,10 @@ class OidcNegativeFlowIT {
                                                                                                       SERVICE_CLIENT,
                                                                                                       SERVICE_CLIENT);
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
-                                                                 rpPort,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/api"));
             try {
+                URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
                 WebClient client = WebClient.builder()
                         .baseUri(rpBaseUri)
                         .build();

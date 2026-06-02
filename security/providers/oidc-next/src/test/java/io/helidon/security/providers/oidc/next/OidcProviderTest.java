@@ -55,6 +55,7 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcProviderTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -305,6 +306,70 @@ class OidcProviderTest {
         assertThat(query.get("code_challenge"),
                    is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
                                                                      OidcPkceMethod.S256)));
+    }
+
+    @Test
+    void authorizationCodeFlowResolvesLocalRedirectionEndpointFromRequestOrigin() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        URI resolvedRedirectionEndpointUri = URI.create("https://rp.example/oidc/callback");
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
+        assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
+                   is(resolvedRedirectionEndpointUri));
+    }
+
+    @Test
+    void authorizationCodeFlowResolvesLocalRedirectionEndpointFromHostHeader() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://internal.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .header("Host", "rp.example:8443")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        URI resolvedRedirectionEndpointUri = URI.create("https://rp.example:8443/oidc/callback");
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
+        assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
+                   is(resolvedRedirectionEndpointUri));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresHttpsForResolvedLocalRedirectionEndpoint() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("http://rp.example/resource"))
+                .path("/resource")
+                .transport("http")
+                .header("Host", "rp.example")
+                .build();
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                                                    () -> provider.authenticate(request(null, environment)));
+
+        assertThat(thrown.getMessage(),
+                   containsString("redirection-endpoint-uri must use https unless endpoints.tls-required is disabled"));
     }
 
     @Test

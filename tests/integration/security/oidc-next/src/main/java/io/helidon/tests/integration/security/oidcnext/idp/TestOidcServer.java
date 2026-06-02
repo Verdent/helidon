@@ -78,6 +78,7 @@ public final class TestOidcServer implements AutoCloseable {
     private final List<TestOidcRequest> authorizationRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> tokenRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> jwksRequests = new CopyOnWriteArrayList<>();
+    private final List<TestOidcRequest> introspectionRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> userInfoRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> logoutRequests = new CopyOnWriteArrayList<>();
 
@@ -96,6 +97,7 @@ public final class TestOidcServer implements AutoCloseable {
         routing.post("/authorize/login", this::loginEndpoint);
         routing.post("/token", this::tokenEndpoint);
         routing.get("/jwks", this::jwksEndpoint);
+        routing.post("/introspect", this::introspectionEndpoint);
         routing.get("/userinfo", this::userInfoEndpoint);
         routing.get("/logout", this::logoutEndpoint);
         this.server = WebServer.builder()
@@ -166,6 +168,15 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
+     * Token Introspection endpoint URI.
+     *
+     * @return Token Introspection endpoint URI
+     */
+    public URI introspectionEndpointUri() {
+        return issuer.resolve("/introspect");
+    }
+
+    /**
      * UserInfo endpoint URI.
      *
      * @return UserInfo endpoint URI
@@ -193,6 +204,15 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
+     * Recorded well-known metadata requests.
+     *
+     * @return requests
+     */
+    public List<TestOidcRequest> metadataRequests() {
+        return List.copyOf(metadataRequests);
+    }
+
+    /**
      * Recorded authorization endpoint requests.
      *
      * @return requests
@@ -202,12 +222,39 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
+     * Recorded JWKS endpoint requests.
+     *
+     * @return requests
+     */
+    public List<TestOidcRequest> jwksRequests() {
+        return List.copyOf(jwksRequests);
+    }
+
+    /**
+     * Recorded Token Introspection endpoint requests.
+     *
+     * @return requests
+     */
+    public List<TestOidcRequest> introspectionRequests() {
+        return List.copyOf(introspectionRequests);
+    }
+
+    /**
      * Recorded UserInfo endpoint requests.
      *
      * @return requests
      */
     public List<TestOidcRequest> userInfoRequests() {
         return List.copyOf(userInfoRequests);
+    }
+
+    /**
+     * Recorded logout endpoint requests.
+     *
+     * @return requests
+     */
+    public List<TestOidcRequest> logoutRequests() {
+        return List.copyOf(logoutRequests);
     }
 
     /**
@@ -221,10 +268,12 @@ public final class TestOidcServer implements AutoCloseable {
                 .set("authorization_endpoint", authorizationEndpointUri().toString())
                 .set("token_endpoint", tokenEndpointUri().toString())
                 .set("jwks_uri", jwksUri().toString())
+                .set("introspection_endpoint", introspectionEndpointUri().toString())
                 .set("userinfo_endpoint", userInfoEndpointUri().toString())
                 .set("end_session_endpoint", logoutEndpointUri().toString())
                 .setStrings("response_types_supported", List.of("code"))
-                .setStrings("grant_types_supported", List.of("authorization_code", "refresh_token", "client_credentials"))
+                .setStrings("grant_types_supported",
+                            List.of("authorization_code", "refresh_token", "client_credentials"))
                 .setStrings("subject_types_supported", List.of("public"))
                 .setStrings("id_token_signing_alg_values_supported", List.of(SIGNING_ALGORITHM));
         config.metadata().claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
@@ -284,6 +333,17 @@ public final class TestOidcServer implements AutoCloseable {
             return;
         }
         defaultJwks(oidcRequest, response);
+    }
+
+    private void introspectionEndpoint(ServerRequest request, ServerResponse response) {
+        TestOidcRequest oidcRequest = TestOidcRequest.create(request, true);
+        introspectionRequests.add(oidcRequest);
+        Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> handler = config.endpoints().introspection();
+        if (handler.isPresent()) {
+            handler.orElseThrow().handle(new EndpointContext(oidcRequest, response, this::defaultIntrospection));
+            return;
+        }
+        defaultIntrospection(oidcRequest, response);
     }
 
     private void userInfoEndpoint(ServerRequest request, ServerResponse response) {
@@ -426,7 +486,12 @@ public final class TestOidcServer implements AutoCloseable {
         if (config.tokenDefaults().refreshToken().rotate()) {
             refreshTokens.remove(refreshToken);
         }
-        return tokenResponse(state.clientId(), state.subject(), state.username(), state.scopes(), null, false);
+        return tokenResponse(state.clientId(),
+                             state.subject(),
+                             state.username(),
+                             state.scopes(),
+                             null,
+                             config.tokenDefaults().refreshToken().idTokenEnabled());
     }
 
     private TestOidcTokenResponse tokenResponse(String clientId,
@@ -436,7 +501,11 @@ public final class TestOidcServer implements AutoCloseable {
                                                 String nonce,
                                                 boolean idTokenAllowed) {
         String scope = String.join(" ", scopes);
-        String accessToken = accessToken(clientId, subject, scope);
+        Instant issuedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        TestOidcTokenConfig accessTokenConfig = config.tokenDefaults().accessToken();
+        String accessToken = accessTokenConfig.opaque()
+                ? "opaque-access-" + ids.incrementAndGet()
+                : accessToken(clientId, subject, scope, issuedAt);
         String idToken = idTokenAllowed && scopes.contains("openid")
                 ? idToken(clientId, subject, username, nonce)
                 : null;
@@ -445,17 +514,24 @@ public final class TestOidcServer implements AutoCloseable {
             refreshToken = "refresh-" + ids.incrementAndGet();
             refreshTokens.put(refreshToken, new RefreshState(clientId, subject, username, scopes));
         }
-        accessTokens.put(accessToken, new IssuedAccessToken(clientId, subject, username, scopes));
+        accessTokens.put(accessToken,
+                         new IssuedAccessToken(clientId,
+                                               subject,
+                                               username,
+                                               scopes,
+                                               issuedAt,
+                                               issuedAt.plus(accessTokenConfig.expiresIn()),
+                                               audiences(accessTokenConfig, clientId),
+                                               accessTokenConfig.claims()));
         return new TestOidcTokenResponse(accessToken,
                                          "Bearer",
-                                         config.tokenDefaults().accessToken().expiresIn().toSeconds(),
+                                         accessTokenConfig.expiresIn().toSeconds(),
                                          scope,
                                          idToken,
                                          refreshToken);
     }
 
-    private String accessToken(String clientId, String subject, String scope) {
-        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    private String accessToken(String clientId, String subject, String scope, Instant now) {
         TestOidcTokenConfig token = config.tokenDefaults().accessToken();
         Jwt.Builder builder = Jwt.builder()
                 .type("at+jwt")
@@ -506,6 +582,46 @@ public final class TestOidcServer implements AutoCloseable {
     private void defaultJwks(TestOidcRequest request, ServerResponse response) {
         response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(jwks);
+    }
+
+    private void defaultIntrospection(TestOidcRequest request, ServerResponse response) {
+        try {
+            authenticateClient(request);
+            String token = required(request.formParameters(), "token");
+            IssuedAccessToken issuedToken = accessTokens.get(token);
+            if (issuedToken == null) {
+                sendJson(response, JsonObject.builder()
+                        .set("active", false)
+                        .build());
+                return;
+            }
+
+            JsonObject.Builder builder = JsonObject.builder()
+                    .set("active", true)
+                    .set("iss", issuer.toString())
+                    .set("sub", issuedToken.subject())
+                    .setStrings("aud", issuedToken.audiences())
+                    .set("exp", issuedToken.expiresAt().getEpochSecond())
+                    .set("iat", issuedToken.issuedAt().getEpochSecond())
+                    .set("client_id", issuedToken.clientId())
+                    .set("scope", String.join(" ", issuedToken.scopes()))
+                    .set("token_type", "Bearer");
+            if (issuedToken.username() != null) {
+                builder.set("username", issuedToken.username());
+                TestOidcUserConfig user = user(issuedToken.username());
+                user.claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
+            }
+            issuedToken.claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
+            sendJson(response, builder.build());
+        } catch (RuntimeException e) {
+            JsonObject body = JsonObject.builder()
+                    .set("error", "invalid_request")
+                    .set("error_description", e.getMessage())
+                    .build();
+            response.status(Status.BAD_REQUEST_400)
+                    .header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(body.toString());
+        }
     }
 
     private void defaultUserInfo(TestOidcRequest request, ServerResponse response) {
@@ -994,6 +1110,17 @@ public final class TestOidcServer implements AutoCloseable {
         }
 
         /**
+         * Configure whether access tokens are opaque strings instead of signed JWTs.
+         *
+         * @param opaque whether access tokens are opaque
+         * @return this builder
+         */
+        public TokenBuilder opaque(boolean opaque) {
+            delegate.opaque(opaque);
+            return this;
+        }
+
+        /**
          * Add claim.
          *
          * @param name claim name
@@ -1060,6 +1187,17 @@ public final class TestOidcServer implements AutoCloseable {
          */
         public RefreshTokenBuilder rotate(boolean rotate) {
             delegate.rotate(rotate);
+            return this;
+        }
+
+        /**
+         * Configure whether refresh token responses include an ID Token.
+         *
+         * @param enabled whether refreshed ID Tokens are enabled
+         * @return this builder
+         */
+        public RefreshTokenBuilder idTokenEnabled(boolean enabled) {
+            delegate.idTokenEnabled(enabled);
             return this;
         }
 
@@ -1132,7 +1270,14 @@ public final class TestOidcServer implements AutoCloseable {
     private record RefreshState(String clientId, String subject, String username, List<String> scopes) {
     }
 
-    private record IssuedAccessToken(String clientId, String subject, String username, List<String> scopes) {
+    private record IssuedAccessToken(String clientId,
+                                     String subject,
+                                     String username,
+                                     List<String> scopes,
+                                     Instant issuedAt,
+                                     Instant expiresAt,
+                                     List<String> audiences,
+                                     Map<String, JsonValue> claims) {
     }
 
     private record AuthorizationUser(String username, TestOidcUserConfig user) {

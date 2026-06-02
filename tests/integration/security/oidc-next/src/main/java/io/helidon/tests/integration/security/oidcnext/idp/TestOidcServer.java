@@ -589,7 +589,7 @@ public final class TestOidcServer implements AutoCloseable {
             authenticateClient(request);
             String token = required(request.formParameters(), "token");
             IssuedAccessToken issuedToken = accessTokens.get(token);
-            if (issuedToken == null) {
+            if (issuedToken == null || !Instant.now().isBefore(issuedToken.expiresAt())) {
                 sendJson(response, JsonObject.builder()
                         .set("active", false)
                         .build());
@@ -808,6 +808,7 @@ public final class TestOidcServer implements AutoCloseable {
      */
     public static final class Builder implements io.helidon.common.Builder<Builder, TestOidcServer> {
         private final TestOidcServerConfig.Builder delegate = TestOidcServerConfig.builder();
+        private final TestOidcProviderMetadataConfig.Builder metadata = TestOidcProviderMetadataConfig.builder();
 
         private Builder() {
         }
@@ -938,14 +939,13 @@ public final class TestOidcServer implements AutoCloseable {
          * @return this builder
          */
         public Builder metadata(String name, Object value) {
-            TestOidcProviderMetadataConfig.Builder metadata = TestOidcProviderMetadataConfig.builder();
             metadata.putClaim(name, TestOidcJsonSupport.jsonValue(value));
-            delegate.metadata(metadata.buildPrototype());
             return this;
         }
 
         @Override
         public TestOidcServer build() {
+            delegate.metadata(metadata.buildPrototype());
             return TestOidcServer.create(delegate.buildPrototype());
         }
     }
@@ -1051,8 +1051,8 @@ public final class TestOidcServer implements AutoCloseable {
          * @param customizer customizer
          * @return this builder
          */
-        public TokenDefaultsBuilder accessToken(Consumer<TokenBuilder> customizer) {
-            TokenBuilder builder = new TokenBuilder();
+        public TokenDefaultsBuilder accessToken(Consumer<AccessTokenBuilder> customizer) {
+            AccessTokenBuilder builder = new AccessTokenBuilder();
             customizer.accept(builder);
             delegate.accessToken(builder.build());
             return this;
@@ -1064,8 +1064,8 @@ public final class TestOidcServer implements AutoCloseable {
          * @param customizer customizer
          * @return this builder
          */
-        public TokenDefaultsBuilder idToken(Consumer<TokenBuilder> customizer) {
-            TokenBuilder builder = new TokenBuilder();
+        public TokenDefaultsBuilder idToken(Consumer<IdTokenBuilder> customizer) {
+            IdTokenBuilder builder = new IdTokenBuilder();
             customizer.accept(builder);
             delegate.idToken(builder.build());
             return this;
@@ -1090,21 +1090,21 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
-     * Token builder.
+     * Access token builder.
      */
-    public static final class TokenBuilder {
+    public static final class AccessTokenBuilder {
         private final TestOidcTokenConfig.Builder delegate = TestOidcTokenConfig.builder();
 
-        private TokenBuilder() {
+        private AccessTokenBuilder() {
         }
 
         /**
-         * Configure token lifetime.
+         * Configure access token lifetime.
          *
          * @param duration lifetime
          * @return this builder
          */
-        public TokenBuilder expiresIn(Duration duration) {
+        public AccessTokenBuilder expiresIn(Duration duration) {
             delegate.expiresIn(duration);
             return this;
         }
@@ -1115,42 +1115,90 @@ public final class TestOidcServer implements AutoCloseable {
          * @param opaque whether access tokens are opaque
          * @return this builder
          */
-        public TokenBuilder opaque(boolean opaque) {
+        public AccessTokenBuilder opaque(boolean opaque) {
             delegate.opaque(opaque);
             return this;
         }
 
         /**
-         * Add claim.
+         * Add access token claim.
          *
          * @param name claim name
          * @param value claim value
          * @return this builder
          */
-        public TokenBuilder claim(String name, Object value) {
+        public AccessTokenBuilder claim(String name, Object value) {
             delegate.putClaim(name, TestOidcJsonSupport.jsonValue(value));
             return this;
         }
 
         /**
-         * Include selected user claims.
+         * Include selected user claims in the access token.
          *
          * @param claims claims
          * @return this builder
          */
-        public TokenBuilder includeUserClaims(String... claims) {
+        public AccessTokenBuilder includeUserClaims(String... claims) {
             delegate.includeUserClaims(List.of(claims));
             return this;
         }
 
         /**
-         * Configure audience.
+         * Configure access token audience.
          *
          * @param audience audience values
          * @return this builder
          */
-        public TokenBuilder audience(String... audience) {
+        public AccessTokenBuilder audience(String... audience) {
             delegate.audience(List.of(audience));
+            return this;
+        }
+
+        private TestOidcTokenConfig build() {
+            return delegate.buildPrototype();
+        }
+    }
+
+    /**
+     * ID token builder.
+     */
+    public static final class IdTokenBuilder {
+        private final TestOidcTokenConfig.Builder delegate = TestOidcTokenConfig.builder();
+
+        private IdTokenBuilder() {
+        }
+
+        /**
+         * Configure ID token lifetime.
+         *
+         * @param duration lifetime
+         * @return this builder
+         */
+        public IdTokenBuilder expiresIn(Duration duration) {
+            delegate.expiresIn(duration);
+            return this;
+        }
+
+        /**
+         * Add ID token claim.
+         *
+         * @param name claim name
+         * @param value claim value
+         * @return this builder
+         */
+        public IdTokenBuilder claim(String name, Object value) {
+            delegate.putClaim(name, TestOidcJsonSupport.jsonValue(value));
+            return this;
+        }
+
+        /**
+         * Include selected user claims in the ID token.
+         *
+         * @param claims claims
+         * @return this builder
+         */
+        public IdTokenBuilder includeUserClaims(String... claims) {
+            delegate.includeUserClaims(List.of(claims));
             return this;
         }
 

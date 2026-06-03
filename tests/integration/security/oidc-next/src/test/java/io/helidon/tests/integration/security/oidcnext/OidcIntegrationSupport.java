@@ -178,15 +178,19 @@ final class OidcIntegrationSupport {
     static String clientCredentialsToken(TestOidcServer idp, String clientId, String clientSecret) {
         WebClient client = WebClient.builder()
                 .build();
-        Parameters form = Parameters.builder("token")
-                .add("grant_type", "client_credentials")
-                .build();
-        try (HttpClientResponse response = client.post()
-                .uri(idp.tokenEndpointUri())
-                .header(HeaderNames.AUTHORIZATION, basicAuthorization(clientId, clientSecret))
-                .submit(form)) {
-            JsonObject json = JsonParser.create(response.as(String.class)).readJsonObject();
-            return json.stringValue("access_token").orElseThrow();
+        try {
+            Parameters form = Parameters.builder("token")
+                    .add("grant_type", "client_credentials")
+                    .build();
+            try (HttpClientResponse response = client.post()
+                    .uri(idp.tokenEndpointUri())
+                    .header(HeaderNames.AUTHORIZATION, basicAuthorization(clientId, clientSecret))
+                    .submit(form)) {
+                JsonObject json = JsonParser.create(response.as(String.class)).readJsonObject();
+                return json.stringValue("access_token").orElseThrow();
+            }
+        } finally {
+            client.closeResource();
         }
     }
 

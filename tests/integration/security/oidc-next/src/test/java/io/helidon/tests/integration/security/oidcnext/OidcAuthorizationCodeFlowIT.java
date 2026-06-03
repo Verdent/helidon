@@ -165,7 +165,7 @@ class OidcAuthorizationCodeFlowIT {
                 .tokenDefaults(tokens -> tokens
                         .accessToken(accessToken -> accessToken
                                 .opaque(true)
-                                .expiresIn(Duration.ZERO))
+                                .expiresIn(Duration.ofSeconds(30)))
                         .idToken(id -> id.includeUserClaims("preferred_username"))
                         .refreshToken(refresh -> refresh
                                 .enabled(true)

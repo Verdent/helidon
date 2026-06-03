@@ -46,14 +46,17 @@ class OidcEndpointOverrideIT {
             WebClient client = WebClient.builder()
                     .baseUri(idp.issuer())
                     .build();
-
-            try (HttpClientResponse response = client.get("/.well-known/openid-configuration").request()) {
-                assertThat(response.status(), is(Status.OK_200));
-                JsonObject metadata = JsonParser.create(response.as(String.class)).readJsonObject();
-                assertThat(metadata.stringValue("issuer").orElseThrow(), is(idp.issuer().toString()));
-                assertThat(metadata.booleanValue("authorization_response_iss_parameter_supported").orElseThrow(),
-                           is(true));
-                assertThat(metadata.stringValue("custom_metadata").orElseThrow(), is("custom"));
+            try {
+                try (HttpClientResponse response = client.get("/.well-known/openid-configuration").request()) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    JsonObject metadata = JsonParser.create(response.as(String.class)).readJsonObject();
+                    assertThat(metadata.stringValue("issuer").orElseThrow(), is(idp.issuer().toString()));
+                    assertThat(metadata.booleanValue("authorization_response_iss_parameter_supported").orElseThrow(),
+                               is(true));
+                    assertThat(metadata.stringValue("custom_metadata").orElseThrow(), is("custom"));
+                }
+            } finally {
+                client.closeResource();
             }
         }
     }

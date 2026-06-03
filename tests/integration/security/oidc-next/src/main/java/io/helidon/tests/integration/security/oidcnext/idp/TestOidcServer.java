@@ -483,8 +483,9 @@ public final class TestOidcServer implements AutoCloseable {
         if (!client.clientId().equals(state.clientId())) {
             throw new IllegalArgumentException("Refresh token client mismatch");
         }
-        if (config.tokenDefaults().refreshToken().rotate()) {
-            refreshTokens.remove(refreshToken);
+        if (config.tokenDefaults().refreshToken().rotate()
+                && !refreshTokens.remove(refreshToken, state)) {
+            throw new IllegalArgumentException("Refresh token is invalid");
         }
         return tokenResponse(state.clientId(),
                              state.subject(),
@@ -501,11 +502,12 @@ public final class TestOidcServer implements AutoCloseable {
                                                 String nonce,
                                                 boolean idTokenAllowed) {
         String scope = String.join(" ", scopes);
-        Instant issuedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant issuedAt = Instant.now();
         TestOidcTokenConfig accessTokenConfig = config.tokenDefaults().accessToken();
+        Map<String, JsonValue> accessTokenClaims = tokenClaims(accessTokenConfig, username);
         String accessToken = accessTokenConfig.opaque()
                 ? "opaque-access-" + ids.incrementAndGet()
-                : accessToken(clientId, subject, scope, issuedAt);
+                : accessToken(clientId, subject, scope, issuedAt, accessTokenClaims);
         String idToken = idTokenAllowed && scopes.contains("openid")
                 ? idToken(clientId, subject, username, nonce)
                 : null;
@@ -522,7 +524,7 @@ public final class TestOidcServer implements AutoCloseable {
                                                issuedAt,
                                                issuedAt.plus(accessTokenConfig.expiresIn()),
                                                audiences(accessTokenConfig, clientId),
-                                               accessTokenConfig.claims()));
+                                               accessTokenClaims));
         return new TestOidcTokenResponse(accessToken,
                                          "Bearer",
                                          accessTokenConfig.expiresIn().toSeconds(),
@@ -531,7 +533,11 @@ public final class TestOidcServer implements AutoCloseable {
                                          refreshToken);
     }
 
-    private String accessToken(String clientId, String subject, String scope, Instant now) {
+    private String accessToken(String clientId,
+                               String subject,
+                               String scope,
+                               Instant now,
+                               Map<String, JsonValue> claims) {
         TestOidcTokenConfig token = config.tokenDefaults().accessToken();
         Jwt.Builder builder = Jwt.builder()
                 .type("at+jwt")
@@ -545,7 +551,7 @@ public final class TestOidcServer implements AutoCloseable {
                 .addPayloadClaim("client_id", clientId)
                 .addPayloadClaim("scope", scope);
         audiences(token, clientId).forEach(builder::addAudience);
-        token.claims().forEach(builder::addPayloadClaim);
+        claims.forEach(builder::addPayloadClaim);
         return SignedJwt.sign(builder.build(), signingKeys.forKeyId(SIGNING_KEY_ID).orElseThrow())
                 .tokenContent();
     }
@@ -565,18 +571,24 @@ public final class TestOidcServer implements AutoCloseable {
         if (nonce != null) {
             builder.nonce(nonce);
         }
+        tokenClaims(token, username).forEach(builder::addPayloadClaim);
+        return SignedJwt.sign(builder.build(), signingKeys.forKeyId(SIGNING_KEY_ID).orElseThrow())
+                .tokenContent();
+    }
+
+    private Map<String, JsonValue> tokenClaims(TestOidcTokenConfig token, String username) {
+        Map<String, JsonValue> claims = new LinkedHashMap<>();
         if (username != null) {
             TestOidcUserConfig user = user(username);
             for (String claim : token.includeUserClaims()) {
                 JsonValue value = user.claims().get(claim);
                 if (value != null) {
-                    builder.addPayloadClaim(claim, value);
+                    claims.put(claim, value);
                 }
             }
         }
-        token.claims().forEach(builder::addPayloadClaim);
-        return SignedJwt.sign(builder.build(), signingKeys.forKeyId(SIGNING_KEY_ID).orElseThrow())
-                .tokenContent();
+        claims.putAll(token.claims());
+        return claims;
     }
 
     private void defaultJwks(TestOidcRequest request, ServerResponse response) {
@@ -589,7 +601,7 @@ public final class TestOidcServer implements AutoCloseable {
             authenticateClient(request);
             String token = required(request.formParameters(), "token");
             IssuedAccessToken issuedToken = accessTokens.get(token);
-            if (issuedToken == null || !Instant.now().isBefore(issuedToken.expiresAt())) {
+            if (issuedToken == null || !active(issuedToken)) {
                 sendJson(response, JsonObject.builder()
                         .set("active", false)
                         .build());
@@ -608,8 +620,6 @@ public final class TestOidcServer implements AutoCloseable {
                     .set("token_type", "Bearer");
             if (issuedToken.username() != null) {
                 builder.set("username", issuedToken.username());
-                TestOidcUserConfig user = user(issuedToken.username());
-                user.claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
             }
             issuedToken.claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
             sendJson(response, builder.build());
@@ -627,9 +637,8 @@ public final class TestOidcServer implements AutoCloseable {
     private void defaultUserInfo(TestOidcRequest request, ServerResponse response) {
         String token = request.bearerToken()
                 .orElseThrow(() -> new IllegalArgumentException("Bearer token is required"));
-        IssuedAccessToken issuedToken = Optional.ofNullable(accessTokens.get(token))
-                .orElseThrow(() -> new IllegalArgumentException("Access token is unknown"));
-        if (issuedToken.username() == null) {
+        IssuedAccessToken issuedToken = accessTokens.get(token);
+        if (issuedToken == null || !active(issuedToken) || issuedToken.username() == null) {
             response.status(Status.UNAUTHORIZED_401).send();
             return;
         }
@@ -638,6 +647,10 @@ public final class TestOidcServer implements AutoCloseable {
                 .set("sub", subject(issuedToken.username(), user));
         user.claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
         sendJson(response, builder.build());
+    }
+
+    private boolean active(IssuedAccessToken token) {
+        return Instant.now().isBefore(token.expiresAt());
     }
 
     private void defaultLogout(TestOidcRequest request, ServerResponse response) {

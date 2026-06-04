@@ -92,6 +92,7 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.socketRequired(), is(true));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
+        assertThat(tenantConfig.idTokenDecryptionJwk().isEmpty(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
         assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
         assertThat(tenantConfig.endpointPolicy(), is(endpointPolicy));
@@ -218,6 +219,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.token-endpoint-auth-method", "PRIVATE_KEY_JWT"),
+                        Map.entry("tenants.default.id-token-decryption-jwk.resource-path",
+                                  "oidc-next-sign-jwk.json"),
                         Map.entry("tenants.default.client-assertion.algorithm", "RS256"),
                         Map.entry("tenants.default.client-assertion.key-id", "sign-rsa"),
                         Map.entry("tenants.default.client-assertion.jwk.resource-path", "oidc-next-sign-jwk.json"),
@@ -277,6 +280,8 @@ class OidcProviderConfigTest {
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
+        assertThat(tenant.idTokenDecryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
         assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));
         assertThat(tenant.clientAssertion().jwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
@@ -327,6 +332,7 @@ class OidcProviderConfigTest {
                         Map.entry("issuer", ISSUER.toString()),
                         Map.entry("client-id", "client-id"),
                         Map.entry("client-secret", "client-secret-value"),
+                        Map.entry("id-token-decryption-jwk.resource-path", "oidc-next-sign-jwk.json"),
                         Map.entry("jwk-set.refresh-interval", "PT15M"),
                         Map.entry("endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("protected-resource.token-validation.method", "JWT"),
@@ -340,6 +346,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
         assertThat(tenant.clientId().orElseThrow(), is("client-id"));
         assertThat(tenant.clientSecret().orElseThrow(), is("client-secret-value"));
+        assertThat(tenant.idTokenDecryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(15)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
@@ -1869,6 +1876,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
+        assertThat(metadata, containsString("id-token-decryption-jwk"));
         assertThat(metadata, containsString("TLS_CLIENT_AUTH"));
         assertThat(metadata, containsString("SELF_SIGNED_TLS_CLIENT_AUTH"));
         assertThat(metadata, containsString("private key plus certificate chain"));

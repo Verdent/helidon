@@ -523,6 +523,52 @@ authorization-code:
   pkce-required: false
 ```
 
+### Encrypted ID Tokens
+
+If the OpenID Provider returns encrypted ID Tokens, configure `id-token-decryption-jwk` with the private JWK Set resource
+used to decrypt them.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        id-token-decryption-jwk:
+          resource-path: "rp-id-token-decryption-jwks.json"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+          scopes: [ "openid", "profile" ]
+        cookies:
+          encryption-secret: "${OIDC_COOKIE_SECRET}"
+```
+
+The provider decrypts the JWE ID Token and then validates the inner signed JWT with the normal ID Token validation
+rules and the OpenID Provider JWK Set. Signed ID Tokens remain accepted when decryption keys are configured; this option
+means that encrypted ID Tokens can be processed, not that encryption is required.
+
+The protected local authentication cookie stores the original ID Token value. When that value is encrypted, the provider
+decrypts it again when the local authentication result is restored. RP-Initiated Logout also sends the original OpenID
+Provider-issued ID Token as `id_token_hint`; if that hint is encrypted, the provider includes `client_id` as well.
+
+This option applies only to ID Tokens. It does not enable encrypted access-token validation.
+
+Programmatic configuration:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer(URI.create("https://issuer.example"))
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .idTokenDecryptionJwk(Resource.create("rp-id-token-decryption-jwks.json"))
+        .authorizationCode(authorizationCode -> authorizationCode
+                .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
+                .scopes(List.of("openid", "profile")))
+        .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
+        .buildPrototype();
+```
+
 ### Reverse Proxies
 
 When Authorization Code Flow runs behind a reverse proxy, configure Helidon WebServer requested URI discovery so the
@@ -654,7 +700,7 @@ If `endpoints.end-session-endpoint-uri` is omitted, well-known metadata must be 
 By default, the End Session request includes `id_token_hint` from the local authentication result cookie and fails with
 `403 Forbidden` when the ID Token is not available. Set `logout.end-session.id-token-hint-required: false` to allow an
 End Session request without `id_token_hint`; in that case `client-id` is required and the provider sends `client_id`
-when `id_token_hint` is omitted.
+when `id_token_hint` is omitted. The provider also sends `client_id` when `id_token_hint` contains an encrypted ID Token.
 
 The default `id-token-hint-required: true` mode requires Authorization Code Flow because the ID Token comes from local
 authentication result storage.
@@ -1354,6 +1400,7 @@ multi-tenant applications:
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. |
+| `id-token-decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |

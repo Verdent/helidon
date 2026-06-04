@@ -139,6 +139,11 @@ final class OidcLogoutHandler {
                 .localAuthenticationResult()
                 .map(OidcLocalAuthenticationResult::idToken)
                 .map(OidcValidatedIdToken::rawToken);
+        boolean encryptedIdTokenHint = selectedEndSessionTenant
+                .localAuthenticationResult()
+                .map(OidcLocalAuthenticationResult::idToken)
+                .map(OidcValidatedIdToken::encrypted)
+                .orElse(false);
         if (idTokenHint.isEmpty() && endSession.idTokenHintRequired()) {
             response.status(Status.FORBIDDEN_403)
                     .send("id_token_hint is required for RP-Initiated Logout");
@@ -166,6 +171,7 @@ final class OidcLogoutHandler {
         response.status(Status.SEE_OTHER_303);
         response.headers().add(HeaderNames.LOCATION, endSessionLocation(endSessionEndpointUri.orElseThrow(),
                                                                         idTokenHint,
+                                                                        encryptedIdTokenHint,
                                                                         selectedEndSessionTenant.tenantConfig()
                                                                                 .clientId(),
                                                                         postLogoutRedirectUri,
@@ -199,6 +205,7 @@ final class OidcLogoutHandler {
 
     private URI endSessionLocation(URI endSessionEndpointUri,
                                    Optional<String> idTokenHint,
+                                   boolean encryptedIdTokenHint,
                                    Optional<String> clientId,
                                    Optional<URI> postLogoutRedirectUri,
                                    ServerRequest request) {
@@ -208,11 +215,13 @@ final class OidcLogoutHandler {
          * Quotes: "redirecting the End-User's User Agent to the OP's Logout Endpoint";
          * "RECOMMENDED. ID Token previously issued by the OP to the RP passed to the Logout Endpoint as a hint";
          * "OPTIONAL. OAuth 2.0 Client Identifier valid at the Authorization Server";
+         * "When used in conjunction with `id_token_hint`, this parameter is useful when the End-User is using a
+         * symmetrically encrypted ID Token as an `id_token_hint` value";
          * "OPTIONAL. URI to which the RP is requesting"; "OPTIONAL. Opaque value used by the RP".
          */
         UriQueryWriteable query = UriQueryWriteable.create();
         idTokenHint.ifPresent(value -> query.set("id_token_hint", value));
-        if (idTokenHint.isEmpty()) {
+        if (idTokenHint.isEmpty() || encryptedIdTokenHint) {
             clientId.ifPresent(value -> query.set("client_id", value));
         }
         postLogoutRedirectUri.ifPresent(uri -> query.set("post_logout_redirect_uri", uri.toString()));

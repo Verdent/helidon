@@ -899,6 +899,14 @@ Client Credentials Grant obtains an access token from the Token Endpoint with `g
 the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
 cached until it is close to expiration, then reacquired.
 
+Configure Client Credentials Grant scopes on the matching outbound target. OAuth scopes describe the access requested for
+the token, and for outbound calls that access is normally tied to the downstream resource API selected by the target.
+Keeping scopes on the target allows least-privilege tokens for different downstream services while still using the same
+tenant client credentials and Token Endpoint. For example, an orders API can request `orders.read` while a billing API
+requests `billing.read`; these scoped tokens are cached separately.
+The tenant describes the OAuth client and Authorization Server connection; the outbound target describes the resource API
+access being requested for a specific outbound call.
+
 Client Credentials Grant is only valid for confidential clients. Configure `client-id`, either
 `endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint, and the prerequisites for the
 selected Token Endpoint client authentication method. Secret-based methods require `client-secret`; `PRIVATE_KEY_JWT`
@@ -924,6 +932,7 @@ security:
             transports: [ "https" ]
             hosts: [ "inventory.internal.example" ]
             client-credentials-grant-enabled: true
+            client-credentials-scopes: [ "inventory.read" ]
 ```
 
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
@@ -948,6 +957,22 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer(URI.create("https://issuer.example"))
         .outboundTargets(List.of(ordersApi))
         .buildPrototype();
+```
+
+Programmatic Client Credentials Grant target configuration with scopes:
+
+```java
+OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+        .clientCredentialsGrantEnabled(true)
+        .addClientCredentialsScope("orders.read")
+        .buildPrototype();
+
+OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
+        .addTransport("https")
+        .addHost("orders.internal.example")
+        .addPath("/orders/.*")
+        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .build();
 ```
 
 ## Local Authentication Cookies
@@ -1352,6 +1377,7 @@ OIDC outbound target options:
 | --- | --- |
 | `token-propagation-enabled` | Use Token Propagation for this outbound target. |
 | `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
+| `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Values are serialized as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
 | `audience` | Expected `aud` claim for Token Propagation to this outbound target. |
 
 Token validation options:

@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.security.providers.common.OutboundTarget;
@@ -24,11 +25,16 @@ final class OidcOutboundPolicy {
     private final boolean tokenPropagation;
     private final boolean clientCredentialsGrant;
     private final String audience;
+    private final String clientCredentialsScope;
 
-    private OidcOutboundPolicy(boolean tokenPropagation, boolean clientCredentialsGrant, String audience) {
+    private OidcOutboundPolicy(boolean tokenPropagation,
+                               boolean clientCredentialsGrant,
+                               String audience,
+                               String clientCredentialsScope) {
         this.tokenPropagation = tokenPropagation;
         this.clientCredentialsGrant = clientCredentialsGrant;
         this.audience = audience;
+        this.clientCredentialsScope = clientCredentialsScope;
     }
 
     static OidcOutboundPolicy tokenPropagation() {
@@ -36,15 +42,20 @@ final class OidcOutboundPolicy {
     }
 
     static OidcOutboundPolicy tokenPropagation(String audience) {
-        return new OidcOutboundPolicy(true, false, audience);
+        return new OidcOutboundPolicy(true, false, audience, null);
     }
 
     static OidcOutboundPolicy clientCredentialsGrant() {
-        return new OidcOutboundPolicy(false, true, null);
+        return clientCredentialsGrant(List.of());
+    }
+
+    static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes) {
+        String scope = OidcConfigSupport.clientCredentialsScope(scopes);
+        return new OidcOutboundPolicy(false, true, null, scope.isEmpty() ? null : scope);
     }
 
     static OidcOutboundPolicy tokenPropagationAndClientCredentialsGrant() {
-        return new OidcOutboundPolicy(true, true, null);
+        return new OidcOutboundPolicy(true, true, null, null);
     }
 
     static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
@@ -60,7 +71,7 @@ final class OidcOutboundPolicy {
             return Optional.of(tokenPropagation(config.audience().orElse(null)));
         }
         if (config.clientCredentialsGrantEnabled()) {
-            return Optional.of(clientCredentialsGrant());
+            return Optional.of(clientCredentialsGrant(config.clientCredentialsScopes()));
         }
         return Optional.empty();
     }
@@ -75,5 +86,9 @@ final class OidcOutboundPolicy {
 
     Optional<String> audience() {
         return Optional.ofNullable(audience);
+    }
+
+    Optional<String> clientCredentialsScope() {
+        return Optional.ofNullable(clientCredentialsScope);
     }
 }

@@ -19,8 +19,10 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.config.Config;
@@ -90,6 +92,15 @@ final class OidcConfigSupport {
                 .map(OidcOutboundPolicy::fromTarget)
                 .flatMap(Optional::stream)
                 .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
+    }
+
+    static String clientCredentialsScope(List<String> scopes) {
+        if (scopes.isEmpty()) {
+            return "";
+        }
+        return String.join(" ", scopes.stream()
+                .sorted()
+                .toList());
     }
 
     static WebClient createWebClient(OidcTenantConfig tenantConfig) {
@@ -270,7 +281,41 @@ final class OidcConfigSupport {
                 throw new IllegalArgumentException(
                         "Token Propagation and Client Credentials Grant cannot both be enabled on the same outbound target");
             }
+            if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsScopes().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "client-credentials-grant-enabled must be enabled when client-credentials-scopes is configured");
+            }
+            validateClientCredentialsScopes(target.clientCredentialsScopes());
         }
+    }
+
+    private static void validateClientCredentialsScopes(List<String> scopes) {
+        Set<String> uniqueScopes = new HashSet<>();
+        scopes.forEach(scope -> {
+            if (scope.isBlank() || !scope.equals(scope.strip())) {
+                throw new IllegalArgumentException("client-credentials-scopes contains blank or padded scope");
+            }
+            if (!uniqueScopes.add(scope)) {
+                throw new IllegalArgumentException("client-credentials-scopes contains duplicate scope: " + scope);
+            }
+            scope.chars()
+                    .filter(codePoint -> !validScopeTokenCodePoint(codePoint))
+                    .findFirst()
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException("client-credentials-scopes contains invalid scope: " + scope);
+                    });
+        });
+    }
+
+    private static boolean validScopeTokenCodePoint(int codePoint) {
+        /*
+         * Spec: RFC 6749, Appendix A.4 scope-token
+         * https://www.rfc-editor.org/rfc/rfc6749.html#appendix-A.4
+         * scope-token = 1*( %x21 / %x23-5B / %x5D-7E )
+         */
+        return codePoint == 0x21
+                || (codePoint >= 0x23 && codePoint <= 0x5B)
+                || (codePoint >= 0x5D && codePoint <= 0x7E);
     }
 
     static final class TenantResolutionDecorator

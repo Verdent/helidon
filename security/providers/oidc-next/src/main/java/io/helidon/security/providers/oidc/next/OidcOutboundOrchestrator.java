@@ -131,7 +131,7 @@ final class OidcOutboundOrchestrator {
             return propagateToken(providerRequest, outboundEnv, policy);
         }
         if (policy.clientCredentialsGrantEnabled()) {
-            return secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv);
+            return secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv, policy);
         }
         return OutboundSecurityResponse.abstain();
     }
@@ -148,7 +148,8 @@ final class OidcOutboundOrchestrator {
     }
 
     private OutboundSecurityResponse secureWithClientCredentials(OidcTenantContext tenantContext,
-                                                                 SecurityEnvironment outboundEnv) {
+                                                                 SecurityEnvironment outboundEnv,
+                                                                 OidcOutboundPolicy outboundPolicy) {
         OidcTenantContext clientCredentialsContext;
         try {
             OidcConfigSupport.validateClientCredentialsGrant(tenantContext.tenantConfig(),
@@ -160,7 +161,9 @@ final class OidcOutboundOrchestrator {
         }
 
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
-        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext, now);
+        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext,
+                                                                                 outboundPolicy.clientCredentialsScope(),
+                                                                                 now);
         if (!tokenResult.succeeded()) {
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
         }

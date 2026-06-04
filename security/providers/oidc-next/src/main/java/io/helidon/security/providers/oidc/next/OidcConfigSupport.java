@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +49,7 @@ final class OidcConfigSupport {
                                                                         "endpoints",
                                                                         "protected-resource",
                                                                         "authorization-code",
+                                                                        "endpoint-policy",
                                                                         "logout",
                                                                         "user-info",
                                                                         "token-transport",
@@ -57,6 +59,7 @@ final class OidcConfigSupport {
     private static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
     private static final OidcJwkSetConfig DEFAULT_JWK_SET = OidcJwkSetConfig.create();
     private static final OidcEndpointConfig DEFAULT_ENDPOINTS = OidcEndpointConfig.create();
+    private static final OidcEndpointPolicyConfig DEFAULT_ENDPOINT_POLICY = OidcEndpointPolicyConfig.create();
     private static final OidcTokenTransportConfig DEFAULT_TOKEN_TRANSPORT = OidcTokenTransportConfig.create();
     private static final OidcSubjectMappingConfig DEFAULT_SUBJECT_MAPPING = OidcSubjectMappingConfig.create();
     private static final OidcCookieConfig DEFAULT_COOKIES = OidcCookieConfig.create();
@@ -68,23 +71,26 @@ final class OidcConfigSupport {
     }
 
     static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant) {
-        boolean bearerTokenAuthentication = tenant.protectedResource()
-                .filter(OidcProtectedResourceConfig::enabled)
-                .isPresent();
-        boolean authorizationCodeFlow = tenant.authorizationCode()
-                .filter(OidcAuthorizationCodeConfig::enabled)
-                .isPresent();
+        return endpointPolicy(tenant, tenant.endpointPolicy());
+    }
 
-        if (bearerTokenAuthentication && authorizationCodeFlow) {
-            return Optional.of(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow());
+    static Optional<OidcEndpointPolicy> endpointPolicy(OidcTenantConfig tenant,
+                                                       OidcEndpointPolicyConfig endpointPolicy) {
+        boolean bearerTokenSupported = bearerTokenSupported(tenant.protectedResource());
+        boolean authenticationCookieSupported = authenticationCookieSupported(tenant.authorizationCode());
+        EnumSet<OidcEndpointCredential> acceptedCredentials = resolvedAcceptedCredentials(endpointPolicy,
+                                                                                          bearerTokenSupported,
+                                                                                          authenticationCookieSupported);
+        if (acceptedCredentials.isEmpty()) {
+            return Optional.empty();
         }
-        if (bearerTokenAuthentication) {
-            return Optional.of(OidcEndpointPolicy.protectedResource());
-        }
-        if (authorizationCodeFlow) {
-            return Optional.of(OidcEndpointPolicy.authorizationCodeFlow());
-        }
-        return Optional.empty();
+        OidcAuthenticationFailureResponse failureResponse = resolvedFailureResponse(endpointPolicy,
+                                                                                    acceptedCredentials);
+        validateResolvedEndpointPolicy(acceptedCredentials,
+                                       failureResponse,
+                                       bearerTokenSupported,
+                                       authenticationCookieSupported);
+        return Optional.of(OidcEndpointPolicy.create(acceptedCredentials, failureResponse));
     }
 
     static boolean targetClientCredentialsGrantEnabled(List<OutboundTarget> outboundTargets) {
@@ -179,6 +185,7 @@ final class OidcConfigSupport {
                 || !DEFAULT_ENDPOINTS.equals(target.endpoints())
                 || target.protectedResource().isPresent()
                 || target.authorizationCode().isPresent()
+                || !DEFAULT_ENDPOINT_POLICY.equals(target.endpointPolicy())
                 || target.logout().isPresent()
                 || target.userInfo().isPresent()
                 || !DEFAULT_TOKEN_TRANSPORT.equals(target.tokenTransport())
@@ -221,6 +228,7 @@ final class OidcConfigSupport {
                 .webClient(target.webClient())
                 .jwkSet(target.jwkSet())
                 .endpoints(target.endpoints())
+                .endpointPolicy(target.endpointPolicy())
                 .tokenTransport(target.tokenTransport())
                 .subjectMapping(target.subjectMapping())
                 .cookies(target.cookies());
@@ -259,6 +267,7 @@ final class OidcConfigSupport {
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
             validateProtectedResource(target, target.protectedResource(), target.tokenTransport(), target.endpoints());
+            validateEndpointPolicy(target.protectedResource(), target.authorizationCode(), target.endpointPolicy());
         }
     }
 
@@ -271,6 +280,26 @@ final class OidcConfigSupport {
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
                 });
+    }
+
+    static final class EndpointPolicyDecorator
+            implements Prototype.BuilderDecorator<OidcEndpointPolicyConfig.BuilderBase<?, ?>> {
+        @Override
+        public void decorate(OidcEndpointPolicyConfig.BuilderBase<?, ?> target) {
+            if (target.config()
+                    .map(config -> config.get("accepted-credentials").exists())
+                    .orElse(false)
+                    && target.acceptedCredentials().isEmpty()) {
+                throw new IllegalArgumentException("endpoint-policy.accepted-credentials must not be empty when configured");
+            }
+            Set<OidcEndpointCredential> uniqueCredentials = EnumSet.noneOf(OidcEndpointCredential.class);
+            target.acceptedCredentials().forEach(credential -> {
+                if (!uniqueCredentials.add(credential)) {
+                    throw new IllegalArgumentException(
+                            "endpoint-policy.accepted-credentials contains duplicate credential: " + credential);
+                }
+            });
+        }
     }
 
     static final class OutboundTargetDecorator
@@ -381,6 +410,94 @@ final class OidcConfigSupport {
                 .ifPresent(path -> {
                     throw new IllegalArgumentException(configKey + " contains invalid claim path: " + path);
                 });
+    }
+
+    private static void validateEndpointPolicy(Optional<OidcProtectedResourceConfig> protectedResource,
+                                               Optional<OidcAuthorizationCodeConfig> authorizationCode,
+                                               OidcEndpointPolicyConfig endpointPolicy) {
+        boolean bearerTokenSupported = bearerTokenSupported(protectedResource);
+        boolean authenticationCookieSupported = authenticationCookieSupported(authorizationCode);
+        EnumSet<OidcEndpointCredential> acceptedCredentials = resolvedAcceptedCredentials(endpointPolicy,
+                                                                                          bearerTokenSupported,
+                                                                                          authenticationCookieSupported);
+        if (acceptedCredentials.isEmpty()) {
+            endpointPolicy.authenticationFailureResponse()
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException(
+                                "endpoint-policy requires Protected Resource or Authorization Code Flow to be enabled");
+                    });
+            return;
+        }
+        validateResolvedEndpointPolicy(acceptedCredentials,
+                                       resolvedFailureResponse(endpointPolicy, acceptedCredentials),
+                                       bearerTokenSupported,
+                                       authenticationCookieSupported);
+    }
+
+    private static boolean bearerTokenSupported(Optional<OidcProtectedResourceConfig> protectedResource) {
+        return protectedResource
+                .filter(OidcProtectedResourceConfig::enabled)
+                .isPresent();
+    }
+
+    private static boolean authenticationCookieSupported(Optional<OidcAuthorizationCodeConfig> authorizationCode) {
+        return authorizationCode
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .isPresent();
+    }
+
+    private static EnumSet<OidcEndpointCredential> resolvedAcceptedCredentials(OidcEndpointPolicyConfig endpointPolicy,
+                                                                              boolean bearerTokenSupported,
+                                                                              boolean authenticationCookieSupported) {
+        EnumSet<OidcEndpointCredential> acceptedCredentials = EnumSet.noneOf(OidcEndpointCredential.class);
+        if (!endpointPolicy.acceptedCredentials().isEmpty()) {
+            acceptedCredentials.addAll(endpointPolicy.acceptedCredentials());
+            return acceptedCredentials;
+        }
+        if (bearerTokenSupported) {
+            acceptedCredentials.add(OidcEndpointCredential.BEARER_TOKEN);
+        }
+        if (authenticationCookieSupported) {
+            acceptedCredentials.add(OidcEndpointCredential.AUTHENTICATION_COOKIE);
+        }
+        return acceptedCredentials;
+    }
+
+    private static OidcAuthenticationFailureResponse resolvedFailureResponse(
+            OidcEndpointPolicyConfig endpointPolicy,
+            Set<OidcEndpointCredential> acceptedCredentials) {
+        return endpointPolicy.authenticationFailureResponse()
+                .orElseGet(() -> acceptedCredentials.size() == 1
+                        && acceptedCredentials.contains(OidcEndpointCredential.AUTHENTICATION_COOKIE)
+                        ? OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT
+                        : OidcAuthenticationFailureResponse.UNAUTHORIZED);
+    }
+
+    private static void validateResolvedEndpointPolicy(Set<OidcEndpointCredential> acceptedCredentials,
+                                                       OidcAuthenticationFailureResponse failureResponse,
+                                                       boolean bearerTokenSupported,
+                                                       boolean authenticationCookieSupported) {
+        if (acceptedCredentials.contains(OidcEndpointCredential.BEARER_TOKEN) && !bearerTokenSupported) {
+            throw new IllegalArgumentException(
+                    "endpoint-policy.accepted-credentials bearer-token requires protected-resource to be enabled");
+        }
+        if (acceptedCredentials.contains(OidcEndpointCredential.AUTHENTICATION_COOKIE)
+                && !authenticationCookieSupported) {
+            throw new IllegalArgumentException(
+                    "endpoint-policy.accepted-credentials authentication-cookie requires authorization-code to be enabled");
+        }
+        if (failureResponse == OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT) {
+            if (!authenticationCookieSupported) {
+                throw new IllegalArgumentException(
+                        "endpoint-policy.authentication-failure-response authorization-code-redirect requires "
+                                + "authorization-code to be enabled");
+            }
+            if (!acceptedCredentials.contains(OidcEndpointCredential.AUTHENTICATION_COOKIE)) {
+                throw new IllegalArgumentException(
+                        "endpoint-policy.authentication-failure-response authorization-code-redirect requires "
+                                + "accepted-credentials to include authentication-cookie");
+            }
+        }
     }
 
     private static void validateAuthorizationCode(OidcTenantConfig.BuilderBase<?, ?> tenant,

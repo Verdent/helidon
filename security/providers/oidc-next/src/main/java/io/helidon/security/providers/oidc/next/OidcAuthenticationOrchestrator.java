@@ -79,31 +79,44 @@ final class OidcAuthenticationOrchestrator {
             return AuthenticationResponse.abstain();
         }
         OidcEndpointPolicy policy = endpointPolicy.orElseThrow();
-        if (policy.bearerTokenAuthenticationEnabled() && policy.authorizationCodeFlowEnabled()) {
-            return authenticateAmbiguous(context);
+        if (policy.authenticationCookieAccepted()) {
+            return authenticateAuthenticationCookie(context, policy);
         }
-        if (policy.bearerTokenAuthenticationEnabled()) {
-            return authenticateBearerToken(context);
-        }
-        if (policy.authorizationCodeFlowEnabled()) {
-            return authenticateAuthorizationCodeFlow(context);
-        }
-        return AuthenticationResponse.abstain();
+        return authenticationFailure(context, policy, Optional.empty());
     }
 
-    private AuthenticationResponse authenticateAuthorizationCodeFlow(OidcRequestContext context) {
+    private AuthenticationResponse authenticateAuthenticationCookie(OidcRequestContext context,
+                                                                   OidcEndpointPolicy policy) {
         LocalAuthentication localAuthentication = authenticateLocalAuthenticationResult(context);
         if (localAuthentication.response().isPresent()) {
             return localAuthentication.response().orElseThrow();
         }
-        return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
-                                                                 localAuthentication.removalCookie());
+        return authenticationFailure(context, policy, localAuthentication.removalCookie());
     }
 
-    private AuthenticationResponse authenticateAmbiguous(OidcRequestContext context) {
-        LocalAuthentication localAuthentication = authenticateLocalAuthenticationResult(context);
-        return localAuthentication.response()
-                .orElseGet(() -> OidcResponseFactory.ambiguousRequest(localAuthentication.removalCookie()));
+    private AuthenticationResponse authenticationFailure(OidcRequestContext context,
+                                                        OidcEndpointPolicy policy,
+                                                        Optional<String> localAuthenticationRemovalCookie) {
+        return switch (policy.authenticationFailureResponse()) {
+        case UNAUTHORIZED -> unauthorizedFailure(policy, localAuthenticationRemovalCookie);
+        case AUTHORIZATION_CODE_REDIRECT -> OidcResponseFactory.authorizationCodeFlowInitiated(
+                authenticationRequestFactory.create(context),
+                localAuthenticationRemovalCookie);
+        };
+    }
+
+    private AuthenticationResponse unauthorizedFailure(OidcEndpointPolicy policy,
+                                                      Optional<String> localAuthenticationRemovalCookie) {
+        String description = policy.bearerTokenAuthenticationEnabled()
+                ? "Bearer Token is required"
+                : "Authentication is required";
+        if (config.optional()) {
+            return OidcResponseFactory.optional(description);
+        }
+        if (policy.bearerTokenAuthenticationEnabled()) {
+            return OidcResponseFactory.missingBearerToken(localAuthenticationRemovalCookie);
+        }
+        return OidcResponseFactory.missingAuthenticationCredential(localAuthenticationRemovalCookie);
     }
 
     private LocalAuthentication authenticateLocalAuthenticationResult(OidcRequestContext context) {

@@ -16,32 +16,49 @@
 
 package io.helidon.security.providers.oidc.next;
 
-final class OidcEndpointPolicy {
-    private final boolean bearerTokenAuthentication;
-    private final boolean authorizationCodeFlow;
+import java.util.EnumSet;
+import java.util.Set;
 
-    private OidcEndpointPolicy(boolean bearerTokenAuthentication, boolean authorizationCodeFlow) {
-        this.bearerTokenAuthentication = bearerTokenAuthentication;
-        this.authorizationCodeFlow = authorizationCodeFlow;
+final class OidcEndpointPolicy {
+    private final Set<OidcEndpointCredential> acceptedCredentials;
+    private final OidcAuthenticationFailureResponse authenticationFailureResponse;
+
+    private OidcEndpointPolicy(Set<OidcEndpointCredential> acceptedCredentials,
+                               OidcAuthenticationFailureResponse authenticationFailureResponse) {
+        this.acceptedCredentials = Set.copyOf(acceptedCredentials);
+        this.authenticationFailureResponse = authenticationFailureResponse;
+    }
+
+    static OidcEndpointPolicy create(Set<OidcEndpointCredential> acceptedCredentials,
+                                     OidcAuthenticationFailureResponse authenticationFailureResponse) {
+        return new OidcEndpointPolicy(acceptedCredentials, authenticationFailureResponse);
     }
 
     static OidcEndpointPolicy protectedResource() {
-        return new OidcEndpointPolicy(true, false);
+        return new OidcEndpointPolicy(EnumSet.of(OidcEndpointCredential.BEARER_TOKEN),
+                                      OidcAuthenticationFailureResponse.UNAUTHORIZED);
     }
 
     static OidcEndpointPolicy authorizationCodeFlow() {
-        return new OidcEndpointPolicy(false, true);
+        return new OidcEndpointPolicy(EnumSet.of(OidcEndpointCredential.AUTHENTICATION_COOKIE),
+                                      OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT);
     }
 
     static OidcEndpointPolicy protectedResourceAndAuthorizationCodeFlow() {
-        return new OidcEndpointPolicy(true, true);
+        return new OidcEndpointPolicy(EnumSet.of(OidcEndpointCredential.BEARER_TOKEN,
+                                                 OidcEndpointCredential.AUTHENTICATION_COOKIE),
+                                      OidcAuthenticationFailureResponse.UNAUTHORIZED);
     }
 
     boolean bearerTokenAuthenticationEnabled() {
-        return bearerTokenAuthentication;
+        return acceptedCredentials.contains(OidcEndpointCredential.BEARER_TOKEN);
     }
 
-    boolean authorizationCodeFlowEnabled() {
-        return authorizationCodeFlow;
+    boolean authenticationCookieAccepted() {
+        return acceptedCredentials.contains(OidcEndpointCredential.AUTHENTICATION_COOKIE);
+    }
+
+    OidcAuthenticationFailureResponse authenticationFailureResponse() {
+        return authenticationFailureResponse;
     }
 }

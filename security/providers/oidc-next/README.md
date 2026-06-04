@@ -95,7 +95,10 @@ import java.util.List;
 import io.helidon.common.configurable.Resource;
 import io.helidon.security.Security;
 import io.helidon.security.providers.common.OutboundTarget;
+import io.helidon.security.providers.oidc.next.OidcAuthenticationFailureResponse;
 import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
+import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
+import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
@@ -1195,7 +1198,63 @@ security:
 ```
 
 When Bearer token evidence is present, the provider treats the request as Bearer Token authentication. Otherwise it can
-reuse local authentication cookies or start Authorization Code Flow.
+reuse local authentication cookies when the endpoint accepts them. If a request has a Bearer token and that Bearer token
+is invalid, the provider fails the Bearer Token request and does not fall back to a local authentication cookie.
+
+`endpoint-policy` controls which credential types an endpoint accepts and what happens when none of them authenticates
+the request.
+
+```yaml
+endpoint-policy:
+  accepted-credentials: [ "bearer-token", "authentication-cookie" ]
+  authentication-failure-response: unauthorized
+```
+
+If `accepted-credentials` is omitted, the provider infers it from the tenant:
+
+- Protected Resource only: accepts `bearer-token`.
+- Authorization Code Flow only: accepts `authentication-cookie`.
+- Both Protected Resource and Authorization Code Flow: accepts both.
+- Neither: no OIDC endpoint policy is active and the provider abstains.
+
+If `authentication-failure-response` is omitted, the provider uses:
+
+- `authorization-code-redirect` for endpoints that accept only `authentication-cookie`.
+- `unauthorized` for endpoints that accept `bearer-token`, including mixed endpoints that accept both credentials.
+
+This default keeps mixed browser/API tenants from returning browser login redirects from API endpoints when no credential
+is present.
+
+Configure a browser route to accept only the local authentication cookie and redirect when the cookie is missing:
+
+```yaml
+endpoint-policy:
+  accepted-credentials: [ "authentication-cookie" ]
+```
+
+Configure a cookie-authenticated API endpoint to return `401` instead of a login redirect:
+
+```yaml
+endpoint-policy:
+  accepted-credentials: [ "authentication-cookie" ]
+  authentication-failure-response: unauthorized
+```
+
+Programmatic route-level endpoint policy can be attached through WebServer security custom objects:
+
+```java
+OidcEndpointPolicyConfig browserPolicy = OidcEndpointPolicyConfig.builder()
+        .addAcceptedCredential(OidcEndpointCredential.AUTHENTICATION_COOKIE)
+        .buildPrototype();
+
+routing.get("/page",
+            SecurityFeature.authenticate().customObject(browserPolicy),
+            handler);
+```
+
+`bearer-token` requires enabled `protected-resource`. `authentication-cookie` and `authorization-code-redirect` require
+enabled `authorization-code`. `authorization-code-redirect` also requires `authentication-cookie` to be accepted by the
+resolved endpoint policy.
 
 ## Tenant Resolution
 
@@ -1300,6 +1359,7 @@ multi-tenant applications:
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
+| `endpoint-policy` | Endpoint accepted credentials and missing-credential failure response. |
 | `logout` | OIDC logout endpoint configuration. |
 | `user-info` | UserInfo request configuration for Authorization Code Flow local authentication. |
 | `token-transport` | Bearer Token transport configuration. |
@@ -1333,6 +1393,13 @@ Authorization Code Flow options:
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]` and must contain `openid`. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. |
+
+Endpoint policy options:
+
+| Key | Description |
+| --- | --- |
+| `accepted-credentials` | Accepted endpoint credentials: `bearer-token` and/or `authentication-cookie`. If omitted, inferred from enabled `protected-resource` and `authorization-code`. |
+| `authentication-failure-response` | Response when no accepted credential authenticates the request: `unauthorized` or `authorization-code-redirect`. If omitted, authentication-cookie-only endpoints redirect and all other endpoint policies return `401`. |
 
 UserInfo options:
 

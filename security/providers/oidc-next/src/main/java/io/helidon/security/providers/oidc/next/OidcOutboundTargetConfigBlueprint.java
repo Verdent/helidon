@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.builder.api.Description;
@@ -55,6 +56,19 @@ interface OidcOutboundTargetConfigBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean clientCredentialsGrantEnabled();
+
+    /**
+     * Access-token scopes requested by Client Credentials Grant for this outbound target.
+     * <p>
+     * This value is used only when {@code client-credentials-grant-enabled} is enabled on the same outbound target.
+     * When configured, the scopes are serialized as a single OAuth {@code scope} token endpoint form parameter.
+     *
+     * @return Client Credentials Grant scopes
+     */
+    @Description("Access-token scopes requested by Client Credentials Grant for this outbound target.")
+    @Option.Configured
+    @Option.Singular("clientCredentialsScope")
+    List<String> clientCredentialsScopes();
 
     /**
      * Expected access-token audience for Token Propagation to this outbound target.

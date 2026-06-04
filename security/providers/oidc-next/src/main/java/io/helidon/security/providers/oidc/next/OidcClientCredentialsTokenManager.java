@@ -23,16 +23,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 final class OidcClientCredentialsTokenManager {
-    private final ConcurrentMap<String, CachedToken> tokens = new ConcurrentHashMap<>();
+    private final ConcurrentMap<CacheKey, CachedToken> tokens = new ConcurrentHashMap<>();
 
-    OidcTokenEndpointResult token(OidcTenantContext tenantContext, Instant now) {
+    OidcTokenEndpointResult token(OidcTenantContext tenantContext, Optional<String> scope, Instant now) {
+        CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""));
         Duration clockSkew = tenantContext.tokenValidation().clockSkew();
-        CachedToken cachedToken = tokens.get(tenantContext.tenantId());
+        CachedToken cachedToken = tokens.get(cacheKey);
         if (cachedToken != null && cachedToken.activeAt(now, clockSkew)) {
             return OidcTokenEndpointResult.success(cachedToken.tokenResponse());
         }
 
-        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken();
+        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope);
         if (!result.succeeded()) {
             return result;
         }
@@ -41,17 +42,20 @@ final class OidcClientCredentialsTokenManager {
         Optional<Long> expiresIn = tokenResponse.expiresIn()
                 .filter(value -> value > 0);
         if (expiresIn.isEmpty()) {
-            tokens.remove(tenantContext.tenantId());
+            tokens.remove(cacheKey);
             return result;
         }
 
         CachedToken newCachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
         if (newCachedToken.activeAt(now, clockSkew)) {
-            tokens.put(tenantContext.tenantId(), newCachedToken);
+            tokens.put(cacheKey, newCachedToken);
         } else {
-            tokens.remove(tenantContext.tenantId());
+            tokens.remove(cacheKey);
         }
         return result;
+    }
+
+    private record CacheKey(String tenantId, String scope) {
     }
 
     private record CachedToken(OidcTokenResponse tokenResponse, Instant expiresAt) {

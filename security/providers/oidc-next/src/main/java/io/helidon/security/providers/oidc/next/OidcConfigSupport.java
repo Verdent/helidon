@@ -43,6 +43,7 @@ final class OidcConfigSupport {
                                                                         "client-id",
                                                                         "client-secret",
                                                                         "token-endpoint-auth-method",
+                                                                        "id-token-decryption-jwk",
                                                                         "client-assertion",
                                                                         "webclient",
                                                                         "jwk-set",
@@ -179,6 +180,7 @@ final class OidcConfigSupport {
                 || target.clientId().isPresent()
                 || target.clientSecret().isPresent()
                 || target.tokenEndpointAuthenticationMethod().isPresent()
+                || target.idTokenDecryptionJwk().isPresent()
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || webClientOptionsChanged(target.webClient())
                 || !DEFAULT_JWK_SET.equals(target.jwkSet())
@@ -237,6 +239,7 @@ final class OidcConfigSupport {
         target.clientId().ifPresent(tenant::clientId);
         target.clientSecret().ifPresent(tenant::clientSecret);
         target.tokenEndpointAuthenticationMethod().ifPresent(tenant::tokenEndpointAuthenticationMethod);
+        target.idTokenDecryptionJwk().ifPresent(tenant::idTokenDecryptionJwk);
         target.protectedResource().ifPresent(tenant::protectedResource);
         target.authorizationCode().ifPresent(tenant::authorizationCode);
         target.logout().ifPresent(tenant::logout);

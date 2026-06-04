@@ -101,13 +101,16 @@ final class OidcIdTokenValidator {
     private OidcValidationResult<OidcValidatedIdToken> validate(String token,
                                                                OidcTenantContext tenantContext,
                                                                Optional<String> expectedNonce) {
-        SignedJwt signedJwt;
+        OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken;
         try {
-            signedJwt = SignedJwt.parseToken(token);
+            resolvedIdToken = tenantContext.idTokenDecryptor().resolve(token);
+        } catch (IllegalStateException e) {
+            return OidcValidationResult.failure(e.getMessage(), e);
         } catch (RuntimeException e) {
-            return OidcValidationResult.failure("ID Token is not a valid signed JWT", e);
+            return OidcValidationResult.failure("ID Token is not a valid signed or encrypted JWT", e);
         }
 
+        SignedJwt signedJwt = resolvedIdToken.signedJwt();
         Jwt jwt;
         try {
             jwt = signedJwt.getJwt();
@@ -152,7 +155,10 @@ final class OidcIdTokenValidator {
             return OidcValidationResult.failure("ID Token claims are invalid");
         }
 
-        return OidcValidationResult.success(OidcValidatedIdToken.create(token, signedJwt, jwt));
+        return OidcValidationResult.success(OidcValidatedIdToken.create(resolvedIdToken.rawToken(),
+                                                                        resolvedIdToken.encrypted(),
+                                                                        signedJwt,
+                                                                        jwt));
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

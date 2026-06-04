@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -71,6 +72,44 @@ class OidcIdTokenValidatorTest {
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
         assertThat(validated.rawToken(), is(idToken));
         assertThat(validated.jwt().subject().orElse(""), is(SUBJECT));
+    }
+
+    @Test
+    void encryptedIdTokenIsDecryptedAndValidated() {
+        String signedIdToken = signedIdToken(it -> it.email("user1@example.org"));
+        String encryptedIdToken = encryptedIdToken(signedIdToken);
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idTokenDecryptionJwk(
+                Resource.create("oidc-next-sign-jwk.json"))));
+
+        assertThat(result.succeeded(), is(true));
+        OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
+        assertThat(validated.rawToken(), is(encryptedIdToken));
+        assertThat(validated.encrypted(), is(true));
+        assertThat(validated.signedJwt().tokenContent(), is(signedIdToken));
+        assertThat(validated.jwt().subject().orElse(""), is(SUBJECT));
+    }
+
+    @Test
+    void signedIdTokenIsAcceptedWhenDecryptionKeyIsConfigured() {
+        String idToken = signedIdToken(it -> it.email("user1@example.org"));
+
+        var result = validate(idToken, tenantConfig(it -> it.idTokenDecryptionJwk(
+                Resource.create("oidc-next-sign-jwk.json"))));
+
+        assertThat(result.succeeded(), is(true));
+        OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
+        assertThat(validated.rawToken(), is(idToken));
+        assertThat(validated.encrypted(), is(false));
+    }
+
+    @Test
+    void encryptedIdTokenWithoutDecryptionKeyIsRejected() {
+        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+
+        var result = validate(encryptedIdToken);
+
+        assertFailure(result, "ID Token decryption keys are not configured");
     }
 
     @Test
@@ -220,11 +259,15 @@ class OidcIdTokenValidatorTest {
     void malformedIdTokenIsRejected() {
         var result = validate("not-a-jwt");
 
-        assertFailure(result, "ID Token is not a valid signed JWT");
+        assertFailure(result, "ID Token is not a valid signed or encrypted JWT");
     }
 
     private OidcValidationResult<OidcValidatedIdToken> validate(String idToken) {
         return validator.validate(idToken, tenantContext(), authenticationRequestState());
+    }
+
+    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken, OidcTenantConfig tenantConfig) {
+        return validator.validate(idToken, OidcTenantContext.ready("default", tenantConfig), authenticationRequestState());
     }
 
     private static OidcTenantContext tenantContext() {
@@ -232,7 +275,11 @@ class OidcIdTokenValidatorTest {
     }
 
     private static OidcTenantConfig tenantConfig() {
-        return OidcTenantConfig.builder()
+        return tenantConfig(it -> { });
+    }
+
+    private static OidcTenantConfig tenantConfig(Consumer<OidcTenantConfig.Builder> customizer) {
+        OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -240,8 +287,16 @@ class OidcIdTokenValidatorTest {
                         .jwksUri(jwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
-                .buildPrototype();
+                .cookies(it -> it.encryptionSecret(COOKIE_SECRET));
+        customizer.accept(builder);
+        return builder.buildPrototype();
+    }
+
+    private static String encryptedIdToken(String signedIdToken) {
+        return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
+                .jwks(signKeys, "sign-rsa")
+                .build()
+                .token();
     }
 
     private static OidcAuthenticationRequestState authenticationRequestState() {

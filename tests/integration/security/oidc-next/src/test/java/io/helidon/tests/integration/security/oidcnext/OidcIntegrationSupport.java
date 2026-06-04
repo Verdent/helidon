@@ -37,6 +37,7 @@ import io.helidon.security.Security;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
+import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -48,6 +49,7 @@ import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.security.SecurityFeature;
+import io.helidon.webserver.security.SecurityHandler;
 
 final class OidcIntegrationSupport {
     static final String CLIENT_ID = "client-id";
@@ -154,7 +156,15 @@ final class OidcIntegrationSupport {
     }
 
     static void protectedRoute(HttpRouting.Builder routing, String path) {
-        routing.get(path, SecurityFeature.authenticate(), (request, response) -> {
+        protectedRoute(routing, path, SecurityFeature.authenticate());
+    }
+
+    static void protectedRoute(HttpRouting.Builder routing, String path, OidcEndpointPolicyConfig endpointPolicy) {
+        protectedRoute(routing, path, SecurityFeature.authenticate().customObject(endpointPolicy));
+    }
+
+    private static void protectedRoute(HttpRouting.Builder routing, String path, SecurityHandler securityHandler) {
+        routing.get(path, securityHandler, (request, response) -> {
             Subject subject = currentSubject();
             Object email = subject.principal().abacAttributeRaw("email");
             response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);

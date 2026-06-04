@@ -34,12 +34,30 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse missingBearerToken() {
-        return AuthenticationResponse.builder()
+        return missingBearerToken(Optional.empty());
+    }
+
+    static AuthenticationResponse missingBearerToken(Optional<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description("Bearer Token is required")
-                .responseHeader(WWW_AUTHENTICATE, "Bearer")
-                .build();
+                .responseHeader(WWW_AUTHENTICATE, "Bearer");
+        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
+                HeaderNames.SET_COOKIE.defaultCase(),
+                cookie));
+        return builder.build();
+    }
+
+    static AuthenticationResponse missingAuthenticationCredential(Optional<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(401)
+                .description("Authentication is required");
+        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
+                HeaderNames.SET_COOKIE.defaultCase(),
+                cookie));
+        return builder.build();
     }
 
     static AuthenticationResponse bearerTokenValidationNotConfigured() {
@@ -81,17 +99,6 @@ final class OidcResponseFactory {
                 .status(SecurityResponse.SecurityStatus.SUCCESS)
                 .user(subject);
         authenticationCookie.ifPresent(cookie -> builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), cookie));
-        return builder.build();
-    }
-
-    static AuthenticationResponse ambiguousRequest(Optional<String> localAuthenticationRemovalCookie) {
-        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
-                .status(SecurityResponse.SecurityStatus.FAILURE)
-                .statusCode(400)
-                .description("OIDC request is ambiguous");
-        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
-                HeaderNames.SET_COOKIE.defaultCase(),
-                cookie));
         return builder.build();
     }
 

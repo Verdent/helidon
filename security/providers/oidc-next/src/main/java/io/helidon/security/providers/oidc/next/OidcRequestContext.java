@@ -53,8 +53,30 @@ final class OidcRequestContext {
         if (endpointConfig == null) {
             return tenantContext.flatMap(OidcTenantContext::endpointPolicy);
         }
-        return endpointConfig.instance(OidcEndpointPolicy.class)
+        return endpointConfigInstance(endpointConfig, OidcEndpointPolicy.class)
+                .or(() -> endpointConfigInstance(endpointConfig, OidcEndpointPolicyConfig.class)
+                        .flatMap(this::endpointPolicy))
                 .or(() -> tenantContext.flatMap(OidcTenantContext::endpointPolicy));
+    }
+
+    private static <T> Optional<T> endpointConfigInstance(EndpointConfig endpointConfig, Class<T> clazz) {
+        Optional<T> exactInstance = endpointConfig.instance(clazz);
+        if (exactInstance.isPresent()) {
+            return exactInstance;
+        }
+        return endpointConfig.instanceKeys()
+                .stream()
+                .filter(clazz::isAssignableFrom)
+                .map(endpointConfig::instance)
+                .flatMap(Optional::stream)
+                .map(clazz::cast)
+                .findFirst();
+    }
+
+    private Optional<OidcEndpointPolicy> endpointPolicy(OidcEndpointPolicyConfig endpointPolicyConfig) {
+        return tenantContext
+                .filter(OidcTenantContext::ready)
+                .flatMap(tenant -> OidcConfigSupport.endpointPolicy(tenant.tenantConfig(), endpointPolicyConfig));
     }
 
     Optional<OidcTenantContext> tenantContext() {

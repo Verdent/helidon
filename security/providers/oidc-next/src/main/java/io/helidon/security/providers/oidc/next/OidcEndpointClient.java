@@ -81,16 +81,17 @@ final class OidcEndpointClient {
         return submit(form, OidcTokenResponse::fromRefreshJson);
     }
 
-    OidcTokenEndpointResult clientCredentialsToken() {
+    OidcTokenEndpointResult clientCredentialsToken(Optional<String> scope) {
         /*
          * Spec: RFC 6749, 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
          * Quotes: "The client makes a request to the token endpoint"; "using the
          * `application/x-www-form-urlencoded` format"; "`grant_type` REQUIRED.  Value MUST be set to
-         * `client_credentials`."
+         * `client_credentials`."; "`scope` OPTIONAL."
          */
         Parameters.Builder form = Parameters.builder("oidc-client-credentials-token-endpoint-form")
                 .add("grant_type", "client_credentials");
+        scope.ifPresent(value -> form.add("scope", value));
 
         return submit(form, OidcTokenResponse::fromClientCredentialsJson);
     }

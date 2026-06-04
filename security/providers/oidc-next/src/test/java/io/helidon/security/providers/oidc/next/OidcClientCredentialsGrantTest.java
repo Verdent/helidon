@@ -68,6 +68,7 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
@@ -427,6 +428,56 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void outboundTargetClientCredentialsGrantCanRequestScope() {
+        OidcProvider provider = provider(confidentialTenant(),
+                                         scopedClientCredentialsTarget("orders.write", "orders.read"));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(REQUEST_COUNT.get(), is(1));
+        assertThat(RECORDED_REQUEST.get().formParameters(),
+                   is(Map.of("grant_type", List.of("client_credentials"),
+                             "scope", List.of("orders.read orders.write"))));
+    }
+
+    @Test
+    void scopedClientCredentialsGrantCanUseClientSecretPost() {
+        OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST),
+                                         scopedClientCredentialsTarget("orders.read"));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().formParameters(),
+                   is(Map.of("grant_type", List.of("client_credentials"),
+                             "scope", List.of("orders.read"),
+                             "client_id", List.of(CLIENT_ID),
+                             "client_secret", List.of(CLIENT_SECRET))));
+    }
+
+    @Test
+    void scopedClientCredentialsGrantCanUsePrivateKeyJwt() {
+        OidcProvider provider = provider(privateKeyJwtTenant(), scopedClientCredentialsTarget("orders.read"));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("grant_type"), is(List.of("client_credentials")));
+        assertThat(request.formParameters().get("scope"), is(List.of("orders.read")));
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().containsKey("client_secret"), is(false));
+        assertThat(request.formParameters().containsKey("client_id"), is(false));
+    }
+
+    @Test
     void outboundTargetClientCredentialsGrantMatchesHttpsUriWhenEnvironmentTransportIsStale() {
         OidcProvider provider = provider(confidentialTenant(), clientCredentialsTarget());
         SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
@@ -657,6 +708,35 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void outboundTargetConfigCanRequestClientCredentialsGrantScope() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.client-id", CLIENT_ID),
+                        Map.entry("tenants.default.client-secret", CLIENT_SECRET),
+                        Map.entry("tenants.default.endpoints.token-endpoint-uri", tokenEndpointUri.toString()),
+                        Map.entry("tenants.default.endpoints.tls-required", "false"),
+                        Map.entry("outbound.0.name", "api"),
+                        Map.entry("outbound.0.transports.0", "https"),
+                        Map.entry("outbound.0.hosts.0", "api.example.com"),
+                        Map.entry("outbound.0.paths.0", "/resource"),
+                        Map.entry("outbound.0.methods.0", "GET"),
+                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"),
+                        Map.entry("outbound.0.client-credentials-scopes.0", "orders.write"),
+                        Map.entry("outbound.0.client-credentials-scopes.1", "orders.read"))))
+                .build();
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(RECORDED_REQUEST.get().formParameters(),
+                   is(Map.of("grant_type", List.of("client_credentials"),
+                             "scope", List.of("orders.read orders.write"))));
+    }
+
+    @Test
     void outboundTargetConfigCanUseWellKnownMetadataTokenEndpoint() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
@@ -681,6 +761,34 @@ class OidcClientCredentialsGrantTest {
         assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer access-token")));
         assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void clientCredentialsGrantCacheSeparatesScopes() {
+        dynamicTokenResponse = true;
+        dynamicExpiresIn = 600;
+        OidcProvider provider = provider(confidentialTenant(),
+                                         scopedClientCredentialsTarget("orders.read"),
+                                         billingClientCredentialsTarget("billing.read"));
+
+        OutboundSecurityResponse firstOrders = provider.outboundSecurity(providerRequest(),
+                                                                         outboundEnvironment(),
+                                                                         EndpointConfig.create());
+        OutboundSecurityResponse billing = provider.outboundSecurity(providerRequest(),
+                                                                    outboundEnvironment("https://api.example.com/billing",
+                                                                                        "/billing"),
+                                                                    EndpointConfig.create());
+        OutboundSecurityResponse secondOrders = provider.outboundSecurity(providerRequest(),
+                                                                          outboundEnvironment(),
+                                                                          EndpointConfig.create());
+
+        assertThat(firstOrders.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token-1")));
+        assertThat(billing.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token-2")));
+        assertThat(secondOrders.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token-1")));
+        assertThat(REQUEST_COUNT.get(), is(2));
     }
 
     @Test
@@ -826,6 +934,48 @@ class OidcClientCredentialsGrantTest {
         assertThat(response.description().orElse(""),
                    containsString("token-endpoint-uri or well-known-uri"));
         assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void blankClientCredentialsGrantScopeIsRejected() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> scopedTargetConfig("orders.read", " "));
+
+        assertThat(thrown.getMessage(), containsString("client-credentials-scopes"));
+    }
+
+    @Test
+    void paddedClientCredentialsGrantScopeIsRejected() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> scopedTargetConfig(" orders.read"));
+
+        assertThat(thrown.getMessage(), containsString("client-credentials-scopes"));
+    }
+
+    @Test
+    void duplicateClientCredentialsGrantScopeIsRejected() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> scopedTargetConfig("orders.read", "orders.read"));
+
+        assertThat(thrown.getMessage(), containsString("duplicate scope"));
+    }
+
+    @Test
+    void invalidClientCredentialsGrantScopeIsRejected() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> scopedTargetConfig("orders\\read"));
+
+        assertThat(thrown.getMessage(), containsString("invalid scope"));
+    }
+
+    @Test
+    void clientCredentialsGrantScopeWithoutClientCredentialsGrantIsRejected() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcOutboundTargetConfig.builder()
+                                                               .addClientCredentialsScope("orders.read")
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("client-credentials-grant-enabled"));
     }
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
@@ -1010,6 +1160,35 @@ class OidcClientCredentialsGrantTest {
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
+    }
+
+    private static OutboundTarget scopedClientCredentialsTarget(String... scopes) {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class, scopedTargetConfig(scopes))
+                .build();
+    }
+
+    private static OutboundTarget billingClientCredentialsTarget(String... scopes) {
+        return OutboundTarget.builder("billing")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/billing")
+                .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class, scopedTargetConfig(scopes))
+                .build();
+    }
+
+    private static OidcOutboundTargetConfig scopedTargetConfig(String... scopes) {
+        OidcOutboundTargetConfig.Builder builder = OidcOutboundTargetConfig.builder()
+                .clientCredentialsGrantEnabled(true);
+        for (String scope : scopes) {
+            builder.addClientCredentialsScope(scope);
+        }
+        return builder.buildPrototype();
     }
 
     private static OutboundTarget clientCredentialsTargetForAllTransports() {

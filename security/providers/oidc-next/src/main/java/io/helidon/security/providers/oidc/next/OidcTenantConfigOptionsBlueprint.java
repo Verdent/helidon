@@ -139,6 +139,19 @@ interface OidcTenantConfigOptionsBlueprint {
     Optional<OidcAuthorizationCodeConfig> authorizationCode();
 
     /**
+     * Endpoint authentication policy.
+     * <p>
+     * If {@link OidcEndpointPolicyConfig#acceptedCredentials()} is omitted, accepted credentials are inferred from the
+     * enabled tenant features: Protected Resource accepts Bearer tokens, and Authorization Code Flow accepts the local
+     * authentication cookie.
+     *
+     * @return endpoint authentication policy
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcEndpointPolicyConfig endpointPolicy();
+
+    /**
      * Local OpenID Connect logout endpoint configuration.
      *
      * @return logout configuration

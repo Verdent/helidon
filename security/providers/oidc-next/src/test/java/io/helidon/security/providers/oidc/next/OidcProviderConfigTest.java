@@ -40,6 +40,8 @@ import io.helidon.common.tls.TlsConfig;
 import io.helidon.common.tls.TlsManager;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
+import io.helidon.config.spi.ConfigNode.ListNode;
+import io.helidon.config.spi.ConfigNode.ObjectNode;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundTarget;
@@ -76,6 +78,7 @@ class OidcProviderConfigTest {
         OidcEndSessionConfig endSession = OidcEndSessionConfig.create();
         OidcUserInfoConfig userInfo = OidcUserInfoConfig.create();
         OidcProtectedResourceConfig protectedResource = OidcProtectedResourceConfig.create();
+        OidcEndpointPolicyConfig endpointPolicy = OidcEndpointPolicyConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
         OidcTokenValidationConfig tokenValidation = OidcTokenValidationConfig.create();
         OidcCookieConfig cookies = OidcCookieConfig.create();
@@ -91,6 +94,9 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.protectedResource().isEmpty(), is(true));
         assertThat(tenantConfig.authorizationCode().isEmpty(), is(true));
+        assertThat(tenantConfig.endpointPolicy(), is(endpointPolicy));
+        assertThat(endpointPolicy.acceptedCredentials().isEmpty(), is(true));
+        assertThat(endpointPolicy.authenticationFailureResponse().isEmpty(), is(true));
         assertThat(tenantConfig.logout().isEmpty(), is(true));
         assertThat(authorizationCode.enabled(), is(true));
         assertThat(logout.enabled(), is(true));
@@ -119,6 +125,12 @@ class OidcProviderConfigTest {
         assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
         assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
         assertThat(List.of(OidcPkceMethod.values()), is(List.of(OidcPkceMethod.PLAIN, OidcPkceMethod.S256)));
+        assertThat(List.of(OidcEndpointCredential.values()),
+                   is(List.of(OidcEndpointCredential.BEARER_TOKEN,
+                              OidcEndpointCredential.AUTHENTICATION_COOKIE)));
+        assertThat(List.of(OidcAuthenticationFailureResponse.values()),
+                   is(List.of(OidcAuthenticationFailureResponse.UNAUTHORIZED,
+                              OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -226,6 +238,9 @@ class OidcProviderConfigTest {
                                   "this-secret-is-long-enough-for-config-test"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
+                        Map.entry("tenants.default.endpoint-policy.accepted-credentials.0", "bearer-token"),
+                        Map.entry("tenants.default.endpoint-policy.accepted-credentials.1", "authentication-cookie"),
+                        Map.entry("tenants.default.endpoint-policy.authentication-failure-response", "unauthorized"),
                         Map.entry("tenants.default.logout.enabled", "false"),
                         Map.entry("tenants.default.logout.local-endpoint-uri", "/oidc/logout"),
                         Map.entry("tenants.default.logout.end-session.enabled", "false"),
@@ -284,6 +299,11 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(tenant.endpointPolicy().acceptedCredentials(),
+                   is(List.of(OidcEndpointCredential.BEARER_TOKEN,
+                              OidcEndpointCredential.AUTHENTICATION_COOKIE)));
+        assertThat(tenant.endpointPolicy().authenticationFailureResponse().orElseThrow(),
+                   is(OidcAuthenticationFailureResponse.UNAUTHORIZED));
         assertThat(tenant.logout().orElseThrow().localEndpointUri(), is(LOGOUT_ENDPOINT_URI));
         assertThat(tenant.logout().orElseThrow().enabled(), is(false));
         OidcEndSessionConfig endSession = tenant.logout().orElseThrow().endSession().orElseThrow();
@@ -1570,6 +1590,81 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void endpointPolicyRejectsUnsupportedAcceptedCredentials() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .endpointPolicy(it -> it.acceptedCredentials(List.of(OidcEndpointCredential.BEARER_TOKEN)))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("bearer-token"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .endpointPolicy(it -> it.acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE)))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authentication-cookie"));
+    }
+
+    @Test
+    void endpointPolicyRejectsUnsupportedFailureResponse() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .endpointPolicy(it -> it.authenticationFailureResponse(
+                        OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .endpointPolicy(it -> it.acceptedCredentials(List.of(OidcEndpointCredential.BEARER_TOKEN))
+                        .authenticationFailureResponse(OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authentication-cookie"));
+    }
+
+    @Test
+    void endpointPolicyRejectsDuplicateAndExplicitEmptyAcceptedCredentials() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcEndpointPolicyConfig.builder()
+                                                               .acceptedCredentials(List.of(
+                                                                       OidcEndpointCredential.BEARER_TOKEN,
+                                                                       OidcEndpointCredential.BEARER_TOKEN))
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("duplicate credential"));
+
+        Config config = Config.just(ConfigSources.create(ObjectNode.builder()
+                                                          .addList("accepted-credentials", ListNode.builder().build())
+                                                          .build()));
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcEndpointPolicyConfig.create(config));
+
+        assertThat(thrown.getMessage(), containsString("accepted-credentials"));
+    }
+
+    @Test
     void tokenTransportConfigDrivesBearerEvidence() {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                                                   .tenants(Map.of("default", jwtProtectedResourceTenant(it -> it
@@ -1794,6 +1889,9 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("post-logout-redirect-uri"));
         assertThat(metadata, containsString("allowed-post-logout-redirect-uris"));
         assertThat(metadata, containsString("user-info"));
+        assertThat(metadata, containsString("endpoint-policy"));
+        assertThat(metadata, containsString("accepted-credentials"));
+        assertThat(metadata, containsString("authentication-failure-response"));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));

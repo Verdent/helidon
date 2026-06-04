@@ -255,15 +255,52 @@ class OidcProviderTest {
     }
 
     @Test
-    void bothEndpointModesWithoutEvidenceFailsSafely() {
-        OidcProvider provider = providerWithTenant();
+    void mixedTenantWithoutEvidenceDefaultsToUnauthorized() {
+        OidcProvider provider = provider(authorizationCodeAndProtectedResourceTenant());
 
-        AuthenticationResponse response = provider.authenticate(
-                request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(), SecurityEnvironment.create()));
+        AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.create()));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.statusCode().orElse(-1), is(400));
-        assertThat(response.description().orElse(""), is("OIDC request is ambiguous"));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Bearer Token is required"));
+        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer")));
+    }
+
+    @Test
+    void endpointPolicyCanRedirectWhenAuthenticationCookieIsAccepted() {
+        OidcProvider provider = provider(authorizationCodeAndProtectedResourceTenant());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+        OidcEndpointPolicyConfig endpointPolicy = OidcEndpointPolicyConfig.builder()
+                .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
+                .buildPrototype();
+
+        AuthenticationResponse response = provider.authenticate(
+                requestWithEndpointPolicyConfig(endpointPolicy, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        assertThat(response.statusCode().orElse(-1), is(303));
+        assertThat(URI.create(response.responseHeaders().get("Location").get(0)).getPath(), is("/authorize"));
+    }
+
+    @Test
+    void endpointPolicyCanReturnUnauthorizedWhenAuthenticationCookieIsMissing() {
+        OidcProvider provider = provider(authorizationCodeAndProtectedResourceTenant());
+        OidcEndpointPolicyConfig endpointPolicy = OidcEndpointPolicyConfig.builder()
+                .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
+                .authenticationFailureResponse(OidcAuthenticationFailureResponse.UNAUTHORIZED)
+                .buildPrototype();
+
+        AuthenticationResponse response = provider.authenticate(
+                requestWithEndpointPolicyConfig(endpointPolicy, SecurityEnvironment.create()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Authentication is required"));
+        assertThat(response.responseHeaders().containsKey("WWW-Authenticate"), is(false));
     }
 
     @Test
@@ -859,6 +896,14 @@ class OidcProviderTest {
             endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);
         }
         return new TestProviderRequest(endpointConfig.build(), environment);
+    }
+
+    static ProviderRequest requestWithEndpointPolicyConfig(OidcEndpointPolicyConfig endpointPolicy,
+                                                          SecurityEnvironment environment) {
+        return new TestProviderRequest(EndpointConfig.builder()
+                                               .customObject(OidcEndpointPolicyConfig.class, endpointPolicy)
+                                               .build(),
+                                       environment);
     }
 
     private static EndpointConfig outboundConfig(OidcOutboundPolicy outboundPolicy) {

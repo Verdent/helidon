@@ -127,6 +127,10 @@ final class OidcTenantContext {
         return runtimeResources().cookieStateHandler();
     }
 
+    OidcIdTokenDecryptor idTokenDecryptor() {
+        return runtimeResources().idTokenDecryptor();
+    }
+
     Optional<OidcEndpointPolicy> endpointPolicy() {
         if (!ready()) {
             return Optional.empty();
@@ -151,17 +155,20 @@ final class OidcTenantContext {
                                     OidcProviderMetadata metadata,
                                     OidcEndpointClient endpointClient,
                                     OidcJwkSetManager jwkSetManager,
+                                    OidcIdTokenDecryptor idTokenDecryptor,
                                     OidcCookieStateHandler cookieStateHandler,
                                     WebClient webClient) {
         private static RuntimeResources create(String tenantId,
                                                OidcTenantConfig tenantConfig,
                                                OidcProviderMetadata metadata,
                                                WebClient webClient) {
+            OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
             return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
                                         OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
-                                        OidcCookieStateHandler.create(tenantConfig),
+                                        idTokenDecryptor,
+                                        OidcCookieStateHandler.create(tenantConfig, idTokenDecryptor),
                                         webClient);
         }
     }

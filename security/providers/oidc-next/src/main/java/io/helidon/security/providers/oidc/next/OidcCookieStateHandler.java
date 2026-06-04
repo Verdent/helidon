@@ -45,17 +45,27 @@ final class OidcCookieStateHandler {
     private static final int AES_GCM_IV_BYTES = 12;
 
     private final OidcCookieConfig cookieConfig;
+    private final OidcIdTokenDecryptor idTokenDecryptor;
     private final byte[] encryptionKey;
     private final SecureRandom secureRandom;
 
-    private OidcCookieStateHandler(OidcCookieConfig cookieConfig, byte[] encryptionKey, SecureRandom secureRandom) {
+    private OidcCookieStateHandler(OidcCookieConfig cookieConfig,
+                                   OidcIdTokenDecryptor idTokenDecryptor,
+                                   byte[] encryptionKey,
+                                   SecureRandom secureRandom) {
         this.cookieConfig = cookieConfig;
+        this.idTokenDecryptor = idTokenDecryptor;
         this.encryptionKey = encryptionKey;
         this.secureRandom = secureRandom;
     }
 
     static OidcCookieStateHandler create(OidcTenantConfig tenantConfig) {
+        return create(tenantConfig, OidcIdTokenDecryptor.create(tenantConfig));
+    }
+
+    static OidcCookieStateHandler create(OidcTenantConfig tenantConfig, OidcIdTokenDecryptor idTokenDecryptor) {
         return new OidcCookieStateHandler(tenantConfig.cookies(),
+                                          idTokenDecryptor,
                                           encryptionKey(tenantConfig.cookies()),
                                           new SecureRandom());
     }
@@ -174,9 +184,13 @@ final class OidcCookieStateHandler {
 
     private OidcLocalAuthenticationResult localAuthenticationResultFromJson(JsonObject json) {
         String rawIdToken = json.stringValue("id_token").orElseThrow();
-        SignedJwt signedJwt = SignedJwt.parseToken(rawIdToken);
+        OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken = idTokenDecryptor.resolve(rawIdToken);
+        SignedJwt signedJwt = resolvedIdToken.signedJwt();
         Jwt jwt = signedJwt.getJwt();
-        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, signedJwt, jwt);
+        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken,
+                                                                   resolvedIdToken.encrypted(),
+                                                                   signedJwt,
+                                                                   jwt);
         return OidcLocalAuthenticationResult.create(
                 json.stringValue("tenant_id").orElseThrow(),
                 idToken,

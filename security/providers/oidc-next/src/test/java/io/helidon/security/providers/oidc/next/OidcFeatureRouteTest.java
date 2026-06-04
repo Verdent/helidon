@@ -39,6 +39,7 @@ import io.helidon.security.Role;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
+import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -849,6 +850,45 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void logoutEndpointRouteUsesEncryptedIdTokenHintWithClientId() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(
+                endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
+                builder -> builder.idTokenDecryptionJwk(Resource.create("oidc-next-sign-jwk.json")));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            String signedIdToken = signedIdToken(NONCE);
+            String encryptedIdToken = encryptedIdToken(signedIdToken);
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                            "default",
+                                                                            encryptedIdToken,
+                                                                            signedIdToken,
+                                                                            true);
+            String localAuthenticationHeader = localAuthenticationCookie.name()
+                    + "="
+                    + localAuthenticationCookie.value();
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, localAuthenticationHeader)
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("id_token_hint").orElse(""), is(encryptedIdToken));
+                assertThat(query.first("client_id").orElse(""), is(CLIENT_ID));
+                assertThat(query.first("post_logout_redirect_uri").orElse(""), is(POST_LOGOUT_REDIRECT_URI.toString()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void logoutEndpointRouteRejectsUnallowedPostLogoutRedirectUri() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
                 .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
@@ -1204,11 +1244,18 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(
             Consumer<OidcEndSessionConfig.Builder> endSession) {
+        return tenantConfigWithEndSessionLogout(endSession, builder -> { });
+    }
+
+    private static OidcTenantConfig tenantConfigWithEndSessionLogout(
+            Consumer<OidcEndSessionConfig.Builder> endSession,
+            Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         return tenantConfigWithEndSessionLogout("__Host-helidon-oidc-state",
                                                 "__Host-helidon-oidc-auth",
                                                 COOKIE_SECRET,
                                                 END_SESSION_ENDPOINT_URI,
-                                                endSession);
+                                                endSession,
+                                                tenantCustomizer);
     }
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
@@ -1216,7 +1263,21 @@ class OidcFeatureRouteTest {
                                                                     String cookieSecret,
                                                                     URI endSessionEndpointUri,
                                                                     Consumer<OidcEndSessionConfig.Builder> endSession) {
-        return OidcTenantConfig.builder()
+        return tenantConfigWithEndSessionLogout(authenticationRequestCookieName,
+                                               localAuthenticationCookieName,
+                                               cookieSecret,
+                                               endSessionEndpointUri,
+                                               endSession,
+                                               builder -> { });
+    }
+
+    private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
+                                                                    String localAuthenticationCookieName,
+                                                                    String cookieSecret,
+                                                                    URI endSessionEndpointUri,
+                                                                    Consumer<OidcEndSessionConfig.Builder> endSession,
+                                                                    Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
@@ -1228,8 +1289,9 @@ class OidcFeatureRouteTest {
                 .logout(logout -> logout.endSession(endSession))
                 .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
                         .localAuthenticationCookieName(localAuthenticationCookieName)
-                        .encryptionSecret(cookieSecret))
-                .buildPrototype();
+                        .encryptionSecret(cookieSecret));
+        tenantCustomizer.accept(builder);
+        return builder.buildPrototype();
     }
 
     private static OidcTenantConfig tenantConfigWithDiscoveredEndSessionLogout(
@@ -1415,9 +1477,17 @@ class OidcFeatureRouteTest {
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant, String tenantId, String rawIdToken) {
+        return localAuthenticationCookie(tenant, tenantId, rawIdToken, rawIdToken, false);
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       String tenantId,
+                                                       String rawIdToken,
+                                                       String signedIdToken,
+                                                       boolean encrypted) {
         Instant now = Instant.now();
-        SignedJwt signedJwt = SignedJwt.parseToken(rawIdToken);
-        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, signedJwt, signedJwt.getJwt());
+        SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
+        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, encrypted, signedJwt, signedJwt.getJwt());
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(tenantId,
                                                                                    idToken,
                                                                                    "access-token",
@@ -1483,6 +1553,13 @@ class OidcFeatureRouteTest {
                 .build();
         return SignedJwt.sign(jwt, signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static String encryptedIdToken(String signedIdToken) {
+        return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
+                .jwks(signKeys, "sign-rsa")
+                .build()
+                .token();
     }
 
 }

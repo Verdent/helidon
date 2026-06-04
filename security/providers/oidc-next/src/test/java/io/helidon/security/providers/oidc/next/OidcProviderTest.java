@@ -41,6 +41,7 @@ import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
+import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -552,6 +553,42 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationResultCookieAuthenticatesSubjectFromEncryptedIdToken() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { },
+                                                          builder -> builder.idTokenDecryptionJwk(
+                                                                  Resource.create("oidc-next-sign-jwk.json")));
+        OidcProvider provider = provider(tenant);
+        String signedIdToken = signedIdToken(it -> it.email("user1@example.org")
+                .preferredUsername(USERNAME));
+        String encryptedIdToken = encryptedIdToken(signedIdToken);
+        SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
+        Instant now = Instant.now();
+        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                        "default",
+                        OidcValidatedIdToken.create(encryptedIdToken, true, signedJwt, signedJwt.getJwt()),
+                        "access-token",
+                        "Bearer",
+                        "refresh-token",
+                        "openid profile",
+                        now,
+                        now.plusSeconds(3600),
+                        now.plusSeconds(600)));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().getName(), is(USERNAME));
+        assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
+    }
+
+    @Test
     void localAuthenticationResultCookieUsesCustomSubjectMapping() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
@@ -1036,6 +1073,13 @@ class OidcProviderTest {
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static String encryptedIdToken(String signedIdToken) {
+        return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
+                .jwks(signKeys, "sign-rsa")
+                .build()
+                .token();
     }
 
     private static OidcValidatedIdToken validatedIdToken(String idToken) {

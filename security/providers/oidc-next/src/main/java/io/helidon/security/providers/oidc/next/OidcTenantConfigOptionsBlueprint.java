@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.Optional;
 
 import io.helidon.builder.api.Option;
+import io.helidon.common.configurable.Resource;
 import io.helidon.webclient.api.WebClientConfig;
 
 /**
@@ -75,6 +76,18 @@ interface OidcTenantConfigOptionsBlueprint {
      */
     @Option.Configured("token-endpoint-auth-method")
     Optional<OidcClientAuthenticationMethod> tokenEndpointAuthenticationMethod();
+
+    /**
+     * Private JWK Set resource used to decrypt encrypted ID Tokens.
+     * <p>
+     * This is local RP/client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
+     * verification keys used after the encrypted ID Token is decrypted.
+     *
+     * @return ID Token decryption JWK Set resource
+     */
+    @Option.Configured("id-token-decryption-jwk")
+    @Option.Confidential
+    Optional<Resource> idTokenDecryptionJwk();
 
     /**
      * Token Endpoint client assertion configuration used by

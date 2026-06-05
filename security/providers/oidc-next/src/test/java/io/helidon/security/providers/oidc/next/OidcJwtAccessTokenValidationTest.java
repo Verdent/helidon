@@ -52,6 +52,7 @@ import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
@@ -692,6 +693,15 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void noneAlgorithmIsRejectedBeforeSignatureVerification() {
+        String token = unsignedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(true, true, MISSING_JWKS_URI), token);
+
+        assertInvalidToken(response, "Bearer Token JWS header is invalid");
+    }
+
+    @Test
     void missingAccessTokenTypeIsRejected() {
         String token = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", it -> { });
 
@@ -875,6 +885,24 @@ class OidcJwtAccessTokenValidationTest {
         }
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId(signingKeyId).orElseThrow())
+                .tokenContent();
+    }
+
+    private static String unsignedToken(Consumer<Jwt.Builder> customizer) {
+        Instant now = Instant.now();
+        Jwt.Builder builder = Jwt.builder()
+                .type("at+jwt")
+                .subject(SUBJECT)
+                .preferredUsername(USERNAME)
+                .issuer(ISSUER.toString())
+                .algorithm(Jwk.ALG_NONE)
+                .issueTime(now)
+                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .jwtId("jwt-id")
+                .addPayloadClaim("client_id", "calling-client")
+                .addAudience(AUDIENCE);
+        customizer.accept(builder);
+        return SignedJwt.sign(builder.build(), Jwk.NONE_JWK)
                 .tokenContent();
     }
 

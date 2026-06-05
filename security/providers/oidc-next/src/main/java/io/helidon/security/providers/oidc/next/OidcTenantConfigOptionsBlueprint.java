@@ -39,11 +39,23 @@ interface OidcTenantConfigOptionsBlueprint {
 
     /**
      * Issuer Identifier expected for this tenant.
+     * <p>
+     * The issuer is stored as the exact OpenID Connect issuer string. Use {@link #issuerUri()} only for URI syntax,
+     * transport, and well-known metadata derivation; issuer identity comparisons must use this exact string value.
      *
      * @return issuer identifier
      */
     @Option.Configured
-    Optional<URI> issuer();
+    Optional<String> issuer();
+
+    /**
+     * Parsed issuer URI view.
+     *
+     * @return parsed issuer URI
+     */
+    default Optional<URI> issuerUri() {
+        return issuer().map(URI::create);
+    }
 
     /**
      * OAuth 2.0 client identifier.

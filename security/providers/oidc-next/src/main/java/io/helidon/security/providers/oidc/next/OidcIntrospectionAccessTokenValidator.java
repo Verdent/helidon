@@ -107,7 +107,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     private OidcValidationResult<OidcValidatedAccessToken> validateClaims(OidcValidatedIntrospection validated,
                                                      OidcTenantContext tenantContext) {
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
-        Optional<String> expectedIssuer = tenantContext.metadata().issuer().map(Object::toString);
+        Optional<String> expectedIssuer = tenantContext.metadata().issuer();
         Optional<String> expectedAudience = tokenValidation.audience();
         Instant now = Instant.now();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {

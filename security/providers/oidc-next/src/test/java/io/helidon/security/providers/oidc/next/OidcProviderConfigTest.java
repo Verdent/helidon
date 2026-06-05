@@ -276,7 +276,7 @@ class OidcProviderConfigTest {
         OutboundTarget outboundTarget = providerConfig.outboundTargets().getFirst();
         assertThat(outboundTarget.name(), is("orders"));
         assertThat(outboundTarget.hosts(), is(Set.of("api.example.com")));
-        assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
@@ -343,7 +343,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
 
         assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
-        assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
         assertThat(tenant.clientId().orElseThrow(), is("client-id"));
         assertThat(tenant.clientSecret().orElseThrow(), is("client-secret-value"));
         assertThat(tenant.idTokenDecryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
@@ -356,7 +356,7 @@ class OidcProviderConfigTest {
     @Test
     void singleTenantCanBeBuiltFromProviderRootBuilder() {
         OidcProviderConfig providerConfig = OidcProviderConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation
@@ -366,7 +366,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
 
         assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
-        assertThat(tenant.issuer().orElseThrow(), is(ISSUER));
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
         assertThat(tenant.clientId().orElseThrow(), is("client-id"));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
@@ -376,7 +376,7 @@ class OidcProviderConfigTest {
     @Test
     void singleTenantRootBuilderCanBeReusedAndCopied() {
         OidcProviderConfig.Builder builder = OidcProviderConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id");
 
         OidcProviderConfig first = builder.buildPrototype();
@@ -615,7 +615,7 @@ class OidcProviderConfigTest {
     @Test
     void protectedResourceRequiresValidationMethod() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(OidcProtectedResourceConfig.create())
                 .buildPrototype());
@@ -632,21 +632,21 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("issuer or well-known-uri"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.audience"));
 
         OidcTenantConfig derivedWellKnownTenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
         assertThat(derivedWellKnownTenant.endpoints().jwksUri().isEmpty(), is(true));
 
         OidcTenantConfig explicitWellKnownTenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
@@ -661,7 +661,7 @@ class OidcProviderConfigTest {
         assertThat(wellKnownOnlyTenant.issuer().isEmpty(), is(true));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)))
                 .buildPrototype());
@@ -695,7 +695,7 @@ class OidcProviderConfigTest {
     @Test
     void jwtValidationRequiresSecureJwksUriScheme() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(URI.create("http://issuer.example/jwks")))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
@@ -707,7 +707,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForJwksUri() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(URI.create("file:///tmp/oidc-next-jwks.json"))
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
@@ -720,7 +720,7 @@ class OidcProviderConfigTest {
     @Test
     void issuerRejectsInsecureUriByDefault() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(URI.create("http://issuer.example"))
+                .issuer("http://issuer.example")
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
@@ -732,7 +732,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForIssuer() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(URI.create("http://issuer.example"))
+                .issuer("http://issuer.example")
                 .endpoints(it -> it.jwksUri(JWKS_URI)
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
@@ -745,7 +745,7 @@ class OidcProviderConfigTest {
     @Test
     void issuerRejectsQueryAndFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example?tenant=default"))
+                .issuer("https://issuer.example?tenant=default")
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
@@ -754,7 +754,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("issuer must not include a query"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(URI.create("https://issuer.example#fragment"))
+                .issuer("https://issuer.example#fragment")
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
@@ -766,7 +766,7 @@ class OidcProviderConfigTest {
     @Test
     void jwtValidationCanExplicitlyDisableAudienceValidation() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audienceValidationEnabled(false)))
@@ -879,7 +879,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresClientAndDefaultsRedirectionEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
@@ -888,7 +888,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("client-id"));
 
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -903,7 +903,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRejectsInvalidRedirectionEndpointUri() {
         OidcTenantConfig localRedirectionEndpointTenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -918,7 +918,7 @@ class OidcProviderConfigTest {
                    is(URI.create("/oidc/callback")));
 
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -928,7 +928,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must be an absolute URI or local absolute path"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -938,7 +938,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri must not include a fragment"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -951,7 +951,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForRedirectionEndpoint() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -966,7 +966,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresOpenIdScope() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -981,7 +981,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresCookieEncryptionSecret() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -994,7 +994,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRejectsInsecureAuthorizationEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1007,7 +1007,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForAuthorizationEndpoint() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("http://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -1022,7 +1022,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRejectsInsecureTokenEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("http://issuer.example/token")))
@@ -1036,7 +1036,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForTokenEndpoint() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("http://issuer.example/token"))
@@ -1051,7 +1051,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRejectsTokenEndpointWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("https://issuer.example/token#fragment")))
@@ -1065,7 +1065,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRejectsAuthorizationEndpointWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize#fragment"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1111,7 +1111,7 @@ class OidcProviderConfigTest {
     @Test
     void logoutEndpointMustNotCollideWithRedirectionEndpoint() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1178,7 +1178,7 @@ class OidcProviderConfigTest {
     @Test
     void logoutEndSessionRejectsPostLogoutRedirectUriWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -1193,7 +1193,7 @@ class OidcProviderConfigTest {
     @Test
     void logoutEndSessionRejectsInsecureAllowedPostLogoutRedirectUriByDefault() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -1228,7 +1228,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowCanExplicitlyDisablePkce() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1245,7 +1245,7 @@ class OidcProviderConfigTest {
     @Test
     void userInfoRequiresAuthorizationCodeFlow() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
                 .userInfo(it -> { })
@@ -1257,7 +1257,7 @@ class OidcProviderConfigTest {
     @Test
     void userInfoRejectsInsecureEndpointByDefault() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -1273,7 +1273,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForUserInfoEndpoint() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -1291,7 +1291,7 @@ class OidcProviderConfigTest {
     @Test
     void userInfoRejectsEndpointWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -1307,7 +1307,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowCanUseClientSecretPostTokenEndpointAuthentication() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)
@@ -1325,7 +1325,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowCanUseClientAssertionTokenEndpointAuthentication() {
         OidcTenantConfig clientSecretJwt = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
@@ -1336,7 +1336,7 @@ class OidcProviderConfigTest {
                 .buildPrototype();
 
         OidcTenantConfig privateKeyJwt = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
@@ -1357,7 +1357,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowCanUseMutualTlsTokenEndpointAuthentication() {
         OidcTenantConfig tlsClientAuth = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -1367,7 +1367,7 @@ class OidcProviderConfigTest {
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
         OidcTenantConfig selfSignedTlsClientAuth = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -1413,7 +1413,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresMutualTlsWebClientTls() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1425,7 +1425,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(disabledTlsWebClient())
@@ -1438,7 +1438,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("webclient.tls must be enabled"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -1483,7 +1483,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresClientSecretForSecretTokenEndpointAuthentication() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1498,7 +1498,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowRequiresClientAssertionPrerequisites() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1510,7 +1510,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("client-secret"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1528,7 +1528,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("client-assertion.lifetime"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
@@ -1542,7 +1542,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
@@ -1556,7 +1556,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
@@ -1574,7 +1574,7 @@ class OidcProviderConfigTest {
     @Test
     void authorizationCodeFlowCanUseWellKnownUriDerivedFromIssuer() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
@@ -1586,7 +1586,7 @@ class OidcProviderConfigTest {
     @Test
     void protectedResourceRequiresUsableTokenTransport() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .tokenTransport(it -> it.authorizationHeaderEnabled(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
@@ -1599,7 +1599,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointPolicyRejectsUnsupportedAcceptedCredentials() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1611,7 +1611,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("bearer-token"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                         .audience(AUDIENCE)))
@@ -1624,7 +1624,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointPolicyRejectsUnsupportedFailureResponse() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                         .audience(AUDIENCE)))
@@ -1635,7 +1635,7 @@ class OidcProviderConfigTest {
         assertThat(thrown.getMessage(), containsString("authorization-code"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -1780,7 +1780,7 @@ class OidcProviderConfigTest {
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
                 .putTenant("default", OidcTenantConfig.builder()
-                        .issuer(URI.create("http://issuer.example"))
+                        .issuer("http://issuer.example")
                         .clientId("client-id")
                         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                         .webClient(mutualTlsWebClient())
@@ -1912,7 +1912,7 @@ class OidcProviderConfigTest {
     private static OidcTenantConfig jwtProtectedResourceTenant(
             Consumer<OidcTokenTransportConfig.Builder> tokenTransport) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.jwksUri(JWKS_URI))

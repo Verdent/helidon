@@ -254,7 +254,7 @@ class OidcTenantRuntimeTest {
 
     private static OidcTenantConfig protectedResourceTenant() {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))

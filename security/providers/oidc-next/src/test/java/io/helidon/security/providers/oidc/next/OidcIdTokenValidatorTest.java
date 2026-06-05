@@ -280,7 +280,7 @@ class OidcIdTokenValidatorTest {
 
     private static OidcTenantConfig tenantConfig(Consumer<OidcTenantConfig.Builder> customizer) {
         OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -305,6 +305,7 @@ class OidcIdTokenValidatorTest {
                                                      "state-value",
                                                      NONCE,
                                                      "pkce-verifier",
+                                                     ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      REDIRECTION_ENDPOINT_URI,
                                                      now.minusSeconds(1),

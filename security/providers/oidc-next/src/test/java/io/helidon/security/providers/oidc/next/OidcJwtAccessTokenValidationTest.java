@@ -778,7 +778,7 @@ class OidcJwtAccessTokenValidationTest {
 
     private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.wellKnownUri(wellKnownUri)
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation
@@ -805,7 +805,7 @@ class OidcJwtAccessTokenValidationTest {
                                          URI jwksUri,
                                          Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .endpoints(it -> it.jwksUri(jwksUri)
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> {
@@ -826,7 +826,7 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private static OidcJwkSetManager jwkSetManager(URI jwksUri, Clock clock, OidcJwkSetConfig config) {
-        OidcProviderMetadata metadata = OidcProviderMetadata.create(Optional.of(ISSUER),
+        OidcProviderMetadata metadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                                                     Optional.empty(),
                                                                     Optional.empty(),
                                                                     Optional.empty(),

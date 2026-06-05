@@ -140,8 +140,7 @@ final class OidcIdTokenValidator {
         }
 
         Optional<String> expectedIssuer = tenantContext.metadata()
-                .issuer()
-                .map(Object::toString);
+                .issuer();
         Optional<String> clientId = tenantContext.tenantConfig().clientId();
         if (expectedIssuer.isEmpty() || clientId.isEmpty()) {
             return OidcValidationResult.failure("ID Token validation is not configured");

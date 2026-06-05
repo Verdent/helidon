@@ -265,7 +265,7 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateClientAssertion(target.clientAssertion());
             validateJwkSet(target.jwkSet());
-            target.issuer().ifPresent(uri -> validateIssuerUri(uri, target.endpoints().tlsRequired()));
+            target.issuer().ifPresent(issuer -> validateIssuerUri(issuer, target.endpoints().tlsRequired()));
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
             validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
@@ -543,10 +543,10 @@ final class OidcConfigSupport {
                                    tokenEndpointTlsRequired,
                                    tokenEndpointTlsRequired,
                                    OidcConfigSupport::validateTokenEndpointUri);
-        tenant.issuer()
-                .or(endpoints::wellKnownUri)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "issuer or well-known-uri must be configured when Authorization Code Flow is enabled"));
+        if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "issuer or well-known-uri must be configured when Authorization Code Flow is enabled");
+        }
         if (!authorizationCode.scopes().contains("openid")) {
             throw new IllegalArgumentException(
                     "openid scope must be configured when Authorization Code Flow is enabled");
@@ -670,10 +670,10 @@ final class OidcConfigSupport {
 
         switch (method) {
         case JWT -> {
-            tenant.issuer()
-                    .or(() -> endpoints.wellKnownUri())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "issuer or well-known-uri must be configured when JWT access-token validation is enabled"));
+            if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "issuer or well-known-uri must be configured when JWT access-token validation is enabled");
+            }
             Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
             requireEndpointOrWellKnown(endpoints.jwksUri(),
                                        wellKnownUri,
@@ -750,7 +750,7 @@ final class OidcConfigSupport {
                                                        Optional<OidcClientAuthenticationMethod> authenticationMethod,
                                                        OidcClientAssertionConfig clientAssertion,
                                                        WebClientConfig webClient,
-                                                       Optional<URI> issuer,
+                                                       Optional<String> issuer,
                                                        OidcEndpointConfig endpoints,
                                                        String operation) {
         /*
@@ -834,6 +834,10 @@ final class OidcConfigSupport {
         validateHttpsEndpointUri("issuer", uri, tlsRequired, false);
         validateNoQuery("issuer", uri);
         validateNoFragment("issuer", uri);
+    }
+
+    static void validateIssuerUri(String issuer, boolean tlsRequired) {
+        validateIssuerUri(URI.create(issuer), tlsRequired);
     }
 
     private static void validateRedirectionEndpointUri(URI uri, boolean tlsRequired) {

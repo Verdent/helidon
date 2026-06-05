@@ -115,6 +115,7 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
+        assertThat(tokenTransport.secureTransportRequired(), is(true));
         assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
         assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub", "username", "client_id")));
@@ -1686,6 +1687,8 @@ class OidcProviderConfigTest {
                                                                                     .build()));
         var queryResponse = provider.authenticate(OidcProviderTest.request(null,
                                                                            SecurityEnvironment.builder()
+                                                                                   .targetUri(URI.create(
+                                                                                           "https://rp.example/resource"))
                                                                                    .queryParam("access_token",
                                                                                                "access-token")
                                                                                    .build()));
@@ -1870,6 +1873,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("oidc-next"));
         assertThat(metadata, containsString("redirection-endpoint-uri"));
         assertThat(metadata, containsString("query-parameter-enabled"));
+        assertThat(metadata, containsString("secure-transport-required"));
         assertThat(metadata, containsString("token-validation"));
         assertThat(metadata, containsString("client-credentials-grant-enabled"));
         assertThat(metadata, containsString("pkce-required"));

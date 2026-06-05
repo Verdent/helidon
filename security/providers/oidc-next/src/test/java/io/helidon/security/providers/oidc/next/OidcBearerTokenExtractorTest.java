@@ -32,6 +32,7 @@ class OidcBearerTokenExtractorTest {
     void extractsAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource"))
                         .header("Authorization", "bearer   access-token")
                         .build(),
                 OidcTokenTransportConfig.create());
@@ -58,6 +59,7 @@ class OidcBearerTokenExtractorTest {
     void extractsQueryParameterBearerTokenWhenTransportIsEnabled() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource"))
                         .queryParam("access_token", "access-token")
                         .build(),
                 OidcTokenTransportConfig.builder()
@@ -66,6 +68,83 @@ class OidcBearerTokenExtractorTest {
 
         assertThat(result.invalidRequest(), is(false));
         assertThat(result.bearerToken().orElseThrow(), is("access-token"));
+    }
+
+    @Test
+    void rejectsAuthorizationHeaderBearerTokenOverInsecureTransport() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("http://rp.example/resource"))
+                        .transport("http")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
+    }
+
+    @Test
+    void acceptsAuthorizationHeaderBearerTokenOverInsecureTransportWhenDisabled() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("http://rp.example/resource"))
+                        .transport("http")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .secureTransportRequired(false)
+                        .buildPrototype());
+
+        assertThat(result.invalidRequest(), is(false));
+        assertThat(result.bearerToken().orElseThrow(), is("access-token"));
+    }
+
+    @Test
+    void acceptsAuthorizationHeaderBearerTokenWhenTargetUriIsSecure() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource"))
+                        .transport("http")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.invalidRequest(), is(false));
+        assertThat(result.bearerToken().orElseThrow(), is("access-token"));
+    }
+
+    @Test
+    void rejectsAuthorizationHeaderBearerTokenWhenTargetUriIsInsecure() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("http://rp.example/resource"))
+                        .transport("https")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
+    }
+
+    @Test
+    void rejectsQueryParameterBearerTokenOverInsecureTransport() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("http://rp.example/resource"))
+                        .transport("http")
+                        .queryParam("access_token", "access-token")
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .queryParameterEnabled(true)
+                        .buildPrototype());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
     }
 
     @Test

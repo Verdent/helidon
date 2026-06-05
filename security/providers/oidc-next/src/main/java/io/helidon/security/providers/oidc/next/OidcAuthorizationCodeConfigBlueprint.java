@@ -59,6 +59,10 @@ interface OidcAuthorizationCodeConfigBlueprint {
 
     /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.
+     * <p>
+     * Defaults to {@code true}. Disable only for confidential-client compatibility with a legacy Authorization Server
+     * that cannot process PKCE. Public clients, where Token Endpoint authentication is
+     * {@link OidcClientAuthenticationMethod#NONE}, must use PKCE.
      *
      * @return whether PKCE is required
      */
@@ -68,6 +72,10 @@ interface OidcAuthorizationCodeConfigBlueprint {
 
     /**
      * PKCE code challenge method.
+     * <p>
+     * Defaults to {@link OidcPkceMethod#S256}. Use {@link OidcPkceMethod#PLAIN} only for confidential-client
+     * compatibility with a legacy Authorization Server that cannot process {@code S256}. Public clients, where Token
+     * Endpoint authentication is {@link OidcClientAuthenticationMethod#NONE}, must use {@link OidcPkceMethod#S256}.
      *
      * @return PKCE method
      */

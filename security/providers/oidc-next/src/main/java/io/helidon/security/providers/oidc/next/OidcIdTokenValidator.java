@@ -29,6 +29,7 @@ import io.helidon.security.jwt.JwtValidator;
 import io.helidon.security.jwt.SignedJwt;
 
 final class OidcIdTokenValidator {
+    private static final String NONE_ALGORITHM = "none";
     private static final String AUTHORIZED_PARTY_CLAIM = "azp";
     private static final String AUTHENTICATION_TIME_CLAIM = "auth_time";
 
@@ -167,6 +168,14 @@ final class OidcIdTokenValidator {
                     String algorithm = jwt.algorithm().orElse(null);
                     if (algorithm == null) {
                         collector.fatal(jwt, "JWT alg header is mandatory");
+                    } else if (NONE_ALGORITHM.equalsIgnoreCase(algorithm)) {
+                        /*
+                         * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
+                         * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+                         * Quotes: "The Client MUST validate the signature of all other ID Tokens according to JWS";
+                         * "The Client MUST use the keys provided by the Issuer".
+                         */
+                        collector.fatal(jwt, "JWT alg header must not be none");
                     } else if (!allowedAlgorithms.contains(algorithm)) {
                         collector.fatal(jwt, "JWT alg header is not allowed: " + algorithm);
                     }

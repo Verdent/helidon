@@ -29,6 +29,7 @@ import io.helidon.security.jwt.JwtValidator;
 import io.helidon.security.jwt.SignedJwt;
 
 final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
+    private static final String NONE_ALGORITHM = "none";
     private static final List<String> ALLOWED_ACCESS_TOKEN_TYPES = List.of("at+jwt", "application/at+jwt");
 
     private OidcJwtAccessTokenValidator() {
@@ -99,6 +100,15 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                     String algorithm = jwt.algorithm().orElse(null);
                     if (algorithm == null) {
                         collector.fatal(jwt, "JWT alg header is mandatory");
+                    } else if (NONE_ALGORITHM.equalsIgnoreCase(algorithm)) {
+                        /*
+                         * Spec: RFC 9068, 2.1 Header and 4 Validation
+                         * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.1
+                         * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
+                         * Quotes: "JWT access tokens MUST NOT use \"none\" as the signing algorithm";
+                         * "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"".
+                         */
+                        collector.fatal(jwt, "JWT alg header must not be none");
                     } else if (!allowedAlgorithms.contains(algorithm)) {
                         collector.fatal(jwt, "JWT alg header is not allowed: " + algorithm);
                     }

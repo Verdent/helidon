@@ -26,6 +26,7 @@ import io.helidon.common.configurable.Resource;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
@@ -224,6 +225,15 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void noneAlgorithmIsRejectedBeforeSignatureVerification() {
+        String idToken = unsignedIdToken(it -> { });
+
+        var result = validate(idToken);
+
+        assertFailure(result, "ID Token JWS header is invalid");
+    }
+
+    @Test
     void invalidSignatureIsRejected() {
         String idToken = signedIdToken(it -> { });
         int signatureStart = idToken.lastIndexOf('.') + 1;
@@ -347,6 +357,22 @@ class OidcIdTokenValidatorTest {
         }
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId(signingKeyId).orElseThrow())
+                .tokenContent();
+    }
+
+    private static String unsignedIdToken(Consumer<Jwt.Builder> customizer) {
+        Instant now = Instant.now();
+        Jwt.Builder builder = Jwt.builder()
+                .type("JWT")
+                .subject(SUBJECT)
+                .issuer(ISSUER.toString())
+                .algorithm(Jwk.ALG_NONE)
+                .issueTime(now)
+                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .nonce(NONCE)
+                .addAudience(CLIENT_ID);
+        customizer.accept(builder);
+        return SignedJwt.sign(builder.build(), Jwk.NONE_JWK)
                 .tokenContent();
     }
 

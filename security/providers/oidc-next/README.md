@@ -1521,5 +1521,5 @@ Token validation options:
 | `method` | `JWT` or `INTROSPECTION`. |
 | `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
-| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. |
+| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |

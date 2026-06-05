@@ -370,10 +370,12 @@ security:
 ```
 
 `issuer` or `endpoints.well-known-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
-provider loads well-known metadata and uses its `jwks_uri`. `audience` is required when audience validation is enabled.
+provider loads well-known metadata and uses its `jwks_uri`. RFC 9068 JWT access-token validation expects `audience` to
+identify this resource server.
 
-Audience validation is enabled by default. Disable it only when the deployment intentionally accepts tokens without a
-local audience check.
+Audience validation is enabled by default. For JWT access tokens, disabling it relaxes RFC 9068 validation, logs a warning
+during configuration, and should be used only for testing, local development, or legacy non-RFC9068 tokens. Without a
+local audience check, this resource server can accept tokens meant for a different resource server.
 
 ```yaml
 protected-resource:
@@ -1517,7 +1519,7 @@ Token validation options:
 | Key | Description |
 | --- | --- |
 | `method` | `JWT` or `INTROSPECTION`. |
-| `audience` | Expected access-token audience when audience validation is enabled. |
-| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. |
+| `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
+| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
 | `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |

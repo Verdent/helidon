@@ -18,7 +18,6 @@ package io.helidon.security.providers.oidc.next;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -138,14 +137,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
                 .orElseGet(List::of);
     }
 
-    private static List<String> scopes(JsonObject claims) {
-        return stringListClaim(claims, "scope")
-                .stream()
-                .flatMap(scope -> Arrays.stream(scope.split(" ")))
-                .filter(scope -> !scope.isBlank())
-                .toList();
-    }
-
     private static Jwt toJwt(JsonObject claims) {
         Jwt.Builder builder = Jwt.builder();
         stringClaim(claims, "iss").ifPresent(builder::issuer);
@@ -154,7 +145,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         instantClaim(claims, "nbf").ifPresent(builder::notBefore);
         stringClaim(claims, "sub").ifPresent(builder::subject);
         stringListClaim(claims, "aud").forEach(builder::addAudience);
-        scopes(claims).forEach(builder::addScope);
         stringListClaim(claims, "groups").forEach(builder::addUserGroup);
         return builder.build();
     }

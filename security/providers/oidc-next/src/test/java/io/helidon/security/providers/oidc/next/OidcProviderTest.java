@@ -663,8 +663,9 @@ class OidcProviderTest {
     @Test
     void localAuthenticationResultCookieAuthenticatesSubjectFromEncryptedIdToken() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { },
-                                                          builder -> builder.idTokenDecryptionJwk(
-                                                                  Resource.create("oidc-next-sign-jwk.json")));
+                                                          builder -> builder.idToken(idToken -> idToken
+                                                                  .decryptionJwk(Resource.create(
+                                                                          "oidc-next-sign-jwk.json"))));
         OidcProvider provider = provider(tenant);
         String signedIdToken = signedIdToken(it -> it.email("user1@example.org")
                 .preferredUsername(USERNAME));

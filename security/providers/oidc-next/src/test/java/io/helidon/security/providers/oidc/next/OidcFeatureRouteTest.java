@@ -854,7 +854,8 @@ class OidcFeatureRouteTest {
     void logoutEndpointRouteUsesEncryptedIdTokenHintWithClientId() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(
                 endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
-                builder -> builder.idTokenDecryptionJwk(Resource.create("oidc-next-sign-jwk.json")));
+                builder -> builder.idToken(idToken -> idToken
+                        .decryptionJwk(Resource.create("oidc-next-sign-jwk.json"))));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             String signedIdToken = signedIdToken(NONCE);

@@ -266,6 +266,9 @@ final class OidcConfigSupport {
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
             validateClientAssertion(target.clientAssertion());
             validateJwkSet(target.jwkSet());
+            target.protectedResource()
+                    .map(OidcProtectedResourceConfig::tokenValidation)
+                    .ifPresent(OidcConfigSupport::validateTokenValidation);
             target.issuer().ifPresent(issuer -> validateIssuerUri(issuer, target.endpoints().tlsRequired()));
             validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
             validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
@@ -283,6 +286,23 @@ final class OidcConfigSupport {
                 .filter(interval -> interval.isZero() || interval.isNegative())
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
+                });
+    }
+
+    private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        tokenValidation.allowedAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm != null && "none".equalsIgnoreCase(algorithm.strip()))
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    /*
+                     * Spec: RFC 9068, 2.1 Header and 4 Validation
+                     * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.1
+                     * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
+                     * Quotes: "JWT access tokens MUST NOT use \"none\" as the signing algorithm";
+                     * "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"".
+                     */
+                    throw new IllegalArgumentException("token-validation.allowed-algorithms must not contain none");
                 });
     }
 

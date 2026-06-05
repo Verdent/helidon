@@ -706,6 +706,21 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void tokenValidationAllowedAlgorithmsRejectsNone() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .endpoints(it -> it.jwksUri(JWKS_URI))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .allowedAlgorithms(List.of("RS256", " none "))))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-validation.allowed-algorithms"));
+        assertThat(thrown.getMessage(), containsString("none"));
+    }
+
+    @Test
     void endpointTlsRequirementCanBeDisabledForJwksUri() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())

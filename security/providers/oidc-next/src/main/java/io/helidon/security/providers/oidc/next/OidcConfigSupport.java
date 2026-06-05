@@ -37,6 +37,7 @@ import io.helidon.webclient.api.WebClientConfig;
 final class OidcConfigSupport {
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final String TENANT_VARIABLE = "{tenant}";
+    private static final System.Logger LOGGER = System.getLogger(OidcConfigSupport.class.getName());
     static final URI DEFAULT_REDIRECTION_ENDPOINT_URI = URI.create("/oidc/callback");
     private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
                                                                         "issuer",
@@ -708,14 +709,20 @@ final class OidcConfigSupport {
                                        OidcConfigSupport::validateJwksUri);
             if (tokenValidation.audienceValidationEnabled()) {
                 /*
-                 * Spec: RFC 7519, 4.1.3 "aud" (Audience) Claim
-                 * https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.3
-                 * Quote: "then the JWT MUST be rejected".
+                 * Spec: RFC 9068, 2.2 Data Structure and 4 Validation
+                 * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.2
+                 * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
+                 * Quotes: "`aud` REQUIRED"; "The resource server MUST validate that the `aud` claim contains a
+                 * resource indicator value corresponding to an identifier the resource server expects for itself".
                  */
                 tokenValidation.audience()
                         .orElseThrow(() -> new IllegalArgumentException(
-                                "token-validation.audience must be configured when JWT access-token validation "
+                                "token-validation.audience must be configured when JWT access-token audience validation "
                                         + "is enabled"));
+            } else {
+                LOGGER.log(System.Logger.Level.WARNING,
+                           "JWT access-token audience validation is disabled. This relaxes RFC 9068 validation and "
+                                   + "should be used only for testing, local development, or legacy non-RFC9068 tokens.");
             }
         }
         case INTROSPECTION -> {

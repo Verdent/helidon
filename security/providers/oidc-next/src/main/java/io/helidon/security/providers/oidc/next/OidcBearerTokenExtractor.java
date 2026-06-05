@@ -55,10 +55,21 @@ final class OidcBearerTokenExtractor {
         if (bearerTokens.size() > 1) {
             return OidcBearerTokenExtractionResult.invalidRequest("Multiple Bearer Token credential sources found");
         }
-        return bearerTokens.stream()
-                .findFirst()
-                .map(OidcBearerTokenExtractionResult::bearerToken)
-                .orElseGet(OidcBearerTokenExtractionResult::empty);
+        Optional<String> bearerToken = bearerTokens.stream().findFirst();
+        if (bearerToken.isEmpty()) {
+            return OidcBearerTokenExtractionResult.empty();
+        }
+        if (tokenTransport.secureTransportRequired() && !secureTransport(environment)) {
+            /*
+             * Spec: RFC 6750, 1 Introduction and 5.2 Threat Mitigation
+             * https://www.rfc-editor.org/rfc/rfc6750.html#section-1
+             * https://www.rfc-editor.org/rfc/rfc6750.html#section-5.2
+             * Quotes: "TLS is mandatory to implement and use with this specification";
+             * "interaction between the client and the resource server, utilize confidentiality and integrity protection".
+             */
+            return OidcBearerTokenExtractionResult.invalidRequest("Bearer Token requires secure transport");
+        }
+        return OidcBearerTokenExtractionResult.bearerToken(bearerToken.orElseThrow());
     }
 
     private static OidcBearerTokenExtractionResult authorizationHeaderBearerToken(SecurityEnvironment environment) {
@@ -131,6 +142,14 @@ final class OidcBearerTokenExtractor {
             return Optional.empty();
         }
         return Optional.ofNullable(targetUri.getRawQuery());
+    }
+
+    private static boolean secureTransport(SecurityEnvironment environment) {
+        URI targetUri = environment.targetUri();
+        if (targetUri != null && targetUri.getScheme() != null) {
+            return "https".equalsIgnoreCase(targetUri.getScheme());
+        }
+        return "https".equalsIgnoreCase(environment.transport());
     }
 
     private static int queryParameterOccurrenceCount(String rawQuery, String parameterName) {

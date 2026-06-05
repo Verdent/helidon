@@ -42,4 +42,19 @@ interface OidcTokenTransportConfigBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean queryParameterEnabled();
+
+    /**
+     * Whether Bearer Token requests must use secure transport.
+     * <p>
+     * Spec: RFC 6750, 1 Introduction and 5.2 Threat Mitigation,
+     * <a href="https://www.rfc-editor.org/rfc/rfc6750.html#section-1">section 1</a> and
+     * <a href="https://www.rfc-editor.org/rfc/rfc6750.html#section-5.2">section 5.2</a>.
+     * Quotes: "TLS is mandatory to implement and use with this specification";
+     * "interaction between the client and the resource server, utilize confidentiality and integrity protection".
+     *
+     * @return whether Bearer Token requests must use secure transport
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean secureTransportRequired();
 }

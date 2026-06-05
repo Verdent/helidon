@@ -461,6 +461,7 @@ The provider accepts Bearer tokens from the `Authorization` header by default.
 token-transport:
   authorization-header-enabled: true
   query-parameter-enabled: false
+  secure-transport-required: true
 ```
 
 Enable query parameter transport only for compatibility cases that require it.
@@ -469,9 +470,12 @@ Enable query parameter transport only for compatibility cases that require it.
 token-transport:
   authorization-header-enabled: true
   query-parameter-enabled: true
+  secure-transport-required: true
 ```
 
 If a request contains multiple Bearer token sources, authentication fails instead of guessing which token to use.
+When `secure-transport-required` is enabled, inbound Bearer token requests must use an effective HTTPS request URI or
+transport as exposed by Helidon WebServer. Disable it only for isolated tests or equivalent non-production deployments.
 
 ## Authorization Code Flow
 

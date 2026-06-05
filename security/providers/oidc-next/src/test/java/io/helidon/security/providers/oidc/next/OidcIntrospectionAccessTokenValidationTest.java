@@ -209,6 +209,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         AuthenticationResponse response = provider().authenticate(
                 OidcProviderTest.request(OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow(),
                                          SecurityEnvironment.builder()
+                                                 .targetUri(URI.create("https://rp.example/resource"))
                                                  .header("Authorization", "Bearer " + OPAQUE_TOKEN)
                                                  .build()));
 
@@ -395,6 +396,7 @@ class OidcIntrospectionAccessTokenValidationTest {
     private AuthenticationResponse authenticate(OidcProvider provider, String token) {
         return provider.authenticate(OidcProviderTest.request(null,
                                                               SecurityEnvironment.builder()
+                                                                      .targetUri(URI.create("https://rp.example/resource"))
                                                                       .header("Authorization", "Bearer " + token)
                                                                       .build()));
     }

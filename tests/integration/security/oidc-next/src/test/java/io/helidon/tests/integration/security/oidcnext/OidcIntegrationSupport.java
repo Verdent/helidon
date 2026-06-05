@@ -143,6 +143,7 @@ final class OidcIntegrationSupport {
                         .jwksUri(idp.jwksUri())
                         .introspectionEndpointUri(idp.introspectionEndpointUri())
                         .tlsRequired(false))
+                .tokenTransport(transport -> transport.secureTransportRequired(false))
                 .protectedResource(resource -> resource
                         .tokenValidation(validation -> validation
                                 .method(method)

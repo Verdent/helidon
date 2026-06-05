@@ -85,7 +85,11 @@ final class OidcTokenResponse {
                                      idToken,
                                      stringValue(json, "refresh_token").orElse(null),
                                      expiresIn(json).orElse(null),
-                                     stringValue(json, "scope").orElse(null));
+                                     stringValue(json, "scope")
+                                             .map(scope -> OidcScopeSupport.validateScopeString(
+                                                     scope,
+                                                     "Token Endpoint response field scope"))
+                                             .orElse(null));
     }
 
     String accessToken() {

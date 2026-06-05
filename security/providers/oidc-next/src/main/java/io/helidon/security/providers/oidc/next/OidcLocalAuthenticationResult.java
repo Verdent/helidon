@@ -185,7 +185,7 @@ final class OidcLocalAuthenticationResult {
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1
          * Quote: "`scope` OPTIONAL, if identical to the scope requested by the client".
          */
-        String scope = String.join(" ", requestedScopes);
+        String scope = OidcScopeSupport.serializeScopes(requestedScopes);
         if (scope.isBlank()) {
             return Optional.empty();
         }

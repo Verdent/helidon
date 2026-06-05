@@ -116,7 +116,7 @@ final class OidcAuthenticationRequestFactory {
                 .set("response_type", "code")
                 .set("client_id", clientId)
                 .set("redirect_uri", redirectionEndpointUri.toString())
-                .set("scope", String.join(" ", authorizationCode.scopes()))
+                .set("scope", OidcScopeSupport.serializeScopes(authorizationCode.scopes()))
                 .set("state", state)
                 .set("nonce", nonce);
         if (pkceVerifier != null) {

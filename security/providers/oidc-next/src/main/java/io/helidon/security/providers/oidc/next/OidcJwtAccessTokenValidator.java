@@ -86,6 +86,13 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
         }
+        try {
+            OidcScopeSupport.validateScopeClaims(jwt.payloadClaimsJson(),
+                                                 tenantContext.subjectMapping(),
+                                                 "JWT access token");
+        } catch (IllegalArgumentException e) {
+            return OidcValidationResult.failure("Bearer Token JWT claims are invalid", e);
+        }
         if (OidcSubjectMapper.principalId(jwt, tenantContext.subjectMapping()).isEmpty()) {
             return OidcValidationResult.failure("Bearer Token JWT has no principal claim");
         }

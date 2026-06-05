@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,7 +89,7 @@ final class OidcSubjectMapper {
         if (subjectMapping.scopeGrantsEnabled()) {
             authenticationResult.scope()
                     .stream()
-                    .flatMap(OidcSubjectMapper::splitScope)
+                    .flatMap(scope -> OidcScopeSupport.parseScopeString(scope, "local authentication scope").stream())
                     .distinct()
                     .forEach(scope -> addScope(subjectBuilder, scope));
         }
@@ -242,38 +241,54 @@ final class OidcSubjectMapper {
     }
 
     private static List<String> roleClaimValues(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
-        return claimValues(claims, subjectMapping.roleClaimPaths(), false);
+        return claimValues(claims, subjectMapping.roleClaimPaths());
     }
 
     private static List<String> roleClaimValues(Map<String, JsonValue> claims,
                                                 OidcSubjectMappingConfig subjectMapping) {
-        return claimValues(claims, subjectMapping.roleClaimPaths(), false);
+        return claimValues(claims, subjectMapping.roleClaimPaths());
     }
 
     private static List<String> scopeClaimValues(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
-        return claimValues(claims, subjectMapping.scopeClaimPaths(), true);
+        return scopeClaimValues(claims::value, subjectMapping);
     }
 
     private static List<String> scopeClaimValues(Map<String, JsonValue> claims,
                                                  OidcSubjectMappingConfig subjectMapping) {
-        return claimValues(claims, subjectMapping.scopeClaimPaths(), true);
+        return scopeClaimValues(name -> Optional.ofNullable(claims.get(name)), subjectMapping);
     }
 
-    private static List<String> claimValues(JsonObject claims, List<String> claimPaths, boolean splitStrings) {
-        return claimValues(claims::value, claimPaths, splitStrings);
+    private static List<String> scopeClaimValues(ClaimSource claims, OidcSubjectMappingConfig subjectMapping) {
+        return subjectMapping.scopeClaimPaths()
+                .stream()
+                .map(claimPath -> scopeClaimValues(claims, claimPath))
+                .flatMap(List::stream)
+                .distinct()
+                .toList();
+    }
+
+    private static List<String> scopeClaimValues(ClaimSource claims, String claimPath) {
+        return claimValue(claims, claimPath)
+                .map(value -> OidcScopeSupport.scopeClaimValues(value,
+                                                                "scope claim " + claimPath,
+                                                                "scope".equals(claimPath)))
+                .orElseGet(List::of);
+    }
+
+    private static List<String> claimValues(JsonObject claims, List<String> claimPaths) {
+        return claimValues(claims::value, claimPaths);
     }
 
     private static List<String> claimValues(Map<String, JsonValue> claims,
-                                            List<String> claimPaths,
-                                            boolean splitStrings) {
-        return claimValues(name -> Optional.ofNullable(claims.get(name)), claimPaths, splitStrings);
+                                            List<String> claimPaths) {
+        return claimValues(name -> Optional.ofNullable(claims.get(name)), claimPaths);
     }
 
-    private static List<String> claimValues(ClaimSource claims, List<String> claimPaths, boolean splitStrings) {
+    private static List<String> claimValues(ClaimSource claims, List<String> claimPaths) {
         return claimPaths.stream()
                 .map(claimPath -> claimValue(claims, claimPath))
                 .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValues(jsonValue, splitStrings))
+                .flatMap(OidcSubjectMapper::stringValues)
                 .filter(value -> !value.isBlank())
                 .distinct()
                 .toList();
@@ -301,25 +316,18 @@ final class OidcSubjectMapper {
         return Optional.ofNullable(current);
     }
 
-    private static Stream<String> stringValues(JsonValue value, boolean splitStrings) {
+    private static Stream<String> stringValues(JsonValue value) {
         if (value.type() == JsonValueType.STRING) {
-            return splitStrings ? splitScope(value.asString().value()) : Stream.of(value.asString().value());
+            return Stream.of(value.asString().value());
         }
         if (value.type() == JsonValueType.ARRAY) {
             return value.asArray()
                     .values()
                     .stream()
                     .filter(item -> item.type() == JsonValueType.STRING)
-                    .flatMap(item -> splitStrings
-                            ? splitScope(item.asString().value())
-                            : Stream.of(item.asString().value()));
+                    .map(item -> item.asString().value());
         }
         return Stream.empty();
-    }
-
-    private static Stream<String> splitScope(String scope) {
-        return Arrays.stream(scope.split("\\s+"))
-                .filter(value -> !value.isBlank());
     }
 
     private static void addRoles(Subject.Builder subjectBuilder, List<String> roles) {

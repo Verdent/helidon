@@ -98,6 +98,7 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.endpointPolicy(), is(endpointPolicy));
         assertThat(endpointPolicy.acceptedCredentials().isEmpty(), is(true));
         assertThat(endpointPolicy.authenticationFailureResponse().isEmpty(), is(true));
+        assertThat(protectedResource.challengeRealm(), is("helidon"));
         assertThat(tenantConfig.logout().isEmpty(), is(true));
         assertThat(authorizationCode.enabled(), is(true));
         assertThat(logout.enabled(), is(true));
@@ -622,6 +623,19 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-validation.method"));
+    }
+
+    @Test
+    void protectedResourceRejectsInvalidChallengeRealm() {
+        for (String realm : List.of("", " ", "bad\"realm", "bad\\realm", "bad\nrealm", "caf\u00e9")) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                           () -> OidcTenantConfig.builder()
+                                                                   .protectedResource(it -> it.enabled(false)
+                                                                           .challengeRealm(realm))
+                                                                   .buildPrototype());
+
+            assertThat(thrown.getMessage(), containsString("protected-resource.challenge-realm"));
+        }
     }
 
     @Test

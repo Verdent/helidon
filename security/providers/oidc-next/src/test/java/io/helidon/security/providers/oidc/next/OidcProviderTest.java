@@ -119,7 +119,26 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
-        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer")));
+        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer realm=\"helidon\"")));
+    }
+
+    @Test
+    void protectedResourceChallengeUsesConfiguredRealm() {
+        OidcProvider provider = provider(OidcTenantConfig.builder()
+                                             .issuer(ISSUER.toString())
+                                             .endpoints(it -> it.jwksUri(URI.create("https://issuer.example/jwks")))
+                                             .protectedResource(it -> it.challengeRealm("orders-api")
+                                                     .tokenValidation(validation -> validation
+                                                             .method(OidcTokenValidationMethod.JWT)
+                                                             .audience("api://orders")))
+                                             .buildPrototype());
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), SecurityEnvironment.create()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer realm=\"orders-api\"")));
     }
 
     @Test
@@ -136,7 +155,8 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token validation is not configured"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).startsWith("Bearer "), is(true));
+        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0)
+                           .startsWith("Bearer realm=\"helidon\", "), is(true));
     }
 
     @Test
@@ -302,7 +322,21 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token is required"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer")));
+        assertThat(response.responseHeaders().get("WWW-Authenticate"), is(List.of("Bearer realm=\"helidon\"")));
+    }
+
+    @Test
+    void bearerChallengeDescriptionsFallBackWhenUnsafe() {
+        AuthenticationResponse invalidToken = OidcResponseFactory.invalidBearerToken("unsafe\nvalue", "orders-api");
+        assertThat(invalidToken.responseHeaders().get("WWW-Authenticate").get(0),
+                   is("Bearer realm=\"orders-api\", error=\"invalid_token\", "
+                              + "error_description=\"Bearer Token is invalid\""));
+
+        AuthenticationResponse invalidRequest = OidcResponseFactory.invalidBearerTokenRequest("unsafe\rvalue",
+                                                                                              "orders-api");
+        assertThat(invalidRequest.responseHeaders().get("WWW-Authenticate").get(0),
+                   is("Bearer realm=\"orders-api\", error=\"invalid_request\", "
+                              + "error_description=\"Bearer Token request is invalid\""));
     }
 
     @Test
@@ -1185,7 +1219,9 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(400));
         assertThat(response.description().orElse(""), is(description));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0).contains("invalid_request"), is(true));
+        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
+                   is("Bearer realm=\"helidon\", error=\"invalid_request\", error_description=\""
+                              + description + "\""));
     }
 
     private static final class TestProviderRequest implements ProviderRequest {

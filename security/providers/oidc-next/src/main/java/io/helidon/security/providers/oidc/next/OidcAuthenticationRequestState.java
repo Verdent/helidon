@@ -25,6 +25,7 @@ final class OidcAuthenticationRequestState {
     private final String state;
     private final String nonce;
     private final String pkceVerifier;
+    private final String expectedIssuer;
     private final URI originalUri;
     private final URI redirectionEndpointUri;
     private final Instant createdAt;
@@ -34,6 +35,7 @@ final class OidcAuthenticationRequestState {
                                            String state,
                                            String nonce,
                                            String pkceVerifier,
+                                           String expectedIssuer,
                                            URI originalUri,
                                            URI redirectionEndpointUri,
                                            Instant createdAt,
@@ -42,6 +44,7 @@ final class OidcAuthenticationRequestState {
         this.state = state;
         this.nonce = nonce;
         this.pkceVerifier = pkceVerifier;
+        this.expectedIssuer = expectedIssuer;
         this.originalUri = originalUri;
         this.redirectionEndpointUri = redirectionEndpointUri;
         this.createdAt = createdAt;
@@ -52,6 +55,7 @@ final class OidcAuthenticationRequestState {
                                                  String state,
                                                  String nonce,
                                                  String pkceVerifier,
+                                                 String expectedIssuer,
                                                  URI originalUri,
                                                  URI redirectionEndpointUri,
                                                  Instant createdAt,
@@ -60,6 +64,7 @@ final class OidcAuthenticationRequestState {
                                                   state,
                                                   nonce,
                                                   pkceVerifier,
+                                                  expectedIssuer,
                                                   originalUri,
                                                   redirectionEndpointUri,
                                                   createdAt,
@@ -80,6 +85,10 @@ final class OidcAuthenticationRequestState {
 
     Optional<String> pkceVerifier() {
         return Optional.ofNullable(pkceVerifier);
+    }
+
+    String expectedIssuer() {
+        return expectedIssuer;
     }
 
     URI originalUri() {

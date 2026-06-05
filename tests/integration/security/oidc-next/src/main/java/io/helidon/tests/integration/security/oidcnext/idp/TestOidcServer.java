@@ -412,6 +412,9 @@ public final class TestOidcServer implements AutoCloseable {
         Map<String, String> redirectParams = new LinkedHashMap<>();
         redirectParams.put("code", code);
         first(parameters, "state").ifPresent(state -> redirectParams.put("state", state));
+        if (metadata().booleanValue("authorization_response_iss_parameter_supported").orElse(false)) {
+            redirectParams.put("iss", issuer.toString());
+        }
         response.status(Status.SEE_OTHER_303)
                 .header(HeaderNames.LOCATION, appendQuery(redirectUri, redirectParams))
                 .send();

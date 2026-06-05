@@ -669,6 +669,7 @@ final class OidcConfigSupport {
         }
         OidcProtectedResourceConfig protectedResource = configuredProtectedResource.orElseThrow();
         OidcTokenValidationConfig tokenValidation = protectedResource.tokenValidation();
+        validateBearerChallengeRealm(protectedResource.challengeRealm());
         if (!protectedResource.enabled() && tokenValidation.method().isEmpty()) {
             return;
         }
@@ -954,6 +955,13 @@ final class OidcConfigSupport {
          * Quote: "MUST be protected by a transport-layer security mechanism".
          */
         validateHttpsEndpointUri("introspection-endpoint-uri", uri, tlsRequired, false);
+    }
+
+    private static void validateBearerChallengeRealm(String realm) {
+        if (realm == null || realm.isBlank() || !OidcOAuthErrorFields.validErrorDescription(realm)) {
+            throw new IllegalArgumentException("protected-resource.challenge-realm must contain only RFC 6750 "
+                                                       + "challenge value characters");
+        }
     }
 
     private static void validateHttpsEndpointUri(String configKey, URI uri, boolean tlsRequired, boolean fileAllowed) {

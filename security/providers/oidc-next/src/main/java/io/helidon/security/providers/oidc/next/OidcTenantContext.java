@@ -142,6 +142,12 @@ final class OidcTenantContext {
         return tenantConfig.tokenTransport();
     }
 
+    String bearerChallengeRealm() {
+        return tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::challengeRealm)
+                .orElse(OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM);
+    }
+
     OidcSubjectMappingConfig subjectMapping() {
         return tenantConfig.subjectMapping();
     }

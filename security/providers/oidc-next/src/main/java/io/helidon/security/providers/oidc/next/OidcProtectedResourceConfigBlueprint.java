@@ -25,6 +25,8 @@ import io.helidon.builder.api.Prototype;
 @Prototype.Blueprint
 @Prototype.Configured
 interface OidcProtectedResourceConfigBlueprint {
+    String DEFAULT_CHALLENGE_REALM = "helidon";
+
     /**
      * Whether Bearer Token authentication is enabled for Protected Resource requests.
      *
@@ -45,4 +47,13 @@ interface OidcProtectedResourceConfigBlueprint {
     @Option.Configured
     @Option.Default("create()")
     OidcTokenValidationConfig tokenValidation();
+
+    /**
+     * Realm value used in Bearer {@code WWW-Authenticate} challenges for Protected Resource requests.
+     *
+     * @return Bearer challenge realm
+     */
+    @Option.Configured("challenge-realm")
+    @Option.Default(DEFAULT_CHALLENGE_REALM)
+    String challengeRealm();
 }

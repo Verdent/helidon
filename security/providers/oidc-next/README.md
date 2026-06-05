@@ -479,6 +479,14 @@ If a request contains multiple Bearer token sources, authentication fails instea
 When `secure-transport-required` is enabled, inbound Bearer token requests must use an effective HTTPS request URI or
 transport as exposed by Helidon WebServer. Disable it only for isolated tests or equivalent non-production deployments.
 
+Bearer `WWW-Authenticate` challenges include a `realm` auth-param. The default realm is `helidon`; override it on the
+Protected Resource configuration when clients should see an application-specific protection space.
+
+```yaml
+protected-resource:
+  challenge-realm: "orders-api"
+```
+
 ## Authorization Code Flow
 
 Enable Authorization Code Flow for browser login and local authentication cookies.

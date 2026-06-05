@@ -74,7 +74,7 @@ class OidcEndpointPolicyIT {
                     try (HttpClientResponse missingApiCredential = client.get("/api").request()) {
                         assertThat(missingApiCredential.status(), is(Status.UNAUTHORIZED_401));
                         assertThat(missingApiCredential.headers().first(HeaderNames.WWW_AUTHENTICATE).orElse(""),
-                                   is("Bearer"));
+                                   is("Bearer realm=\"helidon\""));
                     }
 
                     try (HttpClientResponse bearerApi = client.get("/api")

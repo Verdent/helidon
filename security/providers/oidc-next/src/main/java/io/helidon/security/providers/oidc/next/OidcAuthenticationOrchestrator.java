@@ -65,7 +65,8 @@ final class OidcAuthenticationOrchestrator {
         }
 
         if (context.bearerTokenInvalidRequest()) {
-            return OidcResponseFactory.invalidBearerTokenRequest(context.bearerTokenErrorDescription());
+            return OidcResponseFactory.invalidBearerTokenRequest(context.bearerTokenErrorDescription(),
+                                                                 context.bearerChallengeRealm());
         }
         if (context.bearerTokenPresent()) {
             return authenticateBearerToken(context);
@@ -98,14 +99,15 @@ final class OidcAuthenticationOrchestrator {
                                                         OidcEndpointPolicy policy,
                                                         Optional<String> localAuthenticationRemovalCookie) {
         return switch (policy.authenticationFailureResponse()) {
-        case UNAUTHORIZED -> unauthorizedFailure(policy, localAuthenticationRemovalCookie);
+        case UNAUTHORIZED -> unauthorizedFailure(context, policy, localAuthenticationRemovalCookie);
         case AUTHORIZATION_CODE_REDIRECT -> OidcResponseFactory.authorizationCodeFlowInitiated(
                 authenticationRequestFactory.create(context),
                 localAuthenticationRemovalCookie);
         };
     }
 
-    private AuthenticationResponse unauthorizedFailure(OidcEndpointPolicy policy,
+    private AuthenticationResponse unauthorizedFailure(OidcRequestContext context,
+                                                      OidcEndpointPolicy policy,
                                                       Optional<String> localAuthenticationRemovalCookie) {
         String description = policy.bearerTokenAuthenticationEnabled()
                 ? "Bearer Token is required"
@@ -114,7 +116,8 @@ final class OidcAuthenticationOrchestrator {
             return OidcResponseFactory.optional(description);
         }
         if (policy.bearerTokenAuthenticationEnabled()) {
-            return OidcResponseFactory.missingBearerToken(localAuthenticationRemovalCookie);
+            return OidcResponseFactory.missingBearerToken(context.bearerChallengeRealm(),
+                                                         localAuthenticationRemovalCookie);
         }
         return OidcResponseFactory.missingAuthenticationCredential(localAuthenticationRemovalCookie);
     }
@@ -200,7 +203,7 @@ final class OidcAuthenticationOrchestrator {
             if (config.optional()) {
                 return OidcResponseFactory.optional("Bearer Token is required");
             }
-            return OidcResponseFactory.missingBearerToken();
+            return OidcResponseFactory.missingBearerToken(context.bearerChallengeRealm());
         }
 
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
@@ -208,7 +211,7 @@ final class OidcAuthenticationOrchestrator {
                 .method()
                 .map(accessTokenValidators::get);
         if (validator.isEmpty()) {
-            return OidcResponseFactory.bearerTokenValidationNotConfigured();
+            return OidcResponseFactory.bearerTokenValidationNotConfigured(tenantContext.bearerChallengeRealm());
         }
         return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator.orElseThrow());
     }
@@ -228,7 +231,7 @@ final class OidcAuthenticationOrchestrator {
                                                         .orElse("Bearer Token validation failed"),
                                                 cause));
         String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
-        return OidcResponseFactory.invalidBearerToken(errorDescription);
+        return OidcResponseFactory.invalidBearerToken(errorDescription, tenantContext.bearerChallengeRealm());
     }
 
     private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {

@@ -520,7 +520,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is(description));
         assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
-                   is("Bearer error=\"invalid_token\", error_description=\"" + description + "\""));
+                   is("Bearer realm=\"helidon\", error=\"invalid_token\", error_description=\"" + description + "\""));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
     }
 

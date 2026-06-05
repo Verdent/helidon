@@ -29,20 +29,35 @@ import io.helidon.security.Subject;
 
 final class OidcResponseFactory {
     private static final String WWW_AUTHENTICATE = HeaderNames.WWW_AUTHENTICATE.defaultCase();
+    private static final String INVALID_REQUEST = "invalid_request";
+    private static final String INVALID_TOKEN = "invalid_token";
+    private static final String INVALID_REQUEST_DESCRIPTION = "Bearer Token request is invalid";
+    private static final String INVALID_TOKEN_DESCRIPTION = "Bearer Token is invalid";
+    private static final String DEFAULT_CHALLENGE_REALM =
+            OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM;
 
     private OidcResponseFactory() {
     }
 
     static AuthenticationResponse missingBearerToken() {
-        return missingBearerToken(Optional.empty());
+        return missingBearerToken(DEFAULT_CHALLENGE_REALM, Optional.empty());
     }
 
     static AuthenticationResponse missingBearerToken(Optional<String> localAuthenticationRemovalCookie) {
+        return missingBearerToken(DEFAULT_CHALLENGE_REALM, localAuthenticationRemovalCookie);
+    }
+
+    static AuthenticationResponse missingBearerToken(String realm) {
+        return missingBearerToken(realm, Optional.empty());
+    }
+
+    static AuthenticationResponse missingBearerToken(String realm,
+                                                     Optional<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description("Bearer Token is required")
-                .responseHeader(WWW_AUTHENTICATE, "Bearer");
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm));
         localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
                 HeaderNames.SET_COOKIE.defaultCase(),
                 cookie));
@@ -61,21 +76,29 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse bearerTokenValidationNotConfigured() {
+        return bearerTokenValidationNotConfigured(DEFAULT_CHALLENGE_REALM);
+    }
+
+    static AuthenticationResponse bearerTokenValidationNotConfigured(String realm) {
         String description = "Bearer Token validation is not configured";
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_token", description))
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, description))
                 .build();
     }
 
     static AuthenticationResponse invalidBearerToken(String description) {
+        return invalidBearerToken(description, DEFAULT_CHALLENGE_REALM);
+    }
+
+    static AuthenticationResponse invalidBearerToken(String description, String realm) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_token", description))
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, description))
                 .build();
     }
 
@@ -103,11 +126,15 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse invalidBearerTokenRequest(String description) {
+        return invalidBearerTokenRequest(description, DEFAULT_CHALLENGE_REALM);
+    }
+
+    static AuthenticationResponse invalidBearerTokenRequest(String description, String realm) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
                 .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge("invalid_request", description))
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_REQUEST, description))
                 .build();
     }
 
@@ -166,9 +193,33 @@ final class OidcResponseFactory {
                 .orElseGet(() -> "Client Credentials Grant failed: " + result.description());
     }
 
-    private static String bearerChallenge(String error, String description) {
-        return "Bearer error=\"" + quotedString(error)
-                + "\", error_description=\"" + quotedString(description) + "\"";
+    private static String bearerChallenge(String realm) {
+        /*
+         * Spec: RFC 6750, 3 The WWW-Authenticate Response Header Field
+         * https://www.rfc-editor.org/rfc/rfc6750.html#section-3
+         * Quotes: "This scheme MUST be followed by one or more auth-param values"; if the request lacks
+         * authentication information, the resource server "SHOULD NOT include an error code or other error information".
+         */
+        return "Bearer realm=\"" + quotedString(challengeValue(realm, DEFAULT_CHALLENGE_REALM)) + "\"";
+    }
+
+    private static String bearerChallenge(String realm, String error, String description) {
+        String safeError = OidcOAuthErrorFields.validError(error) ? error : INVALID_TOKEN;
+        return bearerChallenge(realm)
+                + ", error=\"" + quotedString(safeError)
+                + "\", error_description=\"" + quotedString(challengeValue(description,
+                                                                           defaultDescription(safeError))) + "\"";
+    }
+
+    private static String challengeValue(String value, String fallback) {
+        if (value != null && !value.isBlank() && OidcOAuthErrorFields.validErrorDescription(value)) {
+            return value;
+        }
+        return fallback;
+    }
+
+    private static String defaultDescription(String error) {
+        return INVALID_REQUEST.equals(error) ? INVALID_REQUEST_DESCRIPTION : INVALID_TOKEN_DESCRIPTION;
     }
 
     private static String quotedString(String value) {

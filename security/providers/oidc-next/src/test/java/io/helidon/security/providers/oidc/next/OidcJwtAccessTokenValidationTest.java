@@ -764,6 +764,7 @@ class OidcJwtAccessTokenValidationTest {
     private static AuthenticationResponse authenticate(OidcProvider provider, String token) {
         return provider.authenticate(OidcProviderTest.request(null,
                                                               SecurityEnvironment.builder()
+                                                                      .targetUri(URI.create("https://rp.example/resource"))
                                                                       .header("Authorization", "Bearer " + token)
                                                                       .build()));
     }

@@ -97,7 +97,8 @@ final class OidcTenantContextFactory {
         }
         Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
         if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()
-                && (staticMetadata.authorizationEndpointUri().isEmpty()
+                && (staticMetadata.issuer().isEmpty()
+                || staticMetadata.authorizationEndpointUri().isEmpty()
                 || staticMetadata.tokenEndpointUri().isEmpty())) {
             return true;
         }
@@ -116,7 +117,7 @@ final class OidcTenantContextFactory {
     }
 
     private static void validateIssuerMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        metadata.issuer()
+        metadata.issuerUri()
                 .ifPresent(uri -> OidcConfigSupport.validateIssuerUri(uri, tenantConfig.endpoints().tlsRequired()));
     }
 
@@ -129,8 +130,11 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "`authorization_endpoint` REQUIRED"; "`token_endpoint` ... REQUIRED unless".
+         * Quotes: "`issuer` REQUIRED"; "`authorization_endpoint` REQUIRED"; "`token_endpoint` ... REQUIRED unless".
          */
+        metadata.issuer()
+                .orElseThrow(() -> new IllegalStateException(
+                        "well-known metadata issuer must be present for Authorization Code Flow"));
         metadata.authorizationEndpointUri()
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateAuthorizationEndpointUri(
                                          uri,

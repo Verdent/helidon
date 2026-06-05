@@ -70,8 +70,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         }
 
         Optional<String> expectedIssuer = tenantContext.metadata()
-                .issuer()
-                .map(Object::toString);
+                .issuer();
         if (expectedIssuer.isEmpty()) {
             return OidcValidationResult.failure("Bearer Token JWT validation is not configured");
         }

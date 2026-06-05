@@ -558,7 +558,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private OidcTenantConfig privateKeyJwtTenant(String algorithm, String keyId) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .clientAssertion(it -> {
@@ -578,7 +578,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private OidcTenantConfig tenant(boolean clientSecret, OidcClientAuthenticationMethod method) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .update(builder -> {
                     if (clientSecret) {

@@ -115,7 +115,7 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void authorizationCodeTenantLoadsWellKnownMetadataEndpoints() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .webClient(tenantWebClient())
                 .endpoints(it -> it.tlsRequired(false))
@@ -126,7 +126,7 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.ready(), is(true));
-        assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
         assertThat(context.metadata().wellKnownUri(), is(Optional.of(issuer.resolve("/.well-known/openid-configuration"))));
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(authorizationEndpointUri)));
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
@@ -138,10 +138,30 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void authorizationCodeTenantLoadsWellKnownMetadataIssuerWhenEndpointsAreStatic() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.wellKnownUri(issuer.resolve("/.well-known/openid-configuration"))
+                        .authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
     void tenantFailsWhenWellKnownMetadataContentTypeIsNotJson() {
         wellKnownContentType = "text/plain";
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -165,7 +185,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -186,7 +206,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -207,7 +227,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -227,7 +247,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -248,7 +268,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -269,7 +289,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
@@ -313,7 +333,7 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void logoutTenantLoadsEndSessionEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .webClient(tenantWebClient())
                 .endpoints(it -> it.tlsRequired(false))
@@ -334,7 +354,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
@@ -353,7 +373,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .logout(logout -> logout.endSession(endSession -> endSession.idTokenHintRequired(false)))
@@ -367,7 +387,7 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void userInfoTenantLoadsUserInfoEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .webClient(tenantWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
@@ -394,7 +414,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
                         .tokenEndpointUri(tokenEndpointUri)
@@ -419,7 +439,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
                         .tokenEndpointUri(tokenEndpointUri)
@@ -437,7 +457,7 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void jwtProtectedResourceTenantLoadsJwkSetUriFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .endpoints(it -> it.tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))
@@ -446,14 +466,14 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.ready(), is(true));
-        assertThat(context.metadata().issuer(), is(Optional.of(issuer)));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
     }
 
     @Test
     void introspectionProtectedResourceTenantLoadsEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .webClient(tenantWebClient())
@@ -477,7 +497,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .endpoints(it -> it.tlsRequired(false))
@@ -494,7 +514,7 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void targetClientCredentialsGrantTenantLoadsTokenEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .endpoints(it -> it.tlsRequired(false))
@@ -519,7 +539,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .endpoints(it -> it.tlsRequired(false))
@@ -547,7 +567,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .build())
                 .build());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(httpsIssuer)
+                .issuer(httpsIssuer.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -574,7 +594,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .build())
                 .build());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(httpsIssuer)
+                .issuer(httpsIssuer.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -594,7 +614,7 @@ class OidcWellKnownMetadataLoadingTest {
     void wellKnownMetadataRedirectIsNotFollowedWhenTenantWebClientFollowsRedirects() {
         redirectLocation = issuer.resolve("/redirected-openid-configuration").toString();
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .webClient(redirectFollowingTenantWebClient())
                 .endpoints(it -> it.tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
@@ -654,7 +674,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .endpoints(it -> it.tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))

@@ -17,8 +17,12 @@
 package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 
+import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -153,6 +157,124 @@ class OidcAuthorizationCodeFlowIT {
     }
 
     @Test
+    void authorizationCodeFlowValidatesSupportedAuthorizationResponseIssuer() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user
+                        .subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .metadata("authorization_response_iss_parameter_supported", true)
+                .tokenDefaults(tokens -> tokens
+                        .idToken(id -> id.includeUserClaims("preferred_username")))
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
+                                                                                                                    it -> {
+                                                                                                                    });
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/resource"));
+            try {
+                BrowserSession browser = new BrowserSession();
+                URI resourceUri = OidcIntegrationSupport.rpBaseUri(rpServer).resolve("/resource");
+                URI callback = authorizeWithoutBrowser(browser, resourceUri);
+
+                assertThat(UriQuery.create(callback).all("iss").getFirst(), is(idp.issuer().toString()));
+
+                try (HttpClientResponse callbackResponse = browser.get(callback)) {
+                    assertThat(callbackResponse.status(), is(Status.SEE_OTHER_303));
+                }
+
+                try (HttpClientResponse authenticated = browser.get(resourceUri)) {
+                    assertThat(authenticated.status(), is(Status.OK_200));
+                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                }
+
+                assertThat(idp.tokenRequests().size(), is(1));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsWrongAuthorizationResponseIssuer() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user
+                        .subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .metadata("authorization_response_iss_parameter_supported", true)
+                .tokenDefaults(tokens -> tokens
+                        .idToken(id -> id.includeUserClaims("preferred_username")))
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
+                                                                                                                    it -> {
+                                                                                                                    });
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/resource"));
+            try {
+                BrowserSession browser = new BrowserSession();
+                URI resourceUri = OidcIntegrationSupport.rpBaseUri(rpServer).resolve("/resource");
+                URI callback = callbackWithIssuer(authorizeWithoutBrowser(browser, resourceUri),
+                                                  "https://other.example");
+
+                try (HttpClientResponse callbackResponse = browser.get(callback)) {
+                    assertThat(callbackResponse.status(), is(Status.BAD_REQUEST_400));
+                    assertThat(callbackResponse.as(String.class), is("Authorization Response is invalid"));
+                }
+
+                assertThat(idp.tokenRequests().size(), is(0));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsMissingSupportedAuthorizationResponseIssuer() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user
+                        .subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .metadata("authorization_response_iss_parameter_supported", true)
+                .tokenDefaults(tokens -> tokens
+                        .idToken(id -> id.includeUserClaims("preferred_username")))
+                .build()) {
+            OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
+                                                                                                                    it -> {
+                                                                                                                    });
+            WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
+                                                                 routing -> OidcIntegrationSupport
+                                                                         .protectedRoute(routing, "/resource"));
+            try {
+                BrowserSession browser = new BrowserSession();
+                URI resourceUri = OidcIntegrationSupport.rpBaseUri(rpServer).resolve("/resource");
+                URI callback = callbackWithoutIssuer(authorizeWithoutBrowser(browser, resourceUri));
+
+                try (HttpClientResponse callbackResponse = browser.get(callback)) {
+                    assertThat(callbackResponse.status(), is(Status.BAD_REQUEST_400));
+                    assertThat(callbackResponse.as(String.class), is("Authorization Response is invalid"));
+                }
+
+                assertThat(idp.tokenRequests().size(), is(0));
+            } finally {
+                rpServer.stop();
+            }
+        }
+    }
+
+    @Test
     void authorizationCodeFlowRefreshesOpaqueAccessToken() {
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
@@ -218,5 +340,31 @@ class OidcAuthorizationCodeFlowIT {
                 return URI.create(authorization.headers().first(HeaderNames.LOCATION).orElseThrow());
             }
         }
+    }
+
+    private static URI callbackWithIssuer(URI callback, String issuer) {
+        return callback(callback, issuer);
+    }
+
+    private static URI callbackWithoutIssuer(URI callback) {
+        return callback(callback, null);
+    }
+
+    private static URI callback(URI callback, String issuer) {
+        UriQuery query = UriQuery.create(callback);
+        String baseUri = callback.toString().substring(0, callback.toString().indexOf('?'));
+        StringBuilder result = new StringBuilder(baseUri)
+                .append("?code=")
+                .append(urlEncode(query.all("code", List::of).getFirst()))
+                .append("&state=")
+                .append(urlEncode(query.all("state", List::of).getFirst()));
+        if (issuer != null) {
+            result.append("&iss=").append(urlEncode(issuer));
+        }
+        return URI.create(result.toString());
+    }
+
+    private static String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

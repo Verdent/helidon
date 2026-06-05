@@ -1059,7 +1059,7 @@ class OidcClientCredentialsGrantTest {
 
     private OidcTenantConfig mutualTlsTenantFromWellKnown(OidcClientAuthenticationMethod method) {
         return OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(method)
                 .webClient(mutualTlsWebClient())
@@ -1070,7 +1070,7 @@ class OidcClientCredentialsGrantTest {
 
     private OidcTenantConfig mutualTlsTenantWithExplicitTokenEndpointAndUserInfo() {
         return OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
@@ -1085,7 +1085,7 @@ class OidcClientCredentialsGrantTest {
 
     private OidcTenantConfig confidentialTenantFromWellKnown() {
         return OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.tlsRequired(false))

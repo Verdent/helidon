@@ -664,7 +664,7 @@ class OidcRefreshTokenManagerTest {
 
     private static OidcTenantConfig tenant(URI serverUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -679,7 +679,7 @@ class OidcRefreshTokenManagerTest {
 
     private static OidcTenantConfig tenantWithJwtAccessTokenValidation(URI serverUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -698,7 +698,7 @@ class OidcRefreshTokenManagerTest {
 
     private static OidcTenantConfig tenantWithIntrospectionAccessTokenValidation(URI serverUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -717,7 +717,7 @@ class OidcRefreshTokenManagerTest {
 
     private static OidcTenantConfig tenantWithUserInfo(URI serverUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)

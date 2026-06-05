@@ -51,6 +51,9 @@ final class OidcAuthenticationRequestFactory {
         URI authorizationEndpointUri = tenantContext.metadata()
                 .authorizationEndpointUri()
                 .orElseThrow(() -> new IllegalStateException("authorization-endpoint-uri is not configured"));
+        String expectedIssuer = tenantContext.metadata()
+                .issuer()
+                .orElseThrow(() -> new IllegalStateException("issuer is not configured"));
         URI redirectionEndpointUri = resolveRedirectionEndpointUri(
                 OidcConfigSupport.redirectionEndpointUri(authorizationCode),
                 context.environment());
@@ -71,6 +74,7 @@ final class OidcAuthenticationRequestFactory {
                 state,
                 nonce,
                 pkceVerifier,
+                expectedIssuer,
                 originalUri(environment),
                 redirectionEndpointUri,
                 createdAt,

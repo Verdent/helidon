@@ -986,7 +986,7 @@ class OidcProviderTest {
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
             Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -1002,7 +1002,7 @@ class OidcProviderTest {
 
     private static OidcTenantConfig authorizationCodeAndProtectedResourceTenant() {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)

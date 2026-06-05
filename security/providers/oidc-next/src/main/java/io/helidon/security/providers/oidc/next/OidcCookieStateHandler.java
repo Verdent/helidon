@@ -145,6 +145,7 @@ final class OidcCookieStateHandler {
                 .set("tenant_id", state.tenantId())
                 .set("state", state.state())
                 .set("nonce", state.nonce())
+                .set("expected_issuer", state.expectedIssuer())
                 .set("original_uri", state.originalUri().toString())
                 .set("redirection_endpoint_uri", state.redirectionEndpointUri().toString())
                 .set("created_at", state.createdAt().toString())
@@ -176,6 +177,7 @@ final class OidcCookieStateHandler {
                 json.stringValue("state").orElseThrow(),
                 json.stringValue("nonce").orElseThrow(),
                 json.stringValue("pkce_verifier").orElse(null),
+                json.stringValue("expected_issuer").orElseThrow(),
                 URI.create(json.stringValue("original_uri").orElseThrow()),
                 URI.create(json.stringValue("redirection_endpoint_uri").orElseThrow()),
                 Instant.parse(json.stringValue("created_at").orElseThrow()),

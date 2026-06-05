@@ -30,6 +30,7 @@ import io.helidon.http.SetCookie;
 final class OidcAuthorizationResponseProcessor {
     private static final String CODE_PARAM = "code";
     private static final String STATE_PARAM = "state";
+    private static final String ISS_PARAM = "iss";
     private static final String ERROR_PARAM = "error";
     private static final String ERROR_DESCRIPTION_PARAM = "error_description";
     private static final String ERROR_URI_PARAM = "error_uri";
@@ -99,6 +100,13 @@ final class OidcAuthorizationResponseProcessor {
             return OidcAuthorizationResponseResult.invalid(
                     "Authorization Response Redirection Endpoint does not match Authentication Request state",
                     stateRemovalCookie);
+        }
+        Optional<OidcAuthorizationResponseResult> issuerFailure = validateIssuer(parameters,
+                                                                                state,
+                                                                                storedState.tenantContext(),
+                                                                                stateRemovalCookie);
+        if (issuerFailure.isPresent()) {
+            return issuerFailure.orElseThrow();
         }
 
         Optional<ParameterValue> code = singleParameter(parameters, CODE_PARAM);
@@ -170,6 +178,39 @@ final class OidcAuthorizationResponseProcessor {
                                                          storedState.tenantContext(),
                                                          state,
                                                          stateRemovalCookie);
+    }
+
+    private Optional<OidcAuthorizationResponseResult> validateIssuer(UriQuery parameters,
+                                                                     OidcAuthenticationRequestState state,
+                                                                     OidcTenantContext tenantContext,
+                                                                     List<SetCookie> stateRemovalCookie) {
+        Optional<ParameterValue> issuer = singleParameter(parameters, ISS_PARAM);
+        if (issuer.filter(ParameterValue::invalid).isPresent()) {
+            return Optional.of(OidcAuthorizationResponseResult.invalid(
+                    "Authorization Response iss must appear exactly once",
+                    stateRemovalCookie));
+        }
+        /*
+         * Spec: RFC 9207, 2.4 Validating the Issuer Identifier
+         * https://www.rfc-editor.org/rfc/rfc9207.html#section-2.4
+         * Quotes: "MUST extract the value of the `iss` parameter"; "MUST use simple string comparison";
+         * "MUST reject authorization responses without the `iss` parameter from authorization servers that do support
+         * the parameter".
+         */
+        if (issuer.filter(ParameterValue::valid).isPresent()) {
+            String issuerValue = issuer.orElseThrow().value();
+            if (!state.expectedIssuer().equals(issuerValue)) {
+                return Optional.of(OidcAuthorizationResponseResult.invalid(
+                        "Authorization Response iss does not match Authentication Request issuer",
+                        stateRemovalCookie));
+            }
+            return Optional.empty();
+        }
+        if (tenantContext.metadata().authorizationResponseIssuerParameterSupported()) {
+            return Optional.of(OidcAuthorizationResponseResult.invalid("Authorization Response iss is missing",
+                                                                       stateRemovalCookie));
+        }
+        return Optional.empty();
     }
 
     private List<StoredAuthenticationRequestState> authenticationRequestStates(Map<String, List<String>> cookies) {

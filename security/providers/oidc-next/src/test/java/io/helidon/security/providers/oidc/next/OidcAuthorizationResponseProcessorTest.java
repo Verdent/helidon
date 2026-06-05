@@ -20,6 +20,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.common.uri.UriQuery;
@@ -64,6 +65,137 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(removalCookie.name(), is("__Host-helidon-oidc-state"));
         assertThat(removalCookie.value(), is(""));
         assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));
+    }
+
+    @Test
+    void authorizationResponseIssuerParameterMatchesExpectedIssuer() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&iss=https%3A%2F%2Fissuer.example"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.stateValidated(), is(true));
+        assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
+    }
+
+    @Test
+    void mismatchedAuthorizationResponseIssuerFailsAndClearsCookie() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&iss=https%3A%2F%2Fother.example"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss does not match Authentication Request issuer"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void duplicateAuthorizationResponseIssuerFailsAndClearsCookie() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&iss=https%3A%2F%2Fissuer.example"
+                                                                                 + "&iss=https%3A%2F%2Fissuer.example"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss must appear exactly once"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void blankAuthorizationResponseIssuerFailsAndClearsCookie() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&iss="),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss must appear exactly once"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void missingAuthorizationResponseIssuerFailsWhenMetadataAdvertisesSupport() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=stored-state"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW,
+                                                         true);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss is missing"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void authorizationErrorResponseValidatesIssuerBeforeError() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("error=access_denied"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&iss=https%3A%2F%2Fother.example"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss does not match Authentication Request issuer"));
+        assertThat(result.stateCookies().size(), is(1));
     }
 
     @Test
@@ -293,6 +425,22 @@ class OidcAuthorizationResponseProcessorTest {
                 .process(parameters, cookies, redirectionEndpointUri, now);
     }
 
+    private static OidcAuthorizationResponseResult process(OidcProviderConfig config,
+                                                           UriQuery parameters,
+                                                           Map<String, List<String>> cookies,
+                                                           URI redirectionEndpointUri,
+                                                           Instant now,
+                                                           boolean authorizationResponseIssuerParameterSupported) {
+        OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(
+                config,
+                OidcTenantContextFactory.create((tenantId, tenantConfig) -> OidcTenantContext.ready(
+                        tenantId,
+                        tenantConfig,
+                        providerMetadata(authorizationResponseIssuerParameterSupported))));
+        return OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry)
+                .process(parameters, cookies, redirectionEndpointUri, now);
+    }
+
     private static Map<String, List<String>> cookies(OidcTenantConfig tenantConfig,
                                                      OidcAuthenticationRequestState state) {
         SetCookie cookie = OidcCookieStateHandler.create(tenantConfig)
@@ -308,6 +456,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                      state,
                                                      "nonce",
                                                      "pkce-verifier",
+                                                     ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      redirectionEndpointUri,
                                                      NOW.minusSeconds(1),
@@ -322,12 +471,25 @@ class OidcAuthorizationResponseProcessorTest {
 
     private static OidcTenantConfig authorizationCodeTenant(String cookieSecret, URI redirectionEndpointUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
                 .cookies(it -> it.encryptionSecret(cookieSecret))
                 .buildPrototype();
+    }
+
+    private static OidcProviderMetadata providerMetadata(boolean authorizationResponseIssuerParameterSupported) {
+        return OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
+                                           Optional.empty(),
+                                           Optional.of(AUTHORIZATION_ENDPOINT_URI),
+                                           Optional.of(TOKEN_ENDPOINT_URI),
+                                           Optional.empty(),
+                                           Optional.empty(),
+                                           Optional.empty(),
+                                           Optional.empty(),
+                                           Optional.empty(),
+                                           authorizationResponseIssuerParameterSupported);
     }
 }

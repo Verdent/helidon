@@ -63,7 +63,7 @@ class OidcAuthorizationCodeFlowIT {
                 BrowserSession browser = new BrowserSession();
                 URI rpBaseUri = OidcIntegrationSupport.rpBaseUri(rpServer);
 
-                URI resourceUri = rpBaseUri.resolve("/resource");
+                URI resourceUri = rpBaseUri.resolve("/resource?tab=items");
                 try (HttpClientResponse response = browser.get(resourceUri)) {
                     assertThat(response.status(), is(Status.SEE_OTHER_303));
                     URI authorizationUri = URI.create(response.headers()
@@ -86,11 +86,10 @@ class OidcAuthorizationCodeFlowIT {
 
                         try (HttpClientResponse callbackResponse = browser.get(callback)) {
                             assertThat(callbackResponse.status(), is(Status.SEE_OTHER_303));
-                            assertThat(URI.create(callbackResponse.headers()
-                                                          .first(HeaderNames.LOCATION)
-                                                          .orElseThrow())
-                                               .getPath(),
-                                       is("/resource"));
+                            assertThat(callbackResponse.headers()
+                                               .first(HeaderNames.LOCATION)
+                                               .orElseThrow(),
+                                       is(rpBaseUri.resolve("/resource?tab=items").toString()));
                         }
                     }
                 }

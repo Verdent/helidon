@@ -269,7 +269,7 @@ class OidcFeatureRouteTest {
                     .request()) {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
                 assertThat(response.headers().first(HeaderNames.LOCATION).orElse(""),
-                           is("https://rp.example/resource"));
+                           is("/resource"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
                 assertThat(cookies.stream()
@@ -340,7 +340,7 @@ class OidcFeatureRouteTest {
                     .request()) {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
                 assertThat(response.headers().first(HeaderNames.LOCATION).orElse(""),
-                           is(externalOriginalUri.toString()));
+                           is("/external/resource"));
             }
         } finally {
             rpServer.stop();

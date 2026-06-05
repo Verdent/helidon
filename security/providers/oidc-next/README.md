@@ -585,9 +585,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 ### Reverse Proxies
 
 When Authorization Code Flow runs behind a reverse proxy, configure Helidon WebServer requested URI discovery so the
-provider sees the external request URI. The provider stores that URI in Authentication Request state and redirects back
-to it after the Authorization Response is processed. The default local redirection endpoint path is also resolved from
-that discovered external origin.
+provider sees the external request URI. The provider stores only the local path and query in Authentication Request state
+and uses a root-relative redirect after the Authorization Response is processed. The default local redirection endpoint
+path is still resolved from the discovered external origin before it is sent to the OpenID Provider as `redirect_uri`.
 
 ```yaml
 server:

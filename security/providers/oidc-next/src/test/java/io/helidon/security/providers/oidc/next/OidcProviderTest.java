@@ -126,6 +126,7 @@ class OidcProviderTest {
     void bearerTokenSelectsBearerTokenAuthenticationWhenBothOperationsArePossible() {
         OidcProvider provider = providerWithTenant();
         SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
                 .header("Authorization", "Bearer access-token")
                 .build();
 
@@ -227,8 +228,45 @@ class OidcProviderTest {
                                                           .buildPrototype())
                                                   .buildPrototype());
         SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
                 .header("Authorization", "Bearer disabled-header-token")
                 .queryParam("access_token", "query-token")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Bearer Token validation is not configured"));
+    }
+
+    @Test
+    void insecureBearerTokenRequestFailsSafelyBeforeValidation() {
+        OidcProvider provider = providerWithTenant();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("http://rp.example/resource"))
+                .transport("http")
+                .header("Authorization", "Bearer access-token")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertInvalidBearerTokenRequest(response, "Bearer Token requires secure transport");
+    }
+
+    @Test
+    void insecureBearerTokenRequestCanBeEnabledExplicitly() {
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", OidcTenantConfig.builder()
+                        .tokenTransport(it -> it.secureTransportRequired(false))
+                        .buildPrototype())
+                .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("http://rp.example/resource"))
+                .transport("http")
+                .header("Authorization", "Bearer access-token")
                 .build();
 
         AuthenticationResponse response = provider.authenticate(

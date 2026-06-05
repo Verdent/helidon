@@ -164,9 +164,12 @@ class OidcEndpointPolicyIT {
         return OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
                                                                       it -> {
                                                                       },
-                                                                      tenant -> tenant.protectedResource(resource -> resource
-                                                                              .tokenValidation(validation -> validation
-                                                                                      .method(OidcTokenValidationMethod.JWT)
-                                                                                      .audience(SERVICE_CLIENT))));
+                                                                      tenant -> tenant
+                                                                              .tokenTransport(transport -> transport
+                                                                                      .secureTransportRequired(false))
+                                                                              .protectedResource(resource -> resource
+                                                                                      .tokenValidation(validation -> validation
+                                                                                              .method(OidcTokenValidationMethod.JWT)
+                                                                                              .audience(SERVICE_CLIENT))));
     }
 }

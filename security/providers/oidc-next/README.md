@@ -340,7 +340,8 @@ validation when `endpoints.jwks-uri` is not configured, and by Protected Resourc
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
 `introspection_endpoint_auth_methods_supported`, `introspection_endpoint_auth_signing_alg_values_supported`,
-`userinfo_endpoint`, `end_session_endpoint`, `mtls_endpoint_aliases.token_endpoint`, and
+`id_token_signing_alg_values_supported`, `userinfo_endpoint`, `end_session_endpoint`,
+`mtls_endpoint_aliases.token_endpoint`, and
 `authorization_response_iss_parameter_supported`.
 For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
 the Token Endpoint URI itself is loaded from well-known metadata. An explicit `endpoints.token-endpoint-uri` is treated
@@ -579,8 +580,12 @@ authorization-code:
 
 ### Encrypted ID Tokens
 
-If the OpenID Provider returns encrypted ID Tokens, configure `id-token-decryption-jwk` with the private JWK Set resource
-used to decrypt them.
+The `id-token` block controls ID Token validation policy. By default, signed ID Tokens must use `RS256`, signed-only ID
+Tokens are accepted, and decryption keys are not configured.
+
+If the OpenID Provider returns encrypted ID Tokens, configure `id-token.decryption-jwk` with the private JWK Set resource
+used to decrypt them. Set `id-token.encryption-required: true` only when your client registration requires encrypted ID
+Tokens and signed-only ID Tokens should fail.
 
 ```yaml
 security:
@@ -589,8 +594,11 @@ security:
         issuer: "https://issuer.example"
         client-id: "${OIDC_CLIENT_ID}"
         client-secret: "${OIDC_CLIENT_SECRET}"
-        id-token-decryption-jwk:
-          resource-path: "rp-id-token-decryption-jwks.json"
+        id-token:
+          allowed-algorithms: [ "RS256" ]
+          decryption-jwk:
+            resource-path: "rp-id-token-decryption-jwks.json"
+          encryption-required: true
         authorization-code:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile" ]
@@ -599,8 +607,8 @@ security:
 ```
 
 The provider decrypts the JWE ID Token and then validates the inner signed JWT with the normal ID Token validation
-rules and the OpenID Provider JWK Set. Signed ID Tokens remain accepted when decryption keys are configured; this option
-means that encrypted ID Tokens can be processed, not that encryption is required.
+rules and the OpenID Provider JWK Set. Signed ID Tokens remain accepted when decryption keys are configured unless
+`encryption-required` is enabled; decryption keys mean that encrypted ID Tokens can be processed.
 
 The protected local authentication cookie stores the original ID Token value. When that value is encrypted, the provider
 decrypts it again when the local authentication result is restored. RP-Initiated Logout also sends the original OpenID
@@ -615,7 +623,10 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
-        .idTokenDecryptionJwk(Resource.create("rp-id-token-decryption-jwks.json"))
+        .idToken(idToken -> idToken
+                .allowedAlgorithms(List.of("RS256"))
+                .decryptionJwk(Resource.create("rp-id-token-decryption-jwks.json"))
+                .encryptionRequired(true))
         .authorizationCode(authorizationCode -> authorizationCode
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile")))
@@ -1460,7 +1471,7 @@ multi-tenant applications:
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Used for Token Endpoint authentication and as the default for Introspection Endpoint authentication unless `protected-resource.token-validation.introspection.client-assertion` overrides it. |
-| `id-token-decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
+| `id-token` | ID Token validation and decryption configuration. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
@@ -1472,6 +1483,15 @@ multi-tenant applications:
 | `token-transport` | Bearer Token transport configuration. |
 | `subject-mapping` | Claim-to-subject mapping configuration. |
 | `cookies` | Cookie configuration used by stateful OIDC flows. |
+
+ID Token options:
+
+| Key | Description |
+| --- | --- |
+| `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. |
+| `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
+| `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
+| `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. |
 
 Client assertion options:
 

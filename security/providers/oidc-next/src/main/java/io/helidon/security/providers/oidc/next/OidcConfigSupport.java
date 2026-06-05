@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -43,7 +44,7 @@ final class OidcConfigSupport {
                                                                         "client-id",
                                                                         "client-secret",
                                                                         "token-endpoint-auth-method",
-                                                                        "id-token-decryption-jwk",
+                                                                        "id-token",
                                                                         "client-assertion",
                                                                         "webclient",
                                                                         "jwk-set",
@@ -57,6 +58,7 @@ final class OidcConfigSupport {
                                                                         "subject-mapping",
                                                                         "cookies");
     private static final OidcClientAssertionConfig DEFAULT_CLIENT_ASSERTION = OidcClientAssertionConfig.create();
+    private static final OidcIdTokenConfig DEFAULT_ID_TOKEN = OidcIdTokenConfig.create();
     private static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
     private static final OidcJwkSetConfig DEFAULT_JWK_SET = OidcJwkSetConfig.create();
     private static final OidcEndpointConfig DEFAULT_ENDPOINTS = OidcEndpointConfig.create();
@@ -178,7 +180,7 @@ final class OidcConfigSupport {
                 || target.clientId().isPresent()
                 || target.clientSecret().isPresent()
                 || target.tokenEndpointAuthenticationMethod().isPresent()
-                || target.idTokenDecryptionJwk().isPresent()
+                || !DEFAULT_ID_TOKEN.equals(target.idToken())
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || webClientOptionsChanged(target.webClient())
                 || !DEFAULT_JWK_SET.equals(target.jwkSet())
@@ -224,6 +226,7 @@ final class OidcConfigSupport {
     private static OidcTenantConfig singleTenant(OidcProviderConfig.BuilderBase<?, ?> target) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .enabled(target.enabled())
+                .idToken(target.idToken())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())
                 .jwkSet(target.jwkSet())
@@ -237,7 +240,6 @@ final class OidcConfigSupport {
         target.clientId().ifPresent(tenant::clientId);
         target.clientSecret().ifPresent(tenant::clientSecret);
         target.tokenEndpointAuthenticationMethod().ifPresent(tenant::tokenEndpointAuthenticationMethod);
-        target.idTokenDecryptionJwk().ifPresent(tenant::idTokenDecryptionJwk);
         target.protectedResource().ifPresent(tenant::protectedResource);
         target.authorizationCode().ifPresent(tenant::authorizationCode);
         target.logout().ifPresent(tenant::logout);
@@ -261,6 +263,7 @@ final class OidcConfigSupport {
                                false);
             validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
             validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
+            validateIdToken(target.idToken());
             validateClientAssertion(target.clientAssertion());
             validateJwkSet(target.jwkSet());
             target.protectedResource()
@@ -283,6 +286,46 @@ final class OidcConfigSupport {
                 .filter(interval -> interval.isZero() || interval.isNegative())
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
+                });
+    }
+
+    private static void validateIdToken(OidcIdTokenConfig idToken) {
+        if (idToken.allowedAlgorithms().isEmpty()) {
+            throw new IllegalArgumentException("id-token.allowed-algorithms must not be empty");
+        }
+        if (idToken.clockSkew().isNegative()) {
+            throw new IllegalArgumentException("id-token.clock-skew must not be negative");
+        }
+        idToken.allowedAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm == null
+                        || algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip())
+                        || "none".equalsIgnoreCase(algorithm))
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    /*
+                     * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
+                     * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+                     * Quotes: "The Client MUST validate the signature of all other ID Tokens according to JWS";
+                     * "The Client MUST use the keys provided by the Issuer".
+                     */
+                    throw new IllegalArgumentException(
+                            "id-token.allowed-algorithms must not contain blank, padded, or none values");
+                });
+        idToken.allowedAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm != null && algorithm.toUpperCase(Locale.ROOT).startsWith("HS"))
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    /*
+                     * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
+                     * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+                     * Quote: "the octets of the UTF-8 ... representation of the client_secret ... are used as the key
+                     * to validate the signature".
+                     */
+                    throw new IllegalArgumentException(
+                            "id-token.allowed-algorithms must not contain HS* algorithms");
                 });
     }
 

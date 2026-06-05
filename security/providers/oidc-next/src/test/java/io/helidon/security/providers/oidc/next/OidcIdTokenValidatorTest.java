@@ -80,8 +80,8 @@ class OidcIdTokenValidatorTest {
         String signedIdToken = signedIdToken(it -> it.email("user1@example.org"));
         String encryptedIdToken = encryptedIdToken(signedIdToken);
 
-        var result = validate(encryptedIdToken, tenantConfig(it -> it.idTokenDecryptionJwk(
-                Resource.create("oidc-next-sign-jwk.json"))));
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(idToken -> idToken
+                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -95,8 +95,8 @@ class OidcIdTokenValidatorTest {
     void signedIdTokenIsAcceptedWhenDecryptionKeyIsConfigured() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
-        var result = validate(idToken, tenantConfig(it -> it.idTokenDecryptionJwk(
-                Resource.create("oidc-next-sign-jwk.json"))));
+        var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -111,6 +111,15 @@ class OidcIdTokenValidatorTest {
         var result = validate(encryptedIdToken);
 
         assertFailure(result, "ID Token decryption keys are not configured");
+    }
+
+    @Test
+    void signedIdTokenIsRejectedWhenEncryptionIsRequired() {
+        String idToken = signedIdToken(it -> it.email("user1@example.org"));
+
+        var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config.encryptionRequired(true))));
+
+        assertFailure(result, "ID Token encryption is required");
     }
 
     @Test

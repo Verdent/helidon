@@ -525,6 +525,7 @@ final class OidcConfigSupport {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "client-id must be configured when Authorization Code Flow is enabled"));
         validateTokenEndpointAuthentication(tenant, false, "Authorization Code Flow");
+        validatePkce(tenant, authorizationCode);
         boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
                 || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
                                                         tenant.tokenEndpointAuthenticationMethod());
@@ -555,6 +556,30 @@ final class OidcConfigSupport {
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validatePkce(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                     OidcAuthorizationCodeConfig authorizationCode) {
+        OidcClientAuthenticationMethod method = tokenEndpointAuthenticationMethod(tenant.clientSecret(),
+                                                                                  tenant.tokenEndpointAuthenticationMethod());
+        if (method != OidcClientAuthenticationMethod.NONE) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 9700, 2.1.1 Authorization Code Grant and RFC 7636, 4.2 Client Creates the Code Challenge
+         * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1
+         * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2
+         * Quotes: "Public clients MUST use PKCE"; "If the client is capable of using \"S256\", it MUST use \"S256\"".
+         */
+        if (!authorizationCode.pkceRequired()) {
+            throw new IllegalArgumentException(
+                    "authorization-code.pkce-required cannot be false when Token Endpoint authentication is NONE");
+        }
+        if (authorizationCode.pkceMethod() == OidcPkceMethod.PLAIN) {
+            throw new IllegalArgumentException(
+                    "authorization-code.pkce-method must be S256 when Token Endpoint authentication is NONE");
+        }
     }
 
     private static void validateUserInfo(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -993,11 +1018,7 @@ final class OidcConfigSupport {
                                                             WebClientConfig webClient,
                                                             boolean confidentialClientRequired,
                                                             String operation) {
-        OidcClientAuthenticationMethod method = authenticationMethod
-                .orElseGet(() -> clientSecret
-                        .isPresent()
-                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
-                        : OidcClientAuthenticationMethod.NONE);
+        OidcClientAuthenticationMethod method = tokenEndpointAuthenticationMethod(clientSecret, authenticationMethod);
         switch (method) {
         case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> clientSecret
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -1057,13 +1078,19 @@ final class OidcConfigSupport {
 
     private static boolean mutualTlsTokenEndpointAuthentication(Optional<String> clientSecret,
                                                                Optional<OidcClientAuthenticationMethod> authenticationMethod) {
-        OidcClientAuthenticationMethod method = authenticationMethod
+        OidcClientAuthenticationMethod method = tokenEndpointAuthenticationMethod(clientSecret, authenticationMethod);
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+    }
+
+    private static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(
+            Optional<String> clientSecret,
+            Optional<OidcClientAuthenticationMethod> authenticationMethod) {
+        return authenticationMethod
                 .orElseGet(() -> clientSecret
                         .isPresent()
                         ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
                         : OidcClientAuthenticationMethod.NONE);
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
     private static void validateClientAssertion(OidcClientAssertionConfig clientAssertion) {

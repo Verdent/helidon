@@ -359,6 +359,7 @@ class OidcClientCredentialsGrantTest {
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
                 .set("userinfo_endpoint", issuer.resolve("/userinfo").toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())

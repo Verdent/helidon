@@ -28,19 +28,32 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 
 final class OidcIdTokenDecryptor {
     private final Optional<JwkKeys> decryptionKeys;
+    private final boolean encryptionRequired;
 
-    private OidcIdTokenDecryptor(Optional<JwkKeys> decryptionKeys) {
+    private OidcIdTokenDecryptor(Optional<JwkKeys> decryptionKeys, boolean encryptionRequired) {
         this.decryptionKeys = decryptionKeys;
+        this.encryptionRequired = encryptionRequired;
     }
 
     static OidcIdTokenDecryptor create(OidcTenantConfig tenantConfig) {
-        return new OidcIdTokenDecryptor(tenantConfig.idTokenDecryptionJwk()
-                                                .map(OidcIdTokenDecryptor::loadKeys));
+        OidcIdTokenConfig idToken = tenantConfig.idToken();
+        return new OidcIdTokenDecryptor(idToken.decryptionJwk()
+                                                .map(OidcIdTokenDecryptor::loadKeys),
+                                        idToken.encryptionRequired());
     }
 
     OidcResolvedIdToken resolve(String token) {
         JwtHeaders headers = JwtHeaders.parseToken(token);
         if (headers.encryption().isEmpty()) {
+            if (encryptionRequired) {
+                /*
+                 * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
+                 * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+                 * Quote: "If encryption was negotiated with the OP at Registration time and the ID Token is not
+                 * encrypted, the RP SHOULD reject it".
+                 */
+                throw new IllegalStateException("ID Token encryption is required");
+            }
             return new OidcResolvedIdToken(token, false, SignedJwt.parseToken(headers, token));
         }
 
@@ -57,7 +70,7 @@ final class OidcIdTokenDecryptor {
                 .build();
         List<Jwk> jwks = keys.keys();
         if (jwks.isEmpty()) {
-            throw new IllegalArgumentException("id-token-decryption-jwk must contain at least one JWK");
+            throw new IllegalArgumentException("id-token.decryption-jwk must contain at least one JWK");
         }
         return keys;
     }

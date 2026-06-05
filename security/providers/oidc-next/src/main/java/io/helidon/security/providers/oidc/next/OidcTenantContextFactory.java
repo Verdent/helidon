@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -55,13 +56,14 @@ final class OidcTenantContextFactory {
             try {
                 WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
-                OidcProviderMetadata metadata = needsWellKnownMetadata(tenantConfig,
-                                                                       staticMetadata,
-                                                                       outboundTargetClientCredentialsGrant)
+                boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig,
+                                                                         staticMetadata,
+                                                                         outboundTargetClientCredentialsGrant);
+                OidcProviderMetadata metadata = wellKnownMetadataLoaded
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
                 validateIssuerMetadata(tenantConfig, metadata);
-                validateAuthorizationCodeMetadata(tenantConfig, metadata);
+                validateAuthorizationCodeMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 validateClientCredentialsGrantMetadata(tenantConfig,
                                                        metadata,
                                                        outboundTargetClientCredentialsGrant);
@@ -122,7 +124,8 @@ final class OidcTenantContextFactory {
     }
 
     private static void validateAuthorizationCodeMetadata(OidcTenantConfig tenantConfig,
-                                                          OidcProviderMetadata metadata) {
+                                                          OidcProviderMetadata metadata,
+                                                          boolean wellKnownMetadataLoaded) {
         if (tenantConfig.authorizationCode().filter(OidcAuthorizationCodeConfig::enabled).isEmpty()) {
             return;
         }
@@ -153,6 +156,33 @@ final class OidcTenantContextFactory {
                                              "well-known metadata token_endpoint must be present for "
                                                      + "Authorization Code Flow");
                                  });
+        validateIdTokenSigningAlgorithmMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+    }
+
+    private static void validateIdTokenSigningAlgorithmMetadata(OidcTenantConfig tenantConfig,
+                                                                OidcProviderMetadata metadata,
+                                                                boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "`id_token_signing_alg_values_supported`"; "REQUIRED"; "The algorithm `RS256` MUST be included".
+         */
+        List<String> supportedAlgorithms = metadata.idTokenSigningAlgorithmsSupported()
+                .orElseThrow(() -> new IllegalStateException(
+                        "well-known metadata id_token_signing_alg_values_supported must be present for "
+                                + "Authorization Code Flow"));
+        boolean supported = tenantConfig.idToken()
+                .allowedAlgorithms()
+                .stream()
+                .anyMatch(supportedAlgorithms::contains);
+        if (!supported) {
+            throw new IllegalStateException(
+                    "well-known metadata id_token_signing_alg_values_supported must include at least one configured "
+                            + "ID Token algorithm");
+        }
     }
 
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,

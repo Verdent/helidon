@@ -141,9 +141,9 @@ final class OidcAuthenticationRequestFactory {
     private URI originalUri(SecurityEnvironment environment) {
         URI targetUri = environment.targetUri();
         if (targetUri != null) {
-            return targetUri;
+            return OidcUri.localReference(targetUri);
         }
-        return URI.create(environment.path().orElse("/"));
+        return OidcUri.localReference(environment.path().orElse("/"), null);
     }
 
     private URI resolveRedirectionEndpointUri(URI configuredUri, SecurityEnvironment environment) {

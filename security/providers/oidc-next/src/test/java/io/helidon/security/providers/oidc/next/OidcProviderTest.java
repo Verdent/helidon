@@ -376,7 +376,7 @@ class OidcProviderTest {
         assertThat(state.tenantId(), is("default"));
         assertThat(state.state(), is(query.get("state")));
         assertThat(state.nonce(), is(query.get("nonce")));
-        assertThat(state.originalUri(), is(ORIGINAL_URI));
+        assertThat(state.originalUri(), is(URI.create("/resource?name=value")));
         assertThat(state.redirectionEndpointUri(), is(REDIRECTION_ENDPOINT_URI));
         assertThat(state.pkceVerifier().isPresent(), is(true));
         assertThat(query.get("code_challenge"),
@@ -426,8 +426,42 @@ class OidcProviderTest {
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
-        assertThat(state.originalUri(), is(URI.create("https://rp.example/external/resource")));
+        assertThat(state.originalUri(), is(URI.create("/external/resource")));
         assertThat(state.redirectionEndpointUri(), is(resolvedRedirectionEndpointUri));
+    }
+
+    @Test
+    void authorizationCodeFlowStoresLocalOriginalUriFromExternalTargetUri() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://attacker.example/orders/42?tab=items#fragment"))
+                .path("/orders/42")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.originalUri(), is(URI.create("/orders/42?tab=items")));
+    }
+
+    @Test
+    void authorizationCodeFlowStoresLocalOriginalUriForNetworkPathTargetUri() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example//attacker.example/orders?tab=items"))
+                .path("//attacker.example/orders")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.originalUri(), is(URI.create("/attacker.example/orders?tab=items")));
     }
 
     @Test

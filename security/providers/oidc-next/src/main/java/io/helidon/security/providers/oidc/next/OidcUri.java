@@ -22,6 +22,25 @@ final class OidcUri {
     private OidcUri() {
     }
 
+    static URI localReference(URI uri) {
+        return localReference(uri.getRawPath(), uri.getRawQuery());
+    }
+
+    static URI localReference(String rawPath, String rawQuery) {
+        String path = rawPath;
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        }
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        while (path.startsWith("//")) {
+            path = path.substring(1);
+        }
+
+        return URI.create(rawQuery == null ? path : path + "?" + rawQuery);
+    }
+
     static String path(URI uri) {
         String path = uri.getPath();
         if (path == null || path.isEmpty()) {

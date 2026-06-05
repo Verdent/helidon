@@ -210,7 +210,13 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                 .addCookie(tenantContext.cookieStateHandler()
                                    .createLocalAuthenticationResultCookie(localAuthenticationResult));
         response.status(Status.SEE_OTHER_303);
-        response.headers().add(HeaderNames.LOCATION, state.originalUri().toString());
+        /*
+         * Spec: RFC 9700, 2.1 Redirection URI and 4.11.1 Client as Open Redirector
+         * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1
+         * https://www.rfc-editor.org/rfc/rfc9700.html#section-4.11.1
+         * Quotes: "Clients MUST NOT expose open redirectors"; "redirect users back to a URL".
+         */
+        response.headers().add(HeaderNames.LOCATION, OidcUri.localReference(state.originalUri()).toString());
         response.send();
     }
 }

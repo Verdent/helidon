@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.math.BigDecimal;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -104,9 +105,27 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
     }
 
     private static Optional<Instant> instantClaim(JsonObject claims, String claimName) {
-        return claims.numberValue(claimName)
-                .map(BigDecimal::longValue)
-                .map(Instant::ofEpochSecond);
+        return claims.value(claimName)
+                .map(value -> {
+                    if (value.type() != JsonValueType.NUMBER) {
+                        throw new IllegalArgumentException("Claim " + claimName + " must be a number");
+                    }
+                    return instantClaim(claimName, value.asNumber().bigDecimalValue());
+                });
+    }
+
+    private static Instant instantClaim(String claimName, BigDecimal value) {
+        /*
+         * Spec: RFC 7662, 2.2 Introspection Response
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
+         * Quotes: "`exp`"; "`iat`"; "`nbf`"; "Integer timestamp, measured in the number of seconds since January 1
+         * 1970 UTC".
+         */
+        try {
+            return Instant.ofEpochSecond(value.toBigIntegerExact().longValueExact());
+        } catch (ArithmeticException | DateTimeException e) {
+            throw new IllegalArgumentException("Claim " + claimName + " must be an integer NumericDate", e);
+        }
     }
 
     private List<String> stringListClaim(String claimName) {

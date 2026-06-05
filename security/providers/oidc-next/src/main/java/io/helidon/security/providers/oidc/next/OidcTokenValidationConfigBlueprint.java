@@ -63,6 +63,19 @@ interface OidcTokenValidationConfigBlueprint {
     boolean audienceValidationEnabled();
 
     /**
+     * RFC 7662 Token Introspection request configuration.
+     * <p>
+     * Used only when {@link #method()} is {@link OidcTokenValidationMethod#INTROSPECTION}. Authentication defaults to
+     * {@link OidcClientAuthenticationMethod#CLIENT_SECRET_BASIC} when a client secret is available either here or at
+     * the tenant level.
+     *
+     * @return Token Introspection request configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcIntrospectionConfig introspection();
+
+    /**
      * Allowed JWS algorithms for JWT access tokens.
      *
      * @return allowed algorithms

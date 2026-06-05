@@ -287,6 +287,9 @@ final class OidcConfigSupport {
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        tokenValidation.introspection()
+                .clientAssertion()
+                .ifPresent(OidcConfigSupport::validateClientAssertion);
         tokenValidation.allowedAlgorithms()
                 .stream()
                 .filter(algorithm -> algorithm != null && "none".equalsIgnoreCase(algorithm.strip()))
@@ -722,18 +725,15 @@ final class OidcConfigSupport {
              * Quote: "MUST also require some form of authorization".
              */
             Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+            boolean introspectionEndpointTlsRequired = endpoints.tlsRequired()
+                    || mutualTlsIntrospectionEndpointAuthentication(tokenValidation);
             requireEndpointOrWellKnown(endpoints.introspectionEndpointUri(),
                                        wellKnownUri,
                                        "introspection-endpoint-uri",
                                        "introspection",
-                                       endpoints.tlsRequired(),
+                                       introspectionEndpointTlsRequired,
                                        OidcConfigSupport::validateIntrospectionEndpointUri);
-            tenant.clientId()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "client-id must be configured when introspection is enabled"));
-            tenant.clientSecret()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "client-secret must be configured when introspection is enabled"));
+            validateIntrospectionEndpointAuthentication(tenant, tokenValidation);
             if (tokenValidation.audienceValidationEnabled()) {
                 tokenValidation.audience()
                         .orElseThrow(() -> new IllegalArgumentException(
@@ -955,6 +955,7 @@ final class OidcConfigSupport {
          * Quote: "MUST be protected by a transport-layer security mechanism".
          */
         validateHttpsEndpointUri("introspection-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("introspection-endpoint-uri", uri);
     }
 
     private static void validateBearerChallengeRealm(String realm) {
@@ -1016,6 +1017,60 @@ final class OidcConfigSupport {
                                             operation);
     }
 
+    private static void validateIntrospectionEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                                                    OidcTokenValidationConfig tokenValidation) {
+        /*
+         * Spec: RFC 7662, 4 Security Considerations
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-4
+         * Quotes: "MUST require authentication of protected resources";
+         * "the authorization server MAY require separate credentials for each mode".
+         */
+        OidcIntrospectionConfig introspection = tokenValidation.introspection();
+        Optional<String> clientSecret = introspection.clientSecret().or(tenant::clientSecret);
+        OidcClientAssertionConfig clientAssertion = introspection.clientAssertion()
+                .orElseGet(tenant::clientAssertion);
+        OidcClientAuthenticationMethod method =
+                introspectionEndpointAuthenticationMethod(tenant.clientSecret(), introspection);
+        introspection.clientId()
+                .or(tenant::clientId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-id must be configured when introspection is enabled"));
+        switch (method) {
+        case CLIENT_SECRET_BASIC, CLIENT_SECRET_POST -> clientSecret
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "client-secret must be configured for " + method
+                                + " Introspection Endpoint authentication when introspection is enabled"));
+        case CLIENT_SECRET_JWT -> {
+            clientSecret.orElseThrow(() -> new IllegalArgumentException(
+                    "client-secret must be configured for CLIENT_SECRET_JWT Introspection Endpoint authentication when "
+                            + "introspection is enabled"));
+            validateClientAssertionAlgorithm(clientAssertion,
+                                             OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
+                                             "Introspection Endpoint",
+                                             "introspection");
+        }
+        case PRIVATE_KEY_JWT -> {
+            clientAssertion.jwk()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "client-assertion.jwk must be configured for PRIVATE_KEY_JWT Introspection Endpoint "
+                                    + "authentication when introspection is enabled"));
+            validateClientAssertionAlgorithm(clientAssertion,
+                                             OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                                             "Introspection Endpoint",
+                                             "introspection");
+        }
+        case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
+            validateMutualTlsClientAuthentication(tenant.webClient(),
+                                                  method,
+                                                  "Introspection Endpoint",
+                                                  "introspection");
+        }
+        case NONE -> throw new IllegalArgumentException(
+                "Introspection Endpoint authentication cannot be NONE when introspection is enabled");
+        default -> throw new IllegalStateException("Unexpected client authentication method: " + method);
+        }
+    }
+
     private static void validateTokenEndpointAuthentication(Optional<String> clientSecret,
                                                             Optional<OidcClientAuthenticationMethod> authenticationMethod,
                                                             OidcClientAssertionConfig clientAssertion,
@@ -1034,6 +1089,7 @@ final class OidcConfigSupport {
                             + operation + " is enabled"));
             validateClientAssertionAlgorithm(clientAssertion,
                                              OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
+                                             "Token Endpoint",
                                              operation);
         }
         case PRIVATE_KEY_JWT -> {
@@ -1043,10 +1099,11 @@ final class OidcConfigSupport {
                                     + "when " + operation + " is enabled"));
             validateClientAssertionAlgorithm(clientAssertion,
                                              OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                                             "Token Endpoint",
                                              operation);
         }
         case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
-            validateMutualTlsClientAuthentication(webClient, method, operation);
+            validateMutualTlsClientAuthentication(webClient, method, "Token Endpoint", operation);
         }
         case NONE -> {
             if (confidentialClientRequired) {
@@ -1060,6 +1117,7 @@ final class OidcConfigSupport {
 
     private static void validateMutualTlsClientAuthentication(WebClientConfig webClient,
                                                               OidcClientAuthenticationMethod method,
+                                                              String endpointName,
                                                               String operation) {
         TlsConfig tls = webClient.tls().prototype();
         /*
@@ -1076,7 +1134,7 @@ final class OidcConfigSupport {
         }
         throw new IllegalArgumentException(
                 "webclient.tls must be enabled and private-key plus certificate chain, ssl-context, or custom manager "
-                        + "must be configured for " + method + " Token Endpoint authentication when " + operation
+                        + "must be configured for " + method + " " + endpointName + " authentication when " + operation
                         + " is enabled");
     }
 
@@ -1087,11 +1145,29 @@ final class OidcConfigSupport {
                 || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
+    private static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTokenValidationConfig tokenValidation) {
+        OidcClientAuthenticationMethod method = introspectionEndpointAuthenticationMethod(Optional.empty(),
+                                                                                          tokenValidation.introspection());
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+    }
+
     private static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(
             Optional<String> clientSecret,
             Optional<OidcClientAuthenticationMethod> authenticationMethod) {
         return authenticationMethod
                 .orElseGet(() -> clientSecret
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
+    }
+
+    private static OidcClientAuthenticationMethod introspectionEndpointAuthenticationMethod(
+            Optional<String> tenantClientSecret,
+            OidcIntrospectionConfig introspection) {
+        return introspection.authenticationMethod()
+                .orElseGet(() -> introspection.clientSecret()
+                        .or(() -> tenantClientSecret)
                         .isPresent()
                         ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
                         : OidcClientAuthenticationMethod.NONE);
@@ -1118,6 +1194,7 @@ final class OidcConfigSupport {
 
     private static void validateClientAssertionAlgorithm(OidcClientAssertionConfig clientAssertion,
                                                          OidcClientAuthenticationMethod method,
+                                                         String endpointName,
                                                          String operation) {
         clientAssertion.algorithm()
                 .filter(algorithm -> switch (method) {
@@ -1134,8 +1211,8 @@ final class OidcConfigSupport {
                     };
                     throw new IllegalArgumentException("client-assertion.algorithm must be one of "
                                                                + algorithms
-                                                               + " for " + method
-                                                               + " Token Endpoint authentication when "
+                                                               + " for " + method + " " + endpointName
+                                                               + " authentication when "
                                                                + operation + " is enabled");
                 });
     }

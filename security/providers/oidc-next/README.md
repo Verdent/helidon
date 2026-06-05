@@ -12,6 +12,7 @@ The current implementation supports:
 - Protected Resource Bearer Token authentication.
 - Access-token validation by local JWT validation against an explicit JWKS URI or a JWKS URI from well-known metadata.
 - Access-token validation by OAuth 2.0 Token Introspection.
+- Introspection Endpoint authentication with separate protected-resource credentials when needed.
 - OpenID Connect Authorization Code Flow.
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
@@ -338,6 +339,7 @@ validation when `endpoints.jwks-uri` is not configured, and by Protected Resourc
 `endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
+`introspection_endpoint_auth_methods_supported`, `introspection_endpoint_auth_signing_alg_values_supported`,
 `userinfo_endpoint`, `end_session_endpoint`, `mtls_endpoint_aliases.token_endpoint`, and
 `authorization_response_iss_parameter_supported`.
 For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
@@ -441,8 +443,32 @@ security:
             audience: "api://orders"
 ```
 
-Introspection currently uses HTTP Basic client authentication and requires `client-id`, `client-secret`, and
-either `endpoints.introspection-endpoint-uri` or well-known metadata that provides `introspection_endpoint`.
+Introspection requires authentication to the Introspection Endpoint. RFC 7662 says the Authorization Server "MUST
+require authentication of protected resources" and can require credentials that are separate from the client credentials
+used at the Token Endpoint. By default, introspection uses `CLIENT_SECRET_BASIC` with the tenant `client-id` and
+`client-secret`. Configure `protected-resource.token-validation.introspection` when the Introspection Endpoint requires
+a different method or separate protected-resource credentials.
+
+```yaml
+protected-resource:
+  token-validation:
+    method: INTROSPECTION
+    audience: "api://orders"
+    introspection:
+      auth-method: CLIENT_SECRET_POST
+      client-id: "${OIDC_INTROSPECTION_CLIENT_ID}"
+      client-secret: "${OIDC_INTROSPECTION_CLIENT_SECRET}"
+```
+
+Supported introspection authentication methods are `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`,
+`PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, and `SELF_SIGNED_TLS_CLIENT_AUTH`. `NONE` is rejected for introspection. For
+`CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`, the assertion `aud` is the Introspection Endpoint URI. If well-known metadata
+contains `introspection_endpoint_auth_methods_supported` or
+`introspection_endpoint_auth_signing_alg_values_supported`, the configured method and assertion algorithm must be
+included in those metadata values.
+
+Introspection requires `client-id`, authentication credentials for the selected method, and either
+`endpoints.introspection-endpoint-uri` or well-known metadata that provides `introspection_endpoint`.
 
 Audience validation is enabled by default. Introspection responses with an `aud` claim must contain the configured
 expected audience. If the Authorization Server omits `aud` from introspection responses, disable audience validation
@@ -765,7 +791,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .buildPrototype();
 ```
 
-## Token Endpoint Client Authentication
+## Endpoint Client Authentication
 
 `token-endpoint-auth-method` controls how the client authenticates to the Token Endpoint for Authorization Code Flow,
 refresh-token requests, and Client Credentials Grant.
@@ -860,6 +886,10 @@ security:
 For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if the Authorization Server expects a
 `kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required, `algorithm` must match the selected JWK
 algorithm, and `key-id` is required when the configured JWK Set contains more than one key.
+
+The same authentication methods can be used for Token Introspection, but introspection is configured under
+`protected-resource.token-validation.introspection`. If `introspection.client-assertion` is omitted, the tenant
+`client-assertion` is reused. For introspection assertions, the `aud` claim is the Introspection Endpoint URI.
 
 Example using `tls_client_auth`:
 
@@ -1429,7 +1459,7 @@ multi-tenant applications:
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
-| `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. |
+| `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Used for Token Endpoint authentication and as the default for Introspection Endpoint authentication unless `protected-resource.token-validation.introspection.client-assertion` overrides it. |
 | `id-token-decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
@@ -1531,5 +1561,15 @@ Token validation options:
 | `method` | `JWT` or `INTROSPECTION`. |
 | `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
+| `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |
+
+Introspection options:
+
+| Key | Description |
+| --- | --- |
+| `auth-method` | Introspection Endpoint authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, or `SELF_SIGNED_TLS_CLIENT_AUTH`. Defaults to `CLIENT_SECRET_BASIC` when an introspection or tenant `client-secret` is configured. `NONE` is rejected. |
+| `client-id` | Client identifier used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-id`. |
+| `client-secret` | Client secret used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-secret`. |
+| `client-assertion` | Client assertion signing configuration for Introspection Endpoint `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Defaults to the tenant `client-assertion`. |

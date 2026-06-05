@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -130,6 +131,30 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(request.formParameters(), is(Map.of("token", List.of(OPAQUE_TOKEN),
                                                        "token_type_hint", List.of("access_token"))));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
+    }
+
+    @Test
+    void introspectionCanUseSeparateClientSecretPostAuthentication() {
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .clientId("token-client")
+                .clientSecret("token-secret")
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)
+                                .clientId("introspection-client")
+                                .clientSecret("introspection-secret"))))),
+                                                       OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request, is(notNullValue()));
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters(), is(Map.of("token", List.of(OPAQUE_TOKEN),
+                                                       "token_type_hint", List.of("access_token"),
+                                                       "client_id", List.of("introspection-client"),
+                                                       "client_secret", List.of("introspection-secret"))));
     }
 
     @Test
@@ -321,6 +346,34 @@ class OidcIntrospectionAccessTokenValidationTest {
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void fractionalNumericDateIsRejectedWhenReturned() {
+        responseBody = validResponse(it -> it.set("exp", 1_773_000_000.5)).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+    }
+
+    @Test
+    void stringNumericDateIsRejectedWhenReturned() {
+        responseBody = validResponse(it -> it.set("nbf", "1773000000")).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+    }
+
+    @Test
+    void outOfRangeNumericDateIsRejectedWhenReturned() {
+        responseBody = validResponse(it -> it.set("iat", BigDecimal.valueOf(Long.MAX_VALUE)
+                .add(BigDecimal.ONE))).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response is invalid");
     }
 
     @Test

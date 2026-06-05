@@ -24,13 +24,13 @@ import io.helidon.builder.api.Prototype;
 import io.helidon.common.configurable.Resource;
 
 /**
- * Token Endpoint client assertion configuration.
+ * Client assertion configuration.
  * <p>
  * Used by {@link OidcClientAuthenticationMethod#CLIENT_SECRET_JWT} and
- * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT}. OpenID Connect Core 1.0, section
- * {@code 9 Client Authentication}, requires these methods to send {@code client_assertion_type} and
- * {@code client_assertion}; the assertion JWT uses {@code iss}, {@code sub}, {@code aud}, {@code jti}, and
- * {@code exp} claims.
+ * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} when authenticating to Authorization Server endpoints such as
+ * the Token Endpoint or Introspection Endpoint. OpenID Connect Core 1.0, section {@code 9 Client Authentication},
+ * requires these methods to send {@code client_assertion_type} and {@code client_assertion}; the assertion JWT uses
+ * {@code iss}, {@code sub}, {@code aud}, {@code jti}, and {@code exp} claims.
  *
  * @see <a href="https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication">
  * OpenID Connect Core 1.0, 9 Client Authentication</a>

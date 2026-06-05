@@ -51,29 +51,88 @@ final class OidcClientAuthenticationSupport {
                     JwkEC.ALG_ES384,
                     JwkEC.ALG_ES512);
 
-    private final OidcTenantConfig tenantConfig;
     private final OidcClientAuthenticationMethod method;
+    private final Optional<String> clientId;
+    private final Optional<String> clientSecret;
+    private final OidcClientAssertionConfig assertion;
+    private final String endpointName;
     private final Jwk privateKeyJwk;
 
-    private OidcClientAuthenticationSupport(OidcTenantConfig tenantConfig) {
-        this.tenantConfig = tenantConfig;
-        this.method = tokenEndpointAuthenticationMethod(tenantConfig);
+    private OidcClientAuthenticationSupport(OidcClientAuthenticationMethod method,
+                                            Optional<String> clientId,
+                                            Optional<String> clientSecret,
+                                            OidcClientAssertionConfig assertion,
+                                            String endpointName) {
+        this.method = method;
+        this.clientId = clientId;
+        this.clientSecret = clientSecret;
+        this.assertion = assertion;
+        this.endpointName = endpointName;
         this.privateKeyJwk = method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT
-                ? privateKeyJwk(tenantConfig.clientAssertion())
+                ? privateKeyJwk(assertion, endpointName)
                 : null;
     }
 
     static OidcClientAuthenticationSupport create(OidcTenantConfig tenantConfig) {
-        return new OidcClientAuthenticationSupport(tenantConfig);
+        return tokenEndpoint(tenantConfig);
+    }
+
+    static OidcClientAuthenticationSupport tokenEndpoint(OidcTenantConfig tenantConfig) {
+        return new OidcClientAuthenticationSupport(tokenEndpointAuthenticationMethod(tenantConfig),
+                                                   tenantConfig.clientId(),
+                                                   tenantConfig.clientSecret(),
+                                                   tenantConfig.clientAssertion(),
+                                                   "Token Endpoint");
+    }
+
+    static OidcClientAuthenticationSupport introspectionEndpoint(OidcTenantConfig tenantConfig) {
+        if (tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .flatMap(OidcTokenValidationConfig::method)
+                .filter(OidcTokenValidationMethod.INTROSPECTION::equals)
+                .isEmpty()) {
+            return new OidcClientAuthenticationSupport(OidcClientAuthenticationMethod.NONE,
+                                                       Optional.empty(),
+                                                       Optional.empty(),
+                                                       OidcClientAssertionConfig.create(),
+                                                       "Introspection Endpoint");
+        }
+        OidcIntrospectionConfig introspection = introspectionConfig(tenantConfig);
+        return new OidcClientAuthenticationSupport(introspectionEndpointAuthenticationMethod(tenantConfig),
+                                                   introspection.clientId().or(tenantConfig::clientId),
+                                                   introspection.clientSecret().or(tenantConfig::clientSecret),
+                                                   introspection.clientAssertion().orElseGet(tenantConfig::clientAssertion),
+                                                   "Introspection Endpoint");
     }
 
     void applyTokenEndpointAuthentication(URI tokenEndpointUri,
                                           Parameters.Builder form,
                                           HttpClientRequest request) {
-        String clientId = tenantConfig.clientId().orElseThrow();
+        applyAuthentication(tokenEndpointUri, form, request);
+    }
+
+    void applyIntrospectionEndpointAuthentication(URI introspectionEndpointUri,
+                                                 Parameters.Builder form,
+                                                 HttpClientRequest request) {
+        /*
+         * Spec: RFC 7662, 4 Security Considerations
+         * https://www.rfc-editor.org/rfc/rfc7662.html#section-4
+         * Quotes: "MUST require authentication of protected resources";
+         * "any valid client authentication mechanism used with the token endpoint".
+         */
+        if (method == OidcClientAuthenticationMethod.NONE) {
+            throw new IllegalStateException("Introspection Endpoint authentication cannot be NONE");
+        }
+        applyAuthentication(introspectionEndpointUri, form, request);
+    }
+
+    private void applyAuthentication(URI endpointUri,
+                                     Parameters.Builder form,
+                                     HttpClientRequest request) {
+        String clientId = this.clientId.orElseThrow();
         switch (method) {
         case CLIENT_SECRET_BASIC -> request.header(HeaderNames.AUTHORIZATION,
-                                                  basicAuthorization(clientId, requireClientSecret(tenantConfig)));
+                                                  basicAuthorization(clientId, requireClientSecret()));
         case CLIENT_SECRET_POST -> {
             /*
              * Spec: RFC 6749, 2.3.1 Client Password
@@ -81,7 +140,7 @@ final class OidcClientAuthenticationSupport {
              * Quote: "including the client credentials in the request-body".
              */
             form.add("client_id", clientId)
-                    .add("client_secret", requireClientSecret(tenantConfig));
+                    .add("client_secret", requireClientSecret());
         }
         case CLIENT_SECRET_JWT, PRIVATE_KEY_JWT -> {
             /*
@@ -91,7 +150,7 @@ final class OidcClientAuthenticationSupport {
              * "urn:ietf:params:oauth:client-assertion-type:jwt-bearer".
              */
             form.add("client_assertion_type", CLIENT_ASSERTION_TYPE)
-                    .add("client_assertion", clientAssertion(tokenEndpointUri));
+                    .add("client_assertion", clientAssertion(endpointUri));
         }
         case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
             /*
@@ -120,9 +179,27 @@ final class OidcClientAuthenticationSupport {
                 || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
+    Optional<String> clientAssertionAlgorithm() {
+        return switch (method) {
+        case CLIENT_SECRET_JWT -> Optional.of(assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM));
+        case PRIVATE_KEY_JWT -> Optional.of(privateKeyJwk.algorithm());
+        default -> Optional.empty();
+        };
+    }
+
     static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(OidcTenantConfig tenantConfig) {
         return tenantConfig.tokenEndpointAuthenticationMethod()
                 .orElseGet(() -> tenantConfig.clientSecret()
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
+    }
+
+    static OidcClientAuthenticationMethod introspectionEndpointAuthenticationMethod(OidcTenantConfig tenantConfig) {
+        OidcIntrospectionConfig introspection = introspectionConfig(tenantConfig);
+        return introspection.authenticationMethod()
+                .orElseGet(() -> introspection.clientSecret()
+                        .or(tenantConfig::clientSecret)
                         .isPresent()
                         ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
                         : OidcClientAuthenticationMethod.NONE);
@@ -144,11 +221,14 @@ final class OidcClientAuthenticationSupport {
         return PRIVATE_KEY_JWT_ALGORITHMS.toString();
     }
 
-    private String clientAssertion(URI tokenEndpointUri) {
-        String clientId = tenantConfig.clientId().orElseThrow();
-        OidcClientAssertionConfig assertion = tenantConfig.clientAssertion();
+    static String defaultClientSecretJwtAlgorithm() {
+        return DEFAULT_CLIENT_SECRET_JWT_ALGORITHM;
+    }
+
+    private String clientAssertion(URI endpointUri) {
+        String clientId = this.clientId.orElseThrow();
         Jwk jwk = switch (method) {
-        case CLIENT_SECRET_JWT -> clientSecretJwk(tenantConfig, assertion);
+        case CLIENT_SECRET_JWT -> clientSecretJwk();
         case PRIVATE_KEY_JWT -> privateKeyJwk;
         default -> throw new IllegalStateException("Unexpected client assertion authentication method: " + method);
         };
@@ -166,7 +246,7 @@ final class OidcClientAuthenticationSupport {
                 .algorithm(algorithm)
                 .issuer(clientId)
                 .subject(clientId)
-                .addAudience(tokenEndpointUri.toString())
+                .addAudience(endpointUri.toString())
                 .issueTime(now)
                 .expirationTime(now.plus(assertion.lifetime()))
                 .jwtId(UUID.randomUUID().toString())
@@ -195,42 +275,44 @@ final class OidcClientAuthenticationSupport {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static Jwk clientSecretJwk(OidcTenantConfig tenantConfig, OidcClientAssertionConfig assertion) {
+    private Jwk clientSecretJwk() {
         String algorithm = assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM);
         if (!isClientSecretJwtAlgorithm(algorithm)) {
             throw new IllegalArgumentException("client-assertion.algorithm must be one of "
                                                        + clientSecretJwtAlgorithms()
-                                                       + " for CLIENT_SECRET_JWT Token Endpoint authentication");
+                                                       + " for CLIENT_SECRET_JWT " + endpointName + " authentication");
         }
         JsonObject.Builder builder = JsonObject.builder()
                 .set("kty", "oct")
                 .set("alg", algorithm)
                 .set("kid", assertion.keyId().orElse("client-secret"))
-                .set("k", base64Url(requireClientSecret(tenantConfig).getBytes(StandardCharsets.UTF_8)));
+                .set("k", base64Url(requireClientSecret().getBytes(StandardCharsets.UTF_8)));
         return JwkOctet.create(builder.build());
     }
 
-    private static Jwk privateKeyJwk(OidcClientAssertionConfig assertion) {
+    private static Jwk privateKeyJwk(OidcClientAssertionConfig assertion, String endpointName) {
         JwkKeys keys = JwkKeys.builder()
                 .resource(assertion.jwk().orElseThrow(() -> new IllegalArgumentException(
-                        "client-assertion.jwk must be configured for PRIVATE_KEY_JWT Token Endpoint authentication")))
+                        "client-assertion.jwk must be configured for PRIVATE_KEY_JWT "
+                                + endpointName + " authentication")))
                 .build();
         Optional<String> keyId = assertion.keyId();
         if (keyId.isPresent()) {
             return validatePrivateKeyJwk(assertion,
+                                         endpointName,
                                          keys.forKeyId(keyId.orElseThrow())
                                                  .orElseThrow(() -> new IllegalArgumentException(
                                                          "client-assertion.key-id does not match a configured JWK")));
         }
         List<Jwk> jwks = keys.keys();
         if (jwks.size() == 1) {
-            return validatePrivateKeyJwk(assertion, jwks.get(0));
+            return validatePrivateKeyJwk(assertion, endpointName, jwks.get(0));
         }
         throw new IllegalArgumentException(
                 "client-assertion.key-id must be configured when client-assertion.jwk contains multiple keys");
     }
 
-    private static Jwk validatePrivateKeyJwk(OidcClientAssertionConfig assertion, Jwk jwk) {
+    private static Jwk validatePrivateKeyJwk(OidcClientAssertionConfig assertion, String endpointName, Jwk jwk) {
         if (!Jwk.KEY_TYPE_RSA.equals(jwk.keyType()) && !Jwk.KEY_TYPE_EC.equals(jwk.keyType())) {
             throw new IllegalArgumentException(
                     "client-assertion.jwk must select an RSA or EC private JWK for PRIVATE_KEY_JWT");
@@ -239,13 +321,13 @@ final class OidcClientAuthenticationSupport {
         if (!isPrivateKeyJwtAlgorithm(algorithm)) {
             throw new IllegalArgumentException("client-assertion.jwk selected key algorithm must be one of "
                                                        + privateKeyJwtAlgorithms()
-                                                       + " for PRIVATE_KEY_JWT Token Endpoint authentication");
+                                                       + " for PRIVATE_KEY_JWT " + endpointName + " authentication");
         }
         assertion.algorithm()
                 .filter(configuredAlgorithm -> !configuredAlgorithm.equals(algorithm))
                 .ifPresent(configuredAlgorithm -> {
                     throw new IllegalArgumentException("client-assertion.algorithm must match the selected JWK "
-                                                               + "algorithm for PRIVATE_KEY_JWT Token Endpoint "
+                                                               + "algorithm for PRIVATE_KEY_JWT " + endpointName + " "
                                                                + "authentication");
                 });
         return jwk;
@@ -257,11 +339,17 @@ final class OidcClientAuthenticationSupport {
                 .encodeToString(bytes);
     }
 
-    private static String requireClientSecret(OidcTenantConfig tenantConfig) {
-        OidcClientAuthenticationMethod method = tokenEndpointAuthenticationMethod(tenantConfig);
-        return tenantConfig.clientSecret()
+    private String requireClientSecret() {
+        return clientSecret
                 .orElseThrow(() -> new IllegalArgumentException("client-secret must be configured for "
                                                                         + method
-                                                                        + " Token Endpoint authentication"));
+                                                                        + " " + endpointName + " authentication"));
+    }
+
+    private static OidcIntrospectionConfig introspectionConfig(OidcTenantConfig tenantConfig) {
+        return tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .map(OidcTokenValidationConfig::introspection)
+                .orElseGet(OidcIntrospectionConfig::create);
     }
 }

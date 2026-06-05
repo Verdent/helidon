@@ -851,7 +851,48 @@ class OidcProviderConfigTest {
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
+        assertThat(thrown.getMessage(), containsString("Introspection Endpoint authentication cannot be NONE"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC))))
+                .buildPrototype());
+
         assertThat(thrown.getMessage(), containsString("client-secret"));
+    }
+
+    @Test
+    void introspectionCanUseSeparateClientAuthenticationFromConfig() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.endpoints.introspection-endpoint-uri",
+                                  "https://issuer.example/introspect"),
+                        Map.entry("tenants.default.protected-resource.token-validation.method", "INTROSPECTION"),
+                        Map.entry("tenants.default.protected-resource.token-validation.audience", "api://default"),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.auth-method",
+                                  "CLIENT_SECRET_POST"),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.client-id",
+                                  "introspection-client"),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.client-secret",
+                                  "introspection-secret"))))
+                .build();
+
+        OidcTokenValidationConfig tokenValidation = OidcProviderConfig.create(config)
+                .tenants()
+                .get("default")
+                .protectedResource()
+                .orElseThrow()
+                .tokenValidation();
+
+        OidcIntrospectionConfig introspection = tokenValidation.introspection();
+        assertThat(introspection.authenticationMethod(),
+                   is(Optional.of(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)));
+        assertThat(introspection.clientId(), is(Optional.of("introspection-client")));
+        assertThat(introspection.clientSecret(), is(Optional.of("introspection-secret")));
     }
 
     @Test
@@ -890,6 +931,19 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri must use https"));
+    }
+
+    @Test
+    void introspectionRejectsEndpointWithFragment() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.introspectionEndpointUri(URI.create("https://issuer.example/introspect#fragment")))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience("api://default")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("introspection-endpoint-uri must not include a fragment"));
     }
 
     @Test

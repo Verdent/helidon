@@ -17,9 +17,12 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonString;
+import io.helidon.json.JsonValue;
 
 final class OidcProviderMetadata {
     private final Optional<String> issuer;
@@ -29,6 +32,8 @@ final class OidcProviderMetadata {
     private final Optional<URI> mutualTlsTokenEndpointUri;
     private final Optional<URI> jwkSetUri;
     private final Optional<URI> introspectionEndpointUri;
+    private final Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported;
+    private final Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported;
     private final Optional<URI> userInfoEndpointUri;
     private final Optional<URI> endSessionEndpointUri;
     private final boolean authorizationResponseIssuerParameterSupported;
@@ -40,6 +45,8 @@ final class OidcProviderMetadata {
                                  Optional<URI> mutualTlsTokenEndpointUri,
                                  Optional<URI> jwkSetUri,
                                  Optional<URI> introspectionEndpointUri,
+                                 Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
+                                 Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                  Optional<URI> userInfoEndpointUri,
                                  Optional<URI> endSessionEndpointUri,
                                  boolean authorizationResponseIssuerParameterSupported) {
@@ -50,6 +57,10 @@ final class OidcProviderMetadata {
         this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
         this.jwkSetUri = jwkSetUri;
         this.introspectionEndpointUri = introspectionEndpointUri;
+        this.introspectionEndpointAuthenticationMethodsSupported =
+                introspectionEndpointAuthenticationMethodsSupported.map(List::copyOf);
+        this.introspectionEndpointAuthenticationSigningAlgorithmsSupported =
+                introspectionEndpointAuthenticationSigningAlgorithmsSupported.map(List::copyOf);
         this.userInfoEndpointUri = userInfoEndpointUri;
         this.endSessionEndpointUri = endSessionEndpointUri;
         this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
@@ -64,6 +75,8 @@ final class OidcProviderMetadata {
                       Optional.empty(),
                       endpoints.jwksUri(),
                       endpoints.introspectionEndpointUri(),
+                      Optional.empty(),
+                      Optional.empty(),
                       endpoints.userInfoEndpointUri(),
                       endpoints.endSessionEndpointUri(),
                       false);
@@ -84,6 +97,8 @@ final class OidcProviderMetadata {
                       Optional.empty(),
                       jwkSetUri,
                       introspectionEndpointUri,
+                      Optional.empty(),
+                      Optional.empty(),
                       userInfoEndpointUri,
                       endSessionEndpointUri,
                       false);
@@ -99,6 +114,32 @@ final class OidcProviderMetadata {
                                        Optional<URI> userInfoEndpointUri,
                                        Optional<URI> endSessionEndpointUri,
                                        boolean authorizationResponseIssuerParameterSupported) {
+        return create(issuer,
+                      wellKnownUri,
+                      authorizationEndpointUri,
+                      tokenEndpointUri,
+                      mutualTlsTokenEndpointUri,
+                      jwkSetUri,
+                      introspectionEndpointUri,
+                      Optional.empty(),
+                      Optional.empty(),
+                      userInfoEndpointUri,
+                      endSessionEndpointUri,
+                      authorizationResponseIssuerParameterSupported);
+    }
+
+    static OidcProviderMetadata create(Optional<String> issuer,
+                                       Optional<URI> wellKnownUri,
+                                       Optional<URI> authorizationEndpointUri,
+                                       Optional<URI> tokenEndpointUri,
+                                       Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> jwkSetUri,
+                                       Optional<URI> introspectionEndpointUri,
+                                       Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<URI> userInfoEndpointUri,
+                                       Optional<URI> endSessionEndpointUri,
+                                       boolean authorizationResponseIssuerParameterSupported) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
@@ -106,6 +147,8 @@ final class OidcProviderMetadata {
                                         mutualTlsTokenEndpointUri,
                                         jwkSetUri,
                                         introspectionEndpointUri,
+                                        introspectionEndpointAuthenticationMethodsSupported,
+                                        introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                         userInfoEndpointUri,
                                         endSessionEndpointUri,
                                         authorizationResponseIssuerParameterSupported);
@@ -119,6 +162,8 @@ final class OidcProviderMetadata {
                       mutualTlsTokenEndpointUri(json),
                       uriValue(json, "jwks_uri"),
                       uriValue(json, "introspection_endpoint"),
+                      stringArrayValue(json, "introspection_endpoint_auth_methods_supported"),
+                      stringArrayValue(json, "introspection_endpoint_auth_signing_alg_values_supported"),
                       uriValue(json, "userinfo_endpoint"),
                       uriValue(json, "end_session_endpoint"),
                       json.booleanValue("authorization_response_iss_parameter_supported")
@@ -136,6 +181,10 @@ final class OidcProviderMetadata {
                               : wellKnownMetadata.mutualTlsTokenEndpointUri()),
                       jwkSetUri.or(wellKnownMetadata::jwkSetUri),
                       introspectionEndpointUri.or(wellKnownMetadata::introspectionEndpointUri),
+                      introspectionEndpointAuthenticationMethodsSupported
+                              .or(wellKnownMetadata::introspectionEndpointAuthenticationMethodsSupported),
+                      introspectionEndpointAuthenticationSigningAlgorithmsSupported
+                              .or(wellKnownMetadata::introspectionEndpointAuthenticationSigningAlgorithmsSupported),
                       userInfoEndpointUri.or(wellKnownMetadata::userInfoEndpointUri),
                       endSessionEndpointUri.or(wellKnownMetadata::endSessionEndpointUri),
                       authorizationResponseIssuerParameterSupported
@@ -174,6 +223,14 @@ final class OidcProviderMetadata {
         return introspectionEndpointUri;
     }
 
+    Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported() {
+        return introspectionEndpointAuthenticationMethodsSupported;
+    }
+
+    Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported() {
+        return introspectionEndpointAuthenticationSigningAlgorithmsSupported;
+    }
+
     Optional<URI> userInfoEndpointUri() {
         return userInfoEndpointUri;
     }
@@ -210,6 +267,15 @@ final class OidcProviderMetadata {
     private static Optional<URI> uriValue(JsonObject json, String name) {
         return json.stringValue(name)
                 .map(URI::create);
+    }
+
+    private static Optional<List<String>> stringArrayValue(JsonObject json, String name) {
+        return json.arrayValue(name)
+                .map(array -> array.values()
+                        .stream()
+                        .map(JsonValue::asString)
+                        .map(JsonString::value)
+                        .toList());
     }
 
     private static Optional<URI> mutualTlsTokenEndpointUri(JsonObject json) {

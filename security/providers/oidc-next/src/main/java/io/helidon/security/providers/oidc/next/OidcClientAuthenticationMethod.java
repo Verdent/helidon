@@ -17,11 +17,12 @@
 package io.helidon.security.providers.oidc.next;
 
 /**
- * Token Endpoint client authentication method.
+ * OAuth client authentication method.
  * <p>
  * These are Token Endpoint Authentication Method values defined by OpenID Connect Core 1.0, section
  * {@code 9 Client Authentication}, and OAuth extension specifications. The {@linkplain #wireName() wire name} is the
- * value used by OpenID Provider metadata {@code token_endpoint_auth_methods_supported} and Dynamic Client Registration
+ * value used by metadata such as {@code token_endpoint_auth_methods_supported} and
+ * {@code introspection_endpoint_auth_methods_supported}, and by Dynamic Client Registration
  * {@code token_endpoint_auth_method}.
  *
  * @see <a href="https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication">

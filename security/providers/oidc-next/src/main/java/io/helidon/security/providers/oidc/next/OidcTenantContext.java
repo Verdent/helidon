@@ -108,6 +108,10 @@ final class OidcTenantContext {
         return runtimeResources().endpointClient();
     }
 
+    OidcClientAuthenticationSupport introspectionClientAuthentication() {
+        return runtimeResources().introspectionClientAuthentication();
+    }
+
     OidcJwkSetManager jwkSetManager() {
         return runtimeResources().jwkSetManager();
     }
@@ -160,6 +164,7 @@ final class OidcTenantContext {
     private record RuntimeResources(Optional<OidcEndpointPolicy> endpointPolicy,
                                     OidcProviderMetadata metadata,
                                     OidcEndpointClient endpointClient,
+                                    OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     OidcCookieStateHandler cookieStateHandler,
@@ -172,6 +177,7 @@ final class OidcTenantContext {
             return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
+                                        OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
                                         idTokenDecryptor,
                                         OidcCookieStateHandler.create(tenantConfig, idTokenDecryptor),

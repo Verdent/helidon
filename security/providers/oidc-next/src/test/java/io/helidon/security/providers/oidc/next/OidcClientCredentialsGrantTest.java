@@ -440,7 +440,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(REQUEST_COUNT.get(), is(1));
         assertThat(RECORDED_REQUEST.get().formParameters(),
                    is(Map.of("grant_type", List.of("client_credentials"),
-                             "scope", List.of("orders.read orders.write"))));
+                             "scope", List.of("orders.write orders.read"))));
     }
 
     @Test
@@ -733,7 +733,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(RECORDED_REQUEST.get().formParameters(),
                    is(Map.of("grant_type", List.of("client_credentials"),
-                             "scope", List.of("orders.read orders.write"))));
+                             "scope", List.of("orders.write orders.read"))));
     }
 
     @Test

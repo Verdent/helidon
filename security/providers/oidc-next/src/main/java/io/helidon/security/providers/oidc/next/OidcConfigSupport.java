@@ -20,7 +20,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -106,9 +105,7 @@ final class OidcConfigSupport {
         if (scopes.isEmpty()) {
             return "";
         }
-        return String.join(" ", scopes.stream()
-                .sorted()
-                .toList());
+        return OidcScopeSupport.serializeScopes(scopes);
     }
 
     static WebClient createWebClient(OidcTenantConfig tenantConfig) {
@@ -338,37 +335,8 @@ final class OidcConfigSupport {
                 throw new IllegalArgumentException(
                         "client-credentials-grant-enabled must be enabled when client-credentials-scopes is configured");
             }
-            validateClientCredentialsScopes(target.clientCredentialsScopes());
+            OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");
         }
-    }
-
-    private static void validateClientCredentialsScopes(List<String> scopes) {
-        Set<String> uniqueScopes = new HashSet<>();
-        scopes.forEach(scope -> {
-            if (scope.isBlank() || !scope.equals(scope.strip())) {
-                throw new IllegalArgumentException("client-credentials-scopes contains blank or padded scope");
-            }
-            if (!uniqueScopes.add(scope)) {
-                throw new IllegalArgumentException("client-credentials-scopes contains duplicate scope: " + scope);
-            }
-            scope.chars()
-                    .filter(codePoint -> !validScopeTokenCodePoint(codePoint))
-                    .findFirst()
-                    .ifPresent(ignored -> {
-                        throw new IllegalArgumentException("client-credentials-scopes contains invalid scope: " + scope);
-                    });
-        });
-    }
-
-    private static boolean validScopeTokenCodePoint(int codePoint) {
-        /*
-         * Spec: RFC 6749, Appendix A.4 scope-token
-         * https://www.rfc-editor.org/rfc/rfc6749.html#appendix-A.4
-         * scope-token = 1*( %x21 / %x23-5B / %x5D-7E )
-         */
-        return codePoint == 0x21
-                || (codePoint >= 0x23 && codePoint <= 0x5B)
-                || (codePoint >= 0x5D && codePoint <= 0x7E);
     }
 
     static final class TenantResolutionDecorator
@@ -569,6 +537,7 @@ final class OidcConfigSupport {
             throw new IllegalArgumentException(
                     "issuer or well-known-uri must be configured when Authorization Code Flow is enabled");
         }
+        OidcScopeSupport.validateConfiguredScopes(authorizationCode.scopes(), "authorization-code.scopes");
         if (!authorizationCode.scopes().contains("openid")) {
             throw new IllegalArgumentException(
                     "openid scope must be configured when Authorization Code Flow is enabled");

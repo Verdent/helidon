@@ -500,7 +500,7 @@ When `authorization-code` is configured and not explicitly disabled:
 
 - `client-id` is required.
 - `authorization-code.redirection-endpoint-uri` defaults to `/oidc/callback`.
-- `authorization-code.scopes` must contain `openid`.
+- `authorization-code.scopes` must contain `openid` and each value must be one RFC 6749 `scope-token`.
 - `cookies.encryption-secret` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
@@ -1114,8 +1114,9 @@ Principal id and principal name claim paths are tried in order. Role and scope c
 configured paths and duplicate grant names are ignored. Dotted paths read nested objects, for example
 `realm_access.roles`.
 
-Principal id and principal name claims must be strings. Role and scope claims may be strings or string arrays. Scope
-strings are split on whitespace.
+Principal id and principal name claims must be strings. Role claims may be strings or string arrays. Standard `scope`
+claims must be space-delimited RFC 6749 scope strings using ASCII spaces. Custom scope claim paths, such as `scp`, may be
+strings or string arrays; array values are treated as individual scope tokens.
 
 For Authorization Code Flow local authentication, scope grants come from the Token Endpoint scope value stored in the
 local authentication result. ID Token scope claims are not promoted to Helidon scope grants.
@@ -1236,7 +1237,8 @@ Claim-path limitations:
 
 - Dots in claim paths mean nested JSON objects, for example `iam.groups`.
 - Literal claim names containing dots cannot be selected as one path segment.
-- Role and scope claim values must be strings or arrays of strings.
+- Role claim values must be strings or arrays of strings. Custom scope claim values must be strings or arrays of
+  RFC 6749 scope-token strings.
 - Object-array claims such as `groups: [{ "name": "mcp_admin" }]` are not flattened by subject mapping.
 
 ## Combining Browser Login And API Bearer Tokens
@@ -1457,7 +1459,7 @@ Authorization Code Flow options:
 | --- | --- |
 | `enabled` | Whether Authorization Code Flow initiation is enabled when `authorization-code` is configured. Defaults to `true`. |
 | `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
-| `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]` and must contain `openid`. |
+| `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 
@@ -1511,7 +1513,7 @@ OIDC outbound target options:
 | --- | --- |
 | `token-propagation-enabled` | Use Token Propagation for this outbound target. |
 | `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
-| `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Values are serialized as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
+| `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
 | `audience` | Expected `aud` claim for Token Propagation to this outbound target. |
 
 Token validation options:

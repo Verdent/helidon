@@ -219,6 +219,34 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void standardScopeClaimMustBeStringForJwtAccessToken() {
+        String token = signedToken(it -> it.addPayloadClaim("scope", List.of("resource.read")));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void standardScopeClaimRejectsNonSpaceDelimiterForJwtAccessToken() {
+        String token = signedToken(it -> it.addPayloadClaim("scope", "resource.read\tresource.write"));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void customScopeArrayValuesMustBeScopeTokensForJwtAccessToken() {
+        String token = signedToken(it -> it.addPayloadClaim("scp", List.of("resource.read resource.write")));
+
+        AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
+                .subjectMapping(mapping -> mapping.scopeClaimPaths(List.of("scp")))), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
     void idcsIamStyleSubjectMappingSupportsCustomClaimAbac() {
         String token = signedToken(it -> it
                 .preferredUsername("mcp-user")

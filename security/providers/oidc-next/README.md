@@ -520,17 +520,22 @@ authorization-code:
   pkce-method: S256
 ```
 
-Use `pkce-method: plain` only for compatibility with an authorization server that cannot process `S256`.
+Use `pkce-method: plain` only for compatibility with a legacy authorization server that cannot process `S256`.
+Public clients, where `token-endpoint-auth-method` is `NONE`, must use `S256`; the provider rejects `plain` in that
+mode.
 
 ```yaml
+client-secret: "${OIDC_CLIENT_SECRET}"
 authorization-code:
   scopes: [ "openid", "profile" ]
   pkce-method: plain
 ```
 
-PKCE can be disabled for compatibility with providers that cannot process it.
+PKCE can be disabled only for confidential-client compatibility with providers that cannot process it. Public clients,
+where `token-endpoint-auth-method` is `NONE`, must use PKCE; the provider rejects `pkce-required: false` in that mode.
 
 ```yaml
+client-secret: "${OIDC_CLIENT_SECRET}"
 authorization-code:
   scopes: [ "openid", "profile" ]
   pkce-required: false
@@ -1451,8 +1456,8 @@ Authorization Code Flow options:
 | `enabled` | Whether Authorization Code Flow initiation is enabled when `authorization-code` is configured. Defaults to `true`. |
 | `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]` and must contain `openid`. |
-| `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. |
-| `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. |
+| `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
+| `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 
 Endpoint policy options:
 

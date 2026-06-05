@@ -507,7 +507,8 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowCanUsePlainPkceMethod() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceMethod(OidcPkceMethod.PLAIN));
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceMethod(OidcPkceMethod.PLAIN),
+                                                          builder -> builder.clientSecret("client-secret"));
         OidcProvider provider = provider(tenant);
 
         AuthenticationResponse response = provider.authenticate(
@@ -526,7 +527,8 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowCanDisablePkce() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false));
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false),
+                                                          builder -> builder.clientSecret("client-secret"));
         OidcProvider provider = provider(tenant);
 
         AuthenticationResponse response = provider.authenticate(

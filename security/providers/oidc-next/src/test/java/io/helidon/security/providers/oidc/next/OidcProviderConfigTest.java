@@ -1231,6 +1231,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
+                .clientSecret("client-secret")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
@@ -1241,6 +1242,41 @@ class OidcProviderConfigTest {
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
         assertThat(authorizationCode.pkceRequired(), is(false));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsDisabledPkceForPublicClient() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.NONE)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .pkceRequired(false))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("pkce-required"));
+        assertThat(thrown.getMessage(), containsString("NONE"));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsPlainPkceForPublicClient() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.NONE)
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .pkceMethod(OidcPkceMethod.PLAIN))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("pkce-method"));
+        assertThat(thrown.getMessage(), containsString("S256"));
+        assertThat(thrown.getMessage(), containsString("NONE"));
     }
 
     @Test

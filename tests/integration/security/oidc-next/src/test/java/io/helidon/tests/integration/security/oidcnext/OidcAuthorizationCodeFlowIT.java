@@ -89,7 +89,7 @@ class OidcAuthorizationCodeFlowIT {
                             assertThat(callbackResponse.headers()
                                                .first(HeaderNames.LOCATION)
                                                .orElseThrow(),
-                                       is(rpBaseUri.resolve("/resource?tab=items").toString()));
+                                       is("/resource?tab=items"));
                         }
                     }
                 }

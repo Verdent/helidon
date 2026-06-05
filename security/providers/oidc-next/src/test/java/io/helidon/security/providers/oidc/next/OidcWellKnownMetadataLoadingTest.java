@@ -158,6 +158,28 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void introspectionTenantFailsWhenWellKnownMetadataIntrospectionEndpointHasFragment() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("introspection_endpoint", issuer.resolve("/introspect#fragment").toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret-value")
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
     void tenantFailsWhenWellKnownMetadataContentTypeIsNotJson() {
         wellKnownContentType = "text/plain";
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -488,6 +510,55 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().introspectionEndpointUri(), is(Optional.of(introspectionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void introspectionTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredAuthenticationMethod() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
+                .setStrings("introspection_endpoint_auth_methods_supported", List.of("private_key_jwt"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
+    void introspectionTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredSigningAlgorithm() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
+                .setStrings("introspection_endpoint_auth_methods_supported", List.of("client_secret_jwt"))
+                .setStrings("introspection_endpoint_auth_signing_alg_values_supported", List.of("HS512"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT))))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
     @Test

@@ -189,6 +189,17 @@ final class OidcTenantContextFactory {
                 || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
     }
 
+    private static boolean introspectionEndpointTlsRequired(OidcTenantConfig tenantConfig) {
+        return tenantConfig.endpoints().tlsRequired() || mutualTlsIntrospectionEndpointAuthentication(tenantConfig);
+    }
+
+    private static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTenantConfig tenantConfig) {
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.introspectionEndpointAuthenticationMethod(tenantConfig);
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+    }
+
     private static void validateJwtMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
         OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
                 .map(OidcProtectedResourceConfig::tokenValidation)
@@ -228,12 +239,57 @@ final class OidcTenantContextFactory {
         metadata.introspectionEndpointUri()
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateIntrospectionEndpointUri(
                                          uri,
-                                         tenantConfig.endpoints().tlsRequired()),
+                                         introspectionEndpointTlsRequired(tenantConfig)),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata introspection_endpoint must be present for "
                                                      + "introspection");
                                  });
+        validateIntrospectionAuthenticationMetadata(tenantConfig, metadata);
+    }
+
+    private static void validateIntrospectionAuthenticationMetadata(OidcTenantConfig tenantConfig,
+                                                                    OidcProviderMetadata metadata) {
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.introspectionEndpointAuthenticationMethod(tenantConfig);
+        metadata.introspectionEndpointAuthenticationMethodsSupported()
+                .filter(methods -> !methods.contains(method.wireName()))
+                .ifPresent(methods -> {
+                    /*
+                     * Spec: RFC 8414, 2 Authorization Server Metadata
+                     * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+                     * Quote: "`introspection_endpoint_auth_methods_supported` ... methods supported by this
+                     * introspection endpoint".
+                     */
+                    throw new IllegalStateException(
+                            "well-known metadata introspection_endpoint_auth_methods_supported must include "
+                                    + method.wireName());
+                });
+        if (method != OidcClientAuthenticationMethod.CLIENT_SECRET_JWT
+                && method != OidcClientAuthenticationMethod.PRIVATE_KEY_JWT) {
+            return;
+        }
+        OidcClientAuthenticationSupport clientAuthentication =
+                OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig);
+        String algorithm = clientAuthentication.clientAssertionAlgorithm().orElseThrow();
+        metadata.introspectionEndpointAuthenticationSigningAlgorithmsSupported()
+                .ifPresentOrElse(algorithms -> {
+                    if (!algorithms.contains(algorithm)) {
+                        throw new IllegalStateException(
+                                "well-known metadata introspection_endpoint_auth_signing_alg_values_supported must "
+                                        + "include " + algorithm);
+                    }
+                }, () -> {
+                    /*
+                     * Spec: RFC 8414, 2 Authorization Server Metadata
+                     * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+                     * Quotes: "`introspection_endpoint_auth_signing_alg_values_supported`";
+                     * "No default algorithms are implied if this entry is omitted".
+                     */
+                    throw new IllegalStateException(
+                            "well-known metadata introspection_endpoint_auth_signing_alg_values_supported must be "
+                                    + "present for " + method.wireName());
+                });
     }
 
     private static void validateUserInfoMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {

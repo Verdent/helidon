@@ -102,11 +102,13 @@ interface OidcTenantConfigOptionsBlueprint {
     Optional<Resource> idTokenDecryptionJwk();
 
     /**
-     * Token Endpoint client assertion configuration used by
-     * {@link OidcClientAuthenticationMethod#CLIENT_SECRET_JWT} and
+     * Client assertion configuration used by {@link OidcClientAuthenticationMethod#CLIENT_SECRET_JWT} and
      * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT}.
+     * <p>
+     * This is used for Token Endpoint authentication and as the default for Introspection Endpoint authentication unless
+     * {@code protected-resource.token-validation.introspection.client-assertion} overrides it.
      *
-     * @return Token Endpoint client assertion configuration
+     * @return client assertion configuration
      */
     @Option.Configured
     @Option.Default("create()")

@@ -150,6 +150,14 @@ final class OidcAuthenticationOrchestrator {
             return LocalAuthentication.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
                                                                  .toString()));
         }
+        try {
+            result.scope()
+                    .ifPresent(scope -> OidcScopeSupport.parseScopeString(scope, "local authentication scope"));
+        } catch (IllegalArgumentException e) {
+            LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has invalid scope", e);
+            return LocalAuthentication.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
+                                                                 .toString()));
+        }
         Optional<String> authenticationCookie = refreshResult.refreshed()
                 ? Optional.of(cookieStateHandler.createLocalAuthenticationResultCookie(result).toString())
                 : Optional.empty();

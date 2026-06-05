@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
@@ -400,6 +401,17 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void malformedScopeInSuccessfulTokenResponseFails() {
+        responseBody = validTokenResponse(it -> it.set("scope", "openid\tprofile")).toString();
+
+        OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(false));
+        assertThat(result.description(), is("Token Endpoint response is invalid"));
+    }
+
+    @Test
     void successfulTokenResponseRequiresJsonContentType() {
         responseContentType = "text/plain";
 
@@ -650,14 +662,19 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private static JsonObject validTokenResponse() {
-        return JsonObject.builder()
+        return validTokenResponse(it -> { });
+    }
+
+    private static JsonObject validTokenResponse(Consumer<JsonObject.Builder> customizer) {
+        JsonObject.Builder builder = JsonObject.builder()
                 .set("access_token", "access-token")
                 .set("token_type", "Bearer")
                 .set("id_token", "id-token")
                 .set("refresh_token", "refresh-token")
                 .set("expires_in", 3600)
-                .set("scope", "openid profile")
-                .build();
+                .set("scope", "openid profile");
+        customizer.accept(builder);
+        return builder.build();
     }
 
     private static JsonObject validRefreshResponse() {

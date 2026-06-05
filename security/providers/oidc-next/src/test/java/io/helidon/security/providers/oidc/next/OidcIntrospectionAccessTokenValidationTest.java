@@ -172,6 +172,35 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void standardScopeClaimMustBeStringForIntrospection() {
+        responseBody = validResponse(it -> it.setStrings("scope", List.of("resource.read"))).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void standardScopeClaimRejectsNonSpaceDelimiterForIntrospection() {
+        responseBody = validResponse(it -> it.set("scope", "resource.read\tresource.write")).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void customScopeArrayValuesMustBeScopeTokensForIntrospection() {
+        responseBody = validResponse(it -> it.setStrings("scp", List.of("resource.audit resource.export")))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping.scopeClaimPaths(List.of("scp")))), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
     void customPrincipalIdClaimIsRequiredForIntrospection() {
         AuthenticationResponse response = authenticate(provider(tenant -> tenant
                 .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("principal_id")))), OPAQUE_TOKEN);

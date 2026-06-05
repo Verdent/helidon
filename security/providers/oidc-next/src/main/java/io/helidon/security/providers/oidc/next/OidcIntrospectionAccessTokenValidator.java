@@ -135,6 +135,13 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 .isPresent()) {
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
+        try {
+            OidcScopeSupport.validateScopeClaims(validated.claims(),
+                                                 tenantContext.subjectMapping(),
+                                                 "introspection response");
+        } catch (IllegalArgumentException e) {
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid", e);
+        }
         return OidcValidationResult.success(validated);
     }
 

@@ -419,7 +419,7 @@ class OidcIntrospectionAccessTokenValidationTest {
                                   boolean audienceConfigured,
                                   Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it

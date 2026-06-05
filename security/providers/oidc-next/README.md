@@ -47,6 +47,10 @@ security:
         issuer: "https://issuer.example"
 ```
 
+The `issuer` value is the exact OpenID Connect Issuer Identifier string used for issuer comparisons. It must be a valid
+Issuer URL: absolute, HTTPS unless `endpoints.tls-required` is disabled, and without query or fragment. The provider
+parses it as a URI only for syntax validation, HTTPS checks, and well-known metadata URI derivation.
+
 For a single tenant, no `tenants` or `default-tenant` block is required.
 `protected-resource` and `authorization-code` are not configured by default. Adding either block enables that part of the
 provider unless the block explicitly sets `enabled: false`.
@@ -114,7 +118,7 @@ Create a JWT Protected Resource provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .endpoints(endpoints -> endpoints
                 .jwksUri(URI.create("https://issuer.example/jwks")))
         .protectedResource(protectedResource -> protectedResource
@@ -131,7 +135,7 @@ Configure JWK Set reload policy programmatically:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .endpoints(endpoints -> endpoints
                 .jwksUri(URI.create("https://issuer.example/jwks")))
         .jwkSet(jwkSet -> jwkSet
@@ -149,7 +153,7 @@ Create an introspection Protected Resource provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .endpoints(endpoints -> endpoints
@@ -167,7 +171,7 @@ Create an Authorization Code Flow provider:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
@@ -187,7 +191,7 @@ installed. This registration form also applies the configured `socket`:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .authorizationCode(authorizationCode -> authorizationCode
@@ -241,7 +245,7 @@ Programmatic subject mapping uses the same claim path names as YAML:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .endpoints(endpoints -> endpoints
                 .jwksUri(URI.create("https://issuer.example/jwks")))
         .protectedResource(protectedResource -> protectedResource
@@ -291,7 +295,7 @@ Programmatic WebClient configuration:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .webClient(WebClientConfig.builder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .readTimeout(Duration.ofSeconds(10))
@@ -328,13 +332,14 @@ endpoints:
 If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
 
-Well-known metadata is used by Authorization Code Flow when provider endpoint URIs are missing, by Client Credentials
-Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT validation when
-`endpoints.jwks-uri` is not configured, and by Protected Resource introspection when
+Well-known metadata is used by Authorization Code Flow when the issuer, Authorization Endpoint, or Token Endpoint is
+missing, by Client Credentials Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT
+validation when `endpoints.jwks-uri` is not configured, and by Protected Resource introspection when
 `endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
-`userinfo_endpoint`, `end_session_endpoint`, and `mtls_endpoint_aliases.token_endpoint`.
+`userinfo_endpoint`, `end_session_endpoint`, `mtls_endpoint_aliases.token_endpoint`, and
+`authorization_response_iss_parameter_supported`.
 For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
 the Token Endpoint URI itself is loaded from well-known metadata. An explicit `endpoints.token-endpoint-uri` is treated
 as the configured Token Endpoint and is not replaced by the alias.
@@ -494,6 +499,10 @@ When `authorization-code` is configured and not explicitly disabled:
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
 
+Authorization Response `iss` validation is automatic. If the callback contains `iss`, the provider requires an exact
+string match with the issuer stored in the protected Authentication Request state. If well-known metadata advertises
+`authorization_response_iss_parameter_supported: true`, callbacks without `iss` are rejected.
+
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure
 `authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
@@ -558,7 +567,7 @@ Programmatic configuration:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
         .idTokenDecryptionJwk(Resource.create("rp-id-token-decryption-jwks.json"))
@@ -632,7 +641,7 @@ Programmatic configuration:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId("client-id")
         .clientSecret("client-secret")
         .endpoints(endpoints -> endpoints
@@ -721,7 +730,7 @@ Programmatic configuration:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId("client-id")
         .clientSecret("client-secret")
         .endpoints(endpoints -> endpoints
@@ -874,7 +883,7 @@ Programmatic `private_key_jwt` configuration:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
         .clientAssertion(clientAssertion -> clientAssertion
@@ -1003,7 +1012,7 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .build();
 
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .outboundTargets(List.of(ordersApi))
         .buildPrototype();
 ```
@@ -1195,7 +1204,7 @@ Programmatic subject mapping uses the same claim path names:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
-        .issuer(URI.create("https://issuer.example"))
+        .issuer("https://issuer.example")
         .clientId("client-id")
         .clientSecret("client-secret")
         .authorizationCode(authorizationCode -> authorizationCode
@@ -1395,7 +1404,7 @@ multi-tenant applications:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether this tenant is enabled. Defaults to `true`. |
-| `issuer` | Expected Issuer Identifier. |
+| `issuer` | Expected Issuer Identifier string. Issuer identity comparisons use this exact string value. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |

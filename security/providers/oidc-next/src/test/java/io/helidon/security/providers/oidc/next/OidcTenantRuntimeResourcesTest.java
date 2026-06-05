@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.util.Optional;
 
+import io.helidon.json.JsonObject;
 import io.helidon.security.SecurityEnvironment;
 
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class OidcTenantRuntimeResourcesTest {
     @Test
     void tenantContextContainsRuntimeResourcesFromStaticProviderMetadata() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
-                                                           .issuer(ISSUER)
+                                                           .issuer(ISSUER.toString())
                                                            .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI)
                                                                    .authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                                                                    .tokenEndpointUri(TOKEN_ENDPOINT_URI)
@@ -62,7 +63,7 @@ class OidcTenantRuntimeResourcesTest {
                                                                    .endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
                                                            .buildPrototype());
 
-        assertThat(context.metadata().issuer(), is(Optional.of(ISSUER)));
+        assertThat(context.metadata().issuer(), is(Optional.of(ISSUER.toString())));
         assertThat(context.metadata().wellKnownUri(), is(Optional.of(WELL_KNOWN_URI)));
         assertThat(context.metadata().authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
         assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(TOKEN_ENDPOINT_URI)));
@@ -76,7 +77,7 @@ class OidcTenantRuntimeResourcesTest {
 
     @Test
     void staticProviderMetadataOverridesWellKnownMetadata() {
-        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
+        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                                                           Optional.of(WELL_KNOWN_URI),
                                                                           Optional.of(AUTHORIZATION_ENDPOINT_URI),
                                                                           Optional.empty(),
@@ -85,7 +86,7 @@ class OidcTenantRuntimeResourcesTest {
                                                                           Optional.of(USER_INFO_ENDPOINT_URI),
                                                                           Optional.of(END_SESSION_ENDPOINT_URI));
         OidcProviderMetadata wellKnownMetadata =
-                OidcProviderMetadata.create(Optional.of(ISSUER),
+                OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                             Optional.empty(),
                                             Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
                                             Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
@@ -96,7 +97,7 @@ class OidcTenantRuntimeResourcesTest {
 
         OidcProviderMetadata merged = staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
 
-        assertThat(merged.issuer(), is(Optional.of(ISSUER)));
+        assertThat(merged.issuer(), is(Optional.of(ISSUER.toString())));
         assertThat(merged.wellKnownUri(), is(Optional.of(WELL_KNOWN_URI)));
         assertThat(merged.authorizationEndpointUri(), is(Optional.of(AUTHORIZATION_ENDPOINT_URI)));
         assertThat(merged.tokenEndpointUri(), is(Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI)));
@@ -108,7 +109,7 @@ class OidcTenantRuntimeResourcesTest {
 
     @Test
     void wellKnownMetadataIssuerMustMatchStaticIssuer() {
-        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
+        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                                                           Optional.of(WELL_KNOWN_URI),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
@@ -117,7 +118,7 @@ class OidcTenantRuntimeResourcesTest {
                                                                           Optional.empty(),
                                                                           Optional.empty());
         OidcProviderMetadata wellKnownMetadata =
-                OidcProviderMetadata.create(Optional.of(URI.create("https://other.example")),
+                OidcProviderMetadata.create(Optional.of("https://other.example"),
                                             Optional.empty(),
                                             Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
                                             Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
@@ -133,8 +134,44 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
+    void wellKnownMetadataIssuerMustMatchStaticIssuerExactly() {
+        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
+                                                                          Optional.of(WELL_KNOWN_URI),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty());
+        OidcProviderMetadata wellKnownMetadata =
+                OidcProviderMetadata.create(Optional.of("https://ISSUER.example"),
+                                            Optional.empty(),
+                                            Optional.of(WELL_KNOWN_METADATA_AUTHORIZATION_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_TOKEN_ENDPOINT_URI),
+                                            Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI),
+                                            Optional.empty(),
+                                            Optional.empty(),
+                                            Optional.empty());
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> staticMetadata.mergeWellKnownMetadata(wellKnownMetadata));
+
+        assertThat(thrown.getMessage(), is("well-known metadata issuer must match configured issuer"));
+    }
+
+    @Test
+    void wellKnownMetadataParsesAuthorizationResponseIssuerSupport() {
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("authorization_response_iss_parameter_supported", true)
+                .build());
+
+        assertThat(metadata.authorizationResponseIssuerParameterSupported(), is(true));
+    }
+
+    @Test
     void wellKnownMetadataIssuerIsRequired() {
-        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER),
+        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                                                           Optional.of(WELL_KNOWN_URI),
                                                                           Optional.empty(),
                                                                           Optional.empty(),
@@ -161,7 +198,7 @@ class OidcTenantRuntimeResourcesTest {
     @Test
     void wellKnownUriIsRetainedWhenJwkSetUriIsNotStatic() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
-                                                           .issuer(ISSUER)
+                                                           .issuer(ISSUER.toString())
                                                            .endpoints(it -> it.wellKnownUri(WELL_KNOWN_URI))
                                                            .buildPrototype());
 
@@ -175,10 +212,10 @@ class OidcTenantRuntimeResourcesTest {
     @Test
     void wellKnownUriDefaultsFromIssuer() {
         OidcTenantContext context = tenantContext(OidcTenantConfig.builder()
-                                                           .issuer(PATH_ISSUER)
+                                                           .issuer(PATH_ISSUER.toString())
                                                            .buildPrototype());
 
-        assertThat(context.metadata().issuer(), is(Optional.of(PATH_ISSUER)));
+        assertThat(context.metadata().issuer(), is(Optional.of(PATH_ISSUER.toString())));
         assertThat(context.metadata().wellKnownUri(), is(Optional.of(PATH_ISSUER_WELL_KNOWN_URI)));
     }
 

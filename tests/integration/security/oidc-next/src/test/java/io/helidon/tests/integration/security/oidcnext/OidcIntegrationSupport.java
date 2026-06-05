@@ -71,7 +71,7 @@ final class OidcIntegrationSupport {
                                                                       authorizationCodeCustomizer,
                                                               Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
-                .issuer(idp.issuer())
+                .issuer(idp.issuer().toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(endpoints -> endpoints
@@ -91,6 +91,29 @@ final class OidcIntegrationSupport {
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())
+                .buildPrototype();
+    }
+
+    static OidcProviderConfig authorizationCodeProviderConfigFromWellKnown(
+            TestOidcServer idp,
+            Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(idp.issuer().toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints
+                        .wellKnownUri(idp.metadataUri())
+                        .tlsRequired(false))
+                .authorizationCode(authorizationCode -> {
+                    authorizationCode.scopes(List.of("openid", "profile"));
+                    authorizationCodeCustomizer.accept(authorizationCode);
+                })
+                .userInfo(userInfo -> {
+                })
+                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("default", tenant)
                 .buildPrototype();
     }
 
@@ -114,7 +137,7 @@ final class OidcIntegrationSupport {
                                                               OidcTokenValidationMethod method,
                                                               Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
-                .issuer(idp.issuer())
+                .issuer(idp.issuer().toString())
                 .clientId(clientId)
                 .endpoints(endpoints -> endpoints
                         .jwksUri(idp.jwksUri())

@@ -22,7 +22,7 @@ import java.util.Optional;
 import io.helidon.json.JsonObject;
 
 final class OidcProviderMetadata {
-    private final Optional<URI> issuer;
+    private final Optional<String> issuer;
     private final Optional<URI> wellKnownUri;
     private final Optional<URI> authorizationEndpointUri;
     private final Optional<URI> tokenEndpointUri;
@@ -31,8 +31,9 @@ final class OidcProviderMetadata {
     private final Optional<URI> introspectionEndpointUri;
     private final Optional<URI> userInfoEndpointUri;
     private final Optional<URI> endSessionEndpointUri;
+    private final boolean authorizationResponseIssuerParameterSupported;
 
-    private OidcProviderMetadata(Optional<URI> issuer,
+    private OidcProviderMetadata(Optional<String> issuer,
                                  Optional<URI> wellKnownUri,
                                  Optional<URI> authorizationEndpointUri,
                                  Optional<URI> tokenEndpointUri,
@@ -40,7 +41,8 @@ final class OidcProviderMetadata {
                                  Optional<URI> jwkSetUri,
                                  Optional<URI> introspectionEndpointUri,
                                  Optional<URI> userInfoEndpointUri,
-                                 Optional<URI> endSessionEndpointUri) {
+                                 Optional<URI> endSessionEndpointUri,
+                                 boolean authorizationResponseIssuerParameterSupported) {
         this.issuer = issuer;
         this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
@@ -50,6 +52,7 @@ final class OidcProviderMetadata {
         this.introspectionEndpointUri = introspectionEndpointUri;
         this.userInfoEndpointUri = userInfoEndpointUri;
         this.endSessionEndpointUri = endSessionEndpointUri;
+        this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
     }
 
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
@@ -62,10 +65,11 @@ final class OidcProviderMetadata {
                       endpoints.jwksUri(),
                       endpoints.introspectionEndpointUri(),
                       endpoints.userInfoEndpointUri(),
-                      endpoints.endSessionEndpointUri());
+                      endpoints.endSessionEndpointUri(),
+                      false);
     }
 
-    static OidcProviderMetadata create(Optional<URI> issuer,
+    static OidcProviderMetadata create(Optional<String> issuer,
                                        Optional<URI> wellKnownUri,
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
@@ -81,10 +85,11 @@ final class OidcProviderMetadata {
                       jwkSetUri,
                       introspectionEndpointUri,
                       userInfoEndpointUri,
-                      endSessionEndpointUri);
+                      endSessionEndpointUri,
+                      false);
     }
 
-    static OidcProviderMetadata create(Optional<URI> issuer,
+    static OidcProviderMetadata create(Optional<String> issuer,
                                        Optional<URI> wellKnownUri,
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
@@ -92,7 +97,8 @@ final class OidcProviderMetadata {
                                        Optional<URI> jwkSetUri,
                                        Optional<URI> introspectionEndpointUri,
                                        Optional<URI> userInfoEndpointUri,
-                                       Optional<URI> endSessionEndpointUri) {
+                                       Optional<URI> endSessionEndpointUri,
+                                       boolean authorizationResponseIssuerParameterSupported) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
@@ -101,11 +107,12 @@ final class OidcProviderMetadata {
                                         jwkSetUri,
                                         introspectionEndpointUri,
                                         userInfoEndpointUri,
-                                        endSessionEndpointUri);
+                                        endSessionEndpointUri,
+                                        authorizationResponseIssuerParameterSupported);
     }
 
     static OidcProviderMetadata fromWellKnownMetadataJson(JsonObject json) {
-        return create(uriValue(json, "issuer"),
+        return create(json.stringValue("issuer"),
                       Optional.empty(),
                       uriValue(json, "authorization_endpoint"),
                       uriValue(json, "token_endpoint"),
@@ -113,7 +120,9 @@ final class OidcProviderMetadata {
                       uriValue(json, "jwks_uri"),
                       uriValue(json, "introspection_endpoint"),
                       uriValue(json, "userinfo_endpoint"),
-                      uriValue(json, "end_session_endpoint"));
+                      uriValue(json, "end_session_endpoint"),
+                      json.booleanValue("authorization_response_iss_parameter_supported")
+                              .orElse(false));
     }
 
     OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnownMetadata) {
@@ -128,11 +137,17 @@ final class OidcProviderMetadata {
                       jwkSetUri.or(wellKnownMetadata::jwkSetUri),
                       introspectionEndpointUri.or(wellKnownMetadata::introspectionEndpointUri),
                       userInfoEndpointUri.or(wellKnownMetadata::userInfoEndpointUri),
-                      endSessionEndpointUri.or(wellKnownMetadata::endSessionEndpointUri));
+                      endSessionEndpointUri.or(wellKnownMetadata::endSessionEndpointUri),
+                      authorizationResponseIssuerParameterSupported
+                              || wellKnownMetadata.authorizationResponseIssuerParameterSupported());
     }
 
-    Optional<URI> issuer() {
+    Optional<String> issuer() {
         return issuer;
+    }
+
+    Optional<URI> issuerUri() {
+        return issuer.map(URI::create);
     }
 
     Optional<URI> wellKnownUri() {
@@ -167,7 +182,11 @@ final class OidcProviderMetadata {
         return endSessionEndpointUri;
     }
 
-    static Optional<URI> wellKnownUri(Optional<URI> issuer, OidcEndpointConfig endpoints) {
+    boolean authorizationResponseIssuerParameterSupported() {
+        return authorizationResponseIssuerParameterSupported;
+    }
+
+    static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
@@ -181,7 +200,7 @@ final class OidcProviderMetadata {
         if (issuer.isEmpty()) {
             return Optional.empty();
         }
-        String issuerValue = issuer.orElseThrow().toString();
+        String issuerValue = issuer.orElseThrow();
         while (issuerValue.endsWith("/")) {
             issuerValue = issuerValue.substring(0, issuerValue.length() - 1);
         }
@@ -208,8 +227,12 @@ final class OidcProviderMetadata {
          * Spec: OpenID Connect Discovery 1.0, 4.3 OpenID Provider Configuration Validation
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation
          * Quotes: "`issuer` REQUIRED"; "Issuer value returned MUST be identical to the Issuer URL".
+         *
+         * Spec: OpenID Connect Discovery 1.0, 5 String Operations
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#StringOps
+         * Quote: "Unicode code point to code point equality comparison".
          */
-        URI wellKnownMetadataIssuer = wellKnownMetadata.issuer()
+        String wellKnownMetadataIssuer = wellKnownMetadata.issuer()
                 .orElseThrow(() -> new IllegalArgumentException("well-known metadata issuer must be present"));
         issuer.filter(configuredIssuer -> !configuredIssuer.equals(wellKnownMetadataIssuer))
                 .ifPresent(ignored -> {

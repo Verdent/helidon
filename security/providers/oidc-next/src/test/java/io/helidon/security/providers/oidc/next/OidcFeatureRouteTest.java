@@ -228,6 +228,7 @@ class OidcFeatureRouteTest {
                                                                                          "stored-state",
                                                                                          "nonce",
                                                                                          "pkce-verifier",
+                                                                                         ISSUER.toString(),
                                                                                          serverUri.resolve("resource"),
                                                                                          callbackUri,
                                                                                          now.minusSeconds(1),
@@ -1220,7 +1221,7 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfig() {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1278,7 +1279,7 @@ class OidcFeatureRouteTest {
                                                                     Consumer<OidcEndSessionConfig.Builder> endSession,
                                                                     Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1298,7 +1299,7 @@ class OidcFeatureRouteTest {
             URI issuer,
             Consumer<OidcEndSessionConfig.Builder> endSession) {
         return OidcTenantConfig.builder()
-                .issuer(issuer)
+                .issuer(issuer.toString())
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.tlsRequired(false))
                 .logout(logout -> logout.endSession(endSession))
@@ -1320,7 +1321,7 @@ class OidcFeatureRouteTest {
                                                           String cookieSecret,
                                                           Consumer<OidcLogoutConfig.Builder> logout) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1341,7 +1342,7 @@ class OidcFeatureRouteTest {
     private static OidcTenantConfig tenantConfig(URI openIdProviderUri,
                                                 Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCode) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1359,7 +1360,7 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER)
+                .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1466,6 +1467,7 @@ class OidcFeatureRouteTest {
                                                                                          STATE,
                                                                                          NONCE,
                                                                                          PKCE_VERIFIER,
+                                                                                         ISSUER.toString(),
                                                                                          originalUri,
                                                                                          callbackUri,
                                                                                          now.minusSeconds(1),

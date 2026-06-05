@@ -40,6 +40,9 @@ interface OidcTokenValidationConfigBlueprint {
 
     /**
      * Access-token audience expected when audience validation is required.
+     * <p>
+     * For JWT access-token validation, this should identify the current resource server. RFC 9068 requires JWT access
+     * tokens to contain {@code aud}, and requires the resource server to validate that {@code aud} identifies itself.
      *
      * @return expected audience
      */
@@ -48,6 +51,10 @@ interface OidcTokenValidationConfigBlueprint {
 
     /**
      * Whether access-token audience validation is enabled.
+     * <p>
+     * Defaults to {@code true}. For JWT access-token validation, disabling this option relaxes RFC 9068 validation and
+     * should be used only for testing, local development, or legacy non-RFC9068 access tokens. For introspection,
+     * disabling this option can be useful when the Authorization Server omits {@code aud} from introspection responses.
      *
      * @return whether access-token audience validation is enabled
      */

@@ -95,6 +95,7 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.idToken(), is(idToken));
         assertThat(idToken.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(idToken.trustedAdditionalAudiences().isEmpty(), is(true));
         assertThat(idToken.clockSkew(), is(Duration.ofMinutes(1)));
         assertThat(idToken.decryptionJwk().isEmpty(), is(true));
         assertThat(idToken.encryptionRequired(), is(false));
@@ -229,6 +230,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.id-token.decryption-jwk.resource-path",
                                   "oidc-next-sign-jwk.json"),
                         Map.entry("tenants.default.id-token.clock-skew", "PT2M"),
+                        Map.entry("tenants.default.id-token.trusted-additional-audiences.0", "api://shared"),
                         Map.entry("tenants.default.client-assertion.algorithm", "RS256"),
                         Map.entry("tenants.default.client-assertion.key-id", "sign-rsa"),
                         Map.entry("tenants.default.client-assertion.jwk.resource-path", "oidc-next-sign-jwk.json"),
@@ -290,6 +292,7 @@ class OidcProviderConfigTest {
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
         assertThat(tenant.idToken().decryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
         assertThat(tenant.idToken().clockSkew(), is(Duration.ofMinutes(2)));
+        assertThat(tenant.idToken().trustedAdditionalAudiences(), is(List.of("api://shared")));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
         assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));
@@ -784,6 +787,22 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-algorithms"));
         assertThat(thrown.getMessage(), containsString("HS"));
+    }
+
+    @Test
+    void idTokenTrustedAdditionalAudiencesRejectUnsafeValues() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
+                .idToken(it -> it.trustedAdditionalAudiences(List.of("api://shared", " padded ")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("id-token.trusted-additional-audiences"));
     }
 
     @Test

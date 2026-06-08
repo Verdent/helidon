@@ -1189,6 +1189,9 @@ For Authorization Code Flow local authentication, the default principal id comes
 Connect defines `sub` as unique within an issuer, so applications that accept more than one issuer should consider both
 the preserved `iss` and `sub` principal attributes when they need a globally stable user key.
 
+ID Token validation requires `sub` to be non-blank ASCII and no longer than 255 characters. This is an ID Token protocol
+check; protected-resource access tokens and introspection responses keep using the configured subject mapping rules.
+
 Example for a Keycloak-style token:
 
 ```yaml

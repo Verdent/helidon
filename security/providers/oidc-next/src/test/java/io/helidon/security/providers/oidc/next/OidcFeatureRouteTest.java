@@ -81,6 +81,7 @@ class OidcFeatureRouteTest {
     private static final String PKCE_VERIFIER = "pkce-verifier";
 
     private static JwkKeys signKeys;
+    private static JwkKeys encryptKeys;
     private static String verifyJwkSet;
     private static String tokenEndpointResponseBody;
     private static String userInfoEndpointResponseBody;
@@ -92,6 +93,9 @@ class OidcFeatureRouteTest {
     static void initClass() {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+        encryptKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
         verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
     }
@@ -853,9 +857,9 @@ class OidcFeatureRouteTest {
     @Test
     void logoutEndpointRouteUsesEncryptedIdTokenHintWithClientId() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(
-                endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
-                builder -> builder.idToken(idToken -> idToken
-                        .decryptionJwk(Resource.create("oidc-next-sign-jwk.json"))));
+                  endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
+                  builder -> builder.idToken(idToken -> idToken
+                          .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             String signedIdToken = signedIdToken(NONCE);
@@ -1560,7 +1564,7 @@ class OidcFeatureRouteTest {
 
     private static String encryptedIdToken(String signedIdToken) {
         return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
-                .jwks(signKeys, "sign-rsa")
+                .jwks(encryptKeys, "encrypt-rsa")
                 .build()
                 .token();
     }

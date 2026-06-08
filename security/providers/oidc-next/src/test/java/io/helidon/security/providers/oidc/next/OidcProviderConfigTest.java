@@ -95,6 +95,8 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.enabled(), is(true));
         assertThat(tenantConfig.idToken(), is(idToken));
         assertThat(idToken.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(idToken.allowedEncryptionAlgorithms(), is(List.of("RSA-OAEP-256", "RSA-OAEP")));
+        assertThat(idToken.allowedContentEncryptionAlgorithms(), is(List.of("A256GCM", "A128CBC-HS256")));
         assertThat(idToken.trustedAdditionalAudiences().isEmpty(), is(true));
         assertThat(idToken.clockSkew(), is(Duration.ofMinutes(1)));
         assertThat(idToken.decryptionJwk().isEmpty(), is(true));
@@ -229,6 +231,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.token-endpoint-auth-method", "PRIVATE_KEY_JWT"),
                         Map.entry("tenants.default.id-token.decryption-jwk.resource-path",
                                   "oidc-next-sign-jwk.json"),
+                        Map.entry("tenants.default.id-token.allowed-encryption-algorithms.0", "RSA-OAEP"),
+                        Map.entry("tenants.default.id-token.allowed-content-encryption-algorithms.0", "A256GCM"),
                         Map.entry("tenants.default.id-token.clock-skew", "PT2M"),
                         Map.entry("tenants.default.id-token.trusted-additional-audiences.0", "api://shared"),
                         Map.entry("tenants.default.client-assertion.algorithm", "RS256"),
@@ -291,6 +295,8 @@ class OidcProviderConfigTest {
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
         assertThat(tenant.idToken().decryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(tenant.idToken().allowedEncryptionAlgorithms(), is(List.of("RSA-OAEP")));
+        assertThat(tenant.idToken().allowedContentEncryptionAlgorithms(), is(List.of("A256GCM")));
         assertThat(tenant.idToken().clockSkew(), is(Duration.ofMinutes(2)));
         assertThat(tenant.idToken().trustedAdditionalAudiences(), is(List.of("api://shared")));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
@@ -803,6 +809,51 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.trusted-additional-audiences"));
+    }
+
+    @Test
+    void idTokenEncryptionAlgorithmsRejectUnsafeValues() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
+                .idToken(it -> it.allowedEncryptionAlgorithms(List.of("RSA-OAEP", " padded ")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("id-token.allowed-encryption-algorithms"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
+                .idToken(it -> it.allowedContentEncryptionAlgorithms(List.of("A256GCM", " ")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("id-token.allowed-content-encryption-algorithms"));
+    }
+
+    @Test
+    void idTokenEncryptionAlgorithmsCanExplicitlyAllowRsa15() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(OidcAuthorizationCodeConfig.create())
+                .idToken(it -> it.allowedEncryptionAlgorithms(List.of("RSA1_5")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        assertThat(tenant.idToken().allowedEncryptionAlgorithms(), is(List.of("RSA1_5")));
     }
 
     @Test
@@ -2099,6 +2150,8 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("tls-required"));
         assertThat(metadata, containsString("token-endpoint-auth-method"));
         assertThat(metadata, containsString("id-token"));
+        assertThat(metadata, containsString("allowed-encryption-algorithms"));
+        assertThat(metadata, containsString("allowed-content-encryption-algorithms"));
         assertThat(metadata, containsString("TLS_CLIENT_AUTH"));
         assertThat(metadata, containsString("SELF_SIGNED_TLS_CLIENT_AUTH"));
         assertThat(metadata, containsString("private key plus certificate chain"));

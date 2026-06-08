@@ -17,10 +17,13 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.security.jwt.EncryptedJwt;
@@ -49,6 +52,7 @@ class OidcIdTokenValidatorTest {
     private static final String COOKIE_SECRET = "test-cookie-secret";
 
     private static JwkKeys signKeys;
+    private static JwkKeys encryptKeys;
     private static URI jwksUri;
 
     private final OidcIdTokenValidator validator = OidcIdTokenValidator.create();
@@ -57,6 +61,9 @@ class OidcIdTokenValidatorTest {
     static void initClass() throws Exception {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+        encryptKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
         jwksUri = OidcIdTokenValidatorTest.class.getClassLoader()
                 .getResource("oidc-next-verify-jwk.json")
@@ -81,7 +88,7 @@ class OidcIdTokenValidatorTest {
         String encryptedIdToken = encryptedIdToken(signedIdToken);
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(idToken -> idToken
-                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -96,7 +103,7 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
         var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -111,6 +118,89 @@ class OidcIdTokenValidatorTest {
         var result = validate(encryptedIdToken);
 
         assertFailure(result, "ID Token decryption keys are not configured");
+    }
+
+    @Test
+    void encryptedIdTokenWithoutNestedJwtContentTypeIsRejected() {
+        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })), "cty", "JWT");
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+
+        assertFailure(result, "Encrypted ID Token must be a Nested JWT with cty=JWT");
+    }
+
+    @Test
+    void encryptedIdTokenWithDisallowedEncryptionAlgorithmIsRejected() {
+        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256")))));
+
+        assertFailure(result, "Encrypted ID Token JWE alg header is not allowed: RSA-OAEP");
+    }
+
+    @Test
+    void encryptedIdTokenWithDisallowedContentEncryptionAlgorithmIsRejected() {
+        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                .allowedContentEncryptionAlgorithms(List.of("A128CBC-HS256")))));
+
+        assertFailure(result, "Encrypted ID Token JWE enc header is not allowed: A256GCM");
+    }
+
+    @Test
+    void encryptedIdTokenRequiresKidWhenMultipleDecryptionKeysExist() {
+        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+                                                        "kid",
+                                                        "encrypt-rsa");
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+
+        assertFailure(result, "Encrypted ID Token JWE kid is required when multiple decryption keys exist");
+    }
+
+    @Test
+    void encryptedIdTokenRejectsUnknownDecryptionKid() {
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+                                                        "kid",
+                                                        "encrypt-rsa",
+                                                        "unknown-rsa");
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+
+        assertFailure(result, "ID Token decryption key is not configured for kid: unknown-rsa");
+    }
+
+    @Test
+    void encryptedIdTokenRejectsDecryptionKeyWithSigningUse() {
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+                                                        "kid",
+                                                        "encrypt-rsa",
+                                                        "sign-rsa");
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+
+        assertFailure(result, "ID Token decryption JWK use must be enc");
+    }
+
+    @Test
+    void encryptedIdTokenRejectsDecryptionKeyWithoutDecryptOperation() {
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+                                                        "kid",
+                                                        "encrypt-rsa",
+                                                        "sign-oct");
+
+        var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
+                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+
+        assertFailure(result, "ID Token decryption JWK key_ops must allow unwrapKey or decrypt");
     }
 
     @Test
@@ -351,9 +441,40 @@ class OidcIdTokenValidatorTest {
 
     private static String encryptedIdToken(String signedIdToken) {
         return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
-                .jwks(signKeys, "sign-rsa")
+                .jwks(encryptKeys, "encrypt-rsa")
                 .build()
                 .token();
+    }
+
+    private static String withoutJweHeaderClaim(String token, String name, String value) {
+        String claim = "\"" + name + "\":\"" + value + "\"";
+        return withJweHeader(token, json -> json
+                .replace("," + claim, "")
+                .replace(claim + ",", "")
+                .replace(claim, ""));
+    }
+
+    private static String replaceJweHeaderClaim(String token, String name, String from, String to) {
+        String claim = "\"" + name + "\":\"" + from + "\"";
+        String replacement = "\"" + name + "\":\"" + to + "\"";
+        return withJweHeader(token, json -> {
+            if (!json.contains(claim)) {
+                throw new AssertionError("JWE header did not contain expected claim: " + claim);
+            }
+            return json.replace(claim, replacement);
+        });
+    }
+
+    private static String withJweHeader(String token, UnaryOperator<String> customizer) {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 5) {
+            throw new AssertionError("Expected JWE compact serialization");
+        }
+        String json = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
+        parts[0] = Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(customizer.apply(json).getBytes(StandardCharsets.UTF_8));
+        return String.join(".", parts);
     }
 
     private static OidcAuthenticationRequestState authenticationRequestState() {

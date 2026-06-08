@@ -340,6 +340,8 @@ validation when `endpoints.jwks-uri` is not configured, and by Protected Resourc
 `endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
+`response_types_supported`, `grant_types_supported`, `code_challenge_methods_supported`,
+`token_endpoint_auth_methods_supported`, `token_endpoint_auth_signing_alg_values_supported`,
 `introspection_endpoint_auth_methods_supported`, `introspection_endpoint_auth_signing_alg_values_supported`,
 `id_token_signing_alg_values_supported`, `id_token_encryption_alg_values_supported`,
 `id_token_encryption_enc_values_supported`, `userinfo_endpoint`, `end_session_endpoint`,
@@ -353,6 +355,13 @@ well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatur
 When present in well-known metadata, `id_token_encryption_alg_values_supported` and
 `id_token_encryption_enc_values_supported` must include at least one algorithm allowed by the local `id-token` JWE
 policy.
+When Authorization Code Flow loads well-known metadata, the metadata must advertise `response_types_supported`
+containing `code`. If `grant_types_supported` is present, it must contain `authorization_code`; if it is omitted, the
+Discovery default includes `authorization_code`. When PKCE is enabled, `code_challenge_methods_supported` must be present
+and include the configured PKCE method. The provider also validates the configured Token Endpoint authentication method
+against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
+`client_secret_basic`. For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
+`token_endpoint_auth_signing_alg_values_supported` with the configured assertion signing algorithm.
 
 `authorization-code.redirection-endpoint-uri` is not under `endpoints` because it is the client callback endpoint, not
 an OpenID Provider endpoint. It defaults to `/oidc/callback`; local paths are resolved from the incoming request origin
@@ -554,6 +563,8 @@ The default local callback path is resolved from the incoming request origin bef
 `authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
 
 PKCE is enabled by default and uses `S256`.
+When Authorization Code Flow loads well-known metadata, `code_challenge_methods_supported` must include the configured
+method. RFC 8414 says that when this metadata is omitted, the authorization server does not support PKCE.
 
 ```yaml
 authorization-code:
@@ -929,6 +940,10 @@ security:
 For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if the Authorization Server expects a
 `kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required, `algorithm` must match the selected JWK
 algorithm, and `key-id` is required when the configured JWK Set contains more than one key.
+When well-known metadata is loaded, the configured method must be listed in `token_endpoint_auth_methods_supported`.
+If the metadata omits that entry, the Discovery default is `client_secret_basic`. JWT client authentication additionally
+requires `token_endpoint_auth_signing_alg_values_supported` to include the assertion signing algorithm; no default
+assertion signing algorithms are assumed.
 
 The same authentication methods can be used for Token Introspection, but introspection is configured under
 `protected-resource.token-validation.introspection`. If `introspection.client-assertion` is omitted, the tenant
@@ -1064,6 +1079,10 @@ requires `client-assertion.jwk`; mutual TLS methods require enabled tenant `webc
 certificate chain, an SSL context, or a custom TLS manager. The provider relies on Helidon WebClient TLS for the
 certificate handshake, and the Token Endpoint must use HTTPS. `token-endpoint-auth-method: NONE` is rejected for this
 grant.
+When Client Credentials Grant loads well-known metadata, `grant_types_supported` must contain `client_credentials`.
+If `grant_types_supported` is omitted, the RFC 8414 default does not include `client_credentials`, so the provider treats
+the grant as unsupported. The configured Token Endpoint authentication method is validated the same way as for
+Authorization Code Flow.
 
 If any provider `outbound` target enables Client Credentials Grant directly, each enabled tenant must meet these Client
 Credentials prerequisites because the resolved tenant supplies the Token Endpoint and client authentication settings.

@@ -48,6 +48,18 @@ interface OidcIdTokenConfigBlueprint {
     List<String> allowedAlgorithms();
 
     /**
+     * Additional ID Token audience values trusted by this client.
+     * <p>
+     * The configured {@code client-id} is always required as an ID Token audience and should not be listed here. This
+     * option is only for other {@code aud} values that may appear in the same ID Token.
+     *
+     * @return trusted additional ID Token audiences
+     */
+    @Option.Configured
+    @Option.Singular("trustedAdditionalAudience")
+    List<String> trustedAdditionalAudiences();
+
+    /**
      * ID Token time validation clock skew.
      *
      * @return ID Token clock skew

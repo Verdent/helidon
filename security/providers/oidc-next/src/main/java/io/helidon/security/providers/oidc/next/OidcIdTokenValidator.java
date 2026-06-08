@@ -192,6 +192,7 @@ final class OidcIdTokenValidator {
          * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
          * Quotes: "MUST exactly match the value of the iss (issuer) Claim";
          * "The Client MUST validate that the aud (audience) Claim contains its client_id value";
+         * "additional audiences not trusted by the Client";
          * "If the ID Token contains multiple audiences, the Client SHOULD verify that an azp Claim is present";
          * "If an azp (authorized party) Claim is present, the Client SHOULD verify that its client_id is the Claim
          * Value"; "The current time MUST be before the time represented by the exp Claim";
@@ -217,7 +218,11 @@ final class OidcIdTokenValidator {
                     }
                 }, "sub")
                 .addValidator((jwt, collector) -> validateNonce(jwt, expectedNonce, collector), "nonce")
-                .addValidator((jwt, collector) -> validateAuthorizedParty(jwt, clientId, collector), "aud", "azp")
+                .addValidator((jwt, collector) -> validateAudience(jwt,
+                                                                    clientId,
+                                                                    idToken.trustedAdditionalAudiences(),
+                                                                    collector),
+                              "aud", "azp")
                 .build();
     }
 
@@ -235,7 +240,10 @@ final class OidcIdTokenValidator {
         }
     }
 
-    private void validateAuthorizedParty(Jwt jwt, String clientId, Errors.Collector collector) {
+    private void validateAudience(Jwt jwt,
+                                  String clientId,
+                                  List<String> trustedAdditionalAudiences,
+                                  Errors.Collector collector) {
         Optional<List<String>> audiences = jwt.audience();
         Optional<String> authorizedParty = authorizedParty(jwt, collector);
         if (audiences.filter(values -> values.size() > 1).isPresent() && authorizedParty.isEmpty()) {
@@ -244,6 +252,14 @@ final class OidcIdTokenValidator {
         }
         authorizedParty.filter(value -> !clientId.equals(value))
                 .ifPresent(value -> collector.fatal(jwt, "JWT authorized party claim does not match client id"));
+        audiences.stream()
+                .flatMap(List::stream)
+                .filter(audience -> !clientId.equals(audience))
+                .filter(audience -> !trustedAdditionalAudiences.contains(audience))
+                .findFirst()
+                .ifPresent(audience -> collector.fatal(
+                        jwt,
+                        "JWT audience contains an untrusted additional audience: " + audience));
     }
 
     private Optional<String> authorizedParty(Jwt jwt, Errors.Collector collector) {

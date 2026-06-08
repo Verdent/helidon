@@ -333,6 +333,9 @@ endpoints:
 
 If `issuer` is configured and `endpoints.well-known-uri` is omitted, the provider derives the well-known URI by appending
 `/.well-known/openid-configuration` to the issuer URI after removing trailing `/` characters.
+This is the OpenID Connect Discovery location. The provider does not automatically derive the RFC 8414
+`/.well-known/oauth-authorization-server` location; configure `endpoints.well-known-uri` explicitly when an OAuth
+Authorization Server metadata endpoint must be used instead.
 
 Well-known metadata is used by Authorization Code Flow when the issuer, Authorization Endpoint, or Token Endpoint is
 missing, by Client Credentials Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT
@@ -362,6 +365,12 @@ and include the configured PKCE method. The provider also validates the configur
 against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
 `client_secret_basic`. For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
 `token_endpoint_auth_signing_alg_values_supported` with the configured assertion signing algorithm.
+The metadata endpoint is loaded with a GET request, redirects are not followed, and the response must be `200 OK` with an
+`application/json` content type. Metadata member names are matched exactly as specified by OpenID Connect Discovery and
+RFC 8414; they are case-sensitive JSON names.
+When `endpoints.well-known-uri` is configured without `issuer`, the provider trusts that metadata URL to identify the
+issuer and then validates the metadata `issuer` URI shape before using it. Prefer configuring `issuer` as well when the
+expected issuer identity is known in advance.
 
 `authorization-code.redirection-endpoint-uri` is not under `endpoints` because it is the client callback endpoint, not
 an OpenID Provider endpoint. It defaults to `/oidc/callback`; local paths are resolved from the incoming request origin

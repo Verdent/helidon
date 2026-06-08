@@ -286,6 +286,33 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void subjectWithMaximumAsciiLengthIsAccepted() {
+        String idToken = signedIdToken(it -> it.subject("a".repeat(255)));
+
+        var result = validate(idToken);
+
+        assertThat(result.succeeded(), is(true));
+    }
+
+    @Test
+    void tooLongSubjectIsRejected() {
+        String idToken = signedIdToken(it -> it.subject("a".repeat(256)));
+
+        var result = validate(idToken);
+
+        assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
+    void nonAsciiSubjectIsRejected() {
+        String idToken = signedIdToken(it -> it.subject("uzivatel-\u011b"));
+
+        var result = validate(idToken);
+
+        assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
     void malformedIdTokenIsRejected() {
         var result = validate("not-a-jwt");
 

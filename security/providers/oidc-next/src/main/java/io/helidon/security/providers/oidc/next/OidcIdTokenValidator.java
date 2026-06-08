@@ -32,6 +32,7 @@ final class OidcIdTokenValidator {
     private static final String NONE_ALGORITHM = "none";
     private static final String AUTHORIZED_PARTY_CLAIM = "azp";
     private static final String AUTHENTICATION_TIME_CLAIM = "auth_time";
+    private static final int MAX_SUBJECT_LENGTH = 255;
 
     private OidcIdTokenValidator() {
     }
@@ -206,17 +207,7 @@ final class OidcIdTokenValidator {
                 .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(idToken.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)
-                .addValidator((jwt, collector) -> {
-                    /*
-                     * Spec: OpenID Connect Core 1.0, 2 ID Token
-                     * https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-                     * Quote: "REQUIRED. Subject Identifier. A locally unique and never reassigned identifier within the
-                     * Issuer for the End-User".
-                     */
-                    if (jwt.subject().filter(subject -> !subject.isBlank()).isEmpty()) {
-                        collector.fatal(jwt, "JWT subject claim is mandatory");
-                    }
-                }, "sub")
+                .addValidator((jwt, collector) -> validateSubject(jwt, collector), "sub")
                 .addValidator((jwt, collector) -> validateNonce(jwt, expectedNonce, collector), "nonce")
                 .addValidator((jwt, collector) -> validateAudience(jwt,
                                                                     clientId,
@@ -224,6 +215,28 @@ final class OidcIdTokenValidator {
                                                                     collector),
                               "aud", "azp")
                 .build();
+    }
+
+    private void validateSubject(Jwt jwt, Errors.Collector collector) {
+        /*
+         * Spec: OpenID Connect Core 1.0, 2 ID Token
+         * https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+         * Quotes: "REQUIRED. Subject Identifier"; "It MUST NOT exceed 255 ASCII characters in length".
+         */
+        Optional<String> subject = jwt.subject();
+        if (subject.filter(value -> !value.isBlank()).isEmpty()) {
+            collector.fatal(jwt, "JWT subject claim is mandatory");
+            return;
+        }
+        String value = subject.orElseThrow();
+        if (value.length() > MAX_SUBJECT_LENGTH || !ascii(value)) {
+            collector.fatal(jwt, "JWT subject claim must not exceed 255 ASCII characters");
+        }
+    }
+
+    private boolean ascii(String value) {
+        return value.chars()
+                .allMatch(character -> character <= 0x7F);
     }
 
     private void validateNonce(Jwt jwt, Optional<String> expectedNonce, Errors.Collector collector) {

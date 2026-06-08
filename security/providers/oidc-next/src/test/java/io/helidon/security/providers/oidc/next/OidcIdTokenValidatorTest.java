@@ -177,11 +177,22 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
-    void multipleAudiencesWithClientAuthorizedPartyAreAccepted() {
+    void multipleAudiencesWithClientAuthorizedPartyAndUntrustedAudienceAreRejected() {
         String idToken = signedIdToken(it -> it.addAudience("other-audience")
                 .addPayloadClaim("azp", CLIENT_ID));
 
         var result = validate(idToken);
+
+        assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
+    void multipleAudiencesWithClientAuthorizedPartyAndTrustedAudienceAreAccepted() {
+        String idToken = signedIdToken(it -> it.addAudience("other-audience")
+                .addPayloadClaim("azp", CLIENT_ID));
+
+        var result = validate(idToken, tenantConfig(it -> it.idToken(idTokenConfig -> idTokenConfig
+                .addTrustedAdditionalAudience("other-audience"))));
 
         assertThat(result.succeeded(), is(true));
     }

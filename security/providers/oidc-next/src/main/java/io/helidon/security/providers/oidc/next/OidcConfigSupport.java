@@ -296,6 +296,21 @@ final class OidcConfigSupport {
         if (idToken.clockSkew().isNegative()) {
             throw new IllegalArgumentException("id-token.clock-skew must not be negative");
         }
+        idToken.trustedAdditionalAudiences()
+                .stream()
+                .filter(audience -> audience == null
+                        || audience.isBlank()
+                        || !audience.equals(audience.strip()))
+                .findFirst()
+                .ifPresent(audience -> {
+                    /*
+                     * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
+                     * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+                     * Quote: "additional audiences not trusted by the Client".
+                     */
+                    throw new IllegalArgumentException(
+                            "id-token.trusted-additional-audiences must not contain blank or padded values");
+                });
         idToken.allowedAlgorithms()
                 .stream()
                 .filter(algorithm -> algorithm == null

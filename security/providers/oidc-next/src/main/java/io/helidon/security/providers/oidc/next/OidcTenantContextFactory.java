@@ -141,8 +141,11 @@ final class OidcTenantContextFactory {
          /*
           * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
           * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-          * Quotes: "`issuer` REQUIRED"; "`authorization_endpoint` REQUIRED";
-          * "This is REQUIRED unless only the Implicit Flow is used".
+          * Quote: "`issuer` REQUIRED. URL using the `https` scheme with no query or fragment components that the OP
+          * asserts as its Issuer Identifier."
+          * Quote: "`authorization_endpoint` REQUIRED. URL of the OP's OAuth 2.0 Authorization Endpoint."
+          * Quote: "`token_endpoint` URL of the OP's OAuth 2.0 Token Endpoint. This is REQUIRED unless only the
+          * Implicit Flow is used."
          */
         metadata.issuer()
                 .orElseThrow(() -> new IllegalStateException(
@@ -180,7 +183,10 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "REQUIRED."; "Dynamic OpenID Providers MUST support the <tt>code</tt>,".
+         * Quote: "`response_types_supported` REQUIRED. JSON array containing a list of the OAuth 2.0 `response_type`
+         * values that this OP supports."
+         * Quote: "Dynamic OpenID Providers MUST support the `code`, `id_token`, and the `id_token token` Response
+         * Type values."
          */
         List<String> responseTypes = metadata.responseTypesSupported()
                 .orElseThrow(() -> new IllegalStateException(
@@ -193,7 +199,7 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "If omitted, the default value is"; "<tt>[\"authorization_code\", \"implicit\"]</tt>".
+         * Quote: "If omitted, the default value is `[\"authorization_code\", \"implicit\"]`."
          */
         if (!metadata.grantTypesSupported().orElse(DEFAULT_GRANT_TYPES_SUPPORTED).contains(AUTHORIZATION_CODE_GRANT)) {
             throw new IllegalStateException(
@@ -229,7 +235,9 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "`id_token_signing_alg_values_supported`"; "REQUIRED"; "The algorithm `RS256` MUST be included".
+         * Quote: "`id_token_signing_alg_values_supported` REQUIRED. JSON array containing a list of the JWS signing
+         * algorithms (`alg` values) supported by the OP for the ID Token to encode the Claims in a JWT."
+         * Quote: "The algorithm `RS256` MUST be included."
          */
         List<String> supportedAlgorithms = metadata.idTokenSigningAlgorithmsSupported()
                 .orElseThrow(() -> new IllegalStateException(
@@ -252,7 +260,10 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "`id_token_encryption_alg_values_supported`"; "`id_token_encryption_enc_values_supported`".
+         * Quote: "`id_token_encryption_alg_values_supported` OPTIONAL. JSON array containing a list of the JWE
+         * encryption algorithms (`alg` values) supported by the OP for the ID Token to encode the Claims in a JWT."
+         * Quote: "`id_token_encryption_enc_values_supported` OPTIONAL. JSON array containing a list of the JWE
+         * encryption algorithms (`enc` values) supported by the OP for the ID Token to encode the Claims in a JWT."
          */
         metadata.idTokenEncryptionAlgorithmsSupported()
                 .filter(supportedAlgorithms -> tenantConfig.idToken()
@@ -311,7 +322,9 @@ final class OidcTenantContextFactory {
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
          * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
-         * Quotes: "`grant_types_supported`"; "If omitted, the default value is".
+         * Quote: "`grant_types_supported` OPTIONAL. JSON array containing a list of the OAuth 2.0 grant type values
+         * that this authorization server supports."
+         * Quote: "If omitted, the default value is `[\"authorization_code\", \"implicit\"]`."
          */
         if (!metadata.grantTypesSupported().orElse(DEFAULT_GRANT_TYPES_SUPPORTED).contains(CLIENT_CREDENTIALS_GRANT)) {
             throw new IllegalStateException(
@@ -354,8 +367,10 @@ final class OidcTenantContextFactory {
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
          * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
-         * Quotes: "This metadata entry MUST be present"; "No default algorithms are implied if this entry is omitted";
-         * "The value \"none\" MUST NOT be used".
+         * Quote: "This metadata entry MUST be present if either of these authentication methods are specified in the
+         * `token_endpoint_auth_methods_supported` entry."
+         * Quote: "No default algorithms are implied if this entry is omitted."
+         * Quote: "The value \"none\" MUST NOT be used."
          */
         if (supportedAlgorithms.contains("none")) {
             throw new IllegalStateException(
@@ -400,7 +415,7 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "REQUIRED. URL of the OP's JSON Web Key Set [JWK] document".
+         * Quote: "`jwks_uri` REQUIRED. URL of the OP's JSON Web Key Set [JWK] document."
          */
         metadata.jwkSetUri()
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateJwksUri(uri, tenantConfig.endpoints().tlsRequired()),
@@ -447,8 +462,8 @@ final class OidcTenantContextFactory {
                      /*
                       * Spec: RFC 8414, 2 Authorization Server Metadata
                       * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
-                      * Quotes: "`introspection_endpoint_auth_methods_supported`";
-                      * "methods supported by this introspection endpoint".
+                      * Quote: "`introspection_endpoint_auth_methods_supported` OPTIONAL. JSON array containing a list
+                      * of client authentication methods supported by this introspection endpoint."
                      */
                     throw new IllegalStateException(
                             "well-known metadata introspection_endpoint_auth_methods_supported must include "
@@ -472,8 +487,11 @@ final class OidcTenantContextFactory {
                     /*
                      * Spec: RFC 8414, 2 Authorization Server Metadata
                      * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
-                     * Quotes: "`introspection_endpoint_auth_signing_alg_values_supported`";
-                     * "No default algorithms are implied if this entry is omitted".
+                     * Quote: "`introspection_endpoint_auth_signing_alg_values_supported` OPTIONAL. JSON array
+                     * containing a list of the JWS signing algorithms (`alg` values) supported by the introspection
+                     * endpoint for the signature on the JWT used to authenticate the client at the introspection
+                     * endpoint for the `private_key_jwt` and `client_secret_jwt` authentication methods."
+                     * Quote: "No default algorithms are implied if this entry is omitted."
                      */
                     throw new IllegalStateException(
                             "well-known metadata introspection_endpoint_auth_signing_alg_values_supported must be "
@@ -489,7 +507,7 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "OPTIONAL. URL of the OP's UserInfo Endpoint".
+         * Quote: "`userinfo_endpoint` OPTIONAL. URL of the OP's UserInfo Endpoint."
          */
         metadata.userInfoEndpointUri()
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateUserInfoEndpointUri(
@@ -513,7 +531,9 @@ final class OidcTenantContextFactory {
         /*
          * Spec: OpenID Connect RP-Initiated Logout 1.0, 2.1 OpenID Provider Discovery Metadata
          * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OPMetadata
-         * Quotes: "OPTIONAL. URL at the OP"; "This URL MUST use the `https` scheme".
+         * Quote: "`end_session_endpoint` REQUIRED. URL at the OP to which an RP can perform a redirect to request that
+         * the End-User be logged out at the OP."
+         * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
          */
         metadata.endSessionEndpointUri()
                 .ifPresentOrElse(uri -> OidcConfigSupport.validateEndSessionEndpointUri(
@@ -534,7 +554,9 @@ final class OidcTenantContextFactory {
         /*
          * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
-         * Quote: "`mtls_endpoint_aliases` consists of one or more endpoint aliases".
+         * Quote: "`mtls_endpoint_aliases` OPTIONAL. A JSON object containing alternative authorization server endpoints
+         * that, when present, an OAuth client intending to do mutual TLS uses in preference to the conventional
+         * endpoints."
          */
         metadata.mutualTlsTokenEndpointUri()
                 .or(metadata::tokenEndpointUri)

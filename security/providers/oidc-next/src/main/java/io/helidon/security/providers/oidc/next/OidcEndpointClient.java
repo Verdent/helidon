@@ -48,8 +48,13 @@ final class OidcEndpointClient {
         /*
          * Spec: RFC 6749, 4.1.3 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.3
-         * Quotes: "The client makes a request to the token endpoint"; "using the `application/x-www-form-urlencoded`
-         * format"; "`grant_type` REQUIRED"; "`code` REQUIRED"; "`redirect_uri` REQUIRED".
+         * Quote: "The client makes a request to the token endpoint by sending the following parameters using the
+         * `application/x-www-form-urlencoded` format per Appendix B with a character encoding of UTF-8 in the HTTP
+         * request entity-body:"
+         * Quote: "`grant_type` REQUIRED. Value MUST be set to `authorization_code`."
+         * Quote: "`code` REQUIRED. The authorization code received from the authorization server."
+         * Quote: "`redirect_uri` REQUIRED, if the `redirect_uri` parameter was included in the authorization request as
+         * described in Section 4.1.1, and their values MUST be identical."
          */
         Parameters.Builder form = Parameters.builder("oidc-token-endpoint-form")
                 .add("grant_type", "authorization_code")
@@ -59,7 +64,8 @@ final class OidcEndpointClient {
             /*
              * Spec: RFC 7636, 4.5 Client Sends the Authorization Code and the Code Verifier to the Token Endpoint
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.5
-             * Quote: "The client sends the authorization code as well as the `code_verifier`".
+             * Quote: "In addition to the parameters defined in the OAuth 2.0 Access Token Request (Section 4.1.3 of
+             * [RFC6749]), it sends the following parameter: `code_verifier` REQUIRED. Code verifier"
              */
             form.add("code_verifier", verifier);
         });
@@ -71,8 +77,11 @@ final class OidcEndpointClient {
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-6
-         * Quotes: "The client makes a refresh request to the token endpoint"; "`grant_type` REQUIRED. Value MUST be
-         * set to `refresh_token`"; "`refresh_token` REQUIRED".
+         * Quote: "If the authorization server issued a refresh token to the client, the client makes a refresh request
+         * to the token endpoint by adding the following parameters using the `application/x-www-form-urlencoded` format
+         * per Appendix B with a character encoding of UTF-8 in the HTTP request entity-body:"
+         * Quote: "`grant_type` REQUIRED. Value MUST be set to `refresh_token`."
+         * Quote: "`refresh_token` REQUIRED. The refresh token issued to the client."
          */
         Parameters.Builder form = Parameters.builder("oidc-refresh-token-endpoint-form")
                 .add("grant_type", "refresh_token")
@@ -85,9 +94,11 @@ final class OidcEndpointClient {
         /*
          * Spec: RFC 6749, 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
-         * Quotes: "The client makes a request to the token endpoint"; "using the
-         * `application/x-www-form-urlencoded` format"; "`grant_type` REQUIRED.  Value MUST be set to
-         * `client_credentials`."; "`scope` OPTIONAL."
+         * Quote: "The client makes a request to the token endpoint by adding the following parameters using the
+         * `application/x-www-form-urlencoded` format per Appendix B with a character encoding of UTF-8 in the HTTP
+         * request entity-body:"
+         * Quote: "`grant_type` REQUIRED. Value MUST be set to `client_credentials`."
+         * Quote: "`scope` OPTIONAL. The scope of the access request as described by Section 3.3."
          */
         Parameters.Builder form = Parameters.builder("oidc-client-credentials-token-endpoint-form")
                 .add("grant_type", "client_credentials");
@@ -105,8 +116,9 @@ final class OidcEndpointClient {
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.1 UserInfo Request
          * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoRequest
-         * Quotes: "The UserInfo Endpoint is an OAuth 2.0 Protected Resource";
-         * "Clients MUST send requests with a valid Access Token".
+         * Quote: "The UserInfo Endpoint is an OAuth 2.0 Protected Resource that returns Claims about the authenticated
+         * End-User."
+         * Quote: "Clients MUST send requests with a valid Access Token."
          */
         try (HttpClientResponse response = webClient.get()
                 .uri(endpointUri.orElseThrow())
@@ -119,9 +131,10 @@ final class OidcEndpointClient {
                 /*
                  * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
                  * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
-                 * Quotes: "The UserInfo Endpoint MUST return a content-type header to indicate which format is being
-                 * returned"; "The content-type of the HTTP response MUST be `application/json` if the response body is
-                 * a text JSON object".
+                 * Quote: "The UserInfo Endpoint MUST return a content-type header to indicate which format is being
+                 * returned."
+                 * Quote: "The content-type of the HTTP response MUST be `application/json` if the response body is a
+                 * text JSON object; the response body SHOULD be encoded using UTF-8."
                  */
                 if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
                     return Optional.empty();
@@ -139,8 +152,10 @@ final class OidcEndpointClient {
         /*
          * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
-         * Quote: "MUST use the alias URL of the endpoint within the "mtls_endpoint_aliases", when present, in
-         * preference to the endpoint URL of the same name at the top level of metadata".
+         * Quote: "An OAuth client intending to do mutual TLS (for OAuth client authentication and/or to acquire or use
+         * certificate-bound tokens) when making a request directly to the authorization server MUST use the alias URL
+         * of the endpoint within the `mtls_endpoint_aliases`, when present, in preference to the endpoint URL of the
+         * same name at the top level of metadata."
          */
         Optional<URI> endpointUri = clientAuthentication.usesMutualTls()
                 ? metadata.mutualTlsTokenEndpointUri().or(metadata::tokenEndpointUri)

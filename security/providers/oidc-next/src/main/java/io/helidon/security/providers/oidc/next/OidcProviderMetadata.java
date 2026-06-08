@@ -31,6 +31,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> tokenEndpointUri;
     private final Optional<URI> mutualTlsTokenEndpointUri;
     private final Optional<URI> jwkSetUri;
+    private final boolean jwkSetUriFromWellKnownMetadata;
     private final Optional<List<String>> responseTypesSupported;
     private final Optional<List<String>> grantTypesSupported;
     private final Optional<List<String>> codeChallengeMethodsSupported;
@@ -52,6 +53,7 @@ final class OidcProviderMetadata {
                                  Optional<URI> tokenEndpointUri,
                                  Optional<URI> mutualTlsTokenEndpointUri,
                                  Optional<URI> jwkSetUri,
+                                 boolean jwkSetUriFromWellKnownMetadata,
                                  Optional<List<String>> responseTypesSupported,
                                  Optional<List<String>> grantTypesSupported,
                                  Optional<List<String>> codeChallengeMethodsSupported,
@@ -72,6 +74,7 @@ final class OidcProviderMetadata {
         this.tokenEndpointUri = tokenEndpointUri;
         this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
         this.jwkSetUri = jwkSetUri;
+        this.jwkSetUriFromWellKnownMetadata = jwkSetUriFromWellKnownMetadata;
         this.responseTypesSupported = responseTypesSupported.map(List::copyOf);
         this.grantTypesSupported = grantTypesSupported.map(List::copyOf);
         this.codeChallengeMethodsSupported = codeChallengeMethodsSupported.map(List::copyOf);
@@ -197,12 +200,57 @@ final class OidcProviderMetadata {
                                        Optional<URI> userInfoEndpointUri,
                                        Optional<URI> endSessionEndpointUri,
                                        boolean authorizationResponseIssuerParameterSupported) {
+        return create(issuer,
+                      wellKnownUri,
+                      authorizationEndpointUri,
+                      tokenEndpointUri,
+                      mutualTlsTokenEndpointUri,
+                      jwkSetUri,
+                      false,
+                      responseTypesSupported,
+                      grantTypesSupported,
+                      codeChallengeMethodsSupported,
+                      tokenEndpointAuthenticationMethodsSupported,
+                      tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                      idTokenSigningAlgorithmsSupported,
+                      idTokenEncryptionAlgorithmsSupported,
+                      idTokenContentEncryptionAlgorithmsSupported,
+                      introspectionEndpointUri,
+                      introspectionEndpointAuthenticationMethodsSupported,
+                      introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                      userInfoEndpointUri,
+                      endSessionEndpointUri,
+                      authorizationResponseIssuerParameterSupported);
+    }
+
+    static OidcProviderMetadata create(Optional<String> issuer,
+                                       Optional<URI> wellKnownUri,
+                                       Optional<URI> authorizationEndpointUri,
+                                       Optional<URI> tokenEndpointUri,
+                                       Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> jwkSetUri,
+                                       boolean jwkSetUriFromWellKnownMetadata,
+                                       Optional<List<String>> responseTypesSupported,
+                                       Optional<List<String>> grantTypesSupported,
+                                       Optional<List<String>> codeChallengeMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenEncryptionAlgorithmsSupported,
+                                       Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported,
+                                       Optional<URI> introspectionEndpointUri,
+                                       Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<URI> userInfoEndpointUri,
+                                       Optional<URI> endSessionEndpointUri,
+                                       boolean authorizationResponseIssuerParameterSupported) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
                                         tokenEndpointUri,
                                         mutualTlsTokenEndpointUri,
                                         jwkSetUri,
+                                        jwkSetUriFromWellKnownMetadata,
                                         responseTypesSupported,
                                         grantTypesSupported,
                                         codeChallengeMethodsSupported,
@@ -220,12 +268,14 @@ final class OidcProviderMetadata {
     }
 
     static OidcProviderMetadata fromWellKnownMetadataJson(JsonObject json) {
+        Optional<URI> jwkSetUri = uriValue(json, "jwks_uri");
         return create(json.stringValue("issuer"),
                       Optional.empty(),
                       uriValue(json, "authorization_endpoint"),
                       uriValue(json, "token_endpoint"),
                       mutualTlsTokenEndpointUri(json),
-                      uriValue(json, "jwks_uri"),
+                      jwkSetUri,
+                      jwkSetUri.isPresent(),
                       stringArrayValue(json, "response_types_supported"),
                       stringArrayValue(json, "grant_types_supported"),
                       stringArrayValue(json, "code_challenge_methods_supported"),
@@ -245,6 +295,10 @@ final class OidcProviderMetadata {
 
     OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnownMetadata) {
         validateWellKnownMetadataIssuer(wellKnownMetadata);
+        Optional<URI> mergedJwkSetUri = jwkSetUri.or(wellKnownMetadata::jwkSetUri);
+        boolean mergedJwkSetUriFromWellKnownMetadata = jwkSetUri.isPresent()
+                ? jwkSetUriFromWellKnownMetadata
+                : wellKnownMetadata.jwkSetUriFromWellKnownMetadata();
         return create(issuer.or(wellKnownMetadata::issuer),
                       wellKnownUri.or(wellKnownMetadata::wellKnownUri),
                       authorizationEndpointUri.or(wellKnownMetadata::authorizationEndpointUri),
@@ -252,7 +306,8 @@ final class OidcProviderMetadata {
                       mutualTlsTokenEndpointUri.or(() -> tokenEndpointUri.isPresent()
                               ? Optional.empty()
                               : wellKnownMetadata.mutualTlsTokenEndpointUri()),
-                      jwkSetUri.or(wellKnownMetadata::jwkSetUri),
+                      mergedJwkSetUri,
+                      mergedJwkSetUriFromWellKnownMetadata,
                       responseTypesSupported.or(wellKnownMetadata::responseTypesSupported),
                       grantTypesSupported.or(wellKnownMetadata::grantTypesSupported),
                       codeChallengeMethodsSupported.or(wellKnownMetadata::codeChallengeMethodsSupported),
@@ -301,6 +356,10 @@ final class OidcProviderMetadata {
 
     Optional<URI> jwkSetUri() {
         return jwkSetUri;
+    }
+
+    boolean jwkSetUriFromWellKnownMetadata() {
+        return jwkSetUriFromWellKnownMetadata;
     }
 
     Optional<List<String>> responseTypesSupported() {
@@ -363,8 +422,10 @@ final class OidcProviderMetadata {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
-         * Quotes: "concatenating the string `/.well-known/openid-configuration` to the Issuer";
-         * "any terminating `/` MUST be removed before appending".
+         * Quote: "OpenID Providers supporting Discovery MUST make a JSON document available at the path formed by
+         * concatenating the string `/.well-known/openid-configuration` to the Issuer."
+         * Quote: "If the Issuer value contains a path component, any terminating `/` MUST be removed before appending
+         * `/.well-known/openid-configuration`."
          */
         Optional<URI> configuredWellKnownUri = endpoints.wellKnownUri();
         if (configuredWellKnownUri.isPresent()) {
@@ -398,7 +459,9 @@ final class OidcProviderMetadata {
         /*
          * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
-         * Quotes: "`mtls_endpoint_aliases`"; "`token_endpoint`".
+         * Quote: "The parameter value itself consists of one or more endpoint parameters, such as `token_endpoint`,
+         * `revocation_endpoint`, `introspection_endpoint`, etc., conventionally defined for the top level of
+         * authorization server metadata."
          */
         return json.objectValue("mtls_endpoint_aliases")
                 .flatMap(aliases -> uriValue(aliases, "token_endpoint"));
@@ -408,11 +471,13 @@ final class OidcProviderMetadata {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4.3 OpenID Provider Configuration Validation
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation
-         * Quotes: "`issuer` REQUIRED"; "Issuer value returned MUST be identical to the Issuer URL".
+         * Quote: "The `issuer` value returned MUST be identical to the Issuer URL that was used as the prefix to
+         * `/.well-known/openid-configuration` to retrieve the configuration information."
          *
          * Spec: OpenID Connect Discovery 1.0, 5 String Operations
          * https://openid.net/specs/openid-connect-discovery-1_0.html#StringOps
-         * Quote: "Unicode code point to code point equality comparison".
+         * Quote: "Comparisons between the two strings MUST be performed as a Unicode code point to code point equality
+         * comparison."
          */
         String wellKnownMetadataIssuer = wellKnownMetadata.issuer()
                 .orElseThrow(() -> new IllegalArgumentException("well-known metadata issuer must be present"));

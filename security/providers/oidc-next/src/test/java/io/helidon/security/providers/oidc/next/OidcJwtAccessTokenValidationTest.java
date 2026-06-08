@@ -96,6 +96,7 @@ class OidcJwtAccessTokenValidationTest {
     private static JwkKeys signKeys;
     private static URI jwksUri;
     private static String verifyJwkSet;
+    private static String publicVerifyJwkSet;
 
     private URI remoteJwksUri;
     private URI wellKnownUri;
@@ -108,6 +109,7 @@ class OidcJwtAccessTokenValidationTest {
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
                 .build();
         verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
+        publicVerifyJwkSet = Resource.create("oidc-next-verify-public-jwk.json").string();
         jwksUri = OidcJwtAccessTokenValidationTest.class.getClassLoader()
                 .getResource("oidc-next-verify-jwk.json")
                 .toURI();
@@ -153,7 +155,7 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetRequests.set(0);
         wellKnownWebClientHeader.set("");
         remoteJwkSetWebClientHeader.set("");
-        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(verifyJwkSet)));
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of(publicVerifyJwkSet)));
         providerMetadata.set(JsonObject.builder()
                 .set("issuer", ISSUER.toString())
                 .set("jwks_uri", remoteJwksUri.toString())
@@ -336,6 +338,32 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(remoteJwkSetRequests.get(), is(1));
         assertThat(wellKnownWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
         assertThat(remoteJwkSetWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void wellKnownMetadataJwksEndpointRejectsSymmetricKeyValues() {
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
+                {"keys":[{"kty":"oct","kid":"verify-oct","k":"FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ"}]}
+                """)));
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(wellKnownProvider(tenant -> { }), token);
+
+        assertInvalidToken(response, "Bearer Token signature keys are unavailable");
+        assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
+    void wellKnownMetadataJwksEndpointRejectsPrivateKeyValues() {
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
+                {"keys":[{"kty":"RSA","kid":"verify-rsa","d":"private"}]}
+                """)));
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(wellKnownProvider(tenant -> { }), token);
+
+        assertInvalidToken(response, "Bearer Token signature keys are unavailable");
+        assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
     @Test

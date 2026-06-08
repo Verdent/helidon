@@ -60,12 +60,23 @@ final class OidcIdTokenValidator {
         /*
          * Spec: OpenID Connect Core 1.0, 12.2 Successful Refresh Response
          * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
-         * Quotes: "If an ID Token is returned as a result of a token refresh request"; "`iss` Claim Value MUST be the
-         * same as in the ID Token issued when the original authentication occurred"; "`sub` Claim Value MUST be the
-         * same"; "`aud` Claim Value MUST be the same"; "`azp` Claim Value MUST be the same"; "`auth_time` Claim,
-         * its value MUST represent the time of the original authentication"; "its `nonce` Claim Value SHOULD NOT be
-         * present. If present, its value MUST be the same as in the ID Token issued when the original authentication
-         * occurred".
+         * Quote: "If an ID Token is returned as a result of a token refresh request, the following requirements apply:"
+         * Quote: "its `iss` Claim Value MUST be the same as in the ID Token issued when the original authentication
+         * occurred,"
+         * Quote: "its `sub` Claim Value MUST be the same as in the ID Token issued when the original authentication
+         * occurred,"
+         * Quote: "its `aud` Claim Value MUST be the same as in the ID Token issued when the original authentication
+         * occurred,"
+         * Quote: "if the ID Token contains an `auth_time` Claim, its value MUST represent the time of the original
+         * authentication - not the time that the new ID token is issued,"
+         * Quote: "if the implementation is using extensions (which are beyond the scope of this specification) that
+         * result in the `azp` (authorized party) Claim being present, those extensions might specify that its `azp`
+         * Claim Value MUST be the same as in the ID Token issued when the original authentication occurred; likewise,
+         * they might specify that if no `azp` Claim was present in the original ID Token, one MUST NOT be present in the
+         * new ID Token,"
+         * Quote: "it SHOULD NOT have a `nonce` Claim, even when the ID Token issued at the time of the original
+         * authentication contained `nonce`; however, if it is present, its value MUST be the same as in the ID Token
+         * issued at the time of the original authentication,"
          */
         if (!refreshed.issuer().equals(current.issuer())) {
             return OidcValidationResult.failure(
@@ -130,8 +141,9 @@ final class OidcIdTokenValidator {
             /*
              * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
              * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-             * Quotes: "The Client MUST validate the signature of all other ID Tokens according to JWS [JWS]";
-             * "The Client MUST use the keys provided by the Issuer".
+             * Quote: "The Client MUST validate the signature of all other ID Tokens according to JWS [JWS] using the
+             * algorithm specified in the JWT `alg` Header Parameter."
+             * Quote: "The Client MUST use the keys provided by the Issuer."
              */
             Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
@@ -173,8 +185,9 @@ final class OidcIdTokenValidator {
                         /*
                          * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                          * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-                         * Quotes: "The Client MUST validate the signature of all other ID Tokens according to JWS";
-                         * "The Client MUST use the keys provided by the Issuer".
+                         * Quote: "The Client MUST validate the signature of all other ID Tokens according to JWS [JWS]
+                         * using the algorithm specified in the JWT `alg` Header Parameter."
+                         * Quote: "The Client MUST use the keys provided by the Issuer."
                          */
                         collector.fatal(jwt, "JWT alg header must not be none");
                     } else if (!allowedAlgorithms.contains(algorithm)) {
@@ -191,14 +204,15 @@ final class OidcIdTokenValidator {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
          * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-         * Quotes: "MUST exactly match the value of the iss (issuer) Claim";
-         * "The Client MUST validate that the aud (audience) Claim contains its client_id value";
-         * "additional audiences not trusted by the Client";
-         * "If the ID Token contains multiple audiences, the Client SHOULD verify that an azp Claim is present";
-         * "If an azp (authorized party) Claim is present, the Client SHOULD verify that its client_id is the Claim
-         * Value"; "The current time MUST be before the time represented by the exp Claim";
-         * "iat REQUIRED. Time at which the JWT was issued"; "If a nonce value was sent in the Authentication Request,
-         * a nonce Claim MUST be present and its value checked".
+         * Quote: "The Issuer Identifier for the OpenID Provider MUST exactly match the value of the `iss` (issuer)
+         * Claim."
+         * Quote: "The Client MUST validate that the `aud` (audience) Claim contains its `client_id` value registered
+         * at the Issuer identified by the `iss` (issuer) Claim as an audience."
+         * Quote: "The ID Token MUST be rejected if the ID Token does not list the Client as a valid audience, or if it
+         * contains additional audiences not trusted by the Client."
+         * Quote: "The current time MUST be before the time represented by the `exp` Claim."
+         * Quote: "If a nonce value was sent in the Authentication Request, a `nonce` Claim MUST be present and its
+         * value checked to verify that it is the same value as the one that was sent in the Authentication Request."
          */
         Instant now = Instant.now();
         return JwtValidator.builder()
@@ -221,7 +235,9 @@ final class OidcIdTokenValidator {
         /*
          * Spec: OpenID Connect Core 1.0, 2 ID Token
          * https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-         * Quotes: "REQUIRED. Subject Identifier"; "It MUST NOT exceed 255 ASCII characters in length".
+         * Quote: "`sub` REQUIRED. Subject Identifier. A locally unique and never reassigned identifier within the
+         * Issuer for the End-User, which is intended to be consumed by the Client."
+         * Quote: "It MUST NOT exceed 255 ASCII characters in length."
          */
         Optional<String> subject = jwt.subject();
         if (subject.filter(value -> !value.isBlank()).isEmpty()) {

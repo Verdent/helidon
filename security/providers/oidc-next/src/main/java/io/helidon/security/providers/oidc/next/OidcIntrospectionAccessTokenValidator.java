@@ -71,7 +71,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             /*
              * Spec: RFC 7662, 2.2 Introspection Response
              * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
-             * Quote: "The response is a JSON object".
+             * Quote: "The server responds with a JSON object [RFC7159] in `application/json` format with the following
+             * top-level members."
              */
             if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
                 return OidcValidationResult.failure("Bearer Token introspection response is invalid");

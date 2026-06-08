@@ -64,8 +64,11 @@ final class OidcBearerTokenExtractor {
              * Spec: RFC 6750, 1 Introduction and 5.2 Threat Mitigation
              * https://www.rfc-editor.org/rfc/rfc6750.html#section-1
              * https://www.rfc-editor.org/rfc/rfc6750.html#section-5.2
-             * Quotes: "TLS is mandatory to implement and use with this specification";
-             * "interaction between the client and the resource server, utilize confidentiality and integrity protection".
+             * Quote: "TLS is mandatory to implement and use with this specification; other specifications may extend
+             * this specification for use with other protocols."
+             * Quote: "This requires that the communication interaction between the client and the authorization server,
+             * as well as the interaction between the client and the resource server, utilize confidentiality and
+             * integrity protection."
              */
             return OidcBearerTokenExtractionResult.invalidRequest("Bearer Token requires secure transport");
         }

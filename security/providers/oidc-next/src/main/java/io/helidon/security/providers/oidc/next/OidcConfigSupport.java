@@ -312,7 +312,8 @@ final class OidcConfigSupport {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-                     * Quote: "additional audiences not trusted by the Client".
+                     * Quote: "The ID Token MUST be rejected if the ID Token does not list the Client as a valid
+                     * audience, or if it contains additional audiences not trusted by the Client."
                      */
                     throw new IllegalArgumentException(
                             "id-token.trusted-additional-audiences must not contain blank or padded values");
@@ -328,8 +329,9 @@ final class OidcConfigSupport {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-                     * Quotes: "The Client MUST validate the signature of all other ID Tokens according to JWS";
-                     * "The Client MUST use the keys provided by the Issuer".
+                     * Quote: "The Client MUST validate the signature of all other ID Tokens according to JWS [JWS]
+                     * using the algorithm specified in the JWT `alg` Header Parameter."
+                     * Quote: "The Client MUST use the keys provided by the Issuer."
                      */
                     throw new IllegalArgumentException(
                             "id-token.allowed-algorithms must not contain blank, padded, or none values");
@@ -342,7 +344,10 @@ final class OidcConfigSupport {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-                     * Quotes: "the octets of the UTF-8 representation of"; "are used as the key".
+                     * Quote: "If the JWT `alg` Header Parameter uses a MAC based algorithm such as `HS256`, `HS384`,
+                     * or `HS512`, the octets of the UTF-8 representation of the `client_secret` corresponding to the
+                     * `client_id` contained in the `aud` (audience) Claim are used as the key to validate the
+                     * signature."
                      */
                     throw new IllegalArgumentException(
                             "id-token.allowed-algorithms must not contain HS* algorithms");
@@ -375,8 +380,8 @@ final class OidcConfigSupport {
                     /*
                      * Spec: RFC 7516, 11.5 Timing Attacks
                      * https://www.rfc-editor.org/rfc/rfc7516.html#section-11.5
-                     * Quotes: "An attacker can modify the contents of an `alg` Header Parameter"; "restricting the use
-                     * of a key to a limited set of algorithms".
+                     * Quote: "To mitigate the attacks described in RFC 3218, the recipient MUST NOT distinguish
+                     * between format, padding, and length errors of encrypted keys."
                      */
                     LOGGER.log(System.Logger.Level.WARNING,
                                "id-token.allowed-encryption-algorithms contains RSA1_5. This should be used only for "
@@ -397,8 +402,8 @@ final class OidcConfigSupport {
                      * Spec: RFC 9068, 2.1 Header and 4 Validation
                      * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.1
                      * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
-                     * Quotes: "JWT access tokens MUST NOT use \"none\" as the signing algorithm";
-                     * "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"".
+                     * Quote: "JWT access tokens MUST NOT use \"none\" as the signing algorithm."
+                     * Quote: "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"."
                      */
                     throw new IllegalArgumentException("token-validation.allowed-algorithms must not contain none");
                 });
@@ -607,9 +612,9 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
          * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
-         * Quotes: "MUST contain the `openid` scope value";
-         * "OAuth 2.0 Client Identifier valid at the Authorization Server";
-         * "Redirection URI to which the response will be sent".
+         * Quote: "OpenID Connect requests MUST contain the `openid` scope value."
+         * Quote: "`client_id` REQUIRED. OAuth 2.0 Client Identifier valid at the Authorization Server."
+         * Quote: "`redirect_uri` REQUIRED. Redirection URI to which the response will be sent."
          */
         tenant.clientId()
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -658,10 +663,15 @@ final class OidcConfigSupport {
         }
 
         /*
-         * Spec: RFC 9700, 2.1.1 Authorization Code Grant and RFC 7636, 4.2 Client Creates the Code Challenge
+         * Spec: RFC 9700, 2.1.1 Authorization Code Grant
          * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1
+         * Quote: "When using PKCE, clients SHOULD use PKCE code challenge methods that do not expose the PKCE verifier
+         * in the authorization request."
+         *
+         * Spec: RFC 7636, 4.2 Client Creates the Code Challenge
          * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2
-         * Quotes: "Public clients MUST use PKCE"; "If the client is capable of using \"S256\", it MUST use \"S256\"".
+         * Quote: "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory
+         * To Implement (MTI) on the server."
          */
         if (!authorizationCode.pkceRequired()) {
             throw new IllegalArgumentException(
@@ -803,8 +813,10 @@ final class OidcConfigSupport {
                  * Spec: RFC 9068, 2.2 Data Structure and 4 Validation
                  * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.2
                  * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
-                 * Quotes: "`aud` REQUIRED"; "The resource server MUST validate that the `aud` claim contains a
-                 * resource indicator value corresponding to an identifier the resource server expects for itself".
+                 * Quote: "`aud` REQUIRED - as defined in Section 4.1.3 of [RFC7519]. See Section 3 for indications on
+                 * how an authorization server should determine the value of `aud` depending on the request."
+                 * Quote: "The resource server MUST validate that the `aud` claim contains a resource indicator value
+                 * corresponding to an identifier the resource server expects for itself."
                  */
                 tokenValidation.audience()
                         .orElseThrow(() -> new IllegalArgumentException(
@@ -820,7 +832,9 @@ final class OidcConfigSupport {
             /*
              * Spec: RFC 7662, 2.1 Introspection Request
              * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.1
-             * Quote: "MUST also require some form of authorization".
+             * Quote: "To prevent token scanning attacks, the endpoint MUST also require some form of authorization to
+             * access this endpoint, such as client authentication as described in OAuth 2.0 [RFC6749] or a separate
+             * OAuth 2.0 access token such as the bearer token described in OAuth 2.0 Bearer Token Usage [RFC6750]."
              */
             Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
             boolean introspectionEndpointTlsRequired = endpoints.tlsRequired()
@@ -877,7 +891,8 @@ final class OidcConfigSupport {
          * Spec: RFC 6749, 4.4 Client Credentials Grant and 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
-         * Quotes: "MUST only be used by confidential clients"; "client MUST authenticate".
+         * RFC 6749 section 4.4 quote: "The client credentials grant type MUST only be used by confidential clients."
+         * RFC 6749 section 4.4.2 quote: "The authorization server MUST authenticate the client."
          */
         clientId.orElseThrow(() -> new IllegalArgumentException(
                 "client-id must be configured when " + operation + " is enabled"));
@@ -935,7 +950,7 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "This URL MUST use the `https` scheme".
+         * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
          *
          * Spec: RFC 6749, 3.1 Authorization Endpoint
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1
@@ -949,7 +964,8 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "URL using the `https` scheme"; "no query or fragment components".
+         * Quote: "`issuer` REQUIRED. URL using the `https` scheme with no query or fragment components that the OP
+         * asserts as its Issuer Identifier."
          */
         validateHttpsEndpointUri("issuer", uri, tlsRequired, false);
         validateNoQuery("issuer", uri);
@@ -964,7 +980,8 @@ final class OidcConfigSupport {
         /*
          * Spec: RFC 6749, 3.1.2 Redirection Endpoint
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2
-         * Quotes: "MUST be an absolute URI"; "MUST NOT include a fragment component".
+         * Quote: "The redirection endpoint URI MUST be an absolute URI as defined by [RFC3986] Section 4.3."
+         * Quote: "The endpoint URI MUST NOT include a fragment component."
          *
          * A local absolute path is accepted as Helidon shorthand. It is resolved to an absolute URI from the incoming
          * request origin before it is sent as the Authentication Request `redirect_uri`.
@@ -990,7 +1007,7 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "This URL MUST use the `https` scheme".
+         * Quote: "`jwks_uri` REQUIRED. URL of the OP's JWK Set [JWK] document, which MUST use the `https` scheme."
          */
         validateHttpsEndpointUri("jwks-uri", uri, tlsRequired, true);
     }
@@ -999,8 +1016,9 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect RP-Initiated Logout 1.0, 2.1 OpenID Provider Discovery Metadata
          * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OPMetadata
-         * Quotes: "URL at the OP to which an RP can perform a redirect to request that the End-User be logged out";
-         * "This URL MUST use the `https` scheme"; "MAY contain port, path, and query parameter components".
+         * Quote: "`end_session_endpoint` REQUIRED. URL at the OP to which an RP can perform a redirect to request that
+         * the End-User be logged out at the OP."
+         * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
          */
         validateHttpsEndpointUri("end-session-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("end-session-endpoint-uri", uri);
@@ -1010,7 +1028,7 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "This URL MUST use the `https` scheme".
+         * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
          */
         validateHttpsEndpointUri("user-info-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("user-info-endpoint-uri", uri);
@@ -1020,8 +1038,9 @@ final class OidcConfigSupport {
         /*
          * Spec: OpenID Connect RP-Initiated Logout 1.0, 2 RP-Initiated Logout
          * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
-         * Quotes: "`post_logout_redirect_uri` value MUST have been previously registered with the OP";
-         * "This URI SHOULD use the `https` scheme".
+         * Quote: "The `post_logout_redirect_uri` value MUST have been previously registered with the OP, either using
+         * the `post_logout_redirect_uris` Registration parameter or via another mechanism."
+         * Quote: "This URI SHOULD use the `https` scheme and MAY contain port, path, and query parameter components."
          */
         validateHttpsEndpointUri(configKey, uri, tlsRequired, false);
         validateNoFragment(configKey, uri);
@@ -1029,9 +1048,10 @@ final class OidcConfigSupport {
 
     private static void validateWellKnownUri(URI uri, boolean tlsRequired) {
         /*
-         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
-         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quote: "This URL MUST use the `https` scheme".
+         * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationRequest
+         * Quote: "OpenID Providers supporting Discovery MUST make a JSON document available at the path formed by
+         * concatenating the string `/.well-known/openid-configuration` to the Issuer."
          */
         validateHttpsEndpointUri("well-known-uri", uri, tlsRequired, false);
     }
@@ -1040,7 +1060,9 @@ final class OidcConfigSupport {
         /*
          * Spec: RFC 6749, 3.2 Token Endpoint
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2
-         * Quotes: "The authorization server MUST require the use of TLS"; "MUST NOT include a fragment component".
+         * Quote: "The endpoint URI MUST NOT include a fragment component."
+         * Quote: "The authorization server MUST require the use of TLS as described in Section 1.6 when sending
+         * requests to the token endpoint."
          */
         validateHttpsEndpointUri("token-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("token-endpoint-uri", uri);
@@ -1050,7 +1072,8 @@ final class OidcConfigSupport {
         /*
          * Spec: RFC 7662, 2 Introspection Endpoint
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2
-         * Quote: "MUST be protected by a transport-layer security mechanism".
+         * Quote: "The introspection endpoint MUST be protected by a transport-layer security mechanism as described in
+         * Section 4."
          */
         validateHttpsEndpointUri("introspection-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("introspection-endpoint-uri", uri);
@@ -1120,8 +1143,13 @@ final class OidcConfigSupport {
         /*
          * Spec: RFC 7662, 4 Security Considerations
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-4
-         * Quotes: "MUST require authentication of protected resources";
-         * "the authorization server MAY require separate credentials for each mode".
+         * Quote: "To prevent this, the authorization server MUST require authentication of protected resources that
+         * need to access the introspection endpoint and SHOULD require protected resources to be specifically
+         * authorized to call the introspection endpoint."
+         * Quote: "A single piece of software acting as both a client and a protected resource MAY reuse the same
+         * credentials between the token endpoint and the introspection endpoint, though doing so potentially conflates
+         * the activities of the client and protected resource portions of the software and the authorization server MAY
+         * require separate credentials for each mode."
          */
         OidcIntrospectionConfig introspection = tokenValidation.introspection();
         Optional<String> clientSecret = introspection.clientSecret().or(tenant::clientSecret);
@@ -1221,8 +1249,10 @@ final class OidcConfigSupport {
         /*
          * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
-         * Quote: "the TLS connection between the client and the authorization server MUST have been established or
-         * re-established with mutual-TLS X.509 certificate authentication".
+         * Quote: "In order to utilize TLS for OAuth client authentication, the TLS connection between the client and the
+         * authorization server MUST have been established or re-established with mutual-TLS X.509 certificate
+         * authentication (i.e., the client Certificate and CertificateVerify messages are sent during the TLS
+         * handshake)."
          */
         if (tls.enabled()
                 && (tls.sslContext().isPresent()

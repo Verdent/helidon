@@ -398,6 +398,10 @@ security:
 `issuer` or `endpoints.well-known-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
 provider loads well-known metadata and uses its `jwks_uri`. RFC 9068 JWT access-token validation expects `audience` to
 identify this resource server.
+When the JWK Set URI comes from well-known metadata, the provider treats it as the OpenID Provider's published public
+key set and rejects JWK Sets containing private or symmetric key values. Explicit local/private JWK resources for client
+assertion signing and ID Token decryption are configured separately under `client-assertion.jwk` and
+`id-token.decryption-jwk`.
 
 Audience validation is enabled by default. For JWT access tokens, disabling it relaxes RFC 9068 validation, logs a warning
 during configuration, and should be used only for testing, local development, or legacy non-RFC9068 tokens. Without a

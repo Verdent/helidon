@@ -161,9 +161,10 @@ final class OidcRefreshTokenManager {
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-6
-         * Quotes: "if omitted is treated as equal to the scope originally granted by the resource owner";
-         * "The authorization server MAY issue a new refresh token, in which case the client MUST discard the old
-         * refresh token and replace it with the new refresh token".
+         * Quote: "`scope` OPTIONAL. The requested scope MUST NOT include any scope not originally granted by the
+         * resource owner, and if omitted is treated as equal to the scope originally granted by the resource owner."
+         * Quote: "The authorization server MAY issue a new refresh token, in which case the client MUST discard the
+         * old refresh token and replace it with the new refresh token."
          */
         return OidcLocalAuthenticationResult.create(
                 current.tenantId(),

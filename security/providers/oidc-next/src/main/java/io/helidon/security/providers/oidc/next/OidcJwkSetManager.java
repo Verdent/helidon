@@ -117,7 +117,7 @@ final class OidcJwkSetManager {
         URI uri = jwkSetUri()
                 .orElseThrow(() -> new IllegalStateException("JWK Set URI is not configured for tenant: " + tenantId));
         try {
-            return jwkSetLoader.load(uri);
+            return jwkSetLoader.load(uri, metadata.jwkSetUriFromWellKnownMetadata());
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to load JWK Set for tenant: " + tenantId, e);
         }

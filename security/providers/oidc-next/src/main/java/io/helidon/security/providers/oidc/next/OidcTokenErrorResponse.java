@@ -36,7 +36,7 @@ final class OidcTokenErrorResponse {
         /*
          * Spec: RFC 6749, 5.2 Error Response
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2
-         * Quote: "`error` REQUIRED".
+         * Quote: "`error` REQUIRED. A single ASCII error code."
          */
         String error = stringValue(json, "error")
                 .filter(value -> !value.isBlank())

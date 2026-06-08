@@ -197,8 +197,10 @@ final class OidcResponseFactory {
         /*
          * Spec: RFC 6750, 3 The WWW-Authenticate Response Header Field
          * https://www.rfc-editor.org/rfc/rfc6750.html#section-3
-         * Quotes: "This scheme MUST be followed by one or more auth-param values"; if the request lacks
-         * authentication information, the resource server "SHOULD NOT include an error code or other error information".
+         * Quote: "This scheme MUST be followed by one or more auth-param values."
+         * Quote: "If the request lacks any authentication information (e.g., the client was unaware that authentication
+         * is necessary or attempted using an unsupported authentication method), the resource server SHOULD NOT include
+         * an error code or other error information."
          */
         return "Bearer realm=\"" + quotedString(challengeValue(realm, DEFAULT_CHALLENGE_REALM)) + "\"";
     }

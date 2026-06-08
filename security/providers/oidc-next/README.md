@@ -578,6 +578,21 @@ authorization-code:
   pkce-required: false
 ```
 
+### ID Token Audience Trust
+
+ID Tokens must list this provider's `client-id` in the `aud` claim. If the ID Token contains additional `aud` values,
+OpenID Connect Core requires those additional audiences to be trusted by the client. The provider rejects additional
+audiences by default. Configure `id-token.trusted-additional-audiences` only for other audience values that this client
+registration is expected to receive and trust.
+
+When `aud` contains more than one value, the provider also requires `azp` to equal `client-id`.
+
+```yaml
+id-token:
+  trusted-additional-audiences:
+    - "api://shared"
+```
+
 ### Encrypted ID Tokens
 
 The `id-token` block controls ID Token validation policy. By default, signed ID Tokens must use `RS256`, signed-only ID
@@ -1170,6 +1185,10 @@ strings or string arrays; array values are treated as individual scope tokens.
 For Authorization Code Flow local authentication, scope grants come from the Token Endpoint scope value stored in the
 local authentication result. ID Token scope claims are not promoted to Helidon scope grants.
 
+For Authorization Code Flow local authentication, the default principal id comes from the ID Token `sub` claim. OpenID
+Connect defines `sub` as unique within an issuer, so applications that accept more than one issuer should consider both
+the preserved `iss` and `sub` principal attributes when they need a globally stable user key.
+
 Example for a Keycloak-style token:
 
 ```yaml
@@ -1489,6 +1508,7 @@ ID Token options:
 | Key | Description |
 | --- | --- |
 | `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. |
+| `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
 | `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
 | `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. |

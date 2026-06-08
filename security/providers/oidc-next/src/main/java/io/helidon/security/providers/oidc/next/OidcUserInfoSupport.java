@@ -50,8 +50,9 @@ final class OidcUserInfoSupport {
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
          * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
-         * Quotes: "`sub` Claim MUST always be returned";
-         * "MUST be verified to exactly match the `sub` Claim in the ID Token".
+         * Quote: "The `sub` (subject) Claim MUST always be returned in the UserInfo Response."
+         * Quote: "The `sub` Claim in the UserInfo Response MUST be verified to exactly match the `sub` Claim in the
+         * ID Token."
          */
         String idTokenSubject = idToken.jwt()
                 .subject()

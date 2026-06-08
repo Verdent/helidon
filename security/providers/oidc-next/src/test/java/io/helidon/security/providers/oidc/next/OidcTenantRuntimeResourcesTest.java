@@ -109,6 +109,41 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
+    void jwkSetUriTracksWellKnownMetadataSource() {
+        OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
+                                                                          Optional.of(WELL_KNOWN_URI),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty(),
+                                                                          Optional.empty());
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("jwks_uri", WELL_KNOWN_METADATA_JWK_SET_URI.toString())
+                .build());
+
+        OidcProviderMetadata merged = staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
+
+        assertThat(merged.jwkSetUri(), is(Optional.of(WELL_KNOWN_METADATA_JWK_SET_URI)));
+        assertThat(merged.jwkSetUriFromWellKnownMetadata(), is(true));
+
+        OidcProviderMetadata staticMetadataWithJwkSet = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
+                                                                                    Optional.of(WELL_KNOWN_URI),
+                                                                                    Optional.empty(),
+                                                                                    Optional.empty(),
+                                                                                    Optional.of(JWK_SET_URI),
+                                                                                    Optional.empty(),
+                                                                                    Optional.empty(),
+                                                                                    Optional.empty());
+
+        OidcProviderMetadata mergedWithStaticJwkSet = staticMetadataWithJwkSet.mergeWellKnownMetadata(wellKnownMetadata);
+
+        assertThat(mergedWithStaticJwkSet.jwkSetUri(), is(Optional.of(JWK_SET_URI)));
+        assertThat(mergedWithStaticJwkSet.jwkSetUriFromWellKnownMetadata(), is(false));
+    }
+
+    @Test
     void wellKnownMetadataIssuerMustMatchStaticIssuer() {
         OidcProviderMetadata staticMetadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
                                                                           Optional.of(WELL_KNOWN_URI),

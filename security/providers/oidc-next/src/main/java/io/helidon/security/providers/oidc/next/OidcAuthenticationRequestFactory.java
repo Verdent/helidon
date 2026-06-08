@@ -109,8 +109,11 @@ final class OidcAuthenticationRequestFactory {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
          * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
-         * Quotes: "MUST contain the `openid` scope value"; "this value is `code`";
-         * "Opaque value used to maintain state"; "Sufficient entropy MUST be present".
+         * Quote: "OpenID Connect requests MUST contain the `openid` scope value."
+         * Quote: "When using the Authorization Code Flow, this value is `code`."
+         * Quote: "`state` RECOMMENDED. Opaque value used to maintain state between the request and the callback."
+         * Quote: "Sufficient entropy MUST be present in the `nonce` values used to prevent attackers from guessing
+         * values."
          */
         UriQueryWriteable query = UriQueryWriteable.create()
                 .set("response_type", "code")
@@ -121,13 +124,19 @@ final class OidcAuthenticationRequestFactory {
                 .set("nonce", nonce);
         if (pkceVerifier != null) {
             /*
-             * Spec: RFC 7636, 4.1 Client Creates a Code Verifier and 4.2 Client Creates the Code Challenge
+             * Spec: RFC 7636, 4.1 Client Creates a Code Verifier, 4.2 Client Creates the Code Challenge, and 7.1
+             * Entropy of the code_verifier
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.1
              * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2
-             * Quotes: "high-entropy cryptographic random STRING"; "32-octet sequence";
-             * "code_challenge = code_verifier";
+             * https://www.rfc-editor.org/rfc/rfc7636.html#section-7.1
+             * RFC 7636 section 4.1 quote: "The client first creates a code verifier, `code_verifier`, for each OAuth
+             * 2.0 Authorization Request."
+             * RFC 7636 section 7.1 quote: "The client SHOULD create a `code_verifier` with a minimum of 256 bits of
+             * entropy."
+             * RFC 7636 section 4.2 quotes: "code_challenge = code_verifier";
              * "code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))";
-             * "If the client is capable of using \"S256\", it MUST use \"S256\"".
+             * "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory To
+             * Implement (MTI) on the server."
              */
             query.set("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
                     .set("code_challenge_method", authorizationCode.pkceMethod().wireName());

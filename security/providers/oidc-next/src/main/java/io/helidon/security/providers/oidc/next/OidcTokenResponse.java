@@ -48,8 +48,10 @@ final class OidcTokenResponse {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.3.3 Successful Token Response
          * https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
-         * Quotes: "`access_token` OAuth 2.0 Access Token"; "`token_type` OAuth 2.0 Token Type";
-         * "`id_token` ID Token value associated with the authenticated session".
+         * Quote: "The OAuth 2.0 `token_type` response parameter value MUST be `Bearer`, as specified in OAuth 2.0
+         * Bearer Token Usage, unless another Token Type has been negotiated with the Client."
+         * Quote: "In addition to the response parameters specified by OAuth 2.0, the following parameters MUST be
+         * included in the response: `id_token` ID Token value associated with the authenticated session."
          */
         return create(json, true);
     }
@@ -58,8 +60,8 @@ final class OidcTokenResponse {
         /*
          * Spec: OpenID Connect Core 1.0, 12.2 Successful Refresh Response
          * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
-         * Quote: "the response body is the Token Response of Section 3.1.3.3 (Successful Token Response) except that
-         * it might not contain an `id_token`".
+         * Quote: "Upon successful validation of the Refresh Token, the response body is the Token Response of Section
+         * 3.1.3.3 (Successful Token Response) except that it might not contain an `id_token`."
          */
         return create(json, false);
     }
@@ -68,7 +70,9 @@ final class OidcTokenResponse {
         /*
          * Spec: RFC 6749, 4.4.3 Access Token Response
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.3
-         * Quotes: "the authorization server issues an access token"; "A refresh token SHOULD NOT be included."
+         * Quote: "If the access token request is valid and authorized, the authorization server issues an access token
+         * as described in Section 5.1."
+         * Quote: "A refresh token SHOULD NOT be included."
          */
         return create(json, false);
     }

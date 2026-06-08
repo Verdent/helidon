@@ -21,16 +21,22 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
+import io.helidon.json.JsonValue;
+import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetLoader {
+    private static final Set<String> FORBIDDEN_OPENID_PROVIDER_JWK_PARAMETERS =
+            Set.of("k", "d", "p", "q", "dp", "dq", "qi", "oth");
+
     private final WebClient webClient;
 
     OidcJwkSetLoader(WebClient webClient) {
@@ -38,8 +44,52 @@ final class OidcJwkSetLoader {
     }
 
     JwkKeys load(URI uri) {
+        return load(uri, false);
+    }
+
+    JwkKeys load(URI uri, boolean openIdProviderJwkSet) {
         JsonObject jsonObject = loadJson(uri);
+        if (openIdProviderJwkSet) {
+            validateOpenIdProviderJwkSet(jsonObject);
+        }
         return JwkKeys.create(jsonObject);
+    }
+
+    private static void validateOpenIdProviderJwkSet(JsonObject jsonObject) {
+        /*
+         * This validation applies only to the OpenID Provider JWK Set loaded from provider metadata. Explicit local
+         * JWK resources, such as client assertion signing keys or ID Token decryption keys, are loaded without this
+         * provider-metadata restriction.
+         *
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata, jwks_uri
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "This contains the signing key(s) the RP uses to validate signatures from the OP."
+         * Quote: "The JWK Set MAY also contain the Server's encryption key(s), which are used by RPs to encrypt
+         * requests to the Server."
+         * Quote: "The JWK Set MUST NOT contain private or symmetric key values."
+         */
+        jsonObject.arrayValue("keys")
+                .ifPresent(keys -> keys.values()
+                        .stream()
+                        .filter(value -> value.type() == JsonValueType.OBJECT)
+                        .map(JsonValue::asObject)
+                        .forEach(OidcJwkSetLoader::validateOpenIdProviderJwk));
+    }
+
+    private static void validateOpenIdProviderJwk(JsonObject jwk) {
+        if (jwk.stringValue("kty").filter("oct"::equals).isPresent()
+                || containsAny(jwk, FORBIDDEN_OPENID_PROVIDER_JWK_PARAMETERS)) {
+            throw new IllegalStateException("OpenID Provider JWK Set must not contain private or symmetric key values");
+        }
+    }
+
+    private static boolean containsAny(JsonObject jsonObject, Set<String> names) {
+        for (String name : names) {
+            if (jsonObject.containsKey(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private JsonObject loadJson(URI uri) {

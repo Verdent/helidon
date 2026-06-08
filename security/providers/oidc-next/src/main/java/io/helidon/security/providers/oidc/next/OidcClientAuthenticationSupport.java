@@ -117,8 +117,12 @@ final class OidcClientAuthenticationSupport {
         /*
          * Spec: RFC 7662, 4 Security Considerations
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-4
-         * Quotes: "MUST require authentication of protected resources";
-         * "any valid client authentication mechanism used with the token endpoint".
+         * Quote: "To prevent this, the authorization server MUST require authentication of protected resources that
+         * need to access the introspection endpoint and SHOULD require protected resources to be specifically
+         * authorized to call the introspection endpoint."
+         * Quote: "The specifics of such authentication credentials are out of scope of this specification, but commonly
+         * these credentials could take the form of any valid client authentication mechanism used with the token
+         * endpoint, an OAuth 2.0 access token, or other HTTP authorization or authentication mechanism."
          */
         if (method == OidcClientAuthenticationMethod.NONE) {
             throw new IllegalStateException("Introspection Endpoint authentication cannot be NONE");
@@ -137,7 +141,9 @@ final class OidcClientAuthenticationSupport {
             /*
              * Spec: RFC 6749, 2.3.1 Client Password
              * https://www.rfc-editor.org/rfc/rfc6749.html#section-2.3.1
-             * Quote: "including the client credentials in the request-body".
+             * Quote: "Including the client credentials in the request-body using the two parameters is NOT RECOMMENDED
+             * and SHOULD be limited to clients unable to directly utilize the HTTP Basic authentication scheme (or other
+             * password-based HTTP authentication schemes)."
              */
             form.add("client_id", clientId)
                     .add("client_secret", requireClientSecret());
@@ -146,8 +152,9 @@ final class OidcClientAuthenticationSupport {
             /*
              * Spec: OpenID Connect Core 1.0, 9 Client Authentication
              * https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
-             * Quotes: "client_assertion_type"; "client_assertion";
-             * "urn:ietf:params:oauth:client-assertion-type:jwt-bearer".
+             * Quote: "The authentication token MUST be sent as the value of the `client_assertion` parameter."
+             * Quote: "The value of the `client_assertion_type` parameter MUST be
+             * \"urn:ietf:params:oauth:client-assertion-type:jwt-bearer\"."
              */
             form.add("client_assertion_type", CLIENT_ASSERTION_TYPE)
                     .add("client_assertion", clientAssertion(endpointUri));
@@ -156,8 +163,11 @@ final class OidcClientAuthenticationSupport {
             /*
              * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication
              * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
-             * Quotes: "MUST have been established or re-established with mutual-TLS X.509 certificate
-             * authentication"; "the client MUST include the "client_id" parameter".
+             * Quote: "In order to utilize TLS for OAuth client authentication, the TLS connection between the client
+             * and the authorization server MUST have been established or re-established with mutual-TLS X.509
+             * certificate authentication."
+             * Quote: "For all requests to the authorization server utilizing mutual-TLS client authentication, the
+             * client MUST include the `client_id` parameter described in Section 2.2 of OAuth 2.0."
              */
             form.add("client_id", clientId);
         }
@@ -165,7 +175,9 @@ final class OidcClientAuthenticationSupport {
             /*
              * Spec: RFC 6749, 3.2.1 Client Authentication
              * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2.1
-             * Quote: "MUST send its `client_id`".
+             * Quote: "In the `authorization_code` `grant_type` request to the token endpoint, an unauthenticated
+             * client MUST send its `client_id` to prevent itself from inadvertently accepting a code intended for a
+             * client with a different `client_id`."
              */
             form.add("client_id", clientId);
         }
@@ -240,7 +252,13 @@ final class OidcClientAuthenticationSupport {
         /*
          * Spec: OpenID Connect Core 1.0, 9 Client Authentication
          * https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
-         * Quotes: "iss"; "sub"; "aud"; "jti"; "exp".
+         * Quote: "`iss` REQUIRED. Issuer. This MUST contain the `client_id` of the OAuth Client."
+         * Quote: "`sub` REQUIRED. Subject. This MUST contain the `client_id` of the OAuth Client."
+         * Quote: "`aud` REQUIRED. Audience(s). The Audience SHOULD be the URL of the Authorization Server's Token
+         * Endpoint."
+         * Quote: "`jti` REQUIRED. JWT ID. A unique identifier for the token, which can be used to prevent reuse of the
+         * token."
+         * Quote: "`exp` REQUIRED. Expiration time on or after which the JWT MUST NOT be accepted for processing."
          */
         Jwt.Builder jwt = Jwt.builder()
                 .algorithm(algorithm)

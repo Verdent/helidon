@@ -212,12 +212,17 @@ final class OidcLogoutHandler {
         /*
          * Spec: OpenID Connect RP-Initiated Logout 1.0, 2 RP-Initiated Logout
          * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
-         * Quotes: "redirecting the End-User's User Agent to the OP's Logout Endpoint";
-         * "RECOMMENDED. ID Token previously issued by the OP to the RP passed to the Logout Endpoint as a hint";
-         * "OPTIONAL. OAuth 2.0 Client Identifier valid at the Authorization Server";
-         * "When used in conjunction with `id_token_hint`, this parameter is useful when the End-User is using a
-         * symmetrically encrypted ID Token as an `id_token_hint` value";
-         * "OPTIONAL. URI to which the RP is requesting"; "OPTIONAL. Opaque value used by the RP".
+         * Quote: "An RP requests that the OP log out the End-User by redirecting the End-User's User Agent to the
+         * OP's Logout Endpoint."
+         * Quote: "`id_token_hint` RECOMMENDED. ID Token previously issued by the OP to the RP passed to the Logout
+         * Endpoint as a hint about the End-User's current authenticated session with the Client."
+         * Quote: "`client_id` OPTIONAL. OAuth 2.0 Client Identifier valid at the Authorization Server."
+         * Quote: "Another use is for symmetrically encrypted ID Tokens used as `id_token_hint` values that require the
+         * Client Identifier to be specified by other means, so that the ID Tokens can be decrypted by the OP."
+         * Quote: "`post_logout_redirect_uri` OPTIONAL. URI to which the RP is requesting that the End-User's User
+         * Agent be redirected after a logout has been performed."
+         * Quote: "`state` OPTIONAL. Opaque value used by the RP to maintain state between the logout request and the
+         * callback to the endpoint specified by the `post_logout_redirect_uri` parameter."
          */
         UriQueryWriteable query = UriQueryWriteable.create();
         idTokenHint.ifPresent(value -> query.set("id_token_hint", value));

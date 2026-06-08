@@ -107,7 +107,8 @@ final class OidcIdTokenDecryptor {
         /*
          * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
          * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
-         * Quote: "if there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided".
+         * Quote: "If there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided in
+         * the JOSE Header."
          */
         if (jwks.size() > 1) {
             throw new IllegalStateException("Encrypted ID Token JWE kid is required when multiple decryption keys exist");
@@ -119,7 +120,7 @@ final class OidcIdTokenDecryptor {
         /*
          * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
          * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
-         * Quote: "The `use` parameter value MUST be `enc`".
+         * Quote: "The key usage of the respective keys MUST include encryption."
          */
         key.usage()
                 .filter(usage -> !Jwk.USE_ENCRYPTION.equals(usage))

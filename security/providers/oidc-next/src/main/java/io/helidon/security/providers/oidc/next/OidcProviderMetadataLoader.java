@@ -40,7 +40,12 @@ final class OidcProviderMetadataLoader {
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .request()) {
-            if (response.status().family() != Status.Family.SUCCESSFUL) {
+            /*
+             * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
+             * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationResponse
+             * Quote: "A successful response MUST use the 200 OK HTTP status code".
+             */
+            if (response.status() != Status.OK_200) {
                 throw new IllegalStateException("well-known metadata is unavailable");
             }
             /*

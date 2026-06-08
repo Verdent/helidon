@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -167,6 +168,18 @@ class OidcTenantRuntimeResourcesTest {
                 .build());
 
         assertThat(metadata.authorizationResponseIssuerParameterSupported(), is(true));
+    }
+
+    @Test
+    void wellKnownMetadataParsesIdTokenEncryptionAlgorithms() {
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .setStrings("id_token_encryption_alg_values_supported", List.of("RSA-OAEP-256"))
+                .setStrings("id_token_encryption_enc_values_supported", List.of("A256GCM"))
+                .build());
+
+        assertThat(metadata.idTokenEncryptionAlgorithmsSupported().orElseThrow(), is(List.of("RSA-OAEP-256")));
+        assertThat(metadata.idTokenContentEncryptionAlgorithmsSupported().orElseThrow(), is(List.of("A256GCM")));
     }
 
     @Test

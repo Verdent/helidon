@@ -32,6 +32,8 @@ final class OidcProviderMetadata {
     private final Optional<URI> mutualTlsTokenEndpointUri;
     private final Optional<URI> jwkSetUri;
     private final Optional<List<String>> idTokenSigningAlgorithmsSupported;
+    private final Optional<List<String>> idTokenEncryptionAlgorithmsSupported;
+    private final Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported;
     private final Optional<URI> introspectionEndpointUri;
     private final Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported;
     private final Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported;
@@ -46,6 +48,8 @@ final class OidcProviderMetadata {
                                  Optional<URI> mutualTlsTokenEndpointUri,
                                  Optional<URI> jwkSetUri,
                                  Optional<List<String>> idTokenSigningAlgorithmsSupported,
+                                 Optional<List<String>> idTokenEncryptionAlgorithmsSupported,
+                                 Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported,
                                  Optional<URI> introspectionEndpointUri,
                                  Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
                                  Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
@@ -59,6 +63,8 @@ final class OidcProviderMetadata {
         this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
         this.jwkSetUri = jwkSetUri;
         this.idTokenSigningAlgorithmsSupported = idTokenSigningAlgorithmsSupported.map(List::copyOf);
+        this.idTokenEncryptionAlgorithmsSupported = idTokenEncryptionAlgorithmsSupported.map(List::copyOf);
+        this.idTokenContentEncryptionAlgorithmsSupported = idTokenContentEncryptionAlgorithmsSupported.map(List::copyOf);
         this.introspectionEndpointUri = introspectionEndpointUri;
         this.introspectionEndpointAuthenticationMethodsSupported =
                 introspectionEndpointAuthenticationMethodsSupported.map(List::copyOf);
@@ -77,6 +83,8 @@ final class OidcProviderMetadata {
                       endpoints.tokenEndpointUri(),
                       Optional.empty(),
                       endpoints.jwksUri(),
+                      Optional.empty(),
+                      Optional.empty(),
                       Optional.empty(),
                       endpoints.introspectionEndpointUri(),
                       Optional.empty(),
@@ -100,6 +108,8 @@ final class OidcProviderMetadata {
                       tokenEndpointUri,
                       Optional.empty(),
                       jwkSetUri,
+                      Optional.empty(),
+                      Optional.empty(),
                       Optional.empty(),
                       introspectionEndpointUri,
                       Optional.empty(),
@@ -126,6 +136,8 @@ final class OidcProviderMetadata {
                       mutualTlsTokenEndpointUri,
                       jwkSetUri,
                       Optional.empty(),
+                      Optional.empty(),
+                      Optional.empty(),
                       introspectionEndpointUri,
                       Optional.empty(),
                       Optional.empty(),
@@ -141,6 +153,8 @@ final class OidcProviderMetadata {
                                        Optional<URI> mutualTlsTokenEndpointUri,
                                        Optional<URI> jwkSetUri,
                                        Optional<List<String>> idTokenSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenEncryptionAlgorithmsSupported,
+                                       Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported,
                                        Optional<URI> introspectionEndpointUri,
                                        Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
                                        Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
@@ -154,6 +168,8 @@ final class OidcProviderMetadata {
                                         mutualTlsTokenEndpointUri,
                                         jwkSetUri,
                                         idTokenSigningAlgorithmsSupported,
+                                        idTokenEncryptionAlgorithmsSupported,
+                                        idTokenContentEncryptionAlgorithmsSupported,
                                         introspectionEndpointUri,
                                         introspectionEndpointAuthenticationMethodsSupported,
                                         introspectionEndpointAuthenticationSigningAlgorithmsSupported,
@@ -170,6 +186,8 @@ final class OidcProviderMetadata {
                       mutualTlsTokenEndpointUri(json),
                       uriValue(json, "jwks_uri"),
                       stringArrayValue(json, "id_token_signing_alg_values_supported"),
+                      stringArrayValue(json, "id_token_encryption_alg_values_supported"),
+                      stringArrayValue(json, "id_token_encryption_enc_values_supported"),
                       uriValue(json, "introspection_endpoint"),
                       stringArrayValue(json, "introspection_endpoint_auth_methods_supported"),
                       stringArrayValue(json, "introspection_endpoint_auth_signing_alg_values_supported"),
@@ -190,6 +208,9 @@ final class OidcProviderMetadata {
                               : wellKnownMetadata.mutualTlsTokenEndpointUri()),
                       jwkSetUri.or(wellKnownMetadata::jwkSetUri),
                       idTokenSigningAlgorithmsSupported.or(wellKnownMetadata::idTokenSigningAlgorithmsSupported),
+                      idTokenEncryptionAlgorithmsSupported.or(wellKnownMetadata::idTokenEncryptionAlgorithmsSupported),
+                      idTokenContentEncryptionAlgorithmsSupported
+                              .or(wellKnownMetadata::idTokenContentEncryptionAlgorithmsSupported),
                       introspectionEndpointUri.or(wellKnownMetadata::introspectionEndpointUri),
                       introspectionEndpointAuthenticationMethodsSupported
                               .or(wellKnownMetadata::introspectionEndpointAuthenticationMethodsSupported),
@@ -231,6 +252,14 @@ final class OidcProviderMetadata {
 
     Optional<List<String>> idTokenSigningAlgorithmsSupported() {
         return idTokenSigningAlgorithmsSupported;
+    }
+
+    Optional<List<String>> idTokenEncryptionAlgorithmsSupported() {
+        return idTokenEncryptionAlgorithmsSupported;
+    }
+
+    Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported() {
+        return idTokenContentEncryptionAlgorithmsSupported;
     }
 
     Optional<URI> introspectionEndpointUri() {

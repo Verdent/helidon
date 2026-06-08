@@ -68,11 +68,15 @@ class OidcProviderTest {
     private static final String USERNAME = "user1";
 
     private static JwkKeys signKeys;
+    private static JwkKeys encryptKeys;
 
     @BeforeAll
     static void initClass() {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+        encryptKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
     }
 
@@ -663,9 +667,9 @@ class OidcProviderTest {
     @Test
     void localAuthenticationResultCookieAuthenticatesSubjectFromEncryptedIdToken() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { },
-                                                          builder -> builder.idToken(idToken -> idToken
-                                                                  .decryptionJwk(Resource.create(
-                                                                          "oidc-next-sign-jwk.json"))));
+                                                            builder -> builder.idToken(idToken -> idToken
+                                                                    .decryptionJwk(Resource.create(
+                                                                            "oidc-next-encrypt-jwk.json"))));
         OidcProvider provider = provider(tenant);
         String signedIdToken = signedIdToken(it -> it.email("user1@example.org")
                 .preferredUsername(USERNAME));
@@ -1186,7 +1190,7 @@ class OidcProviderTest {
 
     private static String encryptedIdToken(String signedIdToken) {
         return EncryptedJwt.builder(SignedJwt.parseToken(signedIdToken))
-                .jwks(signKeys, "sign-rsa")
+                .jwks(encryptKeys, "encrypt-rsa")
                 .build()
                 .token();
     }

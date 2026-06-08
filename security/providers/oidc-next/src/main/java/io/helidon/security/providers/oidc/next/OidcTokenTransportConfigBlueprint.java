@@ -49,8 +49,10 @@ interface OidcTokenTransportConfigBlueprint {
      * Spec: RFC 6750, 1 Introduction and 5.2 Threat Mitigation,
      * <a href="https://www.rfc-editor.org/rfc/rfc6750.html#section-1">section 1</a> and
      * <a href="https://www.rfc-editor.org/rfc/rfc6750.html#section-5.2">section 5.2</a>.
-     * Quotes: "TLS is mandatory to implement and use with this specification";
-     * "interaction between the client and the resource server, utilize confidentiality and integrity protection".
+     * Quote: "TLS is mandatory to implement and use with this specification; other specifications may extend this
+     * specification for use with other protocols."
+     * Quote: "This requires that the communication interaction between the client and the authorization server, as well
+     * as the interaction between the client and the resource server, utilize confidentiality and integrity protection."
      *
      * @return whether Bearer Token requests must use secure transport
      */

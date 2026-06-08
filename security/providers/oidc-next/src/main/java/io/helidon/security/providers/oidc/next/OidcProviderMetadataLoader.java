@@ -43,7 +43,9 @@ final class OidcProviderMetadataLoader {
             /*
              * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
              * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationResponse
-             * Quote: "A successful response MUST use the 200 OK HTTP status code".
+             * Quote: "A successful response MUST use the 200 OK HTTP status code and return a JSON object using the
+             * `application/json` content type that contains a set of Claims as its members that are a subset of the
+             * Metadata values defined in Section 3."
              */
             if (response.status() != Status.OK_200) {
                 throw new IllegalStateException("well-known metadata is unavailable");
@@ -51,8 +53,10 @@ final class OidcProviderMetadataLoader {
             /*
              * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
              * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationResponse
-             * Quotes: "The response is a set of Claims about the OpenID Provider's configuration";
-             * "MUST be returned using the `application/json` content type".
+             * Quote: "The response is a set of Claims about the OpenID Provider's configuration."
+             * Quote: "A successful response MUST use the 200 OK HTTP status code and return a JSON object using the
+             * `application/json` content type that contains a set of Claims as its members that are a subset of the
+             * Metadata values defined in Section 3."
              */
             if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
                 throw new IllegalStateException("well-known metadata response must be application/json");

@@ -112,8 +112,8 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                          * Spec: RFC 9068, 2.1 Header and 4 Validation
                          * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.1
                          * https://www.rfc-editor.org/rfc/rfc9068.html#section-4
-                         * Quotes: "JWT access tokens MUST NOT use \"none\" as the signing algorithm";
-                         * "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"".
+                         * Quote: "JWT access tokens MUST NOT use \"none\" as the signing algorithm."
+                         * Quote: "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"."
                          */
                         collector.fatal(jwt, "JWT alg header must not be none");
                     } else if (!allowedAlgorithms.contains(algorithm)) {

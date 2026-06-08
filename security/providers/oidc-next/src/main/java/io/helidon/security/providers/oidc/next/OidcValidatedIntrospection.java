@@ -86,10 +86,13 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
 
     private static Optional<String> stringClaim(JsonObject claims, String claimName) {
         /*
-         * Specs: RFC 6749, 2.2 Client Identifier; RFC 7662, 2.2 Introspection Response
+         * Spec: RFC 6749, 2.2 Client Identifier
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-2.2
+         * Quote: "The client identifier is a case-sensitive string."
+         *
+         * Spec: RFC 7662, 2.2 Introspection Response
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
-         * Quotes: "client identifier is a case-sensitive string"; "String representing the issuer".
+         * Quote: "`iss` OPTIONAL. String representing the issuer of this token, as defined in JWT."
          */
         return claims.value(claimName)
                 .map(jsonValue -> {
@@ -118,8 +121,12 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         /*
          * Spec: RFC 7662, 2.2 Introspection Response
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
-         * Quotes: "`exp`"; "`iat`"; "`nbf`"; "Integer timestamp, measured in the number of seconds since January 1
-         * 1970 UTC".
+         * Quote: "`exp` OPTIONAL. Integer timestamp, measured in the number of seconds since January 1 1970 UTC,
+         * indicating when this token will expire, as defined in JWT."
+         * Quote: "`iat` OPTIONAL. Integer timestamp, measured in the number of seconds since January 1 1970 UTC,
+         * indicating when this token was originally issued, as defined in JWT."
+         * Quote: "`nbf` OPTIONAL. Integer timestamp, measured in the number of seconds since January 1 1970 UTC,
+         * indicating when this token is not to be used before, as defined in JWT."
          */
         try {
             return Instant.ofEpochSecond(value.toBigIntegerExact().longValueExact());
@@ -136,7 +143,8 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         /*
          * Spec: RFC 7662, 2.2 Introspection Response
          * https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2
-         * Quote: "string identifier or list".
+         * Quote: "`aud` OPTIONAL. Service-specific string identifier or list of string identifiers representing the
+         * intended audience for this token, as defined in JWT."
          */
         return claims.value(claimName)
                 .map(jsonValue -> {

@@ -60,8 +60,9 @@ final class OidcScopeSupport {
          * Spec: RFC 6749, 3.3 Access Token Scope and Appendix A.4 "scope" Syntax
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.3
          * https://www.rfc-editor.org/rfc/rfc6749.html#appendix-A.4
-         * Quotes: "The value of the scope parameter is expressed as a list of space-delimited, case-sensitive strings";
-         * "scope = scope-token *( SP scope-token )"; "scope-token = 1*NQCHAR".
+         * Quote: "The value of the scope parameter is expressed as a list of space-delimited, case-sensitive strings."
+         * Quote: "scope = scope-token *( SP scope-token )"
+         * Quote: "scope-token = 1*NQCHAR"
          */
         if (scope == null || scope.isEmpty()) {
             throw invalidScopeString(source);

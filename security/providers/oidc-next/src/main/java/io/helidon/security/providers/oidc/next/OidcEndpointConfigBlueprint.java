@@ -80,11 +80,12 @@ interface OidcEndpointConfigBlueprint {
      * <p>
      * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata,
      * <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">section 3</a>.
-     * Quote: "This URL MUST use the `https` scheme".
+     * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
      * <p>
      * Spec: RFC 7662, 2 Introspection Endpoint,
      * <a href="https://www.rfc-editor.org/rfc/rfc7662.html#section-2">section 2</a>.
-     * Quote: "MUST be protected by a transport-layer security mechanism".
+     * Quote: "The introspection endpoint MUST be protected by a transport-layer security mechanism as described in
+     * Section 4."
      *
      * @return whether OpenID Connect endpoint URIs, post-logout redirect URIs, and OIDC outbound bearer-token targets
      *         must use transport-layer security

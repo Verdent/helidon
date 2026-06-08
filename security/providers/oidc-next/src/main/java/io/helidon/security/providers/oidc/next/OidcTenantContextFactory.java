@@ -24,6 +24,13 @@ import io.helidon.webclient.api.WebClient;
 
 final class OidcTenantContextFactory {
     private static final System.Logger LOGGER = System.getLogger(OidcTenantContextFactory.class.getName());
+    private static final String AUTHORIZATION_CODE_GRANT = "authorization_code";
+    private static final String CLIENT_CREDENTIALS_GRANT = "client_credentials";
+    private static final String CODE_RESPONSE_TYPE = "code";
+    private static final List<String> DEFAULT_GRANT_TYPES_SUPPORTED =
+            List.of(AUTHORIZATION_CODE_GRANT, "implicit");
+    private static final List<String> DEFAULT_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED =
+            List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC.wireName());
 
     private final TenantInitializer initializer;
 
@@ -66,6 +73,7 @@ final class OidcTenantContextFactory {
                 validateAuthorizationCodeMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 validateClientCredentialsGrantMetadata(tenantConfig,
                                                        metadata,
+                                                       wellKnownMetadataLoaded,
                                                        outboundTargetClientCredentialsGrant);
                 validateJwtMetadata(tenantConfig, metadata);
                 validateIntrospectionMetadata(tenantConfig, metadata);
@@ -157,7 +165,59 @@ final class OidcTenantContextFactory {
                                              "well-known metadata token_endpoint must be present for "
                                                      + "Authorization Code Flow");
                                  });
+        validateAuthorizationCodeCapabilityMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+        validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateIdTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+    }
+
+    private static void validateAuthorizationCodeCapabilityMetadata(OidcTenantConfig tenantConfig,
+                                                                    OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "REQUIRED."; "Dynamic OpenID Providers MUST support the <tt>code</tt>,".
+         */
+        List<String> responseTypes = metadata.responseTypesSupported()
+                .orElseThrow(() -> new IllegalStateException(
+                        "well-known metadata response_types_supported must be present for Authorization Code Flow"));
+        if (!responseTypes.contains(CODE_RESPONSE_TYPE)) {
+            throw new IllegalStateException(
+                    "well-known metadata response_types_supported must include " + CODE_RESPONSE_TYPE);
+        }
+
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "If omitted, the default value is"; "<tt>[\"authorization_code\", \"implicit\"]</tt>".
+         */
+        if (!metadata.grantTypesSupported().orElse(DEFAULT_GRANT_TYPES_SUPPORTED).contains(AUTHORIZATION_CODE_GRANT)) {
+            throw new IllegalStateException(
+                    "well-known metadata grant_types_supported must include " + AUTHORIZATION_CODE_GRANT);
+        }
+
+        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode()
+                .orElseThrow();
+        if (!authorizationCode.pkceRequired()) {
+            return;
+        }
+        String pkceMethod = authorizationCode.pkceMethod().wireName();
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "If omitted, the authorization server does not support PKCE."
+         */
+        List<String> codeChallengeMethods = metadata.codeChallengeMethodsSupported()
+                .orElseThrow(() -> new IllegalStateException(
+                        "well-known metadata code_challenge_methods_supported must be present when PKCE is enabled"));
+        if (!codeChallengeMethods.contains(pkceMethod)) {
+            throw new IllegalStateException(
+                    "well-known metadata code_challenge_methods_supported must include " + pkceMethod);
+        }
     }
 
     private static void validateIdTokenMetadata(OidcTenantConfig tenantConfig,
@@ -218,6 +278,7 @@ final class OidcTenantContextFactory {
 
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
                                                                OidcProviderMetadata metadata,
+                                                               boolean wellKnownMetadataLoaded,
                                                                boolean outboundTargetClientCredentialsGrant) {
         if (!outboundTargetClientCredentialsGrant) {
             return;
@@ -237,6 +298,73 @@ final class OidcTenantContextFactory {
                                              "well-known metadata token_endpoint must be present for "
                                                      + "Client Credentials Grant");
                                  });
+        validateClientCredentialsCapabilityMetadata(metadata, wellKnownMetadataLoaded);
+        validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+    }
+
+    private static void validateClientCredentialsCapabilityMetadata(OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quotes: "`grant_types_supported`"; "If omitted, the default value is".
+         */
+        if (!metadata.grantTypesSupported().orElse(DEFAULT_GRANT_TYPES_SUPPORTED).contains(CLIENT_CREDENTIALS_GRANT)) {
+            throw new IllegalStateException(
+                    "well-known metadata grant_types_supported must include " + CLIENT_CREDENTIALS_GRANT);
+        }
+    }
+
+    private static void validateTokenEndpointAuthenticationMetadata(OidcTenantConfig tenantConfig,
+                                                                    OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "If omitted, the default is \"client_secret_basic\" -- the HTTP Basic Authentication Scheme".
+         */
+        List<String> supportedMethods = metadata.tokenEndpointAuthenticationMethodsSupported()
+                .orElse(DEFAULT_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED);
+        if (!supportedMethods.contains(method.wireName())) {
+            throw new IllegalStateException(
+                    "well-known metadata token_endpoint_auth_methods_supported must include " + method.wireName());
+        }
+
+        if (method != OidcClientAuthenticationMethod.CLIENT_SECRET_JWT
+                && method != OidcClientAuthenticationMethod.PRIVATE_KEY_JWT) {
+            return;
+        }
+        OidcClientAuthenticationSupport clientAuthentication =
+                OidcClientAuthenticationSupport.tokenEndpoint(tenantConfig);
+        String algorithm = clientAuthentication.clientAssertionAlgorithm().orElseThrow();
+        List<String> supportedAlgorithms = metadata.tokenEndpointAuthenticationSigningAlgorithmsSupported()
+                .orElseThrow(() -> new IllegalStateException(
+                        "well-known metadata token_endpoint_auth_signing_alg_values_supported must be present for "
+                                + method.wireName()));
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quotes: "This metadata entry MUST be present"; "No default algorithms are implied if this entry is omitted";
+         * "The value \"none\" MUST NOT be used".
+         */
+        if (supportedAlgorithms.contains("none")) {
+            throw new IllegalStateException(
+                    "well-known metadata token_endpoint_auth_signing_alg_values_supported must not include none");
+        }
+        if (!supportedAlgorithms.contains(algorithm)) {
+            throw new IllegalStateException(
+                    "well-known metadata token_endpoint_auth_signing_alg_values_supported must include " + algorithm);
+        }
     }
 
     private static boolean tokenEndpointTlsRequired(OidcTenantConfig tenantConfig) {

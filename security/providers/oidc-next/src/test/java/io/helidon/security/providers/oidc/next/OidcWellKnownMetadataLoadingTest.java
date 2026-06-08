@@ -96,17 +96,9 @@ class OidcWellKnownMetadataLoadingTest {
         introspectionEndpointUri = serverUri.resolve("introspect");
         userInfoEndpointUri = serverUri.resolve("userinfo");
         endSessionEndpointUri = serverUri.resolve("logout");
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("jwks_uri", jwksUri.toString())
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
-                .set("introspection_endpoint", introspectionEndpointUri.toString())
-                .set("userinfo_endpoint", userInfoEndpointUri.toString())
-                .set("end_session_endpoint", endSessionEndpointUri.toString())
-                .build()
-                .toString());
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .build()
+                                      .toString());
         WELL_KNOWN_WEBCLIENT_HEADER.set("");
         REDIRECTED_WELL_KNOWN_REQUESTS.set(0);
         redirectLocation = null;
@@ -159,14 +151,232 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenSigningAlgorithmsAreMissing() {
+    void authorizationCodeTenantFailsWhenWellKnownMetadataResponseTypesAreMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
                 .set("jwks_uri", jwksUri.toString())
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
                 .build()
                 .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("response_types_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportCodeResponseType() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("response_types_supported", List.of("id_token"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("response_types_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportAuthorizationCodeGrant() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("grant_types_supported", List.of("implicit"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("grant_types_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantAcceptsMissingWellKnownMetadataGrantTypesDefault() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.ready(), is(true));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataPkceMethodsAreMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("code_challenge_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredPkceMethod() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("code_challenge_methods_supported", List.of("plain"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("code_challenge_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantSkipsPkceMetadataWhenPkceIsDisabled() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .pkceRequired(false))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDefaultsTokenEndpointAuthToBasic() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token_endpoint_auth_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantAcceptsMissingWellKnownMetadataTokenEndpointAuthForBasicDefault() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportTokenEndpointAuthMethod() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token_endpoint_auth_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmsAreMissing() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_jwt"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(jwtClientAuthenticationTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token_endpoint_auth_signing_alg_values_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmDoesNotMatchConfig() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_jwt"))
+                                      .setStrings("token_endpoint_auth_signing_alg_values_supported", List.of("HS512"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(jwtClientAuthenticationTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token_endpoint_auth_signing_alg_values_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmsContainNone() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_jwt"))
+                                      .setStrings("token_endpoint_auth_signing_alg_values_supported",
+                                                  List.of("HS256", "none"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(jwtClientAuthenticationTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token_endpoint_auth_signing_alg_values_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenSigningAlgorithmsAreMissing() {
+        PROVIDER_METADATA.set(authorizationCodeCapabilityMetadataBuilder()
+                                      .build()
+                                      .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())
                 .clientId("client-id")
@@ -182,11 +392,7 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenSigningAlgorithmsDoNotMatchConfig() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("jwks_uri", jwksUri.toString())
+        PROVIDER_METADATA.set(authorizationCodeCapabilityMetadataBuilder()
                 .setStrings("id_token_signing_alg_values_supported", List.of("ES256"))
                 .build()
                 .toString());
@@ -205,12 +411,7 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenEncryptionAlgorithmsDoNotMatchConfig() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("jwks_uri", jwksUri.toString())
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                 .setStrings("id_token_encryption_alg_values_supported", List.of("dir"))
                 .build()
                 .toString());
@@ -229,12 +430,7 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenContentEncryptionAlgorithmsDoNotMatchConfig() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("jwks_uri", jwksUri.toString())
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                 .setStrings("id_token_encryption_enc_values_supported", List.of("A192GCM"))
                 .build()
                 .toString());
@@ -523,13 +719,9 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointIsMissing() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
-                .build()
-                .toString());
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .build()
+                                      .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())
                 .clientId("client-id")
@@ -548,11 +740,7 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointHasFragment() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                 .set("userinfo_endpoint", issuer.resolve("/userinfo#fragment").toString())
                 .build()
                 .toString());
@@ -700,6 +888,33 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void targetClientCredentialsGrantTenantFailsWhenWellKnownMetadataGrantTypesAreMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.tlsRequired(false))
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .outboundTargets(List.of(clientCredentialsTarget()))
+                .buildPrototype();
+
+        OidcTenantContext context = OidcTenantRuntimeRegistry.create(providerConfig)
+                .tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
+                .orElseThrow();
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("grant_types_supported"));
+    }
+
+    @Test
     void targetClientCredentialsGrantTenantFailsWhenWellKnownMetadataTokenEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
@@ -834,6 +1049,30 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype();
     }
 
+    private JsonObject.Builder providerMetadataBuilder() {
+        return authorizationCodeMetadataBuilder()
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
+                .set("userinfo_endpoint", userInfoEndpointUri.toString())
+                .set("end_session_endpoint", endSessionEndpointUri.toString());
+    }
+
+    private JsonObject.Builder authorizationCodeMetadataBuilder() {
+        return authorizationCodeCapabilityMetadataBuilder()
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"));
+    }
+
+    private JsonObject.Builder authorizationCodeCapabilityMetadataBuilder() {
+        return JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code", "client_credentials"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("none", "client_secret_basic"));
+    }
+
     @Test
     void jwtProtectedResourceTenantFailsWhenWellKnownMetadataJwkSetUriIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -850,6 +1089,28 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    private OidcTenantConfig authorizationCodeTenantConfig() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig jwtClientAuthenticationTenantConfig() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
     }
 
     private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {

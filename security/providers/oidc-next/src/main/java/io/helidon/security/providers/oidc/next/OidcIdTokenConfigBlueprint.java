@@ -48,6 +48,32 @@ interface OidcIdTokenConfigBlueprint {
     List<String> allowedAlgorithms();
 
     /**
+     * Allowed JWE {@code alg} algorithms for encrypted ID Tokens.
+     * <p>
+     * Defaults to {@code RSA-OAEP-256} and {@code RSA-OAEP}. {@code RSA1_5} is not enabled by default because
+     * RFC 7516 describes downgrade and oracle risks for that algorithm.
+     *
+     * @return allowed ID Token JWE key management algorithms
+     */
+    @Option.Configured
+    @Option.Default({"RSA-OAEP-256", "RSA-OAEP"})
+    @Option.Singular("allowedEncryptionAlgorithm")
+    List<String> allowedEncryptionAlgorithms();
+
+    /**
+     * Allowed JWE {@code enc} algorithms for encrypted ID Tokens.
+     * <p>
+     * Defaults to {@code A256GCM} and {@code A128CBC-HS256}. The latter is the OpenID Connect Dynamic Client
+     * Registration default content encryption algorithm when ID Token encryption is registered and {@code enc} is omitted.
+     *
+     * @return allowed ID Token JWE content encryption algorithms
+     */
+    @Option.Configured
+    @Option.Default({"A256GCM", "A128CBC-HS256"})
+    @Option.Singular("allowedContentEncryptionAlgorithm")
+    List<String> allowedContentEncryptionAlgorithms();
+
+    /**
      * Additional ID Token audience values trusted by this client.
      * <p>
      * The configured {@code client-id} is always required as an ID Token audience and should not be listed here. This

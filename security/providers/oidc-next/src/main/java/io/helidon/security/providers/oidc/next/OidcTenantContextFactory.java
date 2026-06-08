@@ -130,10 +130,11 @@ final class OidcTenantContextFactory {
             return;
         }
 
-        /*
-         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
-         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-         * Quotes: "`issuer` REQUIRED"; "`authorization_endpoint` REQUIRED"; "`token_endpoint` ... REQUIRED unless".
+         /*
+          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+          * Quotes: "`issuer` REQUIRED"; "`authorization_endpoint` REQUIRED";
+          * "This is REQUIRED unless only the Implicit Flow is used".
          */
         metadata.issuer()
                 .orElseThrow(() -> new IllegalStateException(
@@ -156,12 +157,12 @@ final class OidcTenantContextFactory {
                                              "well-known metadata token_endpoint must be present for "
                                                      + "Authorization Code Flow");
                                  });
-        validateIdTokenSigningAlgorithmMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+        validateIdTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
     }
 
-    private static void validateIdTokenSigningAlgorithmMetadata(OidcTenantConfig tenantConfig,
-                                                                OidcProviderMetadata metadata,
-                                                                boolean wellKnownMetadataLoaded) {
+    private static void validateIdTokenMetadata(OidcTenantConfig tenantConfig,
+                                                OidcProviderMetadata metadata,
+                                                boolean wellKnownMetadataLoaded) {
         if (!wellKnownMetadataLoaded) {
             return;
         }
@@ -183,6 +184,36 @@ final class OidcTenantContextFactory {
                     "well-known metadata id_token_signing_alg_values_supported must include at least one configured "
                             + "ID Token algorithm");
         }
+        validateOptionalIdTokenEncryptionMetadata(tenantConfig, metadata);
+    }
+
+    private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,
+                                                                  OidcProviderMetadata metadata) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quotes: "`id_token_encryption_alg_values_supported`"; "`id_token_encryption_enc_values_supported`".
+         */
+        metadata.idTokenEncryptionAlgorithmsSupported()
+                .filter(supportedAlgorithms -> tenantConfig.idToken()
+                        .allowedEncryptionAlgorithms()
+                        .stream()
+                        .noneMatch(supportedAlgorithms::contains))
+                .ifPresent(supportedAlgorithms -> {
+                    throw new IllegalStateException(
+                            "well-known metadata id_token_encryption_alg_values_supported must include at least one "
+                                    + "configured ID Token encryption algorithm");
+                });
+        metadata.idTokenContentEncryptionAlgorithmsSupported()
+                .filter(supportedAlgorithms -> tenantConfig.idToken()
+                        .allowedContentEncryptionAlgorithms()
+                        .stream()
+                        .noneMatch(supportedAlgorithms::contains))
+                .ifPresent(supportedAlgorithms -> {
+                    throw new IllegalStateException(
+                            "well-known metadata id_token_encryption_enc_values_supported must include at least one "
+                                    + "configured ID Token content encryption algorithm");
+                });
     }
 
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
@@ -285,11 +316,11 @@ final class OidcTenantContextFactory {
         metadata.introspectionEndpointAuthenticationMethodsSupported()
                 .filter(methods -> !methods.contains(method.wireName()))
                 .ifPresent(methods -> {
-                    /*
-                     * Spec: RFC 8414, 2 Authorization Server Metadata
-                     * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
-                     * Quote: "`introspection_endpoint_auth_methods_supported` ... methods supported by this
-                     * introspection endpoint".
+                     /*
+                      * Spec: RFC 8414, 2 Authorization Server Metadata
+                      * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+                      * Quotes: "`introspection_endpoint_auth_methods_supported`";
+                      * "methods supported by this introspection endpoint".
                      */
                     throw new IllegalStateException(
                             "well-known metadata introspection_endpoint_auth_methods_supported must include "

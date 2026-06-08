@@ -29,17 +29,26 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 final class OidcIdTokenDecryptor {
     private final Optional<JwkKeys> decryptionKeys;
     private final boolean encryptionRequired;
+    private final List<String> allowedEncryptionAlgorithms;
+    private final List<String> allowedContentEncryptionAlgorithms;
 
-    private OidcIdTokenDecryptor(Optional<JwkKeys> decryptionKeys, boolean encryptionRequired) {
+    private OidcIdTokenDecryptor(Optional<JwkKeys> decryptionKeys,
+                                 boolean encryptionRequired,
+                                 List<String> allowedEncryptionAlgorithms,
+                                 List<String> allowedContentEncryptionAlgorithms) {
         this.decryptionKeys = decryptionKeys;
         this.encryptionRequired = encryptionRequired;
+        this.allowedEncryptionAlgorithms = List.copyOf(allowedEncryptionAlgorithms);
+        this.allowedContentEncryptionAlgorithms = List.copyOf(allowedContentEncryptionAlgorithms);
     }
 
     static OidcIdTokenDecryptor create(OidcTenantConfig tenantConfig) {
         OidcIdTokenConfig idToken = tenantConfig.idToken();
         return new OidcIdTokenDecryptor(idToken.decryptionJwk()
-                                                .map(OidcIdTokenDecryptor::loadKeys),
-                                        idToken.encryptionRequired());
+                                                  .map(OidcIdTokenDecryptor::loadKeys),
+                                          idToken.encryptionRequired(),
+                                          idToken.allowedEncryptionAlgorithms(),
+                                          idToken.allowedContentEncryptionAlgorithms());
     }
 
     OidcResolvedIdToken resolve(String token) {
@@ -57,10 +66,72 @@ final class OidcIdTokenDecryptor {
             return new OidcResolvedIdToken(token, false, SignedJwt.parseToken(headers, token));
         }
 
+        validateEncryptedHeaders(headers);
         JwkKeys keys = decryptionKeys.orElseThrow(() -> new IllegalStateException(
                 "ID Token decryption keys are not configured"));
+        Jwk selectedKey = selectDecryptionKey(headers, keys);
+        validateDecryptionKeyUse(selectedKey);
         EncryptedJwt encryptedJwt = EncryptedJwt.parseToken(headers, token);
-        return new OidcResolvedIdToken(token, true, encryptedJwt.decrypt(keys, keys.keys().getFirst()));
+        return new OidcResolvedIdToken(token, true, encryptedJwt.decrypt(keys, selectedKey));
+    }
+
+    private void validateEncryptedHeaders(JwtHeaders headers) {
+        /*
+         * Spec: RFC 7519, 5.2 cty Header Parameter
+         * https://www.rfc-editor.org/rfc/rfc7519.html#section-5.2
+         * Quote: "In the case that nested signing or encryption is employed, this Header Parameter MUST be present".
+         */
+        if (headers.contentType().filter("JWT"::equalsIgnoreCase).isEmpty()) {
+            throw new IllegalStateException("Encrypted ID Token must be a Nested JWT with cty=JWT");
+        }
+        String algorithm = headers.algorithm()
+                .orElseThrow(() -> new IllegalStateException("Encrypted ID Token JWE alg header is missing"));
+        if (!allowedEncryptionAlgorithms.contains(algorithm)) {
+            throw new IllegalStateException("Encrypted ID Token JWE alg header is not allowed: " + algorithm);
+        }
+        String contentEncryption = headers.encryption()
+                .orElseThrow(() -> new IllegalStateException("Encrypted ID Token JWE enc header is missing"));
+        if (!allowedContentEncryptionAlgorithms.contains(contentEncryption)) {
+            throw new IllegalStateException("Encrypted ID Token JWE enc header is not allowed: " + contentEncryption);
+        }
+    }
+
+    private static Jwk selectDecryptionKey(JwtHeaders headers, JwkKeys keys) {
+        List<Jwk> jwks = keys.keys();
+        Optional<String> keyId = headers.keyId();
+        if (keyId.isPresent()) {
+            return keys.forKeyId(keyId.orElseThrow())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "ID Token decryption key is not configured for kid: " + keyId.orElseThrow()));
+        }
+        /*
+         * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
+         * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
+         * Quote: "if there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided".
+         */
+        if (jwks.size() > 1) {
+            throw new IllegalStateException("Encrypted ID Token JWE kid is required when multiple decryption keys exist");
+        }
+        return jwks.getFirst();
+    }
+
+    private static void validateDecryptionKeyUse(Jwk key) {
+        /*
+         * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
+         * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
+         * Quote: "The `use` parameter value MUST be `enc`".
+         */
+        key.usage()
+                .filter(usage -> !Jwk.USE_ENCRYPTION.equals(usage))
+                .ifPresent(usage -> {
+                    throw new IllegalStateException("ID Token decryption JWK use must be enc");
+                });
+        key.operations()
+                .filter(operations -> !operations.contains(Jwk.OPERATION_UNWRAP_KEY)
+                        && !operations.contains(Jwk.OPERATION_DECRYPT))
+                .ifPresent(operations -> {
+                    throw new IllegalStateException("ID Token decryption JWK key_ops must allow unwrapKey or decrypt");
+                });
     }
 
     private static JwkKeys loadKeys(Resource resource) {

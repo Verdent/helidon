@@ -204,6 +204,54 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenEncryptionAlgorithmsDoNotMatchConfig() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .setStrings("id_token_encryption_alg_values_supported", List.of("dir"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenContentEncryptionAlgorithmsDoNotMatchConfig() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .setStrings("id_token_encryption_enc_values_supported", List.of("A192GCM"))
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
+    @Test
     void introspectionTenantFailsWhenWellKnownMetadataIntrospectionEndpointHasFragment() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())

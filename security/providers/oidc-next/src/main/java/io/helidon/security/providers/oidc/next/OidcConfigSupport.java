@@ -293,6 +293,12 @@ final class OidcConfigSupport {
         if (idToken.allowedAlgorithms().isEmpty()) {
             throw new IllegalArgumentException("id-token.allowed-algorithms must not be empty");
         }
+        if (idToken.allowedEncryptionAlgorithms().isEmpty()) {
+            throw new IllegalArgumentException("id-token.allowed-encryption-algorithms must not be empty");
+        }
+        if (idToken.allowedContentEncryptionAlgorithms().isEmpty()) {
+            throw new IllegalArgumentException("id-token.allowed-content-encryption-algorithms must not be empty");
+        }
         if (idToken.clockSkew().isNegative()) {
             throw new IllegalArgumentException("id-token.clock-skew must not be negative");
         }
@@ -336,11 +342,45 @@ final class OidcConfigSupport {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
-                     * Quote: "the octets of the UTF-8 ... representation of the client_secret ... are used as the key
-                     * to validate the signature".
+                     * Quotes: "the octets of the UTF-8 representation of"; "are used as the key".
                      */
                     throw new IllegalArgumentException(
                             "id-token.allowed-algorithms must not contain HS* algorithms");
+                });
+        idToken.allowedEncryptionAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm == null
+                        || algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip()))
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    throw new IllegalArgumentException(
+                            "id-token.allowed-encryption-algorithms must not contain blank or padded values");
+                });
+        idToken.allowedContentEncryptionAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm == null
+                        || algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip()))
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    throw new IllegalArgumentException(
+                            "id-token.allowed-content-encryption-algorithms must not contain blank or padded values");
+                });
+        idToken.allowedEncryptionAlgorithms()
+                .stream()
+                .filter("RSA1_5"::equals)
+                .findFirst()
+                .ifPresent(algorithm -> {
+                    /*
+                     * Spec: RFC 7516, 11.5 Timing Attacks
+                     * https://www.rfc-editor.org/rfc/rfc7516.html#section-11.5
+                     * Quotes: "An attacker can modify the contents of an `alg` Header Parameter"; "restricting the use
+                     * of a key to a limited set of algorithms".
+                     */
+                    LOGGER.log(System.Logger.Level.WARNING,
+                               "id-token.allowed-encryption-algorithms contains RSA1_5. This should be used only for "
+                                       + "legacy OpenID Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
                 });
     }
 

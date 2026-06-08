@@ -274,6 +274,8 @@ public final class TestOidcServer implements AutoCloseable {
                 .setStrings("response_types_supported", List.of("code"))
                 .setStrings("grant_types_supported",
                             List.of("authorization_code", "refresh_token", "client_credentials"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
                 .setStrings("subject_types_supported", List.of("public"))
                 .setStrings("id_token_signing_alg_values_supported", List.of(SIGNING_ALGORITHM));
         config.metadata().claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));

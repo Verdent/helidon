@@ -171,6 +171,26 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
+    void wellKnownMetadataParsesFlowAndTokenEndpointCapabilities() {
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code", "client_credentials"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .setStrings("token_endpoint_auth_signing_alg_values_supported", List.of("RS256"))
+                .build());
+
+        assertThat(metadata.responseTypesSupported().orElseThrow(), is(List.of("code")));
+        assertThat(metadata.grantTypesSupported().orElseThrow(),
+                   is(List.of("authorization_code", "client_credentials")));
+        assertThat(metadata.codeChallengeMethodsSupported().orElseThrow(), is(List.of("S256")));
+        assertThat(metadata.tokenEndpointAuthenticationMethodsSupported().orElseThrow(),
+                   is(List.of("client_secret_basic")));
+        assertThat(metadata.tokenEndpointAuthenticationSigningAlgorithmsSupported().orElseThrow(), is(List.of("RS256")));
+    }
+
+    @Test
     void wellKnownMetadataParsesIdTokenEncryptionAlgorithms() {
         OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())

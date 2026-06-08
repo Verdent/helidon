@@ -56,6 +56,7 @@ class OidcWellKnownMetadataLoadingTest {
 
     private static volatile String redirectLocation;
     private static volatile String wellKnownContentType;
+    private static volatile Status wellKnownStatus;
 
     private URI issuer;
     private URI authorizationEndpointUri;
@@ -77,6 +78,9 @@ class OidcWellKnownMetadataLoadingTest {
             }
             if (wellKnownContentType != null) {
                 response.header(HeaderNames.CONTENT_TYPE, wellKnownContentType);
+            }
+            if (wellKnownStatus != null) {
+                response.status(wellKnownStatus);
             }
             response.send(PROVIDER_METADATA.get());
         });
@@ -103,6 +107,7 @@ class OidcWellKnownMetadataLoadingTest {
         REDIRECTED_WELL_KNOWN_REQUESTS.set(0);
         redirectLocation = null;
         wellKnownContentType = "application/json";
+        wellKnownStatus = null;
     }
 
     @Test
@@ -487,6 +492,25 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(failureCause.getMessage(), is("Failed to load well-known metadata"));
         assertThat(failureCause.getCause().getMessage(),
                    is("well-known metadata response must be application/json"));
+    }
+
+    @Test
+    void tenantFailsWhenWellKnownMetadataStatusIsNotOk() {
+        wellKnownStatus = Status.CREATED_201;
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        Throwable failureCause = context.failureCause().orElseThrow();
+        assertThat(failureCause.getMessage(), is("Failed to load well-known metadata"));
+        assertThat(failureCause.getCause().getMessage(), is("well-known metadata is unavailable"));
     }
 
     @Test

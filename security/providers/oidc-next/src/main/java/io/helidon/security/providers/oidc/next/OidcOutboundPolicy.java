@@ -25,15 +25,18 @@ final class OidcOutboundPolicy {
     private final boolean tokenPropagation;
     private final boolean clientCredentialsGrant;
     private final String audience;
+    private final boolean audienceValidation;
     private final String clientCredentialsScope;
 
     private OidcOutboundPolicy(boolean tokenPropagation,
                                boolean clientCredentialsGrant,
                                String audience,
+                               boolean audienceValidation,
                                String clientCredentialsScope) {
         this.tokenPropagation = tokenPropagation;
         this.clientCredentialsGrant = clientCredentialsGrant;
         this.audience = audience;
+        this.audienceValidation = audienceValidation;
         this.clientCredentialsScope = clientCredentialsScope;
     }
 
@@ -42,7 +45,11 @@ final class OidcOutboundPolicy {
     }
 
     static OidcOutboundPolicy tokenPropagation(String audience) {
-        return new OidcOutboundPolicy(true, false, audience, null);
+        return tokenPropagation(audience, true);
+    }
+
+    static OidcOutboundPolicy tokenPropagation(String audience, boolean audienceValidation) {
+        return new OidcOutboundPolicy(true, false, audience, audienceValidation, null);
     }
 
     static OidcOutboundPolicy clientCredentialsGrant() {
@@ -51,11 +58,11 @@ final class OidcOutboundPolicy {
 
     static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes) {
         String scope = OidcConfigSupport.clientCredentialsScope(scopes);
-        return new OidcOutboundPolicy(false, true, null, scope.isEmpty() ? null : scope);
+        return new OidcOutboundPolicy(false, true, null, false, scope.isEmpty() ? null : scope);
     }
 
     static OidcOutboundPolicy tokenPropagationAndClientCredentialsGrant() {
-        return new OidcOutboundPolicy(true, true, null, null);
+        return new OidcOutboundPolicy(true, true, null, true, null);
     }
 
     static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
@@ -68,7 +75,7 @@ final class OidcOutboundPolicy {
 
     static Optional<OidcOutboundPolicy> fromTargetConfig(OidcOutboundTargetConfig config) {
         if (config.tokenPropagationEnabled()) {
-            return Optional.of(tokenPropagation(config.audience().orElse(null)));
+            return Optional.of(tokenPropagation(config.audience().orElse(null), config.audienceValidationEnabled()));
         }
         if (config.clientCredentialsGrantEnabled()) {
             return Optional.of(clientCredentialsGrant(config.clientCredentialsScopes()));
@@ -86,6 +93,10 @@ final class OidcOutboundPolicy {
 
     Optional<String> audience() {
         return Optional.ofNullable(audience);
+    }
+
+    boolean audienceValidationEnabled() {
+        return audienceValidation;
     }
 
     Optional<String> clientCredentialsScope() {

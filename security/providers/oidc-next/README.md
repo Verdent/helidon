@@ -1040,24 +1040,10 @@ action; the resolved tenant supplies the issuer, client credentials, Token Endpo
 that action.
 
 Token Propagation sends the current user `TokenCredential` as `Authorization: Bearer <access-token>`. It is never applied
-without a matching outbound target.
-
-```yaml
-security:
-  providers:
-    - oidc-next:
-        issuer: "https://issuer.example"
-        outbound:
-          - name: orders-api
-            transports: [ "https" ]
-            hosts: [ "orders.internal.example" ]
-            paths: [ "/orders/.*" ]
-            token-propagation-enabled: true
-```
-
-Target configuration can select the OIDC outbound strategy directly and can restrict propagated tokens by audience. If an
-audience is configured, the current JWT or introspection-backed access token must contain that `aud` value, otherwise the
-provider abstains.
+without a matching outbound target. By default, the matching outbound target must also configure the downstream
+`audience`. The provider propagates only JWT or introspection-backed access tokens whose `aud` claim contains that
+audience, otherwise it abstains. This audience is the downstream resource server identifier, not the current service's
+`protected-resource.token-validation.audience`.
 
 ```yaml
 security:
@@ -1072,6 +1058,33 @@ security:
             token-propagation-enabled: true
             audience: "api://orders"
 ```
+
+Target configuration can select the OIDC outbound strategy directly and can restrict different downstream services with
+different audiences.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
+            token-propagation-enabled: true
+            audience: "api://orders"
+          - name: billing-api
+            transports: [ "https" ]
+            hosts: [ "billing.internal.example" ]
+            paths: [ "/billing/.*" ]
+            token-propagation-enabled: true
+            audience: "api://billing"
+```
+
+Set `audience-validation-enabled: false` on an outbound target only for testing, local development, or legacy opaque-token
+deployments where this provider cannot inspect token claims. With validation disabled, matching target rules still apply,
+but the provider cannot locally verify that the token was meant for the downstream resource.
 
 Client Credentials Grant obtains an access token from the Token Endpoint with `grant_type=client_credentials` and applies
 the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
@@ -1646,7 +1659,8 @@ OIDC outbound target options:
 | `token-propagation-enabled` | Use Token Propagation for this outbound target. |
 | `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 | `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
-| `audience` | Expected `aud` claim for Token Propagation to this outbound target. |
+| `audience` | Expected `aud` claim for Token Propagation to this outbound target. Required by default when `token-propagation-enabled: true`. This identifies the downstream resource server. |
+| `audience-validation-enabled` | Whether Token Propagation audience validation is enabled for this outbound target. Defaults to `true`. Disabling it allows raw or opaque token propagation without local audience validation and should be limited to testing, local development, or legacy deployments. |
 
 Token validation options:
 

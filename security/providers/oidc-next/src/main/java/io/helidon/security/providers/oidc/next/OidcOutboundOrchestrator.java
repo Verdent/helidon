@@ -141,7 +141,9 @@ final class OidcOutboundOrchestrator {
                                                    OidcOutboundPolicy outboundPolicy) {
         return providerRequest.subject()
                 .flatMap(subject -> subject.publicCredential(TokenCredential.class))
-                .filter(credential -> audienceMatches(credential, outboundPolicy.audience()))
+                .filter(credential -> audienceMatches(credential,
+                                                      outboundPolicy.audience(),
+                                                      outboundPolicy.audienceValidationEnabled()))
                 .map(credential -> OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv,
                                                                                           credential.token())))
                 .orElseGet(OutboundSecurityResponse::abstain);
@@ -199,9 +201,14 @@ final class OidcOutboundOrchestrator {
         return headers;
     }
 
-    private boolean audienceMatches(TokenCredential credential, Optional<String> expectedAudience) {
-        if (expectedAudience.isEmpty()) {
+    private boolean audienceMatches(TokenCredential credential,
+                                    Optional<String> expectedAudience,
+                                    boolean audienceValidationEnabled) {
+        if (!audienceValidationEnabled) {
             return true;
+        }
+        if (expectedAudience.isEmpty()) {
+            return false;
         }
 
         String audience = expectedAudience.orElseThrow();

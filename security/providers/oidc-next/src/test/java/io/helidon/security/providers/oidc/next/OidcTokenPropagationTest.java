@@ -40,8 +40,10 @@ import io.helidon.security.providers.common.TokenCredential;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcTokenPropagationTest {
     private static final String ACCESS_TOKEN = "access-token";
@@ -100,8 +102,8 @@ class OidcTokenPropagationTest {
     }
 
     @Test
-    void tokenPropagationCanUseRawTokenCredentialWithoutParsedClaims() {
-        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
+    void tokenPropagationCanUseRawTokenCredentialWhenAudienceValidationIsDisabled() {
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTargetWithoutAudienceValidation());
         ProviderRequest request = providerRequest(subjectWithRawToken());
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
 
@@ -312,6 +314,40 @@ class OidcTokenPropagationTest {
     }
 
     @Test
+    void tokenPropagationRequiresAudienceWhenAudienceValidationIsEnabled() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcOutboundTargetConfig.builder()
+                                                               .tokenPropagationEnabled(true)
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("audience must be configured"));
+    }
+
+    @Test
+    void targetConfigurationCanDisablePropagationAudienceValidation() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.enabled", "true"),
+                        Map.entry("outbound.0.name", "orders"),
+                        Map.entry("outbound.0.transports.0", "https"),
+                        Map.entry("outbound.0.hosts.0", "api.example.com"),
+                        Map.entry("outbound.0.paths.0", "/orders/.*"),
+                        Map.entry("outbound.0.methods.0", "GET"),
+                        Map.entry("outbound.0.token-propagation-enabled", "true"),
+                        Map.entry("outbound.0.audience-validation-enabled", "false"))))
+                .build();
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
+        ProviderRequest request = providerRequest(subjectWithRawToken());
+        SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
+
+        var response = provider.outboundSecurity(request, outboundEnv, EndpointConfig.create());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer " + ACCESS_TOKEN)));
+    }
+
+    @Test
     void targetConfigurationCanSelectTokenPropagationAndAudience() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
@@ -351,6 +387,7 @@ class OidcTokenPropagationTest {
                 .customObject(OidcOutboundTargetConfig.class,
                               OidcOutboundTargetConfig.builder()
                                       .tokenPropagationEnabled(true)
+                                      .audience("api://orders")
                                       .buildPrototype())
                 .build();
     }
@@ -363,6 +400,21 @@ class OidcTokenPropagationTest {
                 .customObject(OidcOutboundTargetConfig.class,
                               OidcOutboundTargetConfig.builder()
                                       .tokenPropagationEnabled(true)
+                                      .audience("api://orders")
+                                      .buildPrototype())
+                .build();
+    }
+
+    private static OutboundTarget ordersTargetWithoutAudienceValidation() {
+        return OutboundTarget.builder("orders")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/orders/.*")
+                .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .tokenPropagationEnabled(true)
+                                      .audienceValidationEnabled(false)
                                       .buildPrototype())
                 .build();
     }

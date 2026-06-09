@@ -79,4 +79,18 @@ interface OidcOutboundTargetConfigBlueprint {
      */
     @Option.Configured
     Optional<String> audience();
+
+    /**
+     * Whether Token Propagation audience validation is enabled for this outbound target.
+     * <p>
+     * Defaults to {@code true}. When enabled, {@link #audience()} must be configured and the current JWT or
+     * introspection-backed access token must contain that audience value before it is propagated. Disabling this option
+     * allows raw or opaque token propagation without a local audience check and should be used only for testing, local
+     * development, or legacy deployments where audience claims are not available to this provider.
+     *
+     * @return whether Token Propagation audience validation is enabled
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean audienceValidationEnabled();
 }

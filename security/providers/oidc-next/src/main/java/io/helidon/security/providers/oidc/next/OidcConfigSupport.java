@@ -441,6 +441,32 @@ final class OidcConfigSupport {
                 throw new IllegalArgumentException(
                         "client-credentials-grant-enabled must be enabled when client-credentials-scopes is configured");
             }
+            target.audience()
+                    .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException("audience must not be blank or padded");
+                    });
+            if (target.tokenPropagationEnabled()) {
+                if (target.audienceValidationEnabled()) {
+                    /*
+                     * Spec: RFC 9700, 2.3 Privilege Restriction and 4.10.2 Audience-Restricted Access Tokens
+                     * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.3
+                     * https://www.rfc-editor.org/rfc/rfc9700.html#section-4.10.2
+                     * Quote: "access tokens SHOULD be audience-restricted to a specific resource server or, if that is
+                     * not feasible, to a small set of resource servers."
+                     * Quote: "The authorization server associates the access token with the particular resource server,
+                     * and the resource server is then supposed to verify the intended audience."
+                     */
+                    target.audience()
+                            .orElseThrow(() -> new IllegalArgumentException(
+                                    "audience must be configured when Token Propagation audience validation is enabled"));
+                } else {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                               "Token Propagation audience validation is disabled. Propagated bearer tokens will not "
+                                       + "be checked locally for the downstream audience and this should be used only "
+                                       + "for testing, local development, or legacy opaque-token deployments.");
+                }
+            }
             OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");
         }
     }

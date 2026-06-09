@@ -39,11 +39,6 @@ final class OidcEndpointPolicy {
                                       OidcAuthenticationFailureResponse.UNAUTHORIZED);
     }
 
-    static OidcEndpointPolicy authorizationCodeFlow() {
-        return new OidcEndpointPolicy(EnumSet.of(OidcEndpointCredential.AUTHENTICATION_COOKIE),
-                                      OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT);
-    }
-
     static OidcEndpointPolicy protectedResourceAndAuthorizationCodeFlow() {
         return new OidcEndpointPolicy(EnumSet.of(OidcEndpointCredential.BEARER_TOKEN,
                                                  OidcEndpointCredential.AUTHENTICATION_COOKIE),

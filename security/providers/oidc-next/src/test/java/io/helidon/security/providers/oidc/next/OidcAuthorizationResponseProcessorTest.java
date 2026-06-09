@@ -452,7 +452,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                                              String state,
                                                                              URI redirectionEndpointUri,
                                                                              Instant expiresAt) {
-        return OidcAuthenticationRequestState.create(tenantId,
+        return new OidcAuthenticationRequestState(tenantId,
                                                      state,
                                                      "nonce",
                                                      "pkce-verifier",

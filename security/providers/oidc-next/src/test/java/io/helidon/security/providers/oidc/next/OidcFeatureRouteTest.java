@@ -228,7 +228,7 @@ class OidcFeatureRouteTest {
         Instant now = Instant.now();
         URI callbackUri = serverUri.resolve("oidc/callback");
         SetCookie stateCookie = OidcCookieStateHandler.create(tenantConfig())
-                .createAuthenticationRequestCookie(OidcAuthenticationRequestState.create("default",
+                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
                                                                                          "stored-state",
                                                                                          "nonce",
                                                                                          "pkce-verifier",
@@ -1468,7 +1468,7 @@ class OidcFeatureRouteTest {
                                                         URI originalUri) {
         Instant now = Instant.now();
         return OidcCookieStateHandler.create(tenant)
-                .createAuthenticationRequestCookie(OidcAuthenticationRequestState.create("default",
+                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
                                                                                          STATE,
                                                                                          NONCE,
                                                                                          PKCE_VERIFIER,
@@ -1494,7 +1494,7 @@ class OidcFeatureRouteTest {
                                                        boolean encrypted) {
         Instant now = Instant.now();
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
-        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken, encrypted, signedJwt, signedJwt.getJwt());
+        OidcValidatedIdToken idToken = new OidcValidatedIdToken(rawIdToken, encrypted, signedJwt, signedJwt.getJwt());
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(tenantId,
                                                                                    idToken,
                                                                                    "access-token",

@@ -97,7 +97,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             return OidcValidationResult.failure("Bearer Token JWT has no principal claim");
         }
 
-        return OidcValidationResult.success(OidcValidatedJwt.create(token, signedJwt, jwt));
+        return OidcValidationResult.success(new OidcValidatedJwt(token, signedJwt, jwt));
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

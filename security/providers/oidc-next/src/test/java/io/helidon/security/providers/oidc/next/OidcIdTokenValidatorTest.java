@@ -479,7 +479,7 @@ class OidcIdTokenValidatorTest {
 
     private static OidcAuthenticationRequestState authenticationRequestState() {
         Instant now = Instant.now();
-        return OidcAuthenticationRequestState.create("default",
+        return new OidcAuthenticationRequestState("default",
                                                      "state-value",
                                                      NONCE,
                                                      "pkce-verifier",

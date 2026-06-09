@@ -69,7 +69,7 @@ final class OidcAuthenticationRequestFactory {
         SecurityEnvironment environment = context.environment();
         Instant createdAt = environment.time().toInstant();
 
-        OidcAuthenticationRequestState requestState = OidcAuthenticationRequestState.create(
+        OidcAuthenticationRequestState requestState = new OidcAuthenticationRequestState(
                 tenantContext.tenantId(),
                 state,
                 nonce,
@@ -89,7 +89,7 @@ final class OidcAuthenticationRequestFactory {
                                                 nonce,
                                                 pkceVerifier);
 
-        return OidcAuthenticationRequest.create(authorizationUri, stateCookie.toString());
+        return new OidcAuthenticationRequest(authorizationUri, stateCookie.toString());
     }
 
     static String codeChallenge(String verifier, OidcPkceMethod method) {

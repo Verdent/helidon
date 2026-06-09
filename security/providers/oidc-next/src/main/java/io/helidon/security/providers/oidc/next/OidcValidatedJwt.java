@@ -20,7 +20,4 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 
 record OidcValidatedJwt(String rawToken, SignedJwt signedJwt, Jwt jwt) implements OidcValidatedAccessToken {
-    static OidcValidatedJwt create(String rawToken, SignedJwt signedJwt, Jwt jwt) {
-        return new OidcValidatedJwt(rawToken, signedJwt, jwt);
-    }
 }

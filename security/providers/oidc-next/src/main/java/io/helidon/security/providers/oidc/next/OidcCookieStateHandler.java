@@ -172,7 +172,7 @@ final class OidcCookieStateHandler {
     }
 
     private OidcAuthenticationRequestState fromJson(JsonObject json) {
-        return OidcAuthenticationRequestState.create(
+        return new OidcAuthenticationRequestState(
                 json.stringValue("tenant_id").orElseThrow(),
                 json.stringValue("state").orElseThrow(),
                 json.stringValue("nonce").orElseThrow(),
@@ -189,10 +189,10 @@ final class OidcCookieStateHandler {
         OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken = idTokenDecryptor.resolve(rawIdToken);
         SignedJwt signedJwt = resolvedIdToken.signedJwt();
         Jwt jwt = signedJwt.getJwt();
-        OidcValidatedIdToken idToken = OidcValidatedIdToken.create(rawIdToken,
-                                                                   resolvedIdToken.encrypted(),
-                                                                   signedJwt,
-                                                                   jwt);
+        OidcValidatedIdToken idToken = new OidcValidatedIdToken(rawIdToken,
+                                                                resolvedIdToken.encrypted(),
+                                                                signedJwt,
+                                                                jwt);
         return OidcLocalAuthenticationResult.create(
                 json.stringValue("tenant_id").orElseThrow(),
                 idToken,

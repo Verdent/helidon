@@ -20,90 +20,17 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.Optional;
 
-final class OidcAuthenticationRequestState {
-    private final String tenantId;
-    private final String state;
-    private final String nonce;
-    private final String pkceVerifier;
-    private final String expectedIssuer;
-    private final URI originalUri;
-    private final URI redirectionEndpointUri;
-    private final Instant createdAt;
-    private final Instant expiresAt;
-
-    private OidcAuthenticationRequestState(String tenantId,
-                                           String state,
-                                           String nonce,
-                                           String pkceVerifier,
-                                           String expectedIssuer,
-                                           URI originalUri,
-                                           URI redirectionEndpointUri,
-                                           Instant createdAt,
-                                           Instant expiresAt) {
-        this.tenantId = tenantId;
-        this.state = state;
-        this.nonce = nonce;
-        this.pkceVerifier = pkceVerifier;
-        this.expectedIssuer = expectedIssuer;
-        this.originalUri = originalUri;
-        this.redirectionEndpointUri = redirectionEndpointUri;
-        this.createdAt = createdAt;
-        this.expiresAt = expiresAt;
-    }
-
-    static OidcAuthenticationRequestState create(String tenantId,
-                                                 String state,
-                                                 String nonce,
-                                                 String pkceVerifier,
-                                                 String expectedIssuer,
-                                                 URI originalUri,
-                                                 URI redirectionEndpointUri,
-                                                 Instant createdAt,
-                                                 Instant expiresAt) {
-        return new OidcAuthenticationRequestState(tenantId,
-                                                  state,
-                                                  nonce,
-                                                  pkceVerifier,
-                                                  expectedIssuer,
-                                                  originalUri,
-                                                  redirectionEndpointUri,
-                                                  createdAt,
-                                                  expiresAt);
-    }
-
-    String tenantId() {
-        return tenantId;
-    }
-
-    String state() {
-        return state;
-    }
-
-    String nonce() {
-        return nonce;
-    }
+record OidcAuthenticationRequestState(String tenantId,
+                                      String state,
+                                      String nonce,
+                                      String pkceVerifierValue,
+                                      String expectedIssuer,
+                                      URI originalUri,
+                                      URI redirectionEndpointUri,
+                                      Instant createdAt,
+                                      Instant expiresAt) {
 
     Optional<String> pkceVerifier() {
-        return Optional.ofNullable(pkceVerifier);
-    }
-
-    String expectedIssuer() {
-        return expectedIssuer;
-    }
-
-    URI originalUri() {
-        return originalUri;
-    }
-
-    URI redirectionEndpointUri() {
-        return redirectionEndpointUri;
-    }
-
-    Instant createdAt() {
-        return createdAt;
-    }
-
-    Instant expiresAt() {
-        return expiresAt;
+        return Optional.ofNullable(pkceVerifierValue);
     }
 }

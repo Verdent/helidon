@@ -790,7 +790,7 @@ class OidcRefreshTokenManagerTest {
         return OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         OLD_ACCESS_TOKEN,
                         "Bearer",
                         refreshToken,

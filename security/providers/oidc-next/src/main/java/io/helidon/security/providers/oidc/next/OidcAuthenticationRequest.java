@@ -19,7 +19,4 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 
 record OidcAuthenticationRequest(URI authorizationUri, String stateCookie) {
-    static OidcAuthenticationRequest create(URI authorizationUri, String stateCookie) {
-        return new OidcAuthenticationRequest(authorizationUri, stateCookie);
-    }
 }

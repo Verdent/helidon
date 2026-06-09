@@ -86,15 +86,12 @@ final class OidcScopeSupport {
         if (!subjectMapping.scopeGrantsEnabled()) {
             return;
         }
-        subjectMapping.scopeClaimPaths()
-                .stream()
-                .filter(claimPath -> !STANDARD_SCOPE_CLAIM.equals(claimPath))
-                .map(claimPath -> claimValue(claims, claimPath)
-                        .map(value -> ScopeClaim.create(claimPath, value)))
-                .flatMap(Optional::stream)
-                .forEach(claim -> scopeClaimValues(claim.value(),
-                                                   source + " scope claim " + claim.claimPath(),
-                                                   false));
+        for (String claimPath : subjectMapping.scopeClaimPaths()) {
+            if (!STANDARD_SCOPE_CLAIM.equals(claimPath)) {
+                claimValue(claims, claimPath)
+                        .ifPresent(value -> scopeClaimValues(value, source + " scope claim " + claimPath, false));
+            }
+        }
     }
 
     static List<String> scopeClaimValues(JsonValue value, String source, boolean standardScope) {
@@ -172,12 +169,6 @@ final class OidcScopeSupport {
 
     private static IllegalArgumentException invalidScopeString(String source) {
         return new IllegalArgumentException(source + " must be an RFC 6749 scope string");
-    }
-
-    private record ScopeClaim(String claimPath, JsonValue value) {
-        private static ScopeClaim create(String claimPath, JsonValue value) {
-            return new ScopeClaim(claimPath, value);
-        }
     }
 
     @FunctionalInterface

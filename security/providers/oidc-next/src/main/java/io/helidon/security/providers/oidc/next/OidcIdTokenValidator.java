@@ -168,10 +168,10 @@ final class OidcIdTokenValidator {
             return OidcValidationResult.failure("ID Token claims are invalid");
         }
 
-        return OidcValidationResult.success(OidcValidatedIdToken.create(resolvedIdToken.rawToken(),
-                                                                        resolvedIdToken.encrypted(),
-                                                                        signedJwt,
-                                                                        jwt));
+        return OidcValidationResult.success(new OidcValidatedIdToken(resolvedIdToken.rawToken(),
+                                                                     resolvedIdToken.encrypted(),
+                                                                     signedJwt,
+                                                                     jwt));
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

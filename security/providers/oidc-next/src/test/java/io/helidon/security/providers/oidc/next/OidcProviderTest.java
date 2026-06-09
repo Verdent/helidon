@@ -622,7 +622,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -679,7 +679,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(encryptedIdToken, true, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(encryptedIdToken, true, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -721,7 +721,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -768,7 +768,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -815,7 +815,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -869,7 +869,7 @@ class OidcProviderTest {
         SetCookie cookie = OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         "default",
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -1138,7 +1138,7 @@ class OidcProviderTest {
         return OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
                         tenantId,
-                        OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt()),
+                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         "access-token",
                         "Bearer",
                         "refresh-token",
@@ -1197,7 +1197,7 @@ class OidcProviderTest {
 
     private static OidcValidatedIdToken validatedIdToken(String idToken) {
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
-        return OidcValidatedIdToken.create(idToken, signedJwt, signedJwt.getJwt());
+        return new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt());
     }
 
     private static OidcTokenResponse tokenResponse(String idToken, Long expiresIn, String scope) {

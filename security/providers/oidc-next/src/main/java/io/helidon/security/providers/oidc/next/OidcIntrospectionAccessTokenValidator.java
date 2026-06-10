@@ -26,6 +26,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.HttpClientResponse;
@@ -125,6 +126,10 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
+        if (hasDpopConfirmationKey(validated)) {
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
+        }
+
         if (OidcSubjectMapper.principalId(validated.claims(), tenantContext.subjectMapping()).isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection response has no principal claim");
         }
@@ -158,6 +163,19 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
         clientAuthentication.applyIntrospectionEndpointAuthentication(endpointUri, form, request);
         return request.submit(form.build());
+    }
+
+    private static boolean hasDpopConfirmationKey(OidcValidatedIntrospection validated) {
+        /*
+         * Spec: RFC 9449, 7.2 Checking DPoP Proofs
+         * https://www.rfc-editor.org/rfc/rfc9449.html#section-7.2
+         * A DPoP-bound access token presented as Bearer must not be accepted without validating proof possession.
+         */
+        return validated.claims()
+                .value("cnf")
+                .filter(value -> value.type() == JsonValueType.OBJECT)
+                .flatMap(value -> value.asObject().value("jkt"))
+                .isPresent();
     }
 
 }

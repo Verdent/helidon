@@ -151,6 +151,10 @@
         </dependency>
         <dependency>
             <groupId>io.helidon.security</groupId>
+            <artifactId>helidon-security-spiffe</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.security</groupId>
             <artifactId>helidon-security-util</artifactId>
         </dependency>
         <dependency>

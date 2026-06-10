@@ -71,6 +71,19 @@ interface OidcOutboundTargetConfigBlueprint {
     List<String> clientCredentialsScopes();
 
     /**
+     * Resource indicators requested by Client Credentials Grant for this outbound target.
+     * <p>
+     * This value is used only when {@code client-credentials-grant-enabled} is enabled on the same outbound target.
+     * When configured, each value is sent as a separate OAuth {@code resource} token endpoint form parameter.
+     *
+     * @return Client Credentials Grant resource indicators
+     */
+    @Description("Resource indicators requested by Client Credentials Grant for this outbound target.")
+    @Option.Configured
+    @Option.Singular("clientCredentialsResource")
+    List<String> clientCredentialsResources();
+
+    /**
      * Expected access-token audience for Token Propagation to this outbound target.
      * <p>
      * This value is used only when {@code token-propagation-enabled} is enabled on the same outbound target.

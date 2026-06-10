@@ -20,6 +20,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -441,6 +442,10 @@ final class OidcConfigSupport {
                 throw new IllegalArgumentException(
                         "client-credentials-grant-enabled must be enabled when client-credentials-scopes is configured");
             }
+            if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsResources().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "client-credentials-grant-enabled must be enabled when client-credentials-resources is configured");
+            }
             target.audience()
                     .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
                     .ifPresent(ignored -> {
@@ -468,6 +473,36 @@ final class OidcConfigSupport {
                 }
             }
             OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");
+            validateClientCredentialsResources(target.clientCredentialsResources());
+        }
+
+        private void validateClientCredentialsResources(List<String> resources) {
+            Set<String> uniqueResources = new LinkedHashSet<>();
+            for (String resource : resources) {
+                if (resource == null || resource.isBlank() || !resource.equals(resource.strip())) {
+                    throw new IllegalArgumentException(
+                            "client-credentials-resources must not contain blank or padded values");
+                }
+                if (!uniqueResources.add(resource)) {
+                    throw new IllegalArgumentException(
+                            "client-credentials-resources contains duplicate resource: " + resource);
+                }
+                URI uri;
+                try {
+                    uri = URI.create(resource);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(
+                            "client-credentials-resources contains an invalid resource URI: " + resource, e);
+                }
+                if (!uri.isAbsolute()) {
+                    throw new IllegalArgumentException(
+                            "client-credentials-resources must contain absolute resource URIs");
+                }
+                if (uri.getRawFragment() != null) {
+                    throw new IllegalArgumentException(
+                            "client-credentials-resources must not contain URI fragments");
+                }
+            }
         }
     }
 

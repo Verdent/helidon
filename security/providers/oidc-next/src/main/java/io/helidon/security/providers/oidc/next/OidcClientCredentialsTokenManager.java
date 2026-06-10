@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -25,15 +26,19 @@ import java.util.concurrent.ConcurrentMap;
 final class OidcClientCredentialsTokenManager {
     private final ConcurrentMap<CacheKey, CachedToken> tokens = new ConcurrentHashMap<>();
 
-    OidcTokenEndpointResult token(OidcTenantContext tenantContext, Optional<String> scope, Instant now) {
-        CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""));
+    OidcTokenEndpointResult token(OidcTenantContext tenantContext,
+                                  Optional<String> scope,
+                                  List<String> resources,
+                                  Instant now) {
+        List<String> resourceList = List.copyOf(resources);
+        CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""), resourceList);
         Duration clockSkew = tenantContext.tokenValidation().clockSkew();
         CachedToken cachedToken = tokens.get(cacheKey);
         if (cachedToken != null && cachedToken.activeAt(now, clockSkew)) {
             return OidcTokenEndpointResult.success(cachedToken.tokenResponse());
         }
 
-        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope);
+        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope, resourceList);
         if (!result.succeeded()) {
             return result;
         }
@@ -55,7 +60,7 @@ final class OidcClientCredentialsTokenManager {
         return result;
     }
 
-    private record CacheKey(String tenantId, String scope) {
+    private record CacheKey(String tenantId, String scope, List<String> resources) {
     }
 
     private record CachedToken(OidcTokenResponse tokenResponse, Instant expiresAt) {

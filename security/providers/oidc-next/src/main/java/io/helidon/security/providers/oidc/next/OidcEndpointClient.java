@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -90,7 +91,7 @@ final class OidcEndpointClient {
         return submit(form, OidcTokenResponse::fromRefreshJson);
     }
 
-    OidcTokenEndpointResult clientCredentialsToken(Optional<String> scope) {
+    OidcTokenEndpointResult clientCredentialsToken(Optional<String> scope, List<String> resources) {
         /*
          * Spec: RFC 6749, 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
@@ -99,10 +100,16 @@ final class OidcEndpointClient {
          * request entity-body:"
          * Quote: "`grant_type` REQUIRED. Value MUST be set to `client_credentials`."
          * Quote: "`scope` OPTIONAL. The scope of the access request as described by Section 3.3."
+         *
+         * Spec: RFC 8707, 2 Resource Parameter
+         * https://www.rfc-editor.org/rfc/rfc8707.html#section-2
+         * Quote: "The client MAY send multiple `resource` parameters to indicate that the requested token is intended
+         * to be used at multiple resources."
          */
         Parameters.Builder form = Parameters.builder("oidc-client-credentials-token-endpoint-form")
                 .add("grant_type", "client_credentials");
         scope.ifPresent(value -> form.add("scope", value));
+        resources.forEach(resource -> form.add("resource", resource));
 
         return submit(form, OidcTokenResponse::fromClientCredentialsJson);
     }

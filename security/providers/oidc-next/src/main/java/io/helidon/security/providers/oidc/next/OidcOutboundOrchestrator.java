@@ -165,6 +165,7 @@ final class OidcOutboundOrchestrator {
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
         OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext,
                                                                                  outboundPolicy.clientCredentialsScope(),
+                                                                                 outboundPolicy.clientCredentialsResources(),
                                                                                  now);
         if (!tokenResult.succeeded()) {
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);

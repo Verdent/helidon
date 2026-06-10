@@ -249,6 +249,17 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void dpopBoundJwtAccessTokenIsRejectedAsBearer() {
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("jkt", "dpop-key-thumbprint")
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
     void idcsIamStyleSubjectMappingSupportsCustomClaimAbac() {
         String token = signedToken(it -> it
                 .preferredUsername("mcp-user")

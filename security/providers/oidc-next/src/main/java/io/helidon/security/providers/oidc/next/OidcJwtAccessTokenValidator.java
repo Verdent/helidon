@@ -70,6 +70,10 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             return OidcValidationResult.failure("Bearer Token signature keys are unavailable", e);
         }
 
+        if (hasDpopConfirmationKey(jwt)) {
+            return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
+        }
+
         Optional<String> expectedIssuer = tenantContext.metadata()
                 .issuer();
         if (expectedIssuer.isEmpty()) {
@@ -163,5 +167,17 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             expectedAudience.ifPresent(builder::addAudienceValidator);
         }
         return builder.build();
+    }
+
+    private static boolean hasDpopConfirmationKey(Jwt jwt) {
+        /*
+         * Spec: RFC 9449, 7.2 Checking DPoP Proofs
+         * https://www.rfc-editor.org/rfc/rfc9449.html#section-7.2
+         * A DPoP-bound access token presented as Bearer must not be accepted without validating proof possession.
+         */
+        return jwt.payloadClaimValue("cnf")
+                .filter(value -> value.type() == JsonValueType.OBJECT)
+                .flatMap(value -> value.asObject().value("jkt"))
+                .isPresent();
     }
 }

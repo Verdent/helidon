@@ -42,6 +42,7 @@
         <module>integration</module>
         <module>providers</module>
         <module>jwt</module>
+        <module>spiffe</module>
         <module>abac</module>
     </modules>
 

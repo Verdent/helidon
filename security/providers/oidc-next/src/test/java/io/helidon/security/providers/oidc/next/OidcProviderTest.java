@@ -423,6 +423,79 @@ class OidcProviderTest {
     }
 
     @Test
+    void authorizationCodeFlowInitiationCanRequestPrompts() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.prompts(List.of("login", "consent")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("prompt"), is("login consent"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationRequestsConsentForOfflineAccess() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.scopes(List.of("openid", "offline_access")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("scope"), is("openid offline_access"));
+        assertThat(query.get("prompt"), is("consent"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationAddsConsentToExplicitPromptForOfflineAccess() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .scopes(List.of("openid", "offline_access"))
+                .prompts(List.of("login")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("prompt"), is("login consent"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationDoesNotDuplicateConsentForOfflineAccess() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .scopes(List.of("openid", "offline_access"))
+                .prompts(List.of("consent")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("prompt"), is("consent"));
+    }
+
+    @Test
     void authorizationCodeFlowResolvesLocalRedirectionEndpointFromRequestOrigin() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code
                 .redirectionEndpointUri(URI.create("/oidc/callback")));

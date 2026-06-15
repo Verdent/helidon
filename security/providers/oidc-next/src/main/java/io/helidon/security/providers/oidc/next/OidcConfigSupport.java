@@ -37,6 +37,8 @@ import io.helidon.webclient.api.WebClientConfig;
 
 final class OidcConfigSupport {
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
+    private static final String OFFLINE_ACCESS_SCOPE = "offline_access";
+    private static final String PROMPT_NONE = "none";
     private static final String TENANT_VARIABLE = "{tenant}";
     private static final System.Logger LOGGER = System.getLogger(OidcConfigSupport.class.getName());
     static final URI DEFAULT_REDIRECTION_ENDPOINT_URI = URI.create("/oidc/callback");
@@ -709,10 +711,48 @@ final class OidcConfigSupport {
             throw new IllegalArgumentException(
                     "openid scope must be configured when Authorization Code Flow is enabled");
         }
+        validateAuthorizationCodePrompts(authorizationCode.scopes(), authorizationCode.prompts());
         tenant.cookies()
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validateAuthorizationCodePrompts(List<String> scopes, List<String> prompts) {
+        /*
+         * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
+         * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+         * Quote: "`prompt` OPTIONAL. Space-delimited, case-sensitive list of ASCII string values".
+         * Quote: "If this parameter contains `none` with any other value, an error is returned."
+         */
+        Set<String> seen = new LinkedHashSet<>();
+        for (String prompt : prompts) {
+            if (prompt == null
+                    || prompt.isBlank()
+                    || !prompt.equals(prompt.strip())
+                    || prompt.codePoints().anyMatch(codePoint -> codePoint <= 0x20 || codePoint > 0x7E)) {
+                throw new IllegalArgumentException(
+                        "authorization-code.prompts must contain visible ASCII values without whitespace");
+            }
+            if (!seen.add(prompt)) {
+                throw new IllegalArgumentException(
+                        "authorization-code.prompts contains duplicate prompt: " + prompt);
+            }
+        }
+        if (prompts.size() > 1 && prompts.contains(PROMPT_NONE)) {
+            throw new IllegalArgumentException(
+                    "authorization-code.prompts cannot combine none with other prompt values");
+        }
+        if (scopes.contains(OFFLINE_ACCESS_SCOPE) && prompts.contains(PROMPT_NONE)) {
+            /*
+             * Spec: OpenID Connect Core 1.0, 11 Offline Access
+             * https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
+             * Quote: "When offline access is requested, a `prompt` parameter value of `consent` MUST be used".
+             * Quote: "If this parameter contains `none` with any other value, an error is returned."
+             */
+            throw new IllegalArgumentException(
+                    "authorization-code.prompts cannot contain none when authorization-code.scopes contains offline_access");
+        }
     }
 
     private static void validatePkce(OidcTenantConfig.BuilderBase<?, ?> tenant,

@@ -563,6 +563,7 @@ When `authorization-code` is configured and not explicitly disabled:
 - `client-id` is required.
 - `authorization-code.redirection-endpoint-uri` defaults to `/oidc/callback`.
 - `authorization-code.scopes` must contain `openid` and each value must be one RFC 6749 `scope-token`.
+- `authorization-code.prompts`, when configured, are sent as the OIDC Authentication Request `prompt` parameter.
 - `cookies.encryption-secret` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
@@ -584,6 +585,25 @@ authorization-code:
   scopes: [ "openid", "profile" ]
   pkce-required: true
   pkce-method: S256
+```
+
+Use `authorization-code.prompts` for explicit OpenID Connect prompt behavior such as reauthentication, consent, or account
+selection. Provider-specific prompt values are allowed when they use the same visible ASCII token format.
+
+```yaml
+authorization-code:
+  scopes: [ "openid", "profile" ]
+  prompts: [ "login" ]
+```
+
+The `none` prompt value cannot be combined with any other prompt value. If `authorization-code.scopes` contains
+`offline_access`, the provider ensures the request contains `prompt=consent`, because OpenID Connect Core requires
+consent when offline access is requested unless other processing conditions permit it. A configured `prompt: none` is
+therefore rejected with `offline_access`.
+
+```yaml
+authorization-code:
+  scopes: [ "openid", "profile", "offline_access" ]
 ```
 
 Use `pkce-method: plain` only for compatibility with a legacy authorization server that cannot process `S256`.
@@ -1605,6 +1625,7 @@ Authorization Code Flow options:
 | `enabled` | Whether Authorization Code Flow initiation is enabled when `authorization-code` is configured. Defaults to `true`. |
 | `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
+| `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 

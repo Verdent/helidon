@@ -260,6 +260,17 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void certificateBoundJwtAccessTokenIsRejectedAsBearer() {
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", "certificate-thumbprint")
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
     void idcsIamStyleSubjectMappingSupportsCustomClaimAbac() {
         String token = signedToken(it -> it
                 .preferredUsername("mcp-user")

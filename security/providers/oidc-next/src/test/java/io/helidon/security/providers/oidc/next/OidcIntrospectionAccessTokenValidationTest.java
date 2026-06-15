@@ -387,6 +387,16 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void certificateBoundIntrospectionResponseIsRejectedAsBearer() {
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf.set("x5t#S256", "certificate-thumbprint")))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
     void missingPrincipalClaimIsRejected() {
         responseBody = validResponse(it -> it.unset("sub")
                 .unset("username")

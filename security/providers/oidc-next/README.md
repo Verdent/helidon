@@ -850,6 +850,8 @@ The configured `post-logout-redirect-uri` is sent by default. A logout request m
 `post_logout_redirect_uri`; the provider accepts it only when it exactly matches the configured default URI or one of
 `allowed-post-logout-redirect-uris`. If `post_logout_redirect_uri` is accepted and the request contains `state`, the
 provider includes `state` in the End Session request.
+Every configured post-logout redirect value must also be registered with the OpenID Provider as an exact
+`post_logout_redirect_uris` value.
 
 `endpoints.end-session-endpoint-uri`, `post-logout-redirect-uri`, and `allowed-post-logout-redirect-uris` must use
 HTTPS unless `endpoints.tls-required` is disabled, and must not contain fragments.

@@ -925,6 +925,31 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void logoutEndpointRouteRejectsPostLogoutRedirectUriHostCaseMismatch() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .queryParam("post_logout_redirect_uri", "https://RP.example/logged-out")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void logoutEndpointRouteAcceptsAllowedPostLogoutRedirectUriFromRequest() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
                 .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI)
@@ -949,6 +974,32 @@ class OidcFeatureRouteTest {
                 UriQuery query = UriQuery.create(location);
                 assertThat(query.first("post_logout_redirect_uri").orElse(""),
                            is(OTHER_POST_LOGOUT_REDIRECT_URI.toString()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutEndpointRouteRejectsAllowedPostLogoutRedirectUriPercentEncodingCaseMismatch() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
+                .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI)
+                .addAllowedPostLogoutRedirectUri(URI.create("https://rp.example/%7elogged-out")));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .queryParam("post_logout_redirect_uri", "https://rp.example/%7Elogged-out")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
             }
         } finally {
             rpServer.stop();

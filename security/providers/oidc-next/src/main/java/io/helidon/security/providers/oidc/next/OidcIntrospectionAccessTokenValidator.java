@@ -33,6 +33,10 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
+    private static final String CONFIRMATION_CLAIM = "cnf";
+    private static final String DPOP_JWK_THUMBPRINT_CONFIRMATION = "jkt";
+    private static final String X509_CERTIFICATE_THUMBPRINT_CONFIRMATION = "x5t#S256";
+
     private OidcIntrospectionAccessTokenValidator() {
     }
 
@@ -126,7 +130,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
-        if (hasDpopConfirmationKey(validated)) {
+        if (hasUnsupportedSenderConstrainedConfirmation(validated)) {
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
@@ -165,17 +169,23 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         return request.submit(form.build());
     }
 
-    private static boolean hasDpopConfirmationKey(OidcValidatedIntrospection validated) {
+    private static boolean hasUnsupportedSenderConstrainedConfirmation(OidcValidatedIntrospection validated) {
         /*
          * Spec: RFC 9449, 7.2 Checking DPoP Proofs
          * https://www.rfc-editor.org/rfc/rfc9449.html#section-7.2
-         * A DPoP-bound access token presented as Bearer must not be accepted without validating proof possession.
+         * Quote: "MUST reject a DPoP-bound access token received as a bearer token".
+         *
+         * Spec: RFC 8705, 3 Mutual-TLS Certificate-Bound Access Tokens
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-3
+         * Quote: "MUST verify that the certificate matches the certificate associated with the access token."
+         * Quote: "MUST be rejected with an error, per [RFC6750]".
          */
         return validated.claims()
-                .value("cnf")
+                .value(CONFIRMATION_CLAIM)
                 .filter(value -> value.type() == JsonValueType.OBJECT)
-                .flatMap(value -> value.asObject().value("jkt"))
-                .isPresent();
+                .map(value -> value.asObject().value(DPOP_JWK_THUMBPRINT_CONFIRMATION).isPresent()
+                        || value.asObject().value(X509_CERTIFICATE_THUMBPRINT_CONFIRMATION).isPresent())
+                .orElse(false);
     }
 
 }

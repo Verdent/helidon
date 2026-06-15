@@ -189,15 +189,29 @@ final class OidcLogoutHandler {
             throw new IllegalArgumentException("post_logout_redirect_uri is invalid");
         }
 
+        String requestedUriValue = requestedPostLogoutRedirectUris.getFirst();
         URI requestedUri;
         try {
-            requestedUri = URI.create(requestedPostLogoutRedirectUris.getFirst());
+            requestedUri = URI.create(requestedUriValue);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("post_logout_redirect_uri is invalid", e);
         }
 
-        if (endSession.postLogoutRedirectUri().filter(requestedUri::equals).isPresent()
-                || endSession.allowedPostLogoutRedirectUris().contains(requestedUri)) {
+        /*
+         * Spec: OpenID Connect RP-Initiated Logout 1.0, 4 Validation and Error Handling
+         * https://openid.net/specs/openid-connect-rpinitiated-1_0.html#Validation
+         * Quote: "The OP also MUST NOT perform post-logout redirection if the `post_logout_redirect_uri` value supplied
+         * does not exactly match one of the previously registered `post_logout_redirect_uris` values."
+         */
+        boolean configuredRedirectUri = endSession.postLogoutRedirectUri()
+                .map(URI::toString)
+                .filter(requestedUriValue::equals)
+                .isPresent();
+        boolean allowedRedirectUri = endSession.allowedPostLogoutRedirectUris()
+                .stream()
+                .map(URI::toString)
+                .anyMatch(requestedUriValue::equals);
+        if (configuredRedirectUri || allowedRedirectUri) {
             return Optional.of(requestedUri);
         }
         throw new IllegalArgumentException("post_logout_redirect_uri is not allowed");

@@ -58,6 +58,15 @@ interface OidcAuthorizationCodeConfigBlueprint {
     List<String> scopes();
 
     /**
+     * Authentication Request prompt values.
+     *
+     * @return prompt values
+     */
+    @Option.Configured
+    @Option.Singular("prompt")
+    List<String> prompts();
+
+    /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.
      * <p>
      * Defaults to {@code true}. Disable only for confidential-client compatibility with a legacy Authorization Server

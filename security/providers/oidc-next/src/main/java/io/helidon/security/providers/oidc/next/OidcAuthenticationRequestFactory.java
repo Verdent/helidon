@@ -22,6 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +34,8 @@ import io.helidon.security.SecurityEnvironment;
 
 final class OidcAuthenticationRequestFactory {
     private static final int RANDOM_VALUE_BYTES = 32;
+    private static final String OFFLINE_ACCESS_SCOPE = "offline_access";
+    private static final String PROMPT_CONSENT = "consent";
 
     private final SecureRandom secureRandom;
 
@@ -122,6 +125,10 @@ final class OidcAuthenticationRequestFactory {
                 .set("scope", OidcScopeSupport.serializeScopes(authorizationCode.scopes()))
                 .set("state", state)
                 .set("nonce", nonce);
+        List<String> prompts = prompts(authorizationCode);
+        if (!prompts.isEmpty()) {
+            query.set("prompt", String.join(" ", prompts));
+        }
         if (pkceVerifier != null) {
             /*
              * Spec: RFC 7636, 4.1 Client Creates a Code Verifier, 4.2 Client Creates the Code Challenge, and 7.1
@@ -145,6 +152,25 @@ final class OidcAuthenticationRequestFactory {
         return URI.create(authorizationEndpointUri
                                   + (authorizationEndpointUri.getRawQuery() == null ? "?" : "&")
                                   + query.rawValue());
+    }
+
+    private List<String> prompts(OidcAuthorizationCodeConfig authorizationCode) {
+        List<String> prompts = authorizationCode.prompts();
+        if (authorizationCode.scopes().contains(OFFLINE_ACCESS_SCOPE) && !prompts.contains(PROMPT_CONSENT)) {
+            /*
+             * Spec: OpenID Connect Core 1.0, 11 Offline Access
+             * https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
+             * Quote: "When offline access is requested, a `prompt` parameter value of `consent` MUST be used".
+             * Quote: "MUST ensure that the prompt parameter contains `consent`".
+             */
+            if (prompts.isEmpty()) {
+                return List.of(PROMPT_CONSENT);
+            }
+            List<String> updatedPrompts = new ArrayList<>(prompts);
+            updatedPrompts.add(PROMPT_CONSENT);
+            return updatedPrompts;
+        }
+        return prompts;
     }
 
     private URI originalUri(SecurityEnvironment environment) {

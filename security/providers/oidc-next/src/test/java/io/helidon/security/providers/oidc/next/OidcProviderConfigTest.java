@@ -120,6 +120,7 @@ class OidcProviderConfigTest {
         assertThat(userInfo.enabled(), is(true));
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
+        assertThat(authorizationCode.prompts().isEmpty(), is(true));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
@@ -250,6 +251,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.webclient.proxy.port", "8080"),
                         Map.entry("tenants.default.authorization-code.redirection-endpoint-uri",
                                   REDIRECTION_ENDPOINT_URI.toString()),
+                        Map.entry("tenants.default.authorization-code.prompts.0", "login"),
+                        Map.entry("tenants.default.authorization-code.prompts.1", "consent"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.encryption-secret",
                                   "this-secret-is-long-enough-for-config-test"),
@@ -316,6 +319,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.webClient().proxy().port(), is(8080));
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
         assertThat(authorizationCode.redirectionEndpointUri().orElseThrow(), is(REDIRECTION_ENDPOINT_URI));
+        assertThat(authorizationCode.prompts(), is(List.of("login", "consent")));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
@@ -1210,6 +1214,60 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("duplicate scope"));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsInvalidPrompts() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .prompts(List.of("login consent")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.prompts"));
+        assertThat(thrown.getMessage(), containsString("without whitespace"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .prompts(List.of("none", "login")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("cannot combine none"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .prompts(List.of("login", "login")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("duplicate prompt"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "offline_access"))
+                        .prompts(List.of("none")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("cannot contain none"));
+        assertThat(thrown.getMessage(), containsString("offline_access"));
     }
 
     @Test

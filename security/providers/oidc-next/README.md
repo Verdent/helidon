@@ -26,7 +26,7 @@ The current implementation supports:
 - Refresh-token based local authentication renewal.
 - Validation of refreshed access tokens when token validation is configured.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
-- Optional UserInfo requests for Authorization Code Flow with exact `sub` matching before claim merge.
+- Optional UserInfo requests for Authorization Code Flow with exact `sub` matching and configurable claim storage.
 - Configurable subject mapping for principal id, principal name, roles, and scope grants.
 - Tenant WebClient configuration for OpenID Provider and Authorization Server requests.
 - Multi-tenant selection by default tenant, header, path segment, path template, or host template.
@@ -110,6 +110,7 @@ import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
+import io.helidon.security.providers.oidc.next.OidcUserInfoStoragePolicy;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
@@ -748,6 +749,8 @@ security:
           scopes: [ "openid", "profile", "email" ]
         user-info:
           enabled: true
+          storage-policy: mapped
+          attribute-claim-paths: [ "email", "department" ]
         cookies:
           encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
@@ -760,11 +763,37 @@ When `user-info` is configured and not explicitly disabled:
 - The UserInfo response must be a successful JSON object response with `Content-Type: application/json`.
 - The UserInfo response must contain `sub`, and it must exactly match the ID Token `sub`.
 
-UserInfo claims are stored in the protected local authentication result cookie and merged into subject attributes on
-later requests. The full UserInfo JSON object is stored client-side in the protected cookie, so avoid returning large
-claims or unnecessary personal data from the UserInfo Endpoint. UserInfo claims override ID Token claims with the same
-name for principal attributes, principal name, and roles, except ID Token protocol and authentication claims remain
-ID Token sourced. Principal id still comes from the validated ID Token claim mapping.
+By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used by `subject-mapping`, and claims listed
+in `attribute-claim-paths`. This follows the OpenID Connect Core privacy guidance: "Only necessary UserInfo data should
+be stored at the Client". Stored UserInfo claims are kept in the protected local authentication result cookie and merged
+into subject attributes on later requests. UserInfo claims override ID Token claims with the same name for principal
+attributes, principal name, and roles, except ID Token protocol and authentication claims remain ID Token sourced.
+Principal id still comes from the validated ID Token claim mapping.
+
+Use `attribute-claim-paths` for additional UserInfo claims that should be exposed as principal attributes but are not
+used by `subject-mapping`.
+
+```yaml
+user-info:
+  storage-policy: mapped
+  attribute-claim-paths: [ "email", "department", "iam.cost_center" ]
+```
+
+Use `storage-policy: all` only when the application intentionally needs the complete UserInfo JSON object stored in the
+protected cookie and exposed through subject attributes.
+
+```yaml
+user-info:
+  storage-policy: all
+```
+
+Use `storage-policy: none` when the provider should call UserInfo and enforce the `sub` match but should not store any
+UserInfo claims in the local authentication result.
+
+```yaml
+user-info:
+  storage-policy: none
+```
 
 Refresh-token renewal re-requests UserInfo when `user-info` is enabled and stores the refreshed UserInfo claims only
 after the refreshed UserInfo `sub` matches the ID Token `sub`.
@@ -781,7 +810,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .authorizationCode(authorizationCode -> authorizationCode
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile", "email")))
-        .userInfo(userInfo -> { })
+        .userInfo(userInfo -> userInfo
+                .storagePolicy(OidcUserInfoStoragePolicy.MAPPED)
+                .attributeClaimPaths(List.of("email", "department")))
         .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
         .buildPrototype();
 ```
@@ -1327,8 +1358,10 @@ security:
           encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
-If the custom claims are returned only by the UserInfo Endpoint, enable UserInfo and include the same claim paths in
-`subject-mapping`.
+If the custom claims are returned only by the UserInfo Endpoint, enable UserInfo and include role or name claim paths in
+`subject-mapping`. With the default `user-info.storage-policy: mapped`, those subject-mapping paths are stored after
+the UserInfo `sub` check. Additional ABAC-only UserInfo claims must be listed in `user-info.attribute-claim-paths`, or
+the application must choose `user-info.storage-policy: all`.
 
 ```yaml
 security:
@@ -1342,6 +1375,7 @@ security:
           scopes: [ "openid", "profile", "email" ]
         user-info:
           enabled: true
+          attribute-claim-paths: [ "department" ]
         subject-mapping:
           role-claim-paths: [ "iam.groups" ]
         cookies:
@@ -1646,6 +1680,8 @@ UserInfo options:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether UserInfo requests are enabled when `user-info` is configured. Defaults to `true`. |
+| `storage-policy` | UserInfo claim storage policy: `mapped`, `all`, or `none`. Defaults to `mapped`. |
+| `attribute-claim-paths` | Additional dotted UserInfo claim paths stored when `storage-policy` is `mapped`. The provider also stores `sub` and paths used by `subject-mapping`. |
 
 Logout options:
 

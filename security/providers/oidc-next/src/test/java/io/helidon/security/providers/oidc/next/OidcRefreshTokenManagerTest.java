@@ -17,8 +17,10 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,7 +134,7 @@ class OidcRefreshTokenManagerTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is(USERNAME));
 
         TokenCredential credential = subject.publicCredential(TokenCredential.class).orElseThrow();
@@ -817,6 +819,16 @@ class OidcRefreshTokenManagerTest {
         customizer.accept(builder);
         return SignedJwt.sign(builder.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static String issuerSubjectPrincipalId() {
+        return "oidc-sub:" + base64Url(ISSUER.toString()) + "." + base64Url(SUBJECT);
+    }
+
+    private static String base64Url(String value) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String signedAccessToken(Consumer<Jwt.Builder> customizer) {

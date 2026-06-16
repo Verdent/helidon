@@ -416,6 +416,11 @@ protected-resource:
     audience-validation-enabled: false
 ```
 
+JWT access-token claims are used to build the Helidon Security subject according to `subject-mapping`. The validated
+`Jwt` and `SignedJwt` are also available through the subject's public `TokenCredential`. Treat access-token claims as
+authorization data visible to application code, and configure the Authorization Server to issue access tokens for this
+resource with only the claims this resource needs.
+
 ### JWK Set Reload Policy
 
 The `jwk-set` block configures how the provider reloads the JSON Web Key Set used for ID Token and JWT access-token
@@ -510,6 +515,13 @@ protected-resource:
     method: INTROSPECTION
     audience-validation-enabled: false
 ```
+
+RFC 7662 describes introspection responses as token metadata for protected-resource authorization decisions and says an
+Authorization Server "MAY limit which scopes from a given token are returned" for each protected resource. `oidc-next`
+maps selected introspection claims to principal attributes and grants according to `subject-mapping`, and also exposes
+the full introspection response `JsonObject` through the subject's public `TokenCredential`. Configure the Authorization
+Server introspection policy to return only claims this resource needs. `oidc-next` does not cache introspection responses
+by default, so each Bearer Token validation uses the current Authorization Server response.
 
 ## Bearer Token Transport
 

@@ -106,7 +106,21 @@ final class OidcConfigSupport {
                 .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
     }
 
+    static boolean targetTokenExchangeEnabled(List<OutboundTarget> outboundTargets) {
+        return outboundTargets.stream()
+                .map(OidcOutboundPolicy::fromTarget)
+                .flatMap(Optional::stream)
+                .anyMatch(OidcOutboundPolicy::tokenExchangeEnabled);
+    }
+
     static String clientCredentialsScope(List<String> scopes) {
+        if (scopes.isEmpty()) {
+            return "";
+        }
+        return OidcScopeSupport.serializeScopes(scopes);
+    }
+
+    static String tokenExchangeScope(List<String> scopes) {
         if (scopes.isEmpty()) {
             return "";
         }
@@ -159,6 +173,13 @@ final class OidcConfigSupport {
                         .forEach(tenant -> validateClientCredentialsGrant(tenant,
                                                                           tenant.endpoints(),
                                                                           "Client Credentials Grant"));
+            }
+            if (targetTokenExchangeEnabled(target.outboundTargets())) {
+                target.tenants()
+                        .values()
+                        .stream()
+                        .filter(OidcTenantConfig::enabled)
+                        .forEach(tenant -> validateTokenExchange(tenant, tenant.endpoints()));
             }
         }
     }
@@ -436,9 +457,13 @@ final class OidcConfigSupport {
             implements Prototype.BuilderDecorator<OidcOutboundTargetConfig.BuilderBase<?, ?>> {
         @Override
         public void decorate(OidcOutboundTargetConfig.BuilderBase<?, ?> target) {
-            if (target.tokenPropagationEnabled() && target.clientCredentialsGrantEnabled()) {
+            int strategyCount = 0;
+            strategyCount += target.tokenPropagationEnabled() ? 1 : 0;
+            strategyCount += target.clientCredentialsGrantEnabled() ? 1 : 0;
+            strategyCount += target.tokenExchangeEnabled() ? 1 : 0;
+            if (strategyCount > 1) {
                 throw new IllegalArgumentException(
-                        "Token Propagation and Client Credentials Grant cannot both be enabled on the same outbound target");
+                        "Only one OIDC outbound strategy can be enabled on the same outbound target");
             }
             if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsScopes().isEmpty()) {
                 throw new IllegalArgumentException(
@@ -447,6 +472,18 @@ final class OidcConfigSupport {
             if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsResources().isEmpty()) {
                 throw new IllegalArgumentException(
                         "client-credentials-grant-enabled must be enabled when client-credentials-resources is configured");
+            }
+            if (!target.tokenExchangeEnabled() && !target.tokenExchangeScopes().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "token-exchange-enabled must be enabled when token-exchange-scopes is configured");
+            }
+            if (!target.tokenExchangeEnabled() && target.tokenExchangeResource().isPresent()) {
+                throw new IllegalArgumentException(
+                        "token-exchange-enabled must be enabled when token-exchange-resource is configured");
+            }
+            if (!target.tokenExchangeEnabled() && target.tokenExchangeAudience().isPresent()) {
+                throw new IllegalArgumentException(
+                        "token-exchange-enabled must be enabled when token-exchange-audience is configured");
             }
             target.audience()
                     .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
@@ -474,8 +511,23 @@ final class OidcConfigSupport {
                                        + "for testing, local development, or legacy opaque-token deployments.");
                 }
             }
+            if (target.tokenExchangeEnabled()) {
+                if (target.tokenExchangeResource().isEmpty() && target.tokenExchangeAudience().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "token-exchange-resource or token-exchange-audience must be configured when Token Exchange "
+                                    + "is enabled");
+                }
+            }
+            target.tokenExchangeAudience()
+                    .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
+                    .ifPresent(ignored -> {
+                        throw new IllegalArgumentException("token-exchange-audience must not be blank or padded");
+                    });
             OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");
             validateResourceIndicators(target.clientCredentialsResources(), "client-credentials-resources");
+            OidcScopeSupport.validateConfiguredScopes(target.tokenExchangeScopes(), "token-exchange-scopes");
+            target.tokenExchangeResource()
+                    .ifPresent(resource -> validateResourceIndicators(List.of(resource), "token-exchange-resource"));
         }
     }
 
@@ -969,29 +1021,6 @@ final class OidcConfigSupport {
     static void validateClientCredentialsGrant(OidcTenantConfig tenant,
                                                OidcEndpointConfig endpoints,
                                                String operation) {
-        validateClientCredentialsGrant(tenant.clientId(),
-                                       tenant.clientSecret(),
-                                       tenant.tokenEndpointAuthenticationMethod(),
-                                       tenant.clientAssertion(),
-                                       tenant.webClient(),
-                                       tenant.issuer(),
-                                       endpoints,
-                                       operation);
-    }
-
-    static boolean tokenEndpointTlsRequired(OidcTenantConfig tenant) {
-        return tenant.endpoints().tlsRequired()
-                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(), tenant.tokenEndpointAuthenticationMethod());
-    }
-
-    private static void validateClientCredentialsGrant(Optional<String> clientId,
-                                                       Optional<String> clientSecret,
-                                                       Optional<OidcClientAuthenticationMethod> authenticationMethod,
-                                                       OidcClientAssertionConfig clientAssertion,
-                                                       WebClientConfig webClient,
-                                                       Optional<String> issuer,
-                                                       OidcEndpointConfig endpoints,
-                                                       String operation) {
         /*
          * Spec: RFC 6749, 4.4 Client Credentials Grant and 4.4.2 Access Token Request
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4
@@ -999,6 +1028,49 @@ final class OidcConfigSupport {
          * RFC 6749 section 4.4 quote: "The client credentials grant type MUST only be used by confidential clients."
          * RFC 6749 section 4.4.2 quote: "The authorization server MUST authenticate the client."
          */
+        validateConfidentialTokenEndpointGrant(tenant.clientId(),
+                                               tenant.clientSecret(),
+                                               tenant.tokenEndpointAuthenticationMethod(),
+                                               tenant.clientAssertion(),
+                                               tenant.webClient(),
+                                               tenant.issuer(),
+                                               endpoints,
+                                               operation);
+    }
+
+    static void validateTokenExchange(OidcTenantConfig tenant, OidcEndpointConfig endpoints) {
+        /*
+         * Spec: RFC 8693, 2.1 Request
+         * https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1
+         * Quote: "Client authentication to the authorization server is done using the normal mechanisms provided by
+         * OAuth 2.0."
+         * Quote: "omitting client authentication allows for a compromised token to be leveraged via an STS into other
+         * tokens"
+         */
+        validateConfidentialTokenEndpointGrant(tenant.clientId(),
+                                               tenant.clientSecret(),
+                                               tenant.tokenEndpointAuthenticationMethod(),
+                                               tenant.clientAssertion(),
+                                               tenant.webClient(),
+                                               tenant.issuer(),
+                                               endpoints,
+                                               "Token Exchange");
+    }
+
+    static boolean tokenEndpointTlsRequired(OidcTenantConfig tenant) {
+        return tenant.endpoints().tlsRequired()
+                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(), tenant.tokenEndpointAuthenticationMethod());
+    }
+
+    private static void validateConfidentialTokenEndpointGrant(
+            Optional<String> clientId,
+            Optional<String> clientSecret,
+            Optional<OidcClientAuthenticationMethod> authenticationMethod,
+            OidcClientAssertionConfig clientAssertion,
+            WebClientConfig webClient,
+            Optional<String> issuer,
+            OidcEndpointConfig endpoints,
+            String operation) {
         clientId.orElseThrow(() -> new IllegalArgumentException(
                 "client-id must be configured when " + operation + " is enabled"));
         validateTokenEndpointAuthentication(clientSecret,

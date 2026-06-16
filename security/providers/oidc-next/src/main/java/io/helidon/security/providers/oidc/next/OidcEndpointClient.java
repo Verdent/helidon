@@ -31,6 +31,8 @@ import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcEndpointClient {
+    private static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
+
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
     private final OidcClientAuthenticationSupport clientAuthentication;
@@ -142,6 +144,51 @@ final class OidcEndpointClient {
         return submit(form, OidcTokenResponse::fromClientCredentialsJson);
     }
 
+    OidcTokenExchangeResult tokenExchange(String subjectToken,
+                                          Optional<String> scope,
+                                          Optional<String> resource,
+                                          Optional<String> audience) {
+        /*
+         * Spec: RFC 8693, 2.1 Request
+         * https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1
+         * Quote: "The client makes a token exchange request to the token endpoint with an extension grant type using
+         * the HTTP `POST` method."
+         * Quote: "`grant_type` REQUIRED. The value `urn:ietf:params:oauth:grant-type:token-exchange` indicates that a
+         * token exchange is being performed."
+         * Quote: "`subject_token` REQUIRED. A security token that represents the identity of the party on behalf of
+         * whom the request is being made."
+         */
+        Parameters.Builder form = Parameters.builder("oidc-token-exchange-endpoint-form")
+                .add("grant_type", TOKEN_EXCHANGE_GRANT_TYPE)
+                .add("requested_token_type", OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE)
+                .add("subject_token", subjectToken)
+                .add("subject_token_type", OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE);
+        scope.ifPresent(value -> form.add("scope", value));
+        resource.ifPresent(value -> {
+            /*
+             * Spec: RFC 8693, 2.1 Request
+             * https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1
+             * Quote: "`resource` OPTIONAL. A URI that indicates the target service or resource where the client
+             * intends to use the requested security token."
+             */
+            form.add("resource", value);
+        });
+        audience.ifPresent(value -> {
+            /*
+             * Spec: RFC 8693, 2.1 Request
+             * https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1
+             * Quote: "`audience` OPTIONAL. The logical name of the target service where the client intends to use the
+             * requested security token."
+             */
+            form.add("audience", value);
+        });
+
+        return submit(form,
+                      json -> OidcTokenExchangeResult.success(OidcTokenExchangeResponse.fromJson(json)),
+                      OidcTokenExchangeResult::error,
+                      OidcTokenExchangeResult::failure);
+    }
+
     Optional<JsonObject> userInfo(String accessToken) {
         Optional<URI> endpointUri = metadata.userInfoEndpointUri();
         if (endpointUri.isEmpty()) {
@@ -184,6 +231,16 @@ final class OidcEndpointClient {
 
     private OidcTokenEndpointResult submit(Parameters.Builder form,
                                            Function<JsonObject, OidcTokenResponse> responseParser) {
+        return submit(form,
+                      json -> OidcTokenEndpointResult.success(responseParser.apply(json)),
+                      OidcTokenEndpointResult::error,
+                      OidcTokenEndpointResult::failure);
+    }
+
+    private <R> R submit(Parameters.Builder form,
+                         Function<JsonObject, R> successResult,
+                         Function<OidcTokenErrorResponse, R> errorResult,
+                         FailureFactory<R> failureResult) {
         /*
          * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
@@ -196,7 +253,7 @@ final class OidcEndpointClient {
                 ? metadata.mutualTlsTokenEndpointUri().or(metadata::tokenEndpointUri)
                 : metadata.tokenEndpointUri();
         if (endpointUri.isEmpty()) {
-            return OidcTokenEndpointResult.failure("Token Endpoint is not configured");
+            return failureResult.create("Token Endpoint is not configured", null);
         }
         try {
             HttpClientRequest request = webClient.post()
@@ -212,25 +269,30 @@ final class OidcEndpointClient {
                     if (!OidcHttpResponseValidation.hasJsonContentType(response)
                             || !OidcHttpResponseValidation.hasNoStoreCacheControl(response)
                             || !OidcHttpResponseValidation.hasNoCachePragma(response)) {
-                        return OidcTokenEndpointResult.failure("Token Endpoint response is invalid");
+                        return failureResult.create("Token Endpoint response is invalid", null);
                     }
                     try {
-                        return OidcTokenEndpointResult.success(responseParser.apply(response.as(JsonObject.class)));
+                        return successResult.apply(response.as(JsonObject.class));
                     } catch (RuntimeException e) {
-                        return OidcTokenEndpointResult.failure("Token Endpoint response is invalid", e);
+                        return failureResult.create("Token Endpoint response is invalid", e);
                     }
                 }
                 if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
-                    return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid");
+                    return failureResult.create("Token Endpoint Error Response is invalid", null);
                 }
                 try {
-                    return OidcTokenEndpointResult.error(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
+                    return errorResult.apply(OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
                 } catch (RuntimeException e) {
-                    return OidcTokenEndpointResult.failure("Token Endpoint Error Response is invalid", e);
+                    return failureResult.create("Token Endpoint Error Response is invalid", e);
                 }
             }
         } catch (RuntimeException e) {
-            return OidcTokenEndpointResult.failure("Token Endpoint is unavailable", e);
+            return failureResult.create("Token Endpoint is unavailable", e);
         }
+    }
+
+    @FunctionalInterface
+    private interface FailureFactory<R> {
+        R create(String description, Throwable cause);
     }
 }

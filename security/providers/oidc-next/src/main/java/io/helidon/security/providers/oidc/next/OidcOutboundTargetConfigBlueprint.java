@@ -84,6 +84,59 @@ interface OidcOutboundTargetConfigBlueprint {
     List<String> clientCredentialsResources();
 
     /**
+     * Whether RFC 8693 Token Exchange is enabled for this outbound target.
+     * <p>
+     * Token Exchange uses the current subject {@code TokenCredential} as {@code subject_token}, asks the tenant Token
+     * Endpoint for a downstream access token, and attaches the exchanged token as
+     * {@code Authorization: Bearer <access-token>}. The first implementation supports only access-token-to-Bearer
+     * access-token exchange.
+     *
+     * @return whether Token Exchange is enabled
+     */
+    @Description("Whether RFC 8693 Token Exchange is enabled for this outbound target.")
+    @Option.Configured
+    @Option.DefaultBoolean(false)
+    boolean tokenExchangeEnabled();
+
+    /**
+     * Access-token scopes requested by Token Exchange for this outbound target.
+     * <p>
+     * This value is used only when {@code token-exchange-enabled} is enabled on the same outbound target. When
+     * configured, the scopes are serialized as a single OAuth {@code scope} token endpoint form parameter.
+     *
+     * @return Token Exchange scopes
+     */
+    @Description("Access-token scopes requested by Token Exchange for this outbound target.")
+    @Option.Configured
+    @Option.Singular("tokenExchangeScope")
+    List<String> tokenExchangeScopes();
+
+    /**
+     * Target resource requested by Token Exchange for this outbound target.
+     * <p>
+     * This value is used only when {@code token-exchange-enabled} is enabled on the same outbound target. When
+     * configured, it is sent as the RFC 8693 {@code resource} token endpoint form parameter.
+     *
+     * @return Token Exchange resource
+     */
+    @Description("Target resource requested by Token Exchange for this outbound target.")
+    @Option.Configured
+    Optional<String> tokenExchangeResource();
+
+    /**
+     * Target audience requested by Token Exchange for this outbound target.
+     * <p>
+     * This value is used only when {@code token-exchange-enabled} is enabled on the same outbound target. When
+     * configured, it is sent as the RFC 8693 {@code audience} token endpoint form parameter. This is separate from
+     * {@link #audience()}, which is a local Token Propagation audience check.
+     *
+     * @return Token Exchange audience
+     */
+    @Description("Target audience requested by Token Exchange for this outbound target.")
+    @Option.Configured
+    Optional<String> tokenExchangeAudience();
+
+    /**
      * Expected access-token audience for Token Propagation to this outbound target.
      * <p>
      * This value is used only when {@code token-propagation-enabled} is enabled on the same outbound target.

@@ -107,11 +107,11 @@ interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, 
     Map<String, OidcTenantConfig> tenants();
 
     /**
-     * Outbound targets that may receive Token Propagation or Client Credentials Grant tokens.
+     * Outbound targets that may receive Token Propagation, Client Credentials Grant, or Token Exchange tokens.
      * <p>
      * Each target uses Helidon's common {@link OutboundTarget} matching keys, and can include OIDC-specific target
      * options from {@link OidcOutboundTargetConfig}, such as {@code token-propagation-enabled},
-     * {@code client-credentials-grant-enabled}, and {@code audience}.
+     * {@code client-credentials-grant-enabled}, {@code token-exchange-enabled}, and {@code audience}.
      *
      * @return outbound targets
      */

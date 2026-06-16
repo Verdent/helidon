@@ -2149,7 +2149,7 @@ class OidcProviderConfigTest {
                                                                .clientCredentialsGrantEnabled(true)
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("Token Propagation and Client Credentials Grant"));
+        assertThat(thrown.getMessage(), containsString("Only one OIDC outbound strategy"));
     }
 
     @Test

@@ -1167,6 +1167,19 @@ requests `billing.read`; these scoped tokens are cached separately.
 The tenant describes the OAuth client and Authorization Server connection; the outbound target describes the resource API
 access being requested for a specific outbound call.
 
+Configure `client-credentials-resources` when the Authorization Server supports RFC 8707 Resource Indicators and needs
+the intended downstream resource in the token request. RFC 8707 says `resource` "MUST be an absolute URI" and "MUST NOT
+include a fragment component." The provider preserves the configured string value, rejects blank, padded, duplicate,
+relative, and fragment-containing resource values, sends one Token Endpoint `resource` form parameter per configured
+value, and caches Client Credentials tokens separately by tenant, scopes, and resources.
+
+Resource indicators are not scopes. RFC 8707 says OAuth scope is "sometimes overloaded to convey the location or identity
+of the protected resource", but scope normally describes what access is requested while `resource` identifies where the
+token will be redeemed. Prefer one resource per outbound target and token. Multiple resource values ask for a token
+usable at all requested resources, which requires those resources to trust each other against bearer-token replay.
+Resource indicators also reveal intended downstream targets to the Authorization Server; RFC 8707 says they can allow
+tracking at a "more granular and specific level" than would otherwise be possible.
+
 Client Credentials Grant is only valid for confidential clients. Configure `client-id`, either
 `endpoints.token-endpoint-uri` or well-known metadata that provides the Token Endpoint, and the prerequisites for the
 selected Token Endpoint client authentication method. Secret-based methods require `client-secret`; `PRIVATE_KEY_JWT`
@@ -1197,6 +1210,7 @@ security:
             hosts: [ "inventory.internal.example" ]
             client-credentials-grant-enabled: true
             client-credentials-scopes: [ "inventory.read" ]
+            client-credentials-resources: [ "https://inventory.example.com" ]
 ```
 
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
@@ -1223,12 +1237,13 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .buildPrototype();
 ```
 
-Programmatic Client Credentials Grant target configuration with scopes:
+Programmatic Client Credentials Grant target configuration with scopes and a resource indicator:
 
 ```java
 OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
         .clientCredentialsGrantEnabled(true)
         .addClientCredentialsScope("orders.read")
+        .addClientCredentialsResource("https://orders.example.com")
         .buildPrototype();
 
 OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
@@ -1756,6 +1771,7 @@ OIDC outbound target options:
 | `token-propagation-enabled` | Use Token Propagation for this outbound target. |
 | `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 | `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
+| `client-credentials-resources` | RFC 8707 resource indicators requested by Client Credentials Grant for this outbound target. Each value must be an absolute URI with no fragment. Values are sent as separate OAuth `resource` form parameters and are included in the Client Credentials token cache key. Requires `client-credentials-grant-enabled: true`. |
 | `audience` | Expected `aud` claim for Token Propagation to this outbound target. Required by default when `token-propagation-enabled: true`. This identifies the downstream resource server. |
 | `audience-validation-enabled` | Whether Token Propagation audience validation is enabled for this outbound target. Defaults to `true`. Disabling it allows raw or opaque token propagation without local audience validation and should be limited to testing, local development, or legacy deployments. |
 

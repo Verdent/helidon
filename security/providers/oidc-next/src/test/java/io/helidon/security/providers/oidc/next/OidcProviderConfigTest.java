@@ -130,6 +130,7 @@ class OidcProviderConfigTest {
         assertThat(tokenTransport.secureTransportRequired(), is(true));
         assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(subjectMapping.principalIdMode(), is(OidcPrincipalIdMode.ISSUER_SUBJECT));
         assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub", "username", "client_id")));
         assertThat(subjectMapping.principalNameClaimPaths(), is(List.of("preferred_username", "username")));
         assertThat(subjectMapping.roleClaimPaths(), is(List.of("groups")));
@@ -149,6 +150,10 @@ class OidcProviderConfigTest {
                    is(List.of(OidcUserInfoStoragePolicy.MAPPED,
                               OidcUserInfoStoragePolicy.ALL,
                               OidcUserInfoStoragePolicy.NONE)));
+        assertThat(List.of(OidcPrincipalIdMode.values()),
+                   is(List.of(OidcPrincipalIdMode.ISSUER_SUBJECT,
+                              OidcPrincipalIdMode.SUBJECT,
+                              OidcPrincipalIdMode.CLAIM_PATH)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -181,6 +186,13 @@ class OidcProviderConfigTest {
         assertThat(OidcUserInfoStoragePolicy.MAPPED.text(), is("mapped"));
         assertThat(OidcUserInfoStoragePolicy.ALL.text(), is("all"));
         assertThat(OidcUserInfoStoragePolicy.NONE.text(), is("none"));
+    }
+
+    @Test
+    void principalIdModesUseConfigTextValues() {
+        assertThat(OidcPrincipalIdMode.ISSUER_SUBJECT.text(), is("issuer-subject"));
+        assertThat(OidcPrincipalIdMode.SUBJECT.text(), is("subject"));
+        assertThat(OidcPrincipalIdMode.CLAIM_PATH.text(), is("claim-path"));
     }
 
     @Test
@@ -286,6 +298,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.user-info.storage-policy", "all"),
                         Map.entry("tenants.default.user-info.attribute-claim-paths.0", "email"),
                         Map.entry("tenants.default.user-info.attribute-claim-paths.1", "iam.department"),
+                        Map.entry("tenants.default.subject-mapping.principal-id-mode", "claim-path"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
@@ -359,6 +372,7 @@ class OidcProviderConfigTest {
         assertThat(userInfo.enabled(), is(false));
         assertThat(userInfo.storagePolicy(), is(OidcUserInfoStoragePolicy.ALL));
         assertThat(userInfo.attributeClaimPaths(), is(List.of("email", "iam.department")));
+        assertThat(tenant.subjectMapping().principalIdMode(), is(OidcPrincipalIdMode.CLAIM_PATH));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -2271,6 +2285,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("endpoint-policy"));
         assertThat(metadata, containsString("accepted-credentials"));
         assertThat(metadata, containsString("authentication-failure-response"));
+        assertThat(metadata, containsString("principal-id-mode"));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));

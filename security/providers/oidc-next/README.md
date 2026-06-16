@@ -107,6 +107,7 @@ import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
+import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
@@ -1285,6 +1286,7 @@ Defaults:
 
 ```yaml
 subject-mapping:
+  principal-id-mode: issuer-subject
   principal-id-claim-paths: [ "sub", "username", "client_id" ]
   principal-name-claim-paths: [ "preferred_username", "username" ]
   role-claim-paths: [ "groups" ]
@@ -1292,9 +1294,10 @@ subject-mapping:
   scope-grants-enabled: true
 ```
 
-Principal id and principal name claim paths are tried in order. Role and scope claim paths are aggregated from all
-configured paths and duplicate grant names are ignored. Dotted paths read nested objects, for example
-`realm_access.roles`.
+Principal name claim paths are tried in order. Principal id claim paths are tried in order for Protected Resource JWT and
+introspection authentication, and for Authorization Code Flow local authentication when `principal-id-mode` is
+`claim-path`. Role and scope claim paths are aggregated from all configured paths and duplicate grant names are ignored.
+Dotted paths read nested objects, for example `realm_access.roles`.
 
 Principal id and principal name claims must be strings. Role claims may be strings or string arrays. Standard `scope`
 claims must be space-delimited RFC 6749 scope strings using ASCII spaces. Custom scope claim paths, such as `scp`, may be
@@ -1303,9 +1306,15 @@ strings or string arrays; array values are treated as individual scope tokens.
 For Authorization Code Flow local authentication, scope grants come from the Token Endpoint scope value stored in the
 local authentication result. ID Token scope claims are not promoted to Helidon scope grants.
 
-For Authorization Code Flow local authentication, the default principal id comes from the ID Token `sub` claim. OpenID
-Connect defines `sub` as unique within an issuer, so applications that accept more than one issuer should consider both
-the preserved `iss` and `sub` principal attributes when they need a globally stable user key.
+For Authorization Code Flow local authentication, `principal-id-mode` controls `Principal.id()`. The default
+`issuer-subject` mode derives an opaque issuer-qualified value from the ID Token `iss` and `sub` claims. OpenID Connect
+Core 1.0, section 5.7 says that "the only guaranteed unique identifier for a given End-User is the combination of the
+`iss` Claim and the `sub` Claim." The raw ID Token `iss` and `sub` values are still preserved as principal attributes.
+
+Use `principal-id-mode: subject` when the application intentionally wants the raw ID Token `sub` claim as the principal
+id, for example in a single-issuer application. Use `principal-id-mode: claim-path` when Authorization Code Flow local
+authentication should use `principal-id-claim-paths`. Protected Resource JWT and introspection authentication always use
+`principal-id-claim-paths`.
 
 ID Token validation requires `sub` to be non-blank ASCII and no longer than 255 characters. This is an ID Token protocol
 check; protected-resource access tokens and introspection responses keep using the configured subject mapping rules.
@@ -1314,6 +1323,7 @@ Example for a Keycloak-style token:
 
 ```yaml
 subject-mapping:
+  principal-id-mode: claim-path
   principal-id-claim-paths: [ "sub" ]
   principal-name-claim-paths: [ "preferred_username", "email" ]
   role-claim-paths: [ "realm_access.roles", "groups" ]
@@ -1349,6 +1359,7 @@ security:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile", "email", "mcp.tools.read" ]
         subject-mapping:
+          principal-id-mode: claim-path
           principal-id-claim-paths: [ "sub" ]
           principal-name-claim-paths: [ "preferred_username", "email" ]
           role-claim-paths: [ "groups", "idcs_groups", "iam.groups" ]
@@ -1415,6 +1426,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile", "email", "mcp.tools.read")))
         .subjectMapping(subjectMapping -> subjectMapping
+                .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                 .principalIdClaimPaths(List.of("sub"))
                 .principalNameClaimPaths(List.of("preferred_username", "email"))
                 .roleClaimPaths(List.of("groups", "idcs_groups", "iam.groups"))
@@ -1674,6 +1686,17 @@ Endpoint policy options:
 | --- | --- |
 | `accepted-credentials` | Accepted endpoint credentials: `bearer-token` and/or `authentication-cookie`. If omitted, inferred from enabled `protected-resource` and `authorization-code`. |
 | `authentication-failure-response` | Response when no accepted credential authenticates the request: `unauthorized` or `authorization-code-redirect`. If omitted, authentication-cookie-only endpoints redirect and all other endpoint policies return `401`. |
+
+Subject mapping options:
+
+| Key | Description |
+| --- | --- |
+| `principal-id-mode` | Authorization Code Flow local authentication principal id mode: `issuer-subject`, `subject`, or `claim-path`. Defaults to `issuer-subject`. Protected Resource JWT and introspection authentication use `principal-id-claim-paths`. |
+| `principal-id-claim-paths` | Dotted claim paths tried in order for Protected Resource JWT and introspection principal ids, and for Authorization Code Flow local authentication when `principal-id-mode` is `claim-path`. Defaults to `[ "sub", "username", "client_id" ]`. |
+| `principal-name-claim-paths` | Dotted claim paths tried in order for the principal display name. Defaults to `[ "preferred_username", "username" ]`. |
+| `role-claim-paths` | Dotted claim paths used to create Helidon role grants. String values and string-array values are supported. Defaults to `[ "groups" ]`. |
+| `scope-claim-paths` | Dotted claim paths used to create Helidon scope grants for Protected Resource JWT and introspection authentication. Defaults to `[ "scope" ]`. |
+| `scope-grants-enabled` | Whether scope claim values are mapped to Helidon scope grants for Protected Resource JWT and introspection authentication. Defaults to `true`. Authorization Code Flow local authentication uses the Token Endpoint scope value stored in the local authentication result. |
 
 UserInfo options:
 

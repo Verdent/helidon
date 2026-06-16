@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,6 +37,9 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcSubjectMapper {
+    private static final String ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX = "oidc-sub:";
+    private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder()
+            .withoutPadding();
     private static final Set<String> ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO = Set.of("iss",
                                                                                                "sub",
                                                                                                "aud",
@@ -66,7 +71,7 @@ final class OidcSubjectMapper {
 
     static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
         Jwt idToken = authenticationResult.idToken().jwt();
-        String principalId = principalId(idToken, subjectMapping).orElseThrow();
+        String principalId = localPrincipalId(idToken, subjectMapping).orElseThrow();
         Optional<JsonObject> userInfo = authenticationResult.userInfo();
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -108,6 +113,15 @@ final class OidcSubjectMapper {
 
     static Optional<String> principalId(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
         return firstClaimValue(claims, subjectMapping.principalIdClaimPaths());
+    }
+
+    static Optional<String> localPrincipalId(Jwt idToken, OidcSubjectMappingConfig subjectMapping) {
+        return switch (subjectMapping.principalIdMode()) {
+        case CLAIM_PATH -> principalId(idToken, subjectMapping);
+        case ISSUER_SUBJECT -> issuerSubjectPrincipalId(idToken);
+        case SUBJECT -> idToken.subject()
+                .filter(value -> !value.isBlank());
+        };
     }
 
     private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcSubjectMappingConfig subjectMapping) {
@@ -214,6 +228,30 @@ final class OidcSubjectMapper {
 
     static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
         return firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalIdClaimPaths());
+    }
+
+    private static Optional<String> issuerSubjectPrincipalId(Jwt idToken) {
+        /*
+         * Spec: OpenID Connect Core 1.0, 5.7 Claim Stability and Uniqueness
+         * https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability
+         * Quote: "the only guaranteed unique identifier for a given End-User is the combination of the `iss` Claim and
+         * the `sub` Claim."
+         */
+        Optional<String> issuer = idToken.issuer()
+                .filter(value -> !value.isBlank());
+        Optional<String> subject = idToken.subject()
+                .filter(value -> !value.isBlank());
+        if (issuer.isEmpty() || subject.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX
+                                   + base64Url(issuer.orElseThrow())
+                                   + "."
+                                   + base64Url(subject.orElseThrow()));
+    }
+
+    private static String base64Url(String value) {
+        return BASE64_URL_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private static Optional<String> firstClaimValue(JsonObject claims, List<String> claimPaths) {

@@ -34,6 +34,7 @@ final class OidcEndpointClient {
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
     private final OidcClientAuthenticationSupport clientAuthentication;
+    private final List<String> authorizationCodeResources;
 
     OidcEndpointClient(OidcTenantConfig tenantConfig,
                        OidcProviderMetadata metadata,
@@ -41,6 +42,9 @@ final class OidcEndpointClient {
         this.metadata = metadata;
         this.webClient = webClient;
         this.clientAuthentication = OidcClientAuthenticationSupport.create(tenantConfig);
+        this.authorizationCodeResources = List.copyOf(tenantConfig.authorizationCode()
+                                                              .map(OidcAuthorizationCodeConfig::resources)
+                                                              .orElseGet(List::of));
     }
 
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
@@ -61,6 +65,18 @@ final class OidcEndpointClient {
                 .add("grant_type", "authorization_code")
                 .add("code", authorizationCode)
                 .add("redirect_uri", redirectionEndpointUri.toString());
+        if (!authorizationCodeResources.isEmpty()) {
+            /*
+             * Spec: RFC 8707, 2.2 Access Token Request
+             * https://www.rfc-editor.org/rfc/rfc8707.html#section-2.2
+             * Quote: "for all grant types, it indicates the target service or protected resource where the client
+             * intends to use the requested access token."
+             * Quote: "In the case of a `refresh_token` or `authorization_code` grant type request, such policy may
+             * limit the acceptable resources to those that were originally granted by the resource owner or a subset
+             * thereof."
+             */
+            authorizationCodeResources.forEach(resource -> form.add("resource", resource));
+        }
         pkceVerifier.ifPresent(verifier -> {
             /*
              * Spec: RFC 7636, 4.5 Client Sends the Authorization Code and the Code Verifier to the Token Endpoint
@@ -87,6 +103,18 @@ final class OidcEndpointClient {
         Parameters.Builder form = Parameters.builder("oidc-refresh-token-endpoint-form")
                 .add("grant_type", "refresh_token")
                 .add("refresh_token", refreshToken);
+        if (!authorizationCodeResources.isEmpty()) {
+            /*
+             * Spec: RFC 8707, 2.2 Access Token Request
+             * https://www.rfc-editor.org/rfc/rfc8707.html#section-2.2
+             * Quote: "for all grant types, it indicates the target service or protected resource where the client
+             * intends to use the requested access token."
+             * Quote: "In the case of a `refresh_token` or `authorization_code` grant type request, such policy may
+             * limit the acceptable resources to those that were originally granted by the resource owner or a subset
+             * thereof."
+             */
+            authorizationCodeResources.forEach(resource -> form.add("resource", resource));
+        }
 
         return submit(form, OidcTokenResponse::fromRefreshJson);
     }

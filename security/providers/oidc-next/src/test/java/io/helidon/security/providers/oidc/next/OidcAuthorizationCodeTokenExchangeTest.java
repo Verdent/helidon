@@ -151,6 +151,16 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void authorizationCodeExchangeSendsConfiguredResources() {
+        OidcTokenEndpointResult result = exchange(confidentialTenantWithAuthorizationCodeResources(), PKCE_VERIFIER);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("resource"),
+                   is(List.of("https://api.example.com", "urn:example:contacts")));
+    }
+
+    @Test
     void refreshTokenGrantPostsRefreshTokenAndUsesClientAuthentication() {
         responseBody = JsonObject.builder()
                 .set("access_token", "refreshed-access-token")
@@ -176,6 +186,18 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
         assertThat(request.formParameters(), is(Map.of("grant_type", List.of("refresh_token"),
                                                        "refresh_token", List.of(REFRESH_TOKEN))));
+    }
+
+    @Test
+    void refreshTokenGrantSendsConfiguredResources() {
+        responseBody = validRefreshResponse().toString();
+
+        OidcTokenEndpointResult result = refresh(confidentialTenantWithAuthorizationCodeResources(), REFRESH_TOKEN);
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("resource"),
+                   is(List.of("https://api.example.com", "urn:example:contacts")));
     }
 
     @Test
@@ -548,6 +570,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
         return tenant(true, null);
     }
 
+    private OidcTenantConfig confidentialTenantWithAuthorizationCodeResources() {
+        return tenant(true, null, List.of("https://api.example.com", "urn:example:contacts"));
+    }
+
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method) {
         return tenant(true, method);
     }
@@ -589,6 +615,12 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private OidcTenantConfig tenant(boolean clientSecret, OidcClientAuthenticationMethod method) {
+        return tenant(clientSecret, method, List.of());
+    }
+
+    private OidcTenantConfig tenant(boolean clientSecret,
+                                    OidcClientAuthenticationMethod method,
+                                    List<String> authorizationCodeResources) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -612,7 +644,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                   ? mutualTlsTokenEndpointUri
                                                   : tokenEndpointUri)
                         .tlsRequired(false))
-                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(authorizationCodeResources))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
     }

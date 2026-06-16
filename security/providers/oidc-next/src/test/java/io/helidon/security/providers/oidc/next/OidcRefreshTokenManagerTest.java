@@ -156,6 +156,23 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void localAuthenticationRefreshSendsConfiguredResources(URI serverUri) {
+        OidcTenantConfig tenant = tenantWithAuthorizationCodeResources(serverUri);
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1));
+
+        AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("resource"),
+                   is(List.of("https://api.example.com", "urn:example:contacts")));
+    }
+
+    @Test
     void localAuthenticationDoesNotRefreshAccessTokenOutsideClockSkew(URI serverUri) {
         OidcTenantConfig tenant = tenant(serverUri);
         Instant now = Instant.now();
@@ -665,6 +682,14 @@ class OidcRefreshTokenManagerTest {
     }
 
     private static OidcTenantConfig tenant(URI serverUri) {
+        return tenant(serverUri, List.of());
+    }
+
+    private static OidcTenantConfig tenantWithAuthorizationCodeResources(URI serverUri) {
+        return tenant(serverUri, List.of("https://api.example.com", "urn:example:contacts"));
+    }
+
+    private static OidcTenantConfig tenant(URI serverUri, List<String> authorizationCodeResources) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -674,7 +699,8 @@ class OidcRefreshTokenManagerTest {
                         .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
-                        .scopes(List.of("openid", "profile")))
+                        .scopes(List.of("openid", "profile"))
+                        .resources(authorizationCodeResources))
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }

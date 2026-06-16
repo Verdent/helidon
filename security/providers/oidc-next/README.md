@@ -578,6 +578,8 @@ When `authorization-code` is configured and not explicitly disabled:
 - `authorization-code.redirection-endpoint-uri` defaults to `/oidc/callback`.
 - `authorization-code.scopes` must contain `openid` and each value must be one RFC 6749 `scope-token`.
 - `authorization-code.prompts`, when configured, are sent as the OIDC Authentication Request `prompt` parameter.
+- `authorization-code.resources`, when configured, are sent as repeated RFC 8707 Authentication Request `resource`
+  parameters.
 - `cookies.encryption-secret` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
@@ -619,6 +621,31 @@ therefore rejected with `offline_access`.
 authorization-code:
   scopes: [ "openid", "profile", "offline_access" ]
 ```
+
+Use `authorization-code.resources` when the Authorization Server requires RFC 8707 resource indicators during browser
+login or when the login access token must be issued for a specific protected resource. RFC 8707 defines `resource` as the
+target service "to which access is being requested" and says the value "MUST be an absolute URI" and "MUST NOT include a
+fragment component." The provider validates those URI rules, rejects blanks, padded values, and duplicates, and sends one
+`resource` query parameter per configured value.
+
+Resources are not emitted by default and are not derived from the incoming browser URL. The browser URL is the RP page
+that initiated login; the RFC 8707 resource is the protected resource or API where the resulting access token will be
+used. Configure the value explicitly and prefer one resource when possible. Multiple resources are allowed by the spec,
+but they can produce multi-audience bearer tokens that require strong trust between the protected resources.
+
+```yaml
+authorization-code:
+  scopes: [ "openid", "profile" ]
+  resources:
+    - "https://api.example.com"
+```
+
+The provider sends the same configured `resources` on the front-channel Authentication Request, the back-channel
+authorization-code Token Endpoint exchange, and refresh-token requests. RFC 8707 says a Token Endpoint `resource`
+parameter applies "for all grant types" and that, for `authorization_code` and `refresh_token`, the Authorization Server
+can limit acceptable resources to those originally granted or a subset. `oidc-next` does not currently expose separate
+subset configuration for the token exchange or refresh, because a static login config cannot identify which
+resource-specific token an application needs later at runtime.
 
 Use `pkce-method: plain` only for compatibility with a legacy authorization server that cannot process `S256`.
 Public clients, where `token-endpoint-auth-method` is `NONE`, must use `S256`; the provider rejects `plain` in that
@@ -1704,6 +1731,7 @@ Authorization Code Flow options:
 | `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
 | `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
+| `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 

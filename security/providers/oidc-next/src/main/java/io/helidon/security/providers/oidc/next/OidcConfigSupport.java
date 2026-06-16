@@ -795,6 +795,7 @@ final class OidcConfigSupport {
         if (!userInfo.enabled()) {
             return;
         }
+        validateClaimPaths(userInfo.attributeClaimPaths(), "user-info.attribute-claim-paths", false);
 
         configuredAuthorizationCode
                 .filter(OidcAuthorizationCodeConfig::enabled)

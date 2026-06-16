@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.List;
+
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 
@@ -33,4 +35,25 @@ interface OidcUserInfoConfigBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(true)
     boolean enabled();
+
+    /**
+     * UserInfo claims stored in the protected local authentication result cookie.
+     *
+     * @return UserInfo storage policy
+     */
+    @Option.Configured
+    @Option.Default("MAPPED")
+    OidcUserInfoStoragePolicy storagePolicy();
+
+    /**
+     * Additional UserInfo claim paths stored by the mapped storage policy.
+     * <p>
+     * The provider always stores {@code sub} and claim paths used by subject mapping. Configure this list for additional
+     * UserInfo claims that must be exposed as principal attributes.
+     *
+     * @return additional UserInfo claim paths to store
+     */
+    @Option.Configured
+    @Option.Singular("attributeClaim")
+    List<String> attributeClaimPaths();
 }

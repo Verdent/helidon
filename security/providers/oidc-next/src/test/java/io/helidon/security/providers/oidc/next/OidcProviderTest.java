@@ -410,6 +410,7 @@ class OidcProviderTest {
         assertThat(query.get("scope"), is("openid profile"));
         assertThat(query.contains("state"), is(true));
         assertThat(query.contains("nonce"), is(true));
+        assertThat(query.contains("resource"), is(false));
         assertThat(query.get("code_challenge_method"), is("S256"));
 
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
@@ -439,6 +440,24 @@ class OidcProviderTest {
         URI location = URI.create(response.responseHeaders().get("Location").get(0));
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("prompt"), is("login consent"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationCanRequestResources() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.resources(List.of("https://api.example.com",
+                                                                                         "urn:example:contacts")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.all("resource"), is(List.of("https://api.example.com", "urn:example:contacts")));
     }
 
     @Test

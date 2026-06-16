@@ -129,6 +129,16 @@ final class OidcAuthenticationRequestFactory {
         if (!prompts.isEmpty()) {
             query.set("prompt", String.join(" ", prompts));
         }
+        if (!authorizationCode.resources().isEmpty()) {
+            /*
+             * Spec: RFC 8707, 2 Resource Parameter and 2.1 Authorization Request
+             * https://www.rfc-editor.org/rfc/rfc8707.html#section-2
+             * https://www.rfc-editor.org/rfc/rfc8707.html#section-2.1
+             * Quote: "Indicates the target service or resource to which access is being requested."
+             * Quote: "the requested resource is applicable to the full authorization grant."
+             */
+            authorizationCode.resources().forEach(resource -> query.add("resource", resource));
+        }
         if (pkceVerifier != null) {
             /*
              * Spec: RFC 7636, 4.1 Client Creates a Code Verifier, 4.2 Client Creates the Code Challenge, and 7.1

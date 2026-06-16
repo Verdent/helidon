@@ -28,6 +28,17 @@ import io.helidon.builder.api.Prototype;
 @Prototype.Configured
 interface OidcSubjectMappingConfigBlueprint {
     /**
+     * Principal id construction mode for Authorization Code Flow local authentication.
+     * <p>
+     * Protected Resource JWT and introspection authentication continue to use {@link #principalIdClaimPaths()}.
+     *
+     * @return principal id mode
+     */
+    @Option.Configured
+    @Option.Default("ISSUER_SUBJECT")
+    OidcPrincipalIdMode principalIdMode();
+
+    /**
      * Principal id claim paths, in preference order.
      *
      * @return principal id claim paths

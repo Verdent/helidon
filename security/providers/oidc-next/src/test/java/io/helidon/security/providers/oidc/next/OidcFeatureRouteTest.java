@@ -17,9 +17,11 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -301,7 +303,7 @@ class OidcFeatureRouteTest {
 
                 assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
                 Subject subject = authentication.user().orElseThrow();
-                assertThat(subject.principal().id(), is(SUBJECT));
+                assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
                 assertThat(subject.principal().getName(), is(USERNAME));
                 assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
                 assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
@@ -426,7 +428,7 @@ class OidcFeatureRouteTest {
 
                 assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
                 Subject subject = authentication.user().orElseThrow();
-                assertThat(subject.principal().id(), is(SUBJECT));
+                assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
                 assertThat(subject.principal().getName(), is("userinfo-user"));
                 assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
                 assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
@@ -1564,6 +1566,16 @@ class OidcFeatureRouteTest {
                 .userInfo(userInfo)
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
+    }
+
+    private static String issuerSubjectPrincipalId() {
+        return "oidc-sub:" + base64Url(ISSUER.toString()) + "." + base64Url(SUBJECT);
+    }
+
+    private static String base64Url(String value) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private static void tokenEndpointResponse(ServerResponse response) {

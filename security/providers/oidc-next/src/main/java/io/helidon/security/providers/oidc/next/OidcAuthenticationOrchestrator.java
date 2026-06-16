@@ -148,7 +148,7 @@ final class OidcAuthenticationOrchestrator {
             return LocalAuthentication.empty(removalCookie);
         }
         OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
-        if (OidcSubjectMapper.principalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
+        if (OidcSubjectMapper.localPrincipalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
             LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has no principal claim");
             return LocalAuthentication.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
                                                                  .toString()));

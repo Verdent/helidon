@@ -17,9 +17,11 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -725,7 +727,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
         assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
@@ -769,15 +771,34 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
+    }
+
+    @Test
+    void localAuthenticationResultCookieCanUseRawSubjectPrincipalId() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+                .subjectMapping(mapping -> mapping.principalIdMode(OidcPrincipalIdMode.SUBJECT)));
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(SUBJECT));
     }
 
     @Test
     void localAuthenticationResultCookieUsesCustomSubjectMapping() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
+                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
                         .principalNameClaimPaths(List.of("display_name"))
                         .roleClaimPaths(List.of("realm_access.roles"))
@@ -822,6 +843,7 @@ class OidcProviderTest {
     void localAuthenticationResultUserInfoDoesNotOverridePrincipalIdMapping() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
+                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
                         .principalNameClaimPaths(List.of("display_name"))
                         .roleClaimPaths(List.of("groups"))));
@@ -906,7 +928,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is("mcp-user"));
         assertThat(subject.principal().abacAttributeRaw("department"), is("finance"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("mcp_admin")));
@@ -915,7 +937,9 @@ class OidcProviderTest {
     @Test
     void localAuthenticationResultCookieRequiresConfiguredPrincipalIdClaim() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
-                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user"))));
+                .subjectMapping(mapping -> mapping
+                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
+                        .principalIdClaimPaths(List.of("tenant_user"))));
         OidcProvider provider = provider(tenant);
         Instant now = Instant.now();
         SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
@@ -976,7 +1000,7 @@ class OidcProviderTest {
                         .build()));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user().orElseThrow().principal().id(), is(SUBJECT));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
     }
 
     @Test
@@ -1242,6 +1266,16 @@ class OidcProviderTest {
         return value.substring(0, ciphertextStart)
                 + (firstCiphertextChar == 'A' ? 'B' : 'A')
                 + value.substring(ciphertextStart + 1);
+    }
+
+    private static String issuerSubjectPrincipalId() {
+        return "oidc-sub:" + base64Url(ISSUER.toString()) + "." + base64Url(SUBJECT);
+    }
+
+    private static String base64Url(String value) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {

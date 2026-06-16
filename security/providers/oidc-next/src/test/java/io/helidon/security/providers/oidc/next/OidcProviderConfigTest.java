@@ -118,6 +118,8 @@ class OidcProviderConfigTest {
         assertThat(endSession.allowedPostLogoutRedirectUris().isEmpty(), is(true));
         assertThat(tenantConfig.userInfo().isEmpty(), is(true));
         assertThat(userInfo.enabled(), is(true));
+        assertThat(userInfo.storagePolicy(), is(OidcUserInfoStoragePolicy.MAPPED));
+        assertThat(userInfo.attributeClaimPaths().isEmpty(), is(true));
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.prompts().isEmpty(), is(true));
@@ -143,6 +145,10 @@ class OidcProviderConfigTest {
         assertThat(List.of(OidcAuthenticationFailureResponse.values()),
                    is(List.of(OidcAuthenticationFailureResponse.UNAUTHORIZED,
                               OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT)));
+        assertThat(List.of(OidcUserInfoStoragePolicy.values()),
+                   is(List.of(OidcUserInfoStoragePolicy.MAPPED,
+                              OidcUserInfoStoragePolicy.ALL,
+                              OidcUserInfoStoragePolicy.NONE)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -168,6 +174,13 @@ class OidcProviderConfigTest {
         assertThat(OidcPkceMethod.S256.wireName(), is("S256"));
         assertThat(OidcAuthenticationRequestFactory.codeChallenge("plain-verifier", OidcPkceMethod.PLAIN),
                    is("plain-verifier"));
+    }
+
+    @Test
+    void userInfoStoragePoliciesUseConfigTextValues() {
+        assertThat(OidcUserInfoStoragePolicy.MAPPED.text(), is("mapped"));
+        assertThat(OidcUserInfoStoragePolicy.ALL.text(), is("all"));
+        assertThat(OidcUserInfoStoragePolicy.NONE.text(), is("none"));
     }
 
     @Test
@@ -270,6 +283,9 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.logout.end-session.allowed-post-logout-redirect-uris.0",
                                   "https://rp.example/other-logged-out"),
                         Map.entry("tenants.default.user-info.enabled", "false"),
+                        Map.entry("tenants.default.user-info.storage-policy", "all"),
+                        Map.entry("tenants.default.user-info.attribute-claim-paths.0", "email"),
+                        Map.entry("tenants.default.user-info.attribute-claim-paths.1", "iam.department"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
@@ -339,7 +355,10 @@ class OidcProviderConfigTest {
         assertThat(endSession.postLogoutRedirectUri().orElseThrow(), is(POST_LOGOUT_REDIRECT_URI));
         assertThat(endSession.allowedPostLogoutRedirectUris(),
                    is(List.of(URI.create("https://rp.example/other-logged-out"))));
-        assertThat(tenant.userInfo().orElseThrow().enabled(), is(false));
+        OidcUserInfoConfig userInfo = tenant.userInfo().orElseThrow();
+        assertThat(userInfo.enabled(), is(false));
+        assertThat(userInfo.storagePolicy(), is(OidcUserInfoStoragePolicy.ALL));
+        assertThat(userInfo.attributeClaimPaths(), is(List.of("email", "iam.department")));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -632,6 +651,23 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("subject-mapping.role-claim-paths"));
+    }
+
+    @Test
+    void userInfoConfigRejectsInvalidAttributeClaimPaths() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(it -> it.attributeClaimPaths(List.of("profile.")))
+                .cookies(it -> it.encryptionSecret("this-secret-is-long-enough-for-config-test"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("user-info.attribute-claim-paths"));
     }
 
     @Test
@@ -2230,6 +2266,8 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("post-logout-redirect-uri"));
         assertThat(metadata, containsString("allowed-post-logout-redirect-uris"));
         assertThat(metadata, containsString("user-info"));
+        assertThat(metadata, containsString("storage-policy"));
+        assertThat(metadata, containsString("attribute-claim-paths"));
         assertThat(metadata, containsString("endpoint-policy"));
         assertThat(metadata, containsString("accepted-credentials"));
         assertThat(metadata, containsString("authentication-failure-response"));

@@ -40,8 +40,11 @@ import io.helidon.security.providers.common.TokenCredential;
 final class OidcOutboundOrchestrator {
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OutboundConfig outboundConfig;
-    private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache = new ConcurrentHashMap<>();
-    private final OidcClientCredentialsTokenManager clientCredentialsTokenManager = new OidcClientCredentialsTokenManager();
+    private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache =
+            new ConcurrentHashMap<>();
+    private final OidcClientCredentialsTokenManager clientCredentialsTokenManager =
+            new OidcClientCredentialsTokenManager();
+    private final OidcTokenExchangeTokenManager tokenExchangeTokenManager = new OidcTokenExchangeTokenManager();
 
     private OidcOutboundOrchestrator(OidcProviderConfig providerConfig,
                                      OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
@@ -124,7 +127,7 @@ final class OidcOutboundOrchestrator {
             return OutboundSecurityResponse.abstain();
         }
         OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
-        if (policy.tokenPropagationEnabled() && policy.clientCredentialsGrantEnabled()) {
+        if (policy.strategyCount() > 1) {
             return OidcResponseFactory.ambiguousOutboundRequest();
         }
         if (policy.tokenPropagationEnabled()) {
@@ -132,6 +135,9 @@ final class OidcOutboundOrchestrator {
         }
         if (policy.clientCredentialsGrantEnabled()) {
             return secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv, policy);
+        }
+        if (policy.tokenExchangeEnabled()) {
+            return secureWithTokenExchange(providerRequest, tenantContext.orElseThrow(), outboundEnv, policy);
         }
         return OutboundSecurityResponse.abstain();
     }
@@ -157,15 +163,17 @@ final class OidcOutboundOrchestrator {
             OidcConfigSupport.validateClientCredentialsGrant(tenantContext.tenantConfig(),
                                                              tenantContext.tenantConfig().endpoints(),
                                                              "Client Credentials Grant");
-            clientCredentialsContext = clientCredentialsContext(tenantContext);
+            clientCredentialsContext = tokenEndpointContext(tenantContext);
         } catch (RuntimeException e) {
             return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
         }
 
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
+        Optional<String> scope = outboundPolicy.clientCredentialsScope();
+        List<String> resources = outboundPolicy.clientCredentialsResources();
         OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext,
-                                                                                 outboundPolicy.clientCredentialsScope(),
-                                                                                 outboundPolicy.clientCredentialsResources(),
+                                                                                 scope,
+                                                                                 resources,
                                                                                  now);
         if (!tokenResult.succeeded()) {
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
@@ -175,7 +183,39 @@ final class OidcOutboundOrchestrator {
         return OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv, tokenResponse.accessToken()));
     }
 
-    private OidcTenantContext clientCredentialsContext(OidcTenantContext tenantContext) {
+    private OutboundSecurityResponse secureWithTokenExchange(ProviderRequest providerRequest,
+                                                             OidcTenantContext tenantContext,
+                                                             SecurityEnvironment outboundEnv,
+                                                             OidcOutboundPolicy outboundPolicy) {
+        Optional<TokenCredential> subjectToken = providerRequest.subject()
+                .flatMap(subject -> subject.publicCredential(TokenCredential.class));
+        if (subjectToken.isEmpty()) {
+            return OutboundSecurityResponse.abstain();
+        }
+
+        OidcTenantContext tokenExchangeContext;
+        try {
+            OidcConfigSupport.validateTokenExchange(tenantContext.tenantConfig(),
+                                                    tenantContext.tenantConfig().endpoints());
+            tokenExchangeContext = tokenEndpointContext(tenantContext);
+        } catch (RuntimeException e) {
+            return OidcResponseFactory.tokenExchangeFailed(OidcTokenExchangeResult.failure(e.getMessage(), e));
+        }
+
+        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
+        OidcTokenExchangeResult tokenResult = tokenExchangeTokenManager.token(tokenExchangeContext,
+                                                                              outboundPolicy,
+                                                                              subjectToken.orElseThrow().token(),
+                                                                              now);
+        if (!tokenResult.succeeded()) {
+            return OidcResponseFactory.tokenExchangeFailed(tokenResult);
+        }
+
+        OidcTokenExchangeResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
+        return OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv, tokenResponse.accessToken()));
+    }
+
+    private OidcTenantContext tokenEndpointContext(OidcTenantContext tenantContext) {
         OidcProviderMetadata metadata = tenantContext.metadata();
         if (metadata.tokenEndpointUri().isEmpty() && metadata.wellKnownUri().isPresent()) {
             metadata = new OidcProviderMetadataLoader(tenantContext.webClient()).load(metadata);

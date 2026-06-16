@@ -161,6 +161,14 @@ final class OidcResponseFactory {
         return builder.build();
     }
 
+    static OutboundSecurityResponse tokenExchangeFailed(OidcTokenExchangeResult result) {
+        OutboundSecurityResponse.Builder builder = OutboundSecurityResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .description(tokenExchangeFailureDescription(result));
+        result.cause().ifPresent(builder::throwable);
+        return builder.build();
+    }
+
     static OutboundSecurityResponse ambiguousOutboundRequest() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
@@ -191,6 +199,15 @@ final class OidcResponseFactory {
                         .orElse(error.error()))
                 .map(description -> "Client Credentials Grant failed: " + description)
                 .orElseGet(() -> "Client Credentials Grant failed: " + result.description());
+    }
+
+    private static String tokenExchangeFailureDescription(OidcTokenExchangeResult result) {
+        return result.error()
+                .map(error -> error.errorDescription()
+                        .map(description -> error.error() + ": " + description)
+                        .orElse(error.error()))
+                .map(description -> "Token Exchange failed: " + description)
+                .orElseGet(() -> "Token Exchange failed: " + result.description());
     }
 
     private static String bearerChallenge(String realm) {

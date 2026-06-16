@@ -26,6 +26,7 @@ final class OidcTenantContextFactory {
     private static final System.Logger LOGGER = System.getLogger(OidcTenantContextFactory.class.getName());
     private static final String AUTHORIZATION_CODE_GRANT = "authorization_code";
     private static final String CLIENT_CREDENTIALS_GRANT = "client_credentials";
+    private static final String TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
     private static final String CODE_RESPONSE_TYPE = "code";
     private static final List<String> DEFAULT_GRANT_TYPES_SUPPORTED =
             List.of(AUTHORIZATION_CODE_GRANT, "implicit");
@@ -39,11 +40,16 @@ final class OidcTenantContextFactory {
     }
 
     static OidcTenantContextFactory create() {
-        return create(false);
+        return create(false, false);
     }
 
     static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant) {
-        return create(defaultInitializer(outboundTargetClientCredentialsGrant));
+        return create(outboundTargetClientCredentialsGrant, false);
+    }
+
+    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
+                                           boolean outboundTargetTokenExchange) {
+        return create(defaultInitializer(outboundTargetClientCredentialsGrant, outboundTargetTokenExchange));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -58,14 +64,16 @@ final class OidcTenantContextFactory {
                                       "Tenant initializer must return a context");
     }
 
-    private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant) {
+    private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant,
+                                                       boolean outboundTargetTokenExchange) {
         return (tenantId, tenantConfig) -> {
             try {
                 WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
                 boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig,
                                                                          staticMetadata,
-                                                                         outboundTargetClientCredentialsGrant);
+                                                                         outboundTargetClientCredentialsGrant
+                                                                                 || outboundTargetTokenExchange);
                 OidcProviderMetadata metadata = wellKnownMetadataLoaded
                         ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
                         : staticMetadata;
@@ -75,6 +83,10 @@ final class OidcTenantContextFactory {
                                                        metadata,
                                                        wellKnownMetadataLoaded,
                                                        outboundTargetClientCredentialsGrant);
+                validateTokenExchangeMetadata(tenantConfig,
+                                              metadata,
+                                              wellKnownMetadataLoaded,
+                                              outboundTargetTokenExchange);
                 validateJwtMetadata(tenantConfig, metadata);
                 validateIntrospectionMetadata(tenantConfig, metadata);
                 validateUserInfoMetadata(tenantConfig, metadata);
@@ -330,6 +342,55 @@ final class OidcTenantContextFactory {
             throw new IllegalStateException(
                     "well-known metadata grant_types_supported must include " + CLIENT_CREDENTIALS_GRANT);
         }
+    }
+
+    private static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
+                                                      OidcProviderMetadata metadata,
+                                                      boolean wellKnownMetadataLoaded,
+                                                      boolean outboundTargetTokenExchange) {
+        if (!outboundTargetTokenExchange) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "`token_endpoint` OPTIONAL.  URL of the authorization server's OAuth 2.0 token endpoint".
+         */
+        metadata.tokenEndpointUri()
+                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                                         uri,
+                                         tokenEndpointTlsRequired(tenantConfig)),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "well-known metadata token_endpoint must be present for Token Exchange");
+                                 });
+        validateTokenExchangeCapabilityMetadata(metadata, wellKnownMetadataLoaded);
+        validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+    }
+
+    private static void validateTokenExchangeCapabilityMetadata(OidcProviderMetadata metadata,
+                                                               boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8414, 2 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
+         * Quote: "`grant_types_supported` OPTIONAL. JSON array containing a list of the OAuth 2.0 grant type values
+         * that this authorization server supports."
+         *
+         * Spec: RFC 8693, 7.1 OAuth URI Registration
+         * https://www.rfc-editor.org/rfc/rfc8693.html#section-7.1
+         * Quote: "URN: urn:ietf:params:oauth:grant-type:token-exchange"
+         */
+        metadata.grantTypesSupported()
+                .filter(grantTypes -> !grantTypes.contains(TOKEN_EXCHANGE_GRANT))
+                .ifPresent(grantTypes -> {
+                    throw new IllegalStateException(
+                            "well-known metadata grant_types_supported must include " + TOKEN_EXCHANGE_GRANT);
+                });
     }
 
     private static void validateTokenEndpointAuthenticationMetadata(OidcTenantConfig tenantConfig,

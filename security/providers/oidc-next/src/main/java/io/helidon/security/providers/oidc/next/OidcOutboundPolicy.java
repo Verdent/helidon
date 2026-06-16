@@ -24,23 +24,35 @@ import io.helidon.security.providers.common.OutboundTarget;
 final class OidcOutboundPolicy {
     private final boolean tokenPropagation;
     private final boolean clientCredentialsGrant;
+    private final boolean tokenExchange;
     private final String audience;
     private final boolean audienceValidation;
     private final String clientCredentialsScope;
     private final List<String> clientCredentialsResources;
+    private final String tokenExchangeScope;
+    private final String tokenExchangeResource;
+    private final String tokenExchangeAudience;
 
     private OidcOutboundPolicy(boolean tokenPropagation,
                                boolean clientCredentialsGrant,
+                               boolean tokenExchange,
                                String audience,
                                boolean audienceValidation,
                                String clientCredentialsScope,
-                               List<String> clientCredentialsResources) {
+                               List<String> clientCredentialsResources,
+                               String tokenExchangeScope,
+                               String tokenExchangeResource,
+                               String tokenExchangeAudience) {
         this.tokenPropagation = tokenPropagation;
         this.clientCredentialsGrant = clientCredentialsGrant;
+        this.tokenExchange = tokenExchange;
         this.audience = audience;
         this.audienceValidation = audienceValidation;
         this.clientCredentialsScope = clientCredentialsScope;
         this.clientCredentialsResources = List.copyOf(clientCredentialsResources);
+        this.tokenExchangeScope = tokenExchangeScope;
+        this.tokenExchangeResource = tokenExchangeResource;
+        this.tokenExchangeAudience = tokenExchangeAudience;
     }
 
     static OidcOutboundPolicy tokenPropagation() {
@@ -52,7 +64,8 @@ final class OidcOutboundPolicy {
     }
 
     static OidcOutboundPolicy tokenPropagation(String audience, boolean audienceValidation) {
-        return new OidcOutboundPolicy(true, false, audience, audienceValidation, null, List.of());
+        return new OidcOutboundPolicy(true, false, false, audience, audienceValidation, null, List.of(),
+                                      null, null, null);
     }
 
     static OidcOutboundPolicy clientCredentialsGrant() {
@@ -65,11 +78,22 @@ final class OidcOutboundPolicy {
 
     static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes, List<String> resources) {
         String scope = OidcConfigSupport.clientCredentialsScope(scopes);
-        return new OidcOutboundPolicy(false, true, null, false, scope.isEmpty() ? null : scope, resources);
+        return new OidcOutboundPolicy(false, true, false, null, false, scope.isEmpty() ? null : scope, resources,
+                                      null, null, null);
+    }
+
+    static OidcOutboundPolicy tokenExchange(String resource, String audience) {
+        return tokenExchange(List.of(), resource, audience);
+    }
+
+    static OidcOutboundPolicy tokenExchange(List<String> scopes, String resource, String audience) {
+        String scope = OidcConfigSupport.tokenExchangeScope(scopes);
+        return new OidcOutboundPolicy(false, false, true, null, false, null, List.of(),
+                                      scope.isEmpty() ? null : scope, resource, audience);
     }
 
     static OidcOutboundPolicy tokenPropagationAndClientCredentialsGrant() {
-        return new OidcOutboundPolicy(true, true, null, true, null, List.of());
+        return new OidcOutboundPolicy(true, true, false, null, true, null, List.of(), null, null, null);
     }
 
     static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
@@ -88,6 +112,11 @@ final class OidcOutboundPolicy {
             return Optional.of(clientCredentialsGrant(config.clientCredentialsScopes(),
                                                       config.clientCredentialsResources()));
         }
+        if (config.tokenExchangeEnabled()) {
+            return Optional.of(tokenExchange(config.tokenExchangeScopes(),
+                                             config.tokenExchangeResource().orElse(null),
+                                             config.tokenExchangeAudience().orElse(null)));
+        }
         return Optional.empty();
     }
 
@@ -97,6 +126,17 @@ final class OidcOutboundPolicy {
 
     boolean clientCredentialsGrantEnabled() {
         return clientCredentialsGrant;
+    }
+
+    boolean tokenExchangeEnabled() {
+        return tokenExchange;
+    }
+
+    int strategyCount() {
+        int count = tokenPropagation ? 1 : 0;
+        count += clientCredentialsGrant ? 1 : 0;
+        count += tokenExchange ? 1 : 0;
+        return count;
     }
 
     Optional<String> audience() {
@@ -113,5 +153,17 @@ final class OidcOutboundPolicy {
 
     List<String> clientCredentialsResources() {
         return clientCredentialsResources;
+    }
+
+    Optional<String> tokenExchangeScope() {
+        return Optional.ofNullable(tokenExchangeScope);
+    }
+
+    Optional<String> tokenExchangeResource() {
+        return Optional.ofNullable(tokenExchangeResource);
+    }
+
+    Optional<String> tokenExchangeAudience() {
+        return Optional.ofNullable(tokenExchangeAudience);
     }
 }

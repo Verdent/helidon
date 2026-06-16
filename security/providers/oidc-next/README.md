@@ -32,6 +32,7 @@ The current implementation supports:
 - Multi-tenant selection by default tenant, header, path segment, path template, or host template.
 - Outbound Token Propagation to configured outbound targets.
 - Outbound Client Credentials Grant token acquisition and caching.
+- Outbound RFC 8693 Token Exchange token acquisition and subject-token-aware caching.
 
 The current implementation does not yet support:
 
@@ -1128,7 +1129,7 @@ security:
           encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
-## Outbound Token Propagation And Client Credentials
+## Outbound Token Propagation, Client Credentials, And Token Exchange
 
 Outbound target selection uses Helidon's common `OutboundTarget` model. Configure targets as the provider-level
 `outbound` list. A target can match by transport, host, path, and method. The matching target selects the OIDC outbound
@@ -1240,6 +1241,63 @@ security:
             client-credentials-resources: [ "https://inventory.example.com" ]
 ```
 
+Token Exchange obtains a downstream access token from the Token Endpoint with RFC 8693
+`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`. It uses the current subject `TokenCredential` token as
+`subject_token`, sends `subject_token_type=urn:ietf:params:oauth:token-type:access_token`, requests
+`requested_token_type=urn:ietf:params:oauth:token-type:access_token`, and attaches the issued token as
+`Authorization: Bearer <access-token>`. Token Exchange is only applied through matching outbound targets or an
+endpoint-level `OidcOutboundPolicy`; if the current request has no subject token to exchange, the provider abstains.
+
+Token Exchange target configuration is separate from Token Propagation audience validation:
+
+- `token-exchange-resource` is sent to the Token Endpoint as RFC 8693 `resource`. RFC 8693 says this value "MUST be an
+  absolute URI" and "MUST NOT include a fragment component."
+- `token-exchange-audience` is sent to the Token Endpoint as RFC 8693 `audience`. It asks the Authorization Server for a
+  token intended for that logical target.
+- `audience` is not sent during Token Exchange. It is only the local Token Propagation `aud` check.
+- `token-exchange-scopes` are serialized as one OAuth `scope` form parameter and apply in the context of the requested
+  downstream resource or audience.
+
+At least one of `token-exchange-resource` or `token-exchange-audience` must be configured so the provider does not ask for
+an untargeted exchanged token. Token Exchange is mutually exclusive with Token Propagation and Client Credentials Grant on
+the same outbound target.
+
+Token Exchange uses the same tenant Token Endpoint, WebClient, TLS, and client authentication settings as Authorization
+Code Flow and Client Credentials Grant. Configure `client-id`, either `endpoints.token-endpoint-uri` or well-known metadata
+that provides the Token Endpoint, and a Token Endpoint authentication method other than `NONE`. When well-known metadata
+includes `grant_types_supported`, it must include `urn:ietf:params:oauth:grant-type:token-exchange`; if that optional
+metadata member is omitted, static configuration can still proceed.
+
+The first Token Exchange implementation intentionally supports only issued Bearer access tokens. The Token Endpoint
+successful response must contain `issued_token_type=urn:ietf:params:oauth:token-type:access_token` and
+`token_type=Bearer`. `token_type=N_A`, issued ID Tokens, SAML assertions, refresh-token exchange, actor-token delegation,
+and first-class `act` or `may_act` handling are not implemented by this outbound mode.
+
+Exchanged tokens are cached only when the response includes a positive `expires_in`. The cache key includes the tenant id,
+a SHA-256 hash of the subject token, the fixed subject and requested token types, configured scopes, resource, and
+audience. Raw subject tokens are not stored in cache keys. The cache uses the tenant token-validation clock skew and does
+not assume that input-token revocation automatically revokes already exchanged tokens.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        token-endpoint-auth-method: CLIENT_SECRET_BASIC
+        endpoints:
+          token-endpoint-uri: "https://issuer.example/token"
+        outbound:
+          - name: orders-api
+            transports: [ "https" ]
+            hosts: [ "orders.internal.example" ]
+            paths: [ "/orders/.*" ]
+            token-exchange-enabled: true
+            token-exchange-scopes: [ "orders.read" ]
+            token-exchange-resource: "https://orders.example.com"
+            token-exchange-audience: "api://orders"
+```
+
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
 `OidcOutboundPolicy`.
 
@@ -1271,6 +1329,24 @@ OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
         .clientCredentialsGrantEnabled(true)
         .addClientCredentialsScope("orders.read")
         .addClientCredentialsResource("https://orders.example.com")
+        .buildPrototype();
+
+OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
+        .addTransport("https")
+        .addHost("orders.internal.example")
+        .addPath("/orders/.*")
+        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .build();
+```
+
+Programmatic Token Exchange target configuration with scopes, a resource, and an audience:
+
+```java
+OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+        .tokenExchangeEnabled(true)
+        .addTokenExchangeScope("orders.read")
+        .tokenExchangeResource("https://orders.example.com")
+        .tokenExchangeAudience("api://orders")
         .buildPrototype();
 
 OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
@@ -1667,7 +1743,7 @@ Provider options:
 | `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one named tenant is configured. In root single-tenant config, this optionally names the synthetic tenant. |
 | `tenant-resolution` | Tenant resolution rules. |
 | `tenants` | Map of tenant id to tenant configuration for multi-tenant applications. Do not combine this with root tenant options. |
-| `outbound` | Provider-level outbound target list using Helidon's common `OutboundTarget` model. Targets can match transport, host, path, and method, and may select Token Propagation or Client Credentials Grant. |
+| `outbound` | Provider-level outbound target list using Helidon's common `OutboundTarget` model. Targets can match transport, host, path, and method, and may select Token Propagation, Client Credentials Grant, or Token Exchange. |
 
 Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for
 multi-tenant applications:
@@ -1800,6 +1876,10 @@ OIDC outbound target options:
 | `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
 | `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
 | `client-credentials-resources` | RFC 8707 resource indicators requested by Client Credentials Grant for this outbound target. Each value must be an absolute URI with no fragment. Values are sent as separate OAuth `resource` form parameters and are included in the Client Credentials token cache key. Requires `client-credentials-grant-enabled: true`. |
+| `token-exchange-enabled` | Use RFC 8693 Token Exchange for this outbound target. Requires a current subject `TokenCredential`, confidential Token Endpoint client authentication, and `token-exchange-resource` or `token-exchange-audience`. |
+| `token-exchange-scopes` | Access-token scopes requested by Token Exchange for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `token-exchange-enabled: true`. |
+| `token-exchange-resource` | RFC 8693 target resource requested by Token Exchange. The value must be an absolute URI with no fragment and is sent as the Token Endpoint `resource` form parameter. Requires `token-exchange-enabled: true`. |
+| `token-exchange-audience` | RFC 8693 target audience requested by Token Exchange. The value is sent as the Token Endpoint `audience` form parameter. Requires `token-exchange-enabled: true`. |
 | `audience` | Expected `aud` claim for Token Propagation to this outbound target. Required by default when `token-propagation-enabled: true`. This identifies the downstream resource server. |
 | `audience-validation-enabled` | Whether Token Propagation audience validation is enabled for this outbound target. Defaults to `true`. Disabling it allows raw or opaque token propagation without local audience validation and should be limited to testing, local development, or legacy deployments. |
 

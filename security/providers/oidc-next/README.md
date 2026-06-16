@@ -843,6 +843,9 @@ By default, the End Session request includes `id_token_hint` from the local auth
 End Session request without `id_token_hint`; in that case `client-id` is required and the provider sends `client_id`
 when `id_token_hint` is omitted. The provider also sends `client_id` when `id_token_hint` contains an encrypted ID Token.
 
+RP-Initiated Logout says that without `id_token_hint`, the OP `MUST NOT perform post-logout redirection` unless it can
+otherwise confirm the redirect target, so this mode can cause a compliant OP to ignore `post_logout_redirect_uri`.
+
 The default `id-token-hint-required: true` mode requires Authorization Code Flow because the ID Token comes from local
 authentication result storage.
 

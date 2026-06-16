@@ -67,6 +67,15 @@ interface OidcAuthorizationCodeConfigBlueprint {
     List<String> prompts();
 
     /**
+     * Resource indicators sent as repeated {@code resource} parameters in the Authentication Request.
+     *
+     * @return resource indicators
+     */
+    @Option.Configured
+    @Option.Singular("resource")
+    List<String> resources();
+
+    /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.
      * <p>
      * Defaults to {@code true}. Disable only for confidential-client compatibility with a legacy Authorization Server

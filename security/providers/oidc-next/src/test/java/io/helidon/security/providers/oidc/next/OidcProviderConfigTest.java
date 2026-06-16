@@ -123,6 +123,7 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.prompts().isEmpty(), is(true));
+        assertThat(authorizationCode.resources().isEmpty(), is(true));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
@@ -278,6 +279,8 @@ class OidcProviderConfigTest {
                                   REDIRECTION_ENDPOINT_URI.toString()),
                         Map.entry("tenants.default.authorization-code.prompts.0", "login"),
                         Map.entry("tenants.default.authorization-code.prompts.1", "consent"),
+                        Map.entry("tenants.default.authorization-code.resources.0", "https://api.example.com"),
+                        Map.entry("tenants.default.authorization-code.resources.1", "urn:example:contacts"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.encryption-secret",
                                   "this-secret-is-long-enough-for-config-test"),
@@ -349,6 +352,7 @@ class OidcProviderConfigTest {
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
         assertThat(authorizationCode.redirectionEndpointUri().orElseThrow(), is(REDIRECTION_ENDPOINT_URI));
         assertThat(authorizationCode.prompts(), is(List.of("login", "consent")));
+        assertThat(authorizationCode.resources(), is(List.of("https://api.example.com", "urn:example:contacts")));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
@@ -1318,6 +1322,58 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("cannot contain none"));
         assertThat(thrown.getMessage(), containsString("offline_access"));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsInvalidResources() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(List.of(" https://api.example.com")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.resources"));
+        assertThat(thrown.getMessage(), containsString("blank or padded"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(List.of("/api")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("absolute resource URIs"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(List.of("https://api.example.com#fragment")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("URI fragments"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(List.of("https://api.example.com", "https://api.example.com")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("duplicate resource"));
     }
 
     @Test

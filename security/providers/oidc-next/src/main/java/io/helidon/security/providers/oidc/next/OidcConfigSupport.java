@@ -475,36 +475,7 @@ final class OidcConfigSupport {
                 }
             }
             OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");
-            validateClientCredentialsResources(target.clientCredentialsResources());
-        }
-
-        private void validateClientCredentialsResources(List<String> resources) {
-            Set<String> uniqueResources = new LinkedHashSet<>();
-            for (String resource : resources) {
-                if (resource == null || resource.isBlank() || !resource.equals(resource.strip())) {
-                    throw new IllegalArgumentException(
-                            "client-credentials-resources must not contain blank or padded values");
-                }
-                if (!uniqueResources.add(resource)) {
-                    throw new IllegalArgumentException(
-                            "client-credentials-resources contains duplicate resource: " + resource);
-                }
-                URI uri;
-                try {
-                    uri = URI.create(resource);
-                } catch (IllegalArgumentException e) {
-                    throw new IllegalArgumentException(
-                            "client-credentials-resources contains an invalid resource URI: " + resource, e);
-                }
-                if (!uri.isAbsolute()) {
-                    throw new IllegalArgumentException(
-                            "client-credentials-resources must contain absolute resource URIs");
-                }
-                if (uri.getRawFragment() != null) {
-                    throw new IllegalArgumentException(
-                            "client-credentials-resources must not contain URI fragments");
-                }
-            }
+            validateResourceIndicators(target.clientCredentialsResources(), "client-credentials-resources");
         }
     }
 
@@ -712,10 +683,42 @@ final class OidcConfigSupport {
                     "openid scope must be configured when Authorization Code Flow is enabled");
         }
         validateAuthorizationCodePrompts(authorizationCode.scopes(), authorizationCode.prompts());
+        validateResourceIndicators(authorizationCode.resources(), "authorization-code.resources");
         tenant.cookies()
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validateResourceIndicators(List<String> resources, String configKey) {
+        /*
+         * Spec: RFC 8707, 2 Resource Parameter
+         * https://www.rfc-editor.org/rfc/rfc8707.html#section-2
+         * Quote: "The `resource` parameter URI value is an identifier representing the identity of the resource".
+         * Quote: "MUST be an absolute URI".
+         * Quote: "MUST NOT include a fragment component."
+         */
+        Set<String> uniqueResources = new LinkedHashSet<>();
+        for (String resource : resources) {
+            if (resource == null || resource.isBlank() || !resource.equals(resource.strip())) {
+                throw new IllegalArgumentException(configKey + " must not contain blank or padded values");
+            }
+            if (!uniqueResources.add(resource)) {
+                throw new IllegalArgumentException(configKey + " contains duplicate resource: " + resource);
+            }
+            URI uri;
+            try {
+                uri = URI.create(resource);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(configKey + " contains an invalid resource URI: " + resource, e);
+            }
+            if (!uri.isAbsolute()) {
+                throw new IllegalArgumentException(configKey + " must contain absolute resource URIs");
+            }
+            if (uri.getRawFragment() != null) {
+                throw new IllegalArgumentException(configKey + " must not contain URI fragments");
+            }
+        }
     }
 
     private static void validateAuthorizationCodePrompts(List<String> scopes, List<String> prompts) {

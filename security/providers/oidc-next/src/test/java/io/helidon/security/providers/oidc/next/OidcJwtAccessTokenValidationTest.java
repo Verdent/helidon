@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.cert.Certificate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -266,6 +267,81 @@ class OidcJwtAccessTokenValidationTest {
                 .build()));
 
         AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void certificateBoundJwtAccessTokenAuthenticatesWithMatchingPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token,
+                                                       certificate);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void certificateBoundJwtAccessTokenRequiresPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void certificateBoundJwtAccessTokenRejectsMismatchedPeerCertificate() {
+        Certificate tokenCertificate = OidcTestCertificates.certificate("token-certificate");
+        Certificate requestCertificate = OidcTestCertificates.certificate("request-certificate");
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", OidcTestCertificates.thumbprint(tokenCertificate))
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token,
+                                                       requestCertificate);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void certificateBoundJwtAccessTokenRejectsMalformedThumbprint() {
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", "not-a-sha256-thumbprint")
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token,
+                                                       OidcTestCertificates.certificate("client-certificate"));
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void unboundJwtAccessTokenAuthenticatesWhenCertificateBindingIsIfPresent() {
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void unboundJwtAccessTokenIsRejectedWhenCertificateBindingIsRequired() {
+        String token = signedToken(it -> { });
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED),
+                                                       token);
 
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
@@ -857,12 +933,32 @@ class OidcJwtAccessTokenValidationTest {
                                                                       .build()));
     }
 
+    private static AuthenticationResponse authenticate(OidcProvider provider, String token, Certificate certificate) {
+        return provider.authenticate(OidcProviderTest.request(null,
+                                                              SecurityEnvironment.builder()
+                                                                      .targetUri(URI.create("https://rp.example/resource"))
+                                                                      .header("Authorization", "Bearer " + token)
+                                                                      .addAttribute("remotePeer",
+                                                                                    OidcTestCertificates.peerInfo(
+                                                                                            certificate))
+                                                                      .build()));
+    }
+
     private static OidcProvider provider() {
         return provider(true);
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled) {
         return provider(audienceValidationEnabled, true, jwksUri);
+    }
+
+    private static OidcProvider provider(OidcCertificateBoundAccessTokenMode certificateBoundAccessTokenMode) {
+        return provider(true, true, jwksUri, tenant -> tenant.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .certificateBoundAccessTokens(certificateBound -> certificateBound
+                                .mode(certificateBoundAccessTokenMode)))));
     }
 
     private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {

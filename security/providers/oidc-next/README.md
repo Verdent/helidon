@@ -13,6 +13,7 @@ The current implementation supports:
 - Access-token validation by local JWT validation against an explicit JWKS URI or a JWKS URI from well-known metadata.
 - Access-token validation by OAuth 2.0 Token Introspection.
 - Introspection Endpoint authentication with separate protected-resource credentials when needed.
+- RFC 8705 certificate-bound access-token validation for Protected Resource Bearer Token requests.
 - OpenID Connect Authorization Code Flow.
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
@@ -36,7 +37,7 @@ The current implementation supports:
 
 The current implementation does not yet support:
 
-- DPoP, mTLS sender-constrained tokens, or token binding.
+- DPoP or token binding other than RFC 8705 certificate-bound access-token validation.
 - Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
 
 ## Configuration Shape
@@ -523,6 +524,91 @@ maps selected introspection claims to principal attributes and grants according 
 the full introspection response `JsonObject` through the subject's public `TokenCredential`. Configure the Authorization
 Server introspection policy to return only claims this resource needs. `oidc-next` does not cache introspection responses
 by default, so each Bearer Token validation uses the current Authorization Server response.
+
+## RFC 8705 Certificate-Bound Access Tokens
+
+RFC 8705 certificate-bound access tokens bind an access token to the client certificate used with mutual TLS. The
+protected resource must validate both the access token and the request TLS client certificate. RFC 8705 says the
+protected resource "MUST obtain" the client certificate from the TLS layer and "MUST verify" that it matches the token.
+For JWT access tokens, the certificate SHA-256 thumbprint is carried in the JWT `cnf.x5t#S256` claim. For introspection,
+the same `cnf.x5t#S256` object is returned as a top-level introspection response member.
+
+Configure this only on endpoints where the WebServer TLS listener asks for client certificates. A dedicated mTLS socket
+with `client-auth: REQUIRED` is the simplest deployment model:
+
+```yaml
+server:
+  sockets:
+    - name: "mtls"
+      port: 8443
+      tls:
+        client-auth: "REQUIRED"
+        trust:
+          keystore:
+            trust-store: true
+            resource:
+              resource-path: "trust.p12"
+        private-key:
+          keystore:
+            resource:
+              resource-path: "server.p12"
+
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        endpoints:
+          jwks-uri: "https://issuer.example/jwks"
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: "api://orders"
+            certificate-bound-access-tokens:
+              mode: REQUIRED
+```
+
+For a listener that serves both mTLS and non-mTLS resources, use WebServer `client-auth: OPTIONAL` and configure
+`mode: IF_PRESENT` or endpoint routing so only the intended resources require certificate-bound tokens.
+
+```yaml
+server:
+  tls:
+    client-auth: "OPTIONAL"
+
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_INTROSPECTION_CLIENT_ID}"
+        client-secret: "${OIDC_INTROSPECTION_CLIENT_SECRET}"
+        protected-resource:
+          token-validation:
+            method: INTROSPECTION
+            audience: "api://orders"
+            certificate-bound-access-tokens:
+              mode: IF_PRESENT
+```
+
+Modes:
+
+- `DISABLED`: default. Certificate-bound access tokens are rejected on Bearer Token validation paths.
+- `IF_PRESENT`: unbound access tokens are accepted normally; tokens or introspection responses with `cnf.x5t#S256`
+  require a matching TLS client certificate.
+- `REQUIRED`: every Protected Resource Bearer Token request must have `cnf.x5t#S256` and a matching TLS client
+  certificate.
+
+The certificate is propagated by the Helidon WebServer security integration through the request `SecurityEnvironment`.
+`oidc-next` reads the `remotePeer` `PeerInfo` attribute and uses the first certificate from `PeerInfo.tlsCertificates()`.
+It does not trust forwarded certificate headers. The thumbprint is computed as SHA-256 over the DER certificate bytes and
+base64url-encoded without padding, matching the RFC 8705 `x5t#S256` definition.
+
+When well-known metadata is loaded and certificate-bound validation is enabled, the metadata must advertise
+`tls_client_certificate_bound_access_tokens: true`. RFC 8705 defines this metadata member as optional and says the
+default is `false` when it is omitted.
+
+This option applies to Protected Resource Bearer Token validation. Refreshed Authorization Code Flow access-token
+validation continues to reject sender-constrained access tokens because the inbound browser TLS certificate is not the
+OAuth client certificate used at the Token Endpoint.
 
 ## Bearer Token Transport
 
@@ -1891,8 +1977,15 @@ Token validation options:
 | `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
+| `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
 | `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |
+
+Certificate-bound access-token options:
+
+| Key | Description |
+| --- | --- |
+| `mode` | `DISABLED`, `IF_PRESENT`, or `REQUIRED`. Defaults to `DISABLED`. |
 
 Introspection options:
 

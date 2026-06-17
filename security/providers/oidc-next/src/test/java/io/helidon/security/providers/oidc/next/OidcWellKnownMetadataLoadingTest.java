@@ -1115,6 +1115,47 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    @Test
+    void certificateBoundAccessTokenTenantRequiresWellKnownMetadataSupport() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://default")
+                        .certificateBoundAccessTokens(certificateBound -> certificateBound
+                                .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   is("well-known metadata tls_client_certificate_bound_access_tokens must be true"));
+    }
+
+    @Test
+    void certificateBoundAccessTokenTenantAcceptsWellKnownMetadataSupport() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("tls_client_certificate_bound_access_tokens", true)
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://default")
+                        .certificateBoundAccessTokens(certificateBound -> certificateBound
+                                .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().tlsClientCertificateBoundAccessTokens(), is(true));
+    }
+
     private OidcTenantConfig authorizationCodeTenantConfig() {
         return OidcTenantConfig.builder()
                 .issuer(issuer.toString())

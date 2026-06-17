@@ -131,6 +131,8 @@ class OidcProviderConfigTest {
         assertThat(tokenTransport.secureTransportRequired(), is(true));
         assertThat(tokenValidation.audienceValidationEnabled(), is(true));
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
+        assertThat(tokenValidation.certificateBoundAccessTokens().mode(),
+                   is(OidcCertificateBoundAccessTokenMode.DISABLED));
         assertThat(subjectMapping.principalIdMode(), is(OidcPrincipalIdMode.ISSUER_SUBJECT));
         assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub", "username", "client_id")));
         assertThat(subjectMapping.principalNameClaimPaths(), is(List.of("preferred_username", "username")));
@@ -155,6 +157,10 @@ class OidcProviderConfigTest {
                    is(List.of(OidcPrincipalIdMode.ISSUER_SUBJECT,
                               OidcPrincipalIdMode.SUBJECT,
                               OidcPrincipalIdMode.CLAIM_PATH)));
+        assertThat(List.of(OidcCertificateBoundAccessTokenMode.values()),
+                   is(List.of(OidcCertificateBoundAccessTokenMode.DISABLED,
+                              OidcCertificateBoundAccessTokenMode.IF_PRESENT,
+                              OidcCertificateBoundAccessTokenMode.REQUIRED)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -194,6 +200,13 @@ class OidcProviderConfigTest {
         assertThat(OidcPrincipalIdMode.ISSUER_SUBJECT.text(), is("issuer-subject"));
         assertThat(OidcPrincipalIdMode.SUBJECT.text(), is("subject"));
         assertThat(OidcPrincipalIdMode.CLAIM_PATH.text(), is("claim-path"));
+    }
+
+    @Test
+    void certificateBoundAccessTokenModesUseConfigTextValues() {
+        assertThat(OidcCertificateBoundAccessTokenMode.DISABLED.text(), is("disabled"));
+        assertThat(OidcCertificateBoundAccessTokenMode.IF_PRESENT.text(), is("if-present"));
+        assertThat(OidcCertificateBoundAccessTokenMode.REQUIRED.text(), is("required"));
     }
 
     @Test
@@ -286,6 +299,8 @@ class OidcProviderConfigTest {
                                   "this-secret-is-long-enough-for-config-test"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
+                        Map.entry("tenants.default.protected-resource.token-validation"
+                                          + ".certificate-bound-access-tokens.mode", "if-present"),
                         Map.entry("tenants.default.endpoint-policy.accepted-credentials.0", "bearer-token"),
                         Map.entry("tenants.default.endpoint-policy.accepted-credentials.1", "authentication-cookie"),
                         Map.entry("tenants.default.endpoint-policy.authentication-failure-response", "unauthorized"),
@@ -359,6 +374,8 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(protectedResource.tokenValidation().certificateBoundAccessTokens().mode(),
+                   is(OidcCertificateBoundAccessTokenMode.IF_PRESENT));
         assertThat(tenant.endpointPolicy().acceptedCredentials(),
                    is(List.of(OidcEndpointCredential.BEARER_TOKEN,
                               OidcEndpointCredential.AUTHENTICATION_COOKIE)));

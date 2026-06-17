@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.cert.Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -397,6 +398,77 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void certificateBoundIntrospectionResponseAuthenticatesWithMatchingPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN,
+                                                       certificate);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void certificateBoundIntrospectionResponseRequiresPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void certificateBoundIntrospectionResponseRejectsMismatchedPeerCertificate() {
+        Certificate tokenCertificate = OidcTestCertificates.certificate("token-certificate");
+        Certificate requestCertificate = OidcTestCertificates.certificate("request-certificate");
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("x5t#S256", OidcTestCertificates.thumbprint(tokenCertificate))))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN,
+                                                       requestCertificate);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void certificateBoundIntrospectionResponseRejectsMalformedThumbprint() {
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("x5t#S256", "not-a-sha256-thumbprint")))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN,
+                                                       OidcTestCertificates.certificate("client-certificate"));
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void unboundIntrospectionResponseAuthenticatesWhenCertificateBindingIsIfPresent() {
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void unboundIntrospectionResponseIsRejectedWhenCertificateBindingIsRequired() {
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED),
+                                                       OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
     void missingPrincipalClaimIsRejected() {
         responseBody = validResponse(it -> it.unset("sub")
                 .unset("username")
@@ -512,6 +584,17 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                                       .build()));
     }
 
+    private AuthenticationResponse authenticate(OidcProvider provider, String token, Certificate certificate) {
+        return provider.authenticate(OidcProviderTest.request(null,
+                                                              SecurityEnvironment.builder()
+                                                                      .targetUri(URI.create("https://rp.example/resource"))
+                                                                      .header("Authorization", "Bearer " + token)
+                                                                      .addAttribute("remotePeer",
+                                                                                    OidcTestCertificates.peerInfo(
+                                                                                            certificate))
+                                                                      .build()));
+    }
+
     private OidcProvider provider() {
         return provider(true);
     }
@@ -526,6 +609,15 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     private OidcProvider provider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         return provider(true, true, tenantCustomizer);
+    }
+
+    private OidcProvider provider(OidcCertificateBoundAccessTokenMode certificateBoundAccessTokenMode) {
+        return provider(tenant -> tenant.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .certificateBoundAccessTokens(certificateBound -> certificateBound
+                                .mode(certificateBoundAccessTokenMode)))));
     }
 
     private OidcProvider provider(boolean audienceValidationEnabled,

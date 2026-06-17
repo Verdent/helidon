@@ -16,12 +16,14 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import io.helidon.common.socket.PeerInfo;
 import io.helidon.http.HeaderNames;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.ProviderRequest;
@@ -109,6 +111,16 @@ final class OidcRequestContext {
 
     SecurityEnvironment environment() {
         return providerRequest.env();
+    }
+
+    Optional<Certificate> peerCertificate() {
+        return environment()
+                .abacAttribute("remotePeer")
+                .filter(PeerInfo.class::isInstance)
+                .map(PeerInfo.class::cast)
+                .flatMap(PeerInfo::tlsCertificates)
+                .filter(certificates -> certificates.length > 0)
+                .map(certificates -> certificates[0]);
     }
 
     List<String> cookieValues(String name) {

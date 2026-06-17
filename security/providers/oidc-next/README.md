@@ -697,8 +697,7 @@ PAR is required, tenant initialization fails clearly instead of attempting a nor
 
 ```yaml
 authorization-code:
-  pushed-authorization-requests:
-    mode: AUTO
+  pushed-authorization-requests: AUTO
 ```
 
 For static Authorization Server configuration, configure the PAR endpoint under `endpoints`.
@@ -710,8 +709,7 @@ endpoints:
   pushed-authorization-request-endpoint-uri: "https://issuer.example/par"
 
 authorization-code:
-  pushed-authorization-requests:
-    mode: REQUIRED
+  pushed-authorization-requests: REQUIRED
 ```
 
 PAR uses the same Token Endpoint client authentication method configured by `token-endpoint-auth-method`. For
@@ -1933,15 +1931,9 @@ Authorization Code Flow options:
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
 | `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
 | `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
-| `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request configuration. Defaults to `mode: AUTO`. |
+| `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
-
-Pushed Authorization Request options:
-
-| Key | Description |
-| --- | --- |
-| `mode` | PAR mode: `DISABLED`, `AUTO`, or `REQUIRED`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
 
 Endpoint policy options:
 

@@ -725,6 +725,7 @@ final class OidcConfigSupport {
                                    tokenEndpointTlsRequired,
                                    tokenEndpointTlsRequired,
                                    OidcConfigSupport::validateTokenEndpointUri);
+        validatePushedAuthorizationRequests(authorizationCode, endpoints, wellKnownUri);
         if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
             throw new IllegalArgumentException(
                     "issuer or well-known-uri must be configured when Authorization Code Flow is enabled");
@@ -740,6 +741,20 @@ final class OidcConfigSupport {
                 .encryptionSecret()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+    }
+
+    private static void validatePushedAuthorizationRequests(OidcAuthorizationCodeConfig authorizationCode,
+                                                            OidcEndpointConfig endpoints,
+                                                            Optional<URI> wellKnownUri) {
+        endpoints.pushedAuthorizationRequestEndpointUri()
+                .ifPresent(uri -> validatePushedAuthorizationRequestEndpointUri(uri, endpoints.tlsRequired()));
+        if (authorizationCode.pushedAuthorizationRequests().mode() == OidcPushedAuthorizationRequestMode.REQUIRED
+                && endpoints.pushedAuthorizationRequestEndpointUri().isEmpty()
+                && wellKnownUri.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "pushed-authorization-request-endpoint-uri or well-known-uri must be configured when "
+                            + "authorization-code.pushed-authorization-requests.mode is REQUIRED");
+        }
     }
 
     private static void validateResourceIndicators(List<String> resources, String configKey) {
@@ -1135,6 +1150,16 @@ final class OidcConfigSupport {
          */
         validateHttpsEndpointUri("authorization-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("authorization-endpoint-uri", uri);
+    }
+
+    static void validatePushedAuthorizationRequestEndpointUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: RFC 9126, 2 Pushed Authorization Request Endpoint
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-2
+         * Quote: "The PAR endpoint URL MUST use the `https` scheme."
+         */
+        validateHttpsEndpointUri("pushed-authorization-request-endpoint-uri", uri, tlsRequired, false);
+        validateNoFragment("pushed-authorization-request-endpoint-uri", uri);
     }
 
     static void validateIssuerUri(URI uri, boolean tlsRequired) {

@@ -53,6 +53,14 @@ interface OidcEndpointConfigBlueprint {
     Optional<URI> tokenEndpointUri();
 
     /**
+     * Pushed Authorization Request Endpoint URI.
+     *
+     * @return Pushed Authorization Request Endpoint URI
+     */
+    @Option.Configured
+    Optional<URI> pushedAuthorizationRequestEndpointUri();
+
+    /**
      * JSON Web Key Set URI.
      *
      * @return JWKS URI

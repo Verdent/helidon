@@ -122,6 +122,7 @@ class HttpSecurityInterceptor implements HttpEntryPoint.Interceptor {
                 .queryParams(req.query())
                 .headers(req.headers().toMap())
                 .addAttribute("resourceType", resourceType)
+                .addAttribute("remotePeer", req.remotePeer())
                 .addAttribute("userIp", req.remotePeer().host())
                 .addAttribute("userPort", req.remotePeer().port())
                 .build();

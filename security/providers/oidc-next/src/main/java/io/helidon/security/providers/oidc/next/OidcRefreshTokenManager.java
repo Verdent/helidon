@@ -82,7 +82,10 @@ final class OidcRefreshTokenManager {
                                           Optional.empty());
                 }
                 OidcValidationResult<OidcValidatedAccessToken> accessTokenValidationResult =
-                        accessTokenValidator.validate(tokenResponse.accessToken(), tenantContext);
+                        accessTokenValidator.validate(OidcAccessTokenValidationRequest
+                                                              .refreshedAuthorizationCodeAccessToken(
+                                                                      tokenResponse.accessToken(),
+                                                                      tenantContext));
                 if (!accessTokenValidationResult.succeeded()) {
                     return refreshFailure(authenticationResult,
                                           expiresAt,

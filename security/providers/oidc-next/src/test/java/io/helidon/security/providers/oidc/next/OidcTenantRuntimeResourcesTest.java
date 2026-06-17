@@ -203,6 +203,17 @@ class OidcTenantRuntimeResourcesTest {
                 .build());
 
         assertThat(metadata.authorizationResponseIssuerParameterSupported(), is(true));
+        assertThat(metadata.tlsClientCertificateBoundAccessTokens(), is(false));
+    }
+
+    @Test
+    void wellKnownMetadataParsesCertificateBoundAccessTokenSupport() {
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("tls_client_certificate_bound_access_tokens", true)
+                .build());
+
+        assertThat(metadata.tlsClientCertificateBoundAccessTokens(), is(true));
     }
 
     @Test

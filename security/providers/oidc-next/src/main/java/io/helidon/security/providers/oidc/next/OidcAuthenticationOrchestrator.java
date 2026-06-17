@@ -213,13 +213,15 @@ final class OidcAuthenticationOrchestrator {
         if (validator.isEmpty()) {
             return OidcResponseFactory.bearerTokenValidationNotConfigured(tenantContext.bearerChallengeRealm());
         }
-        return authenticateBearerToken(bearerToken.orElseThrow(), tenantContext, validator.orElseThrow());
+        return authenticateBearerToken(OidcAccessTokenValidationRequest.protectedResource(bearerToken.orElseThrow(),
+                                                                                          context),
+                                       validator.orElseThrow());
     }
 
-    private AuthenticationResponse authenticateBearerToken(String bearerToken,
-                                                          OidcTenantContext tenantContext,
+    private AuthenticationResponse authenticateBearerToken(OidcAccessTokenValidationRequest request,
                                                           OidcAccessTokenValidator validator) {
-        OidcValidationResult<OidcValidatedAccessToken> validationResult = validator.validate(bearerToken, tenantContext);
+        OidcTenantContext tenantContext = request.tenantContext();
+        OidcValidationResult<OidcValidatedAccessToken> validationResult = validator.validate(request);
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(
                     OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),

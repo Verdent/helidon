@@ -748,12 +748,12 @@ final class OidcConfigSupport {
                                                             Optional<URI> wellKnownUri) {
         endpoints.pushedAuthorizationRequestEndpointUri()
                 .ifPresent(uri -> validatePushedAuthorizationRequestEndpointUri(uri, endpoints.tlsRequired()));
-        if (authorizationCode.pushedAuthorizationRequests().mode() == OidcPushedAuthorizationRequestMode.REQUIRED
+        if (authorizationCode.pushedAuthorizationRequests() == OidcPushedAuthorizationRequestMode.REQUIRED
                 && endpoints.pushedAuthorizationRequestEndpointUri().isEmpty()
                 && wellKnownUri.isEmpty()) {
             throw new IllegalArgumentException(
                     "pushed-authorization-request-endpoint-uri or well-known-uri must be configured when "
-                            + "authorization-code.pushed-authorization-requests.mode is REQUIRED");
+                            + "authorization-code.pushed-authorization-requests is REQUIRED");
         }
     }
 

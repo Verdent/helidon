@@ -205,7 +205,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
-                        .pushedAuthorizationRequests(par -> par.mode(OidcPushedAuthorizationRequestMode.DISABLED)))
+                        .pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.DISABLED))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 

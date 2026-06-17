@@ -32,8 +32,12 @@ import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
 import io.helidon.common.tls.Tls;
 import io.helidon.common.tls.TlsClientAuth;
+import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.json.JsonObject;
+import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.SecurityResponse;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -69,6 +73,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final String AUTHORIZATION_CODE = "authorization-code+value";
     private static final String PKCE_VERIFIER = "pkce-verifier+value";
     private static final String REFRESH_TOKEN = "refresh-token+value";
+    private static final String PUSHED_AUTHORIZATION_REQUEST_URI =
+            "urn:ietf:params:oauth:request_uri:test-request";
     private static final String CLIENT_ASSERTION_TYPE =
             "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
@@ -85,6 +91,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private URI tokenEndpointUri;
     private URI mutualTlsTokenEndpointUri;
+    private URI pushedAuthorizationRequestEndpointUri;
 
     OidcAuthorizationCodeTokenExchangeTest(WebServer server) {
         mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
@@ -100,6 +107,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
+        routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
     }
 
     @SetUpRoute("mtls")
@@ -116,12 +124,149 @@ class OidcAuthorizationCodeTokenExchangeTest {
     void setUp(URI serverUri) {
         tokenEndpointUri = serverUri.resolve("token");
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
+        pushedAuthorizationRequestEndpointUri = serverUri.resolve("par");
         responseStatus = 200;
         responseBody = validTokenResponse().toString();
         responseContentType = "application/json";
         responseCacheControl = "no-store";
         responsePragma = "no-cache";
         RECORDED_REQUEST.set(null);
+    }
+
+    @Test
+    void pushedAuthorizationRequestPostsAuthorizationRequestParametersAndUsesClientSecretBasic() {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(confidentialParTenant(),
+                                                                                authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(true));
+        OidcPushedAuthorizationResponse parResponse = result.response().orElseThrow();
+        assertThat(parResponse.requestUri(), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+        assertThat(parResponse.expiresIn(), is(90L));
+
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request, is(notNullValue()));
+        assertThat(request.method(), is("POST"));
+        assertThat(request.authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+        assertThat(request.contentType(), is("application/x-www-form-urlencoded"));
+        assertThat(request.formParameters(), is(Map.of("response_type", List.of("code"),
+                                                       "client_id", List.of(CLIENT_ID),
+                                                       "redirect_uri", List.of(REDIRECTION_ENDPOINT_URI.toString()),
+                                                       "scope", List.of("openid profile"),
+                                                       "state", List.of("state-value"),
+                                                       "nonce", List.of("nonce-value"),
+                                                       "prompt", List.of("login consent"),
+                                                       "resource", List.of("https://api.example.com",
+                                                                           "urn:example:contacts"),
+                                                       "code_challenge", List.of("challenge-value"),
+                                                       "code_challenge_method", List.of("S256"))));
+        assertThat(request.formParameters().containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void pushedAuthorizationRequestWithClientSecretPostDoesNotDuplicateClientId() {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(
+                confidentialParTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST),
+                authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+        assertThat(request.formParameters().get("client_secret"), is(List.of(CLIENT_SECRET)));
+    }
+
+    @Test
+    void pushedAuthorizationRequestWithPrivateKeyJwtUsesIssuerAsClientAssertionAudience() {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(privateKeyJwtParTenant(),
+                                                                                authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
+        assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+
+        String assertion = request.formParameters().get("client_assertion").get(0);
+        SignedJwt signedJwt = SignedJwt.parseToken(assertion);
+        signedJwt.verifySignature(signKeys).checkValid();
+        assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().subject().orElse(""), is(CLIENT_ID));
+        assertThat(signedJwt.getJwt().audience().orElseThrow(), is(List.of(ISSUER.toString())));
+    }
+
+    @Test
+    void pushedAuthorizationRequestRejectsInvalidSuccessfulResponse() {
+        responseStatus = 201;
+        responseBody = JsonObject.builder()
+                .set("request_uri", PUSHED_AUTHORIZATION_REQUEST_URI)
+                .build()
+                .toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(confidentialParTenant(),
+                                                                                authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.description(), is("Pushed Authorization Request Endpoint response is invalid"));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationUsesPushedAuthorizationRequest(URI serverUri) {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile"))
+                        .prompts(List.of("login"))
+                        .resources(List.of("https://api.example.com")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                            .putTenant("default", tenant)
+                                                            .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        assertThat(response.statusCode().orElse(-1), is(303));
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        assertThat(location.getPath(), is("/authorize"));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("client_id"), is(CLIENT_ID));
+        assertThat(query.get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+        assertThat(query.contains("response_type"), is(false));
+        assertThat(query.contains("scope"), is(false));
+        assertThat(query.contains("state"), is(false));
+        assertThat(query.contains("nonce"), is(false));
+
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("response_type"), is(List.of("code")));
+        assertThat(request.formParameters().get("scope"), is(List.of("openid profile")));
+        assertThat(request.formParameters().get("prompt"), is(List.of("login")));
+        assertThat(request.formParameters().get("resource"), is(List.of("https://api.example.com")));
+        assertThat(request.formParameters().containsKey("state"), is(true));
+        assertThat(request.formParameters().containsKey("nonce"), is(true));
+        assertThat(request.formParameters().containsKey("request_uri"), is(false));
     }
 
     @Test
@@ -552,6 +697,13 @@ class OidcAuthorizationCodeTokenExchangeTest {
         response.send(responseBody);
     }
 
+    private OidcPushedAuthorizationRequestResult pushedAuthorizationRequest(OidcTenantConfig tenantConfig,
+                                                                            Parameters parameters) {
+        return OidcTenantContext.ready("default", tenantConfig)
+                .endpointClient()
+                .pushedAuthorizationRequest(parameters);
+    }
+
     private OidcTokenEndpointResult exchange(OidcTenantConfig tenantConfig, String pkceVerifier) {
         return OidcTenantContext.ready("default", tenantConfig)
                 .endpointClient()
@@ -568,6 +720,14 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private OidcTenantConfig confidentialTenant() {
         return tenant(true, null);
+    }
+
+    private OidcTenantConfig confidentialParTenant() {
+        return confidentialParTenant(null);
+    }
+
+    private OidcTenantConfig confidentialParTenant(OidcClientAuthenticationMethod method) {
+        return parTenant(true, method);
     }
 
     private OidcTenantConfig confidentialTenantWithAuthorizationCodeResources() {
@@ -588,6 +748,23 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private OidcTenantConfig privateKeyJwtTenant() {
         return privateKeyJwtTenant("RS256", "sign-rsa");
+    }
+
+    private OidcTenantConfig privateKeyJwtParTenant() {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .algorithm("RS256")
+                        .keyId("sign-rsa"))
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
     }
 
     private OidcTenantConfig privateKeyJwtTenant(String algorithm) {
@@ -646,6 +823,29 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(authorizationCodeResources))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig parTenant(boolean clientSecret, OidcClientAuthenticationMethod method) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .update(builder -> {
+                    if (clientSecret) {
+                        builder.clientSecret(CLIENT_SECRET);
+                    }
+                })
+                .update(builder -> {
+                    if (method != null) {
+                        builder.tokenEndpointAuthenticationMethod(method);
+                    }
+                })
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
     }
@@ -715,6 +915,29 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .set("access_token", "refreshed-access-token")
                 .set("token_type", "Bearer")
                 .set("expires_in", 600)
+                .build();
+    }
+
+    private static JsonObject validPushedAuthorizationResponse() {
+        return JsonObject.builder()
+                .set("request_uri", PUSHED_AUTHORIZATION_REQUEST_URI)
+                .set("expires_in", 90)
+                .build();
+    }
+
+    private static Parameters authorizationRequestParameters() {
+        return Parameters.builder("test-authorization-request")
+                .add("response_type", "code")
+                .add("client_id", CLIENT_ID)
+                .add("redirect_uri", REDIRECTION_ENDPOINT_URI.toString())
+                .add("scope", "openid profile")
+                .add("state", "state-value")
+                .add("nonce", "nonce-value")
+                .add("prompt", "login consent")
+                .add("resource", "https://api.example.com")
+                .add("resource", "urn:example:contacts")
+                .add("code_challenge", "challenge-value")
+                .add("code_challenge_method", "S256")
                 .build();
     }
 

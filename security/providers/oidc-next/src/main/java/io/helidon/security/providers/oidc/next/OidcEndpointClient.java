@@ -189,6 +189,63 @@ final class OidcEndpointClient {
                       OidcTokenExchangeResult::failure);
     }
 
+    OidcPushedAuthorizationRequestResult pushedAuthorizationRequest(Parameters authorizationRequestParameters) {
+        Optional<URI> endpointUri = metadata.pushedAuthorizationRequestEndpointUri();
+        if (endpointUri.isEmpty()) {
+            return OidcPushedAuthorizationRequestResult.failure(
+                    "Pushed Authorization Request Endpoint is not configured");
+        }
+        if (authorizationRequestParameters.names().contains("request_uri")) {
+            return OidcPushedAuthorizationRequestResult.failure(
+                    "Pushed Authorization Request form must not contain request_uri");
+        }
+
+        /*
+         * Spec: RFC 9126, 2.1 Request and 2.2 Successful Response
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-2.1
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-2.2
+         * Quote: "The `request_uri` authorization request parameter is one exception, and it MUST NOT be provided."
+         * Quote: "the server MUST generate a request URI and provide it in the response with a `201` HTTP status code."
+         */
+        Parameters.Builder form = Parameters.builder("oidc-pushed-authorization-request-form");
+        copyParameters(authorizationRequestParameters, form);
+        try {
+            HttpClientRequest request = webClient.post()
+                    .uri(endpointUri.orElseThrow())
+                    .followRedirects(false)
+                    .header(HeaderValues.ACCEPT_JSON)
+                    .header(HeaderValues.CACHE_NO_CACHE)
+                    .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
+            clientAuthentication.applyPushedAuthorizationRequestAuthentication(endpointUri.orElseThrow(),
+                                                                               metadata.issuer(),
+                                                                               form,
+                                                                               request);
+
+            try (HttpClientResponse response = request.submit(form.build())) {
+                if (response.status() == Status.CREATED_201) {
+                    if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
+                        return OidcPushedAuthorizationRequestResult.failure(
+                                "Pushed Authorization Request Endpoint response is invalid");
+                    }
+                    try {
+                        return OidcPushedAuthorizationRequestResult.success(
+                                OidcPushedAuthorizationResponse.fromJson(response.as(JsonObject.class)));
+                    } catch (RuntimeException e) {
+                        return OidcPushedAuthorizationRequestResult.failure(
+                                "Pushed Authorization Request Endpoint response is invalid",
+                                e);
+                    }
+                }
+                return OidcPushedAuthorizationRequestResult.failure(
+                        "Pushed Authorization Request Endpoint rejected request");
+            }
+        } catch (RuntimeException e) {
+            return OidcPushedAuthorizationRequestResult.failure(
+                    "Pushed Authorization Request Endpoint is unavailable",
+                    e);
+        }
+    }
+
     Optional<JsonObject> userInfo(String accessToken) {
         Optional<URI> endpointUri = metadata.userInfoEndpointUri();
         if (endpointUri.isEmpty()) {
@@ -226,6 +283,14 @@ final class OidcEndpointClient {
             return Optional.empty();
         } catch (RuntimeException e) {
             return Optional.empty();
+        }
+    }
+
+    private static void copyParameters(Parameters source, Parameters.Builder target) {
+        for (String name : source.names()) {
+            for (String value : source.all(name)) {
+                target.add(name, value);
+            }
         }
     }
 

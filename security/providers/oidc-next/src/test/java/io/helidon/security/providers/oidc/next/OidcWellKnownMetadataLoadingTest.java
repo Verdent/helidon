@@ -65,6 +65,7 @@ class OidcWellKnownMetadataLoadingTest {
     private URI introspectionEndpointUri;
     private URI userInfoEndpointUri;
     private URI endSessionEndpointUri;
+    private URI pushedAuthorizationRequestEndpointUri;
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
@@ -100,6 +101,7 @@ class OidcWellKnownMetadataLoadingTest {
         introspectionEndpointUri = serverUri.resolve("introspect");
         userInfoEndpointUri = serverUri.resolve("userinfo");
         endSessionEndpointUri = serverUri.resolve("logout");
+        pushedAuthorizationRequestEndpointUri = serverUri.resolve("par");
         PROVIDER_METADATA.set(providerMetadataBuilder()
                                       .build()
                                       .toString());
@@ -153,6 +155,79 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void authorizationCodeTenantLoadsWellKnownPushedAuthorizationRequestMetadata() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("pushed_authorization_request_endpoint",
+                                           pushedAuthorizationRequestEndpointUri.toString())
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().pushedAuthorizationRequestEndpointUri(),
+                   is(Optional.of(pushedAuthorizationRequestEndpointUri)));
+    }
+
+    @Test
+    void authorizationCodeTenantDoesNotLoadWellKnownMetadataOnlyToDiscoverOptionalPushedAuthorizationRequests() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().pushedAuthorizationRequestEndpointUri(), is(Optional.empty()));
+        assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(""));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresPushedAuthorizationRequestsAndDisabled() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("pushed_authorization_request_endpoint",
+                                           pushedAuthorizationRequestEndpointUri.toString())
+                                      .set("require_pushed_authorization_requests", true)
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .pushedAuthorizationRequests(par -> par.mode(OidcPushedAuthorizationRequestMode.DISABLED)))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("require_pushed_authorization_requests"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresPushedAuthorizationRequestsWithoutEndpoint() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("require_pushed_authorization_requests", true)
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("pushed_authorization_request_endpoint"));
     }
 
     @Test

@@ -119,11 +119,15 @@ final class OidcTenantContextFactory {
             return true;
         }
         Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
-        if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()
-                && (staticMetadata.issuer().isEmpty()
-                || staticMetadata.authorizationEndpointUri().isEmpty()
-                || staticMetadata.tokenEndpointUri().isEmpty())) {
-            return true;
+        if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()) {
+            if (staticMetadata.issuer().isEmpty()
+                    || staticMetadata.authorizationEndpointUri().isEmpty()
+                    || staticMetadata.tokenEndpointUri().isEmpty()) {
+                return true;
+            }
+            if (needsPushedAuthorizationRequestMetadata(authorizationCode.orElseThrow(), staticMetadata)) {
+                return true;
+            }
         }
         if (tenantConfig.userInfo().filter(OidcUserInfoConfig::enabled).isPresent()
                 && staticMetadata.userInfoEndpointUri().isEmpty()) {
@@ -137,6 +141,18 @@ final class OidcTenantContextFactory {
             return true;
         }
         return outboundTargetClientCredentialsGrant && staticMetadata.tokenEndpointUri().isEmpty();
+    }
+
+    private static boolean needsPushedAuthorizationRequestMetadata(OidcAuthorizationCodeConfig authorizationCode,
+                                                                   OidcProviderMetadata staticMetadata) {
+        if (staticMetadata.wellKnownUri().isEmpty()) {
+            return false;
+        }
+        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests().mode();
+        return switch (mode) {
+        case DISABLED, AUTO -> false;
+        case REQUIRED -> staticMetadata.pushedAuthorizationRequestEndpointUri().isEmpty();
+        };
     }
 
     private static void validateIssuerMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
@@ -184,6 +200,7 @@ final class OidcTenantContextFactory {
         validateAuthorizationCodeCapabilityMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateIdTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+        validatePushedAuthorizationRequestMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
     }
 
     private static void validateAuthorizationCodeCapabilityMetadata(OidcTenantConfig tenantConfig,
@@ -266,6 +283,40 @@ final class OidcTenantContextFactory {
                             + "ID Token algorithm");
         }
         validateOptionalIdTokenEncryptionMetadata(tenantConfig, metadata);
+    }
+
+    private static void validatePushedAuthorizationRequestMetadata(OidcTenantConfig tenantConfig,
+                                                                  OidcProviderMetadata metadata,
+                                                                  boolean wellKnownMetadataLoaded) {
+        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
+        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests().mode();
+        metadata.pushedAuthorizationRequestEndpointUri()
+                .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(
+                        uri,
+                        tenantConfig.endpoints().tlsRequired()));
+
+        /*
+         * Spec: RFC 9126, 4 Authorization Request and 5 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-4
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-5
+         * Quote: "PAR be the only means for a client to pass authorization request data."
+         * Quote: "pushed_authorization_request_endpoint is sufficient for a client to determine that it may use the
+         * PAR flow."
+         */
+        if (wellKnownMetadataLoaded
+                && metadata.requirePushedAuthorizationRequests()
+                && mode == OidcPushedAuthorizationRequestMode.DISABLED) {
+            throw new IllegalStateException(
+                    "well-known metadata require_pushed_authorization_requests cannot be true when "
+                            + "authorization-code.pushed-authorization-requests.mode is DISABLED");
+        }
+        if ((mode == OidcPushedAuthorizationRequestMode.REQUIRED
+                || mode == OidcPushedAuthorizationRequestMode.AUTO && metadata.requirePushedAuthorizationRequests())
+                && metadata.pushedAuthorizationRequestEndpointUri().isEmpty()) {
+            throw new IllegalStateException(
+                    "well-known metadata pushed_authorization_request_endpoint must be present when Pushed "
+                            + "Authorization Requests are required");
+        }
     }
 
     private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,

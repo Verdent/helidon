@@ -15,6 +15,7 @@ The current implementation supports:
 - Introspection Endpoint authentication with separate protected-resource credentials when needed.
 - RFC 8705 certificate-bound access-token validation for Protected Resource Bearer Token requests.
 - OpenID Connect Authorization Code Flow.
+- RFC 9126 Pushed Authorization Requests for Authorization Code Flow.
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
 - Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`,
@@ -323,6 +324,7 @@ endpoints:
   well-known-uri: "https://issuer.example/.well-known/openid-configuration"
   authorization-endpoint-uri: "https://issuer.example/authorize"
   token-endpoint-uri: "https://issuer.example/token"
+  pushed-authorization-request-endpoint-uri: "https://issuer.example/par"
   jwks-uri: "https://issuer.example/jwks"
   introspection-endpoint-uri: "https://issuer.example/oauth2/introspect"
   user-info-endpoint-uri: "https://issuer.example/userinfo"
@@ -352,7 +354,8 @@ configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri
 `introspection_endpoint_auth_methods_supported`, `introspection_endpoint_auth_signing_alg_values_supported`,
 `id_token_signing_alg_values_supported`, `id_token_encryption_alg_values_supported`,
 `id_token_encryption_enc_values_supported`, `userinfo_endpoint`, `end_session_endpoint`,
-`mtls_endpoint_aliases.token_endpoint`, and
+`mtls_endpoint_aliases.token_endpoint`, `pushed_authorization_request_endpoint`,
+`require_pushed_authorization_requests`, and
 `authorization_response_iss_parameter_supported`.
 For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
 the Token Endpoint URI itself is loaded from well-known metadata. An explicit `endpoints.token-endpoint-uri` is treated
@@ -678,6 +681,42 @@ string match with the issuer stored in the protected Authentication Request stat
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure
 `authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
+
+Pushed Authorization Requests (PAR) are enabled in `AUTO` mode by default for Authorization Code Flow. With PAR, the
+provider POSTs the Authentication Request parameters directly to the Authorization Server using the tenant WebClient,
+receives a short `request_uri`, and redirects the browser with only `client_id` and that `request_uri`. RFC 9126 says
+the pushed request body "MUST NOT" include `request_uri`, the successful response uses HTTP `201`, and the client
+"MUST only use a `request_uri` value once."
+
+`AUTO` uses PAR when a static `endpoints.pushed-authorization-request-endpoint-uri` is configured or when already-loaded
+well-known metadata advertises `pushed_authorization_request_endpoint`. `AUTO` does not load well-known metadata only to
+discover optional PAR support. If loaded metadata sets `require_pushed_authorization_requests: true`, `AUTO` requires PAR
+and fails tenant initialization unless a PAR endpoint is available. `REQUIRED` always requires a PAR endpoint from static
+config or metadata, and may load well-known metadata to discover it. `DISABLED` never sends PAR; if loaded metadata says
+PAR is required, tenant initialization fails clearly instead of attempting a normal authorization redirect.
+
+```yaml
+authorization-code:
+  pushed-authorization-requests:
+    mode: AUTO
+```
+
+For static Authorization Server configuration, configure the PAR endpoint under `endpoints`.
+
+```yaml
+endpoints:
+  authorization-endpoint-uri: "https://issuer.example/authorize"
+  token-endpoint-uri: "https://issuer.example/token"
+  pushed-authorization-request-endpoint-uri: "https://issuer.example/par"
+
+authorization-code:
+  pushed-authorization-requests:
+    mode: REQUIRED
+```
+
+PAR uses the same Token Endpoint client authentication method configured by `token-endpoint-auth-method`. For
+`CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`, RFC 9126 says the Authorization Server issuer identifier should be used as the
+client assertion audience; the provider uses the issuer when available and otherwise falls back to the PAR endpoint URI.
 
 PKCE is enabled by default and uses `S256`.
 When Authorization Code Flow loads well-known metadata, `code_challenge_methods_supported` must include the configured
@@ -1894,8 +1933,15 @@ Authorization Code Flow options:
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
 | `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
 | `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
+| `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request configuration. Defaults to `mode: AUTO`. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
+
+Pushed Authorization Request options:
+
+| Key | Description |
+| --- | --- |
+| `mode` | PAR mode: `DISABLED`, `AUTO`, or `REQUIRED`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
 
 Endpoint policy options:
 

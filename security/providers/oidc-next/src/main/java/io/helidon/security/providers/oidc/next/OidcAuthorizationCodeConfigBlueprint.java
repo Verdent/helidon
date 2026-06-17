@@ -76,16 +76,16 @@ interface OidcAuthorizationCodeConfigBlueprint {
     List<String> resources();
 
     /**
-     * Pushed Authorization Request configuration.
+     * Pushed Authorization Request mode.
      * <p>
-     * When enabled, the provider sends the Authentication Request parameters directly to the Authorization Server's
-     * Pushed Authorization Request endpoint, then redirects the browser with the returned {@code request_uri}.
+     * When enabled or required, the provider sends the Authentication Request parameters directly to the Authorization
+     * Server's Pushed Authorization Request endpoint, then redirects the browser with the returned {@code request_uri}.
      *
-     * @return Pushed Authorization Request configuration
+     * @return Pushed Authorization Request mode
      */
     @Option.Configured("pushed-authorization-requests")
-    @Option.Default("create()")
-    OidcPushedAuthorizationRequestConfig pushedAuthorizationRequests();
+    @Option.Default("AUTO")
+    OidcPushedAuthorizationRequestMode pushedAuthorizationRequests();
 
     /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.

@@ -201,7 +201,7 @@ final class OidcAuthenticationRequestFactory {
 
     private boolean pushedAuthorizationRequestsEnabled(OidcAuthorizationCodeConfig authorizationCode,
                                                        OidcProviderMetadata metadata) {
-        return switch (authorizationCode.pushedAuthorizationRequests().mode()) {
+        return switch (authorizationCode.pushedAuthorizationRequests()) {
         case DISABLED -> false;
         case AUTO -> metadata.pushedAuthorizationRequestEndpointUri().isPresent()
                 || metadata.requirePushedAuthorizationRequests();

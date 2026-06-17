@@ -148,7 +148,7 @@ final class OidcTenantContextFactory {
         if (staticMetadata.wellKnownUri().isEmpty()) {
             return false;
         }
-        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests().mode();
+        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests();
         return switch (mode) {
         case DISABLED, AUTO -> false;
         case REQUIRED -> staticMetadata.pushedAuthorizationRequestEndpointUri().isEmpty();
@@ -289,7 +289,7 @@ final class OidcTenantContextFactory {
                                                                   OidcProviderMetadata metadata,
                                                                   boolean wellKnownMetadataLoaded) {
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
-        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests().mode();
+        OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests();
         metadata.pushedAuthorizationRequestEndpointUri()
                 .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(
                         uri,
@@ -308,7 +308,7 @@ final class OidcTenantContextFactory {
                 && mode == OidcPushedAuthorizationRequestMode.DISABLED) {
             throw new IllegalStateException(
                     "well-known metadata require_pushed_authorization_requests cannot be true when "
-                            + "authorization-code.pushed-authorization-requests.mode is DISABLED");
+                            + "authorization-code.pushed-authorization-requests is DISABLED");
         }
         if ((mode == OidcPushedAuthorizationRequestMode.REQUIRED
                 || mode == OidcPushedAuthorizationRequestMode.AUTO && metadata.requirePushedAuthorizationRequests())

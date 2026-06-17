@@ -92,6 +92,7 @@ final class OidcTenantContextFactory {
                 validateUserInfoMetadata(tenantConfig, metadata);
                 validateEndSessionMetadata(tenantConfig, metadata);
                 validateMutualTlsMetadata(tenantConfig, metadata);
+                validateCertificateBoundAccessTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
                 LOGGER.log(System.Logger.Level.DEBUG, "OIDC tenant initialization failed: " + tenantId, e);
@@ -622,6 +623,34 @@ final class OidcTenantContextFactory {
         metadata.mutualTlsTokenEndpointUri()
                 .or(metadata::tokenEndpointUri)
                 .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(uri, true));
+    }
+
+    private static void validateCertificateBoundAccessTokenMetadata(OidcTenantConfig tenantConfig,
+                                                                    OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
+        OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
+                .map(OidcProtectedResourceConfig::tokenValidation)
+                .orElseGet(OidcTokenValidationConfig::create);
+        if (tokenValidation.certificateBoundAccessTokens().mode()
+                == OidcCertificateBoundAccessTokenMode.DISABLED) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8705, 3.3 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-3.3
+         * Quote: "`tls_client_certificate_bound_access_tokens` OPTIONAL. Boolean value indicating server support for
+         * mutual-TLS client certificate-bound access tokens."
+         * Quote: "If omitted, the default value is `false`."
+         */
+        if (!metadata.tlsClientCertificateBoundAccessTokens()) {
+            throw new IllegalStateException(
+                    "well-known metadata tls_client_certificate_bound_access_tokens must be true");
+        }
     }
 
     @FunctionalInterface

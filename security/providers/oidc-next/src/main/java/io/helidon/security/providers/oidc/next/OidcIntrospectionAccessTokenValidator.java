@@ -26,16 +26,12 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
-import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
-    private static final String CONFIRMATION_CLAIM = "cnf";
-    private static final String DPOP_JWK_THUMBPRINT_CONFIRMATION = "jkt";
-    private static final String X509_CERTIFICATE_THUMBPRINT_CONFIRMATION = "x5t#S256";
 
     private OidcIntrospectionAccessTokenValidator() {
     }
@@ -45,7 +41,9 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     }
 
     @Override
-    public OidcValidationResult<OidcValidatedAccessToken> validate(String token, OidcTenantContext tenantContext) {
+    public OidcValidationResult<OidcValidatedAccessToken> validate(OidcAccessTokenValidationRequest request) {
+        String token = request.token();
+        OidcTenantContext tenantContext = request.tenantContext();
         Optional<URI> endpointUri = tenantContext.metadata().introspectionEndpointUri();
         if (endpointUri.isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection is not configured");
@@ -62,15 +60,14 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 return OidcValidationResult.failure("Bearer Token introspection endpoint rejected the token");
             }
 
-            return validateResponse(token, tenantContext, response);
+            return validateResponse(request, response);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable", e);
         }
     }
 
-    private OidcValidationResult<OidcValidatedAccessToken> validateResponse(String token,
-                                                       OidcTenantContext tenantContext,
-                                                       HttpClientResponse response) {
+    private OidcValidationResult<OidcValidatedAccessToken> validateResponse(OidcAccessTokenValidationRequest request,
+                                                                            HttpClientResponse response) {
         JsonObject jsonObject;
         try {
             /*
@@ -96,8 +93,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 return OidcValidationResult.failure("Bearer Token introspection response is inactive");
             }
 
-            OidcValidatedIntrospection validated = OidcValidatedIntrospection.create(token, jsonObject);
-            OidcValidationResult<OidcValidatedAccessToken> claimValidation = validateClaims(validated, tenantContext);
+            OidcValidatedIntrospection validated = OidcValidatedIntrospection.create(request.token(), jsonObject);
+            OidcValidationResult<OidcValidatedAccessToken> claimValidation = validateClaims(validated, request);
             if (!claimValidation.succeeded()) {
                 return claimValidation;
             }
@@ -108,7 +105,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     }
 
     private OidcValidationResult<OidcValidatedAccessToken> validateClaims(OidcValidatedIntrospection validated,
-                                                     OidcTenantContext tenantContext) {
+                                                                          OidcAccessTokenValidationRequest request) {
+        OidcTenantContext tenantContext = request.tenantContext();
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
         Optional<String> expectedIssuer = tenantContext.metadata().issuer();
         Optional<String> expectedAudience = tokenValidation.audience();
@@ -130,8 +128,12 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
 
-        if (hasUnsupportedSenderConstrainedConfirmation(validated)) {
-            return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
+        OidcValidationResult<Boolean> confirmationValidation = OidcCertificateBoundAccessTokenSupport.validate(
+                validated.claims().value(OidcCertificateBoundAccessTokenSupport.CONFIRMATION_CLAIM),
+                request);
+        if (!confirmationValidation.succeeded()) {
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid",
+                                                confirmationValidation.cause().orElse(null));
         }
 
         if (OidcSubjectMapper.principalId(validated.claims(), tenantContext.subjectMapping()).isEmpty()) {
@@ -167,25 +169,6 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
         clientAuthentication.applyIntrospectionEndpointAuthentication(endpointUri, form, request);
         return request.submit(form.build());
-    }
-
-    private static boolean hasUnsupportedSenderConstrainedConfirmation(OidcValidatedIntrospection validated) {
-        /*
-         * Spec: RFC 9449, 7.2 Checking DPoP Proofs
-         * https://www.rfc-editor.org/rfc/rfc9449.html#section-7.2
-         * Quote: "MUST reject a DPoP-bound access token received as a bearer token".
-         *
-         * Spec: RFC 8705, 3 Mutual-TLS Certificate-Bound Access Tokens
-         * https://www.rfc-editor.org/rfc/rfc8705.html#section-3
-         * Quote: "MUST verify that the certificate matches the certificate associated with the access token."
-         * Quote: "MUST be rejected with an error, per [RFC6750]".
-         */
-        return validated.claims()
-                .value(CONFIRMATION_CLAIM)
-                .filter(value -> value.type() == JsonValueType.OBJECT)
-                .map(value -> value.asObject().value(DPOP_JWK_THUMBPRINT_CONFIRMATION).isPresent()
-                        || value.asObject().value(X509_CERTIFICATE_THUMBPRINT_CONFIRMATION).isPresent())
-                .orElse(false);
     }
 
 }

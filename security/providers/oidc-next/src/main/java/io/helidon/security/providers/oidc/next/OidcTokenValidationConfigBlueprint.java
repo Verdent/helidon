@@ -76,6 +76,19 @@ interface OidcTokenValidationConfigBlueprint {
     OidcIntrospectionConfig introspection();
 
     /**
+     * RFC 8705 certificate-bound access-token validation configuration.
+     * <p>
+     * Applies to Protected Resource Bearer Token requests. Refreshed Authorization Code Flow access-token validation
+     * continues to reject sender-constrained access tokens because the inbound request client certificate is not the
+     * OAuth client certificate used at the Token Endpoint.
+     *
+     * @return certificate-bound access-token validation configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcCertificateBoundAccessTokenConfig certificateBoundAccessTokens();
+
+    /**
      * Allowed JWS algorithms for JWT access tokens.
      *
      * @return allowed algorithms

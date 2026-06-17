@@ -16,6 +16,23 @@
 
 package io.helidon.security.providers.oidc.next;
 
-interface OidcAccessTokenValidator {
-    OidcValidationResult<OidcValidatedAccessToken> validate(OidcAccessTokenValidationRequest request);
+import io.helidon.builder.api.Description;
+import io.helidon.builder.api.Option;
+import io.helidon.builder.api.Prototype;
+
+/**
+ * RFC 8705 certificate-bound access-token validation configuration.
+ */
+@Prototype.Blueprint
+@Prototype.Configured
+interface OidcCertificateBoundAccessTokenConfigBlueprint {
+    /**
+     * Certificate-bound access-token validation mode.
+     *
+     * @return certificate-bound access-token validation mode
+     */
+    @Description("RFC 8705 certificate-bound access-token validation mode.")
+    @Option.Configured
+    @Option.Default("DISABLED")
+    OidcCertificateBoundAccessTokenMode mode();
 }

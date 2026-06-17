@@ -67,6 +67,7 @@ class OidcProviderConfigTest {
     private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/logged-out");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI PUSHED_AUTHORIZATION_REQUEST_ENDPOINT_URI = URI.create("https://issuer.example/par");
     private static final String AUDIENCE = "api://default";
 
     @Test
@@ -74,6 +75,7 @@ class OidcProviderConfigTest {
         OidcProviderConfig providerConfig = OidcProviderConfig.create();
         OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcAuthorizationCodeConfig authorizationCode = OidcAuthorizationCodeConfig.create();
+        OidcPushedAuthorizationRequestConfig pushedAuthorizationRequests = OidcPushedAuthorizationRequestConfig.create();
         OidcLogoutConfig logout = OidcLogoutConfig.create();
         OidcEndSessionConfig endSession = OidcEndSessionConfig.create();
         OidcUserInfoConfig userInfo = OidcUserInfoConfig.create();
@@ -124,6 +126,8 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.prompts().isEmpty(), is(true));
         assertThat(authorizationCode.resources().isEmpty(), is(true));
+        assertThat(authorizationCode.pushedAuthorizationRequests(), is(pushedAuthorizationRequests));
+        assertThat(pushedAuthorizationRequests.mode(), is(OidcPushedAuthorizationRequestMode.AUTO));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
@@ -161,6 +165,10 @@ class OidcProviderConfigTest {
                    is(List.of(OidcCertificateBoundAccessTokenMode.DISABLED,
                               OidcCertificateBoundAccessTokenMode.IF_PRESENT,
                               OidcCertificateBoundAccessTokenMode.REQUIRED)));
+        assertThat(List.of(OidcPushedAuthorizationRequestMode.values()),
+                   is(List.of(OidcPushedAuthorizationRequestMode.DISABLED,
+                              OidcPushedAuthorizationRequestMode.AUTO,
+                              OidcPushedAuthorizationRequestMode.REQUIRED)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -207,6 +215,13 @@ class OidcProviderConfigTest {
         assertThat(OidcCertificateBoundAccessTokenMode.DISABLED.text(), is("disabled"));
         assertThat(OidcCertificateBoundAccessTokenMode.IF_PRESENT.text(), is("if-present"));
         assertThat(OidcCertificateBoundAccessTokenMode.REQUIRED.text(), is("required"));
+    }
+
+    @Test
+    void pushedAuthorizationRequestModesUseConfigTextValues() {
+        assertThat(OidcPushedAuthorizationRequestMode.DISABLED.text(), is("disabled"));
+        assertThat(OidcPushedAuthorizationRequestMode.AUTO.text(), is("auto"));
+        assertThat(OidcPushedAuthorizationRequestMode.REQUIRED.text(), is("required"));
     }
 
     @Test
@@ -284,6 +299,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.jwk-set.refresh-interval", "PT10M"),
                         Map.entry("tenants.default.jwk-set.stale-on-error", "false"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
+                        Map.entry("tenants.default.endpoints.pushed-authorization-request-endpoint-uri",
+                                  PUSHED_AUTHORIZATION_REQUEST_ENDPOINT_URI.toString()),
                         Map.entry("tenants.default.webclient.read-timeout", "PT2S"),
                         Map.entry("tenants.default.webclient.proxy.type", "HTTP"),
                         Map.entry("tenants.default.webclient.proxy.host", "proxy.example.com"),
@@ -294,6 +311,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.authorization-code.prompts.1", "consent"),
                         Map.entry("tenants.default.authorization-code.resources.0", "https://api.example.com"),
                         Map.entry("tenants.default.authorization-code.resources.1", "urn:example:contacts"),
+                        Map.entry("tenants.default.authorization-code.pushed-authorization-requests.mode", "REQUIRED"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.encryption-secret",
                                   "this-secret-is-long-enough-for-config-test"),
@@ -360,6 +378,8 @@ class OidcProviderConfigTest {
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(10)));
         assertThat(tenant.jwkSet().staleOnError(), is(false));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
+        assertThat(tenant.endpoints().pushedAuthorizationRequestEndpointUri().orElseThrow(),
+                   is(PUSHED_AUTHORIZATION_REQUEST_ENDPOINT_URI));
         assertThat(tenant.webClient().readTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
         assertThat(tenant.webClient().proxy().type(), is(Proxy.ProxyType.HTTP));
         assertThat(tenant.webClient().proxy().host(), is("proxy.example.com"));
@@ -368,6 +388,8 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.redirectionEndpointUri().orElseThrow(), is(REDIRECTION_ENDPOINT_URI));
         assertThat(authorizationCode.prompts(), is(List.of("login", "consent")));
         assertThat(authorizationCode.resources(), is(List.of("https://api.example.com", "urn:example:contacts")));
+        assertThat(authorizationCode.pushedAuthorizationRequests().mode(),
+                   is(OidcPushedAuthorizationRequestMode.REQUIRED));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
@@ -1242,6 +1264,34 @@ class OidcProviderConfigTest {
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsInvalidPushedAuthorizationRequestEndpointUri() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par")))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .pushedAuthorizationRequestEndpointUri(URI.create("https://issuer.example/par#fragment")))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri"));
+        assertThat(thrown.getMessage(), containsString("fragment"));
     }
 
     @Test

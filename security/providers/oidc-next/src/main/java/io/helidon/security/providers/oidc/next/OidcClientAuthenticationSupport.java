@@ -108,7 +108,24 @@ final class OidcClientAuthenticationSupport {
     void applyTokenEndpointAuthentication(URI tokenEndpointUri,
                                           Parameters.Builder form,
                                           HttpClientRequest request) {
-        applyAuthentication(tokenEndpointUri, form, request);
+        applyAuthentication(tokenEndpointUri, form, request, false);
+    }
+
+    void applyPushedAuthorizationRequestAuthentication(URI pushedAuthorizationRequestEndpointUri,
+                                                       Optional<String> issuer,
+                                                       Parameters.Builder form,
+                                                       HttpClientRequest request) {
+        /*
+         * Spec: RFC 9126, 2 Pushed Authorization Request Endpoint
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-2
+         * Quote: "The rules for client authentication as defined in [RFC6749] for token endpoint requests, including
+         * the applicable authentication methods, apply for the PAR endpoint as well."
+         * Quote: "the issuer identifier URL of the authorization server according to [RFC8414] SHOULD be used as the
+         * value of the audience."
+         */
+        URI assertionAudience = issuer.map(URI::create)
+                .orElse(pushedAuthorizationRequestEndpointUri);
+        applyAuthentication(assertionAudience, form, request, true);
     }
 
     void applyIntrospectionEndpointAuthentication(URI introspectionEndpointUri,
@@ -127,12 +144,13 @@ final class OidcClientAuthenticationSupport {
         if (method == OidcClientAuthenticationMethod.NONE) {
             throw new IllegalStateException("Introspection Endpoint authentication cannot be NONE");
         }
-        applyAuthentication(introspectionEndpointUri, form, request);
+        applyAuthentication(introspectionEndpointUri, form, request, false);
     }
 
     private void applyAuthentication(URI endpointUri,
                                      Parameters.Builder form,
-                                     HttpClientRequest request) {
+                                     HttpClientRequest request,
+                                     boolean clientIdAlreadyPresent) {
         String clientId = this.clientId.orElseThrow();
         switch (method) {
         case CLIENT_SECRET_BASIC -> request.header(HeaderNames.AUTHORIZATION,
@@ -145,8 +163,10 @@ final class OidcClientAuthenticationSupport {
              * and SHOULD be limited to clients unable to directly utilize the HTTP Basic authentication scheme (or other
              * password-based HTTP authentication schemes)."
              */
-            form.add("client_id", clientId)
-                    .add("client_secret", requireClientSecret());
+            if (!clientIdAlreadyPresent) {
+                form.add("client_id", clientId);
+            }
+            form.add("client_secret", requireClientSecret());
         }
         case CLIENT_SECRET_JWT, PRIVATE_KEY_JWT -> {
             /*
@@ -169,7 +189,9 @@ final class OidcClientAuthenticationSupport {
              * Quote: "For all requests to the authorization server utilizing mutual-TLS client authentication, the
              * client MUST include the `client_id` parameter described in Section 2.2 of OAuth 2.0."
              */
-            form.add("client_id", clientId);
+            if (!clientIdAlreadyPresent) {
+                form.add("client_id", clientId);
+            }
         }
         case NONE -> {
             /*
@@ -179,7 +201,9 @@ final class OidcClientAuthenticationSupport {
              * client MUST send its `client_id` to prevent itself from inadvertently accepting a code intended for a
              * client with a different `client_id`."
              */
-            form.add("client_id", clientId);
+            if (!clientIdAlreadyPresent) {
+                form.add("client_id", clientId);
+            }
         }
         default -> throw new IllegalStateException("Unexpected client authentication method: "
                                                            + method);

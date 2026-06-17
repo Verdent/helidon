@@ -217,6 +217,19 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
+    void wellKnownMetadataParsesPushedAuthorizationRequestSupport() {
+        URI endpoint = URI.create("https://issuer.example/par");
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("pushed_authorization_request_endpoint", endpoint.toString())
+                .set("require_pushed_authorization_requests", true)
+                .build());
+
+        assertThat(metadata.pushedAuthorizationRequestEndpointUri(), is(Optional.of(endpoint)));
+        assertThat(metadata.requirePushedAuthorizationRequests(), is(true));
+    }
+
+    @Test
     void wellKnownMetadataParsesFlowAndTokenEndpointCapabilities() {
         OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())

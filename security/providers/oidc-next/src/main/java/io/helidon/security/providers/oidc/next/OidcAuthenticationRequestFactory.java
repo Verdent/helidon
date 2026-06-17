@@ -27,6 +27,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
+import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.SetCookie;
@@ -84,13 +85,18 @@ final class OidcAuthenticationRequestFactory {
                 createdAt.plus(tenantContext.cookieStateHandler().cookieConfig().authenticationRequestLifetime()));
         SetCookie stateCookie = tenantContext.cookieStateHandler()
                 .createAuthenticationRequestCookie(requestState);
-        URI authorizationUri = authorizationUri(authorizationEndpointUri,
-                                                tenantConfig.clientId().orElseThrow(),
-                                                redirectionEndpointUri,
-                                                authorizationCode,
-                                                state,
-                                                nonce,
-                                                pkceVerifier);
+        String clientId = tenantConfig.clientId().orElseThrow();
+        Parameters authorizationParameters = authorizationParameters(clientId,
+                                                                    redirectionEndpointUri,
+                                                                    authorizationCode,
+                                                                    state,
+                                                                    nonce,
+                                                                    pkceVerifier);
+        URI authorizationUri = pushedAuthorizationRequestsEnabled(authorizationCode, tenantContext.metadata())
+                ? pushedAuthorizationUri(authorizationEndpointUri,
+                                         clientId,
+                                         pushedAuthorizationRequest(tenantContext, authorizationParameters))
+                : authorizationUri(authorizationEndpointUri, authorizationParameters);
 
         return new OidcAuthenticationRequest(authorizationUri, stateCookie.toString());
     }
@@ -102,13 +108,12 @@ final class OidcAuthenticationRequestFactory {
         };
     }
 
-    private URI authorizationUri(URI authorizationEndpointUri,
-                                 String clientId,
-                                 URI redirectionEndpointUri,
-                                 OidcAuthorizationCodeConfig authorizationCode,
-                                 String state,
-                                 String nonce,
-                                 String pkceVerifier) {
+    private Parameters authorizationParameters(String clientId,
+                                               URI redirectionEndpointUri,
+                                               OidcAuthorizationCodeConfig authorizationCode,
+                                               String state,
+                                               String nonce,
+                                               String pkceVerifier) {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
          * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
@@ -118,16 +123,16 @@ final class OidcAuthenticationRequestFactory {
          * Quote: "Sufficient entropy MUST be present in the `nonce` values used to prevent attackers from guessing
          * values."
          */
-        UriQueryWriteable query = UriQueryWriteable.create()
-                .set("response_type", "code")
-                .set("client_id", clientId)
-                .set("redirect_uri", redirectionEndpointUri.toString())
-                .set("scope", OidcScopeSupport.serializeScopes(authorizationCode.scopes()))
-                .set("state", state)
-                .set("nonce", nonce);
+        Parameters.Builder parameters = Parameters.builder("oidc-authorization-request")
+                .add("response_type", "code")
+                .add("client_id", clientId)
+                .add("redirect_uri", redirectionEndpointUri.toString())
+                .add("scope", OidcScopeSupport.serializeScopes(authorizationCode.scopes()))
+                .add("state", state)
+                .add("nonce", nonce);
         List<String> prompts = prompts(authorizationCode);
         if (!prompts.isEmpty()) {
-            query.set("prompt", String.join(" ", prompts));
+            parameters.add("prompt", String.join(" ", prompts));
         }
         if (!authorizationCode.resources().isEmpty()) {
             /*
@@ -137,7 +142,7 @@ final class OidcAuthenticationRequestFactory {
              * Quote: "Indicates the target service or resource to which access is being requested."
              * Quote: "the requested resource is applicable to the full authorization grant."
              */
-            authorizationCode.resources().forEach(resource -> query.add("resource", resource));
+            authorizationCode.resources().forEach(resource -> parameters.add("resource", resource));
         }
         if (pkceVerifier != null) {
             /*
@@ -155,13 +160,66 @@ final class OidcAuthenticationRequestFactory {
              * "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory To
              * Implement (MTI) on the server."
              */
-            query.set("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
-                    .set("code_challenge_method", authorizationCode.pkceMethod().wireName());
+            parameters.add("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
+                    .add("code_challenge_method", authorizationCode.pkceMethod().wireName());
         }
 
+        return parameters.build();
+    }
+
+    private URI authorizationUri(URI authorizationEndpointUri, Parameters authorizationParameters) {
+        UriQueryWriteable query = UriQueryWriteable.create();
+        for (String name : authorizationParameters.names()) {
+            for (String value : authorizationParameters.all(name)) {
+                query.add(name, value);
+            }
+        }
+        return authorizationUri(authorizationEndpointUri, query);
+    }
+
+    private URI pushedAuthorizationUri(URI authorizationEndpointUri,
+                                       String clientId,
+                                       OidcPushedAuthorizationResponse pushedAuthorizationResponse) {
+        /*
+         * Spec: RFC 9126, 4 Authorization Request
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-4
+         * Quote: "The client uses the `request_uri` value returned by the authorization server to build an
+         * authorization request".
+         * Quote: "the client MUST only use a `request_uri` value once."
+         */
+        UriQueryWriteable query = UriQueryWriteable.create()
+                .add("client_id", clientId)
+                .add("request_uri", pushedAuthorizationResponse.requestUri());
+        return authorizationUri(authorizationEndpointUri, query);
+    }
+
+    private URI authorizationUri(URI authorizationEndpointUri, UriQueryWriteable query) {
         return URI.create(authorizationEndpointUri
                                   + (authorizationEndpointUri.getRawQuery() == null ? "?" : "&")
                                   + query.rawValue());
+    }
+
+    private boolean pushedAuthorizationRequestsEnabled(OidcAuthorizationCodeConfig authorizationCode,
+                                                       OidcProviderMetadata metadata) {
+        return switch (authorizationCode.pushedAuthorizationRequests().mode()) {
+        case DISABLED -> false;
+        case AUTO -> metadata.pushedAuthorizationRequestEndpointUri().isPresent()
+                || metadata.requirePushedAuthorizationRequests();
+        case REQUIRED -> true;
+        };
+    }
+
+    private OidcPushedAuthorizationResponse pushedAuthorizationRequest(OidcTenantContext tenantContext,
+                                                                       Parameters authorizationParameters) {
+        OidcPushedAuthorizationRequestResult result = tenantContext.endpointClient()
+                .pushedAuthorizationRequest(authorizationParameters);
+        if (result.succeeded()) {
+            return result.response().orElseThrow();
+        }
+        if (result.cause().isPresent()) {
+            throw new IllegalStateException(result.description(), result.cause().orElseThrow());
+        }
+        throw new IllegalStateException(result.description());
     }
 
     private List<String> prompts(OidcAuthorizationCodeConfig authorizationCode) {

@@ -184,6 +184,7 @@ class HttpSecurityInterceptor implements Interception.EntryPointInterceptor, Htt
                 .queryParams(req.query())
                 .headers(SecurityContextFilter.headers(req))
                 .addAttribute("resourceType", resourceType)
+                .addAttribute("remotePeer", req.remotePeer())
                 .addAttribute("userIp", req.remotePeer().host())
                 .addAttribute("userPort", req.remotePeer().port())
                 .build();

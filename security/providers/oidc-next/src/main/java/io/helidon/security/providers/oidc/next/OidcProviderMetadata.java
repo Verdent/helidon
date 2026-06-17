@@ -46,6 +46,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> userInfoEndpointUri;
     private final Optional<URI> endSessionEndpointUri;
     private final boolean authorizationResponseIssuerParameterSupported;
+    private final boolean tlsClientCertificateBoundAccessTokens;
 
     private OidcProviderMetadata(Optional<String> issuer,
                                  Optional<URI> wellKnownUri,
@@ -67,7 +68,8 @@ final class OidcProviderMetadata {
                                  Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                  Optional<URI> userInfoEndpointUri,
                                  Optional<URI> endSessionEndpointUri,
-                                 boolean authorizationResponseIssuerParameterSupported) {
+                                 boolean authorizationResponseIssuerParameterSupported,
+                                 boolean tlsClientCertificateBoundAccessTokens) {
         this.issuer = issuer;
         this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
@@ -92,6 +94,7 @@ final class OidcProviderMetadata {
         this.userInfoEndpointUri = userInfoEndpointUri;
         this.endSessionEndpointUri = endSessionEndpointUri;
         this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
+        this.tlsClientCertificateBoundAccessTokens = tlsClientCertificateBoundAccessTokens;
     }
 
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
@@ -244,6 +247,52 @@ final class OidcProviderMetadata {
                                        Optional<URI> userInfoEndpointUri,
                                        Optional<URI> endSessionEndpointUri,
                                        boolean authorizationResponseIssuerParameterSupported) {
+        return create(issuer,
+                      wellKnownUri,
+                      authorizationEndpointUri,
+                      tokenEndpointUri,
+                      mutualTlsTokenEndpointUri,
+                      jwkSetUri,
+                      jwkSetUriFromWellKnownMetadata,
+                      responseTypesSupported,
+                      grantTypesSupported,
+                      codeChallengeMethodsSupported,
+                      tokenEndpointAuthenticationMethodsSupported,
+                      tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                      idTokenSigningAlgorithmsSupported,
+                      idTokenEncryptionAlgorithmsSupported,
+                      idTokenContentEncryptionAlgorithmsSupported,
+                      introspectionEndpointUri,
+                      introspectionEndpointAuthenticationMethodsSupported,
+                      introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                      userInfoEndpointUri,
+                      endSessionEndpointUri,
+                      authorizationResponseIssuerParameterSupported,
+                      false);
+    }
+
+    static OidcProviderMetadata create(Optional<String> issuer,
+                                       Optional<URI> wellKnownUri,
+                                       Optional<URI> authorizationEndpointUri,
+                                       Optional<URI> tokenEndpointUri,
+                                       Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> jwkSetUri,
+                                       boolean jwkSetUriFromWellKnownMetadata,
+                                       Optional<List<String>> responseTypesSupported,
+                                       Optional<List<String>> grantTypesSupported,
+                                       Optional<List<String>> codeChallengeMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenEncryptionAlgorithmsSupported,
+                                       Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported,
+                                       Optional<URI> introspectionEndpointUri,
+                                       Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<URI> userInfoEndpointUri,
+                                       Optional<URI> endSessionEndpointUri,
+                                       boolean authorizationResponseIssuerParameterSupported,
+                                       boolean tlsClientCertificateBoundAccessTokens) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
@@ -264,7 +313,8 @@ final class OidcProviderMetadata {
                                         introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                         userInfoEndpointUri,
                                         endSessionEndpointUri,
-                                        authorizationResponseIssuerParameterSupported);
+                                        authorizationResponseIssuerParameterSupported,
+                                        tlsClientCertificateBoundAccessTokens);
     }
 
     static OidcProviderMetadata fromWellKnownMetadataJson(JsonObject json) {
@@ -290,6 +340,8 @@ final class OidcProviderMetadata {
                       uriValue(json, "userinfo_endpoint"),
                       uriValue(json, "end_session_endpoint"),
                       json.booleanValue("authorization_response_iss_parameter_supported")
+                              .orElse(false),
+                      json.booleanValue("tls_client_certificate_bound_access_tokens")
                               .orElse(false));
     }
 
@@ -327,7 +379,9 @@ final class OidcProviderMetadata {
                       userInfoEndpointUri.or(wellKnownMetadata::userInfoEndpointUri),
                       endSessionEndpointUri.or(wellKnownMetadata::endSessionEndpointUri),
                       authorizationResponseIssuerParameterSupported
-                              || wellKnownMetadata.authorizationResponseIssuerParameterSupported());
+                              || wellKnownMetadata.authorizationResponseIssuerParameterSupported(),
+                      tlsClientCertificateBoundAccessTokens
+                              || wellKnownMetadata.tlsClientCertificateBoundAccessTokens());
     }
 
     Optional<String> issuer() {
@@ -416,6 +470,10 @@ final class OidcProviderMetadata {
 
     boolean authorizationResponseIssuerParameterSupported() {
         return authorizationResponseIssuerParameterSupported;
+    }
+
+    boolean tlsClientCertificateBoundAccessTokens() {
+        return tlsClientCertificateBoundAccessTokens;
     }
 
     static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {

@@ -93,6 +93,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private URI tokenEndpointUri;
     private URI mutualTlsTokenEndpointUri;
     private URI pushedAuthorizationRequestEndpointUri;
+    private URI mutualTlsPushedAuthorizationRequestEndpointUri;
 
     OidcAuthorizationCodeTokenExchangeTest(WebServer server) {
         mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
@@ -114,6 +115,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     @SetUpRoute("mtls")
     static void mutualTlsRouting(HttpRouting.Builder routing) {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
+        routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
     }
 
     @SetUpServer
@@ -126,6 +128,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         tokenEndpointUri = serverUri.resolve("token");
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
         pushedAuthorizationRequestEndpointUri = serverUri.resolve("par");
+        mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsServerUri.resolve("par");
         responseStatus = 200;
         responseBody = validTokenResponse().toString();
         responseContentType = "application/json";
@@ -205,6 +208,43 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void pushedAuthorizationRequestWithMutualTlsUsesMetadataAlias(URI serverUri) {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(mutualTlsTokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("pushed_authorization_request_endpoint", serverUri.resolve("unused-par").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
+                        .set("pushed_authorization_request_endpoint",
+                             mutualTlsPushedAuthorizationRequestEndpointUri.toString())
+                        .build())
+                .build());
+
+        OidcPushedAuthorizationRequestResult result = OidcTenantContext.ready("default", tenant, metadata)
+                .endpointClient()
+                .pushedAuthorizationRequest(authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(true));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.authorization(), is(""));
+        assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+    }
+
+    @Test
     void pushedAuthorizationRequestRejectsInvalidSuccessfulResponse() {
         responseStatus = 201;
         responseBody = JsonObject.builder()
@@ -217,6 +257,52 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
         assertThat(result.succeeded(), is(false));
         assertThat(result.description(), is("Pushed Authorization Request Endpoint response is invalid"));
+    }
+
+    @Test
+    void pushedAuthorizationRequestErrorResponseIsParsed() {
+        responseStatus = 400;
+        responseBody = JsonObject.builder()
+                .set("error", "invalid_request")
+                .set("error_description", "redirect_uri is invalid")
+                .set("error_uri", "https://issuer.example/errors/invalid-request")
+                .build()
+                .toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(confidentialParTenant(),
+                                                                                authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.errorResponse(), is(true));
+        OidcTokenErrorResponse error = result.error().orElseThrow();
+        assertThat(error.error(), is("invalid_request"));
+        assertThat(error.errorDescription().orElse(""), is("redirect_uri is invalid"));
+        assertThat(error.errorUri().orElse(""), is("https://issuer.example/errors/invalid-request"));
+    }
+
+    @Test
+    void requestObjectRejectsPublicOnlySigningJwk() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContext.ready("default", OidcTenantConfig.builder()
+                                                               .issuer(ISSUER.toString())
+                                                               .clientId(CLIENT_ID)
+                                                               .clientSecret(CLIENT_SECRET)
+                                                               .endpoints(it -> it
+                                                                       .authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                                                                       .tokenEndpointUri(tokenEndpointUri)
+                                                                       .tlsRequired(false))
+                                                               .authorizationCode(it -> it
+                                                                       .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                                                                       .requestObject(requestObject -> requestObject
+                                                                               .mode(OidcRequestObjectMode.REQUIRED)
+                                                                               .jwk(jwk -> jwk.resourcePath(
+                                                                                       "oidc-next-sign-public-jwk.json"))
+                                                                               .keyId("sign-rsa")
+                                                                               .algorithm("RS256")))
+                                                               .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                                                               .buildPrototype()));
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
     }
 
     @Test
@@ -619,6 +705,30 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                                                                         "missing")));
 
         assertThat(thrown.getMessage(), containsString("client-assertion.key-id"));
+    }
+
+    @Test
+    void privateKeyJwtRejectsPublicOnlyJwk() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantContext.ready("default", OidcTenantConfig.builder()
+                                                               .issuer(ISSUER.toString())
+                                                               .clientId(CLIENT_ID)
+                                                               .tokenEndpointAuthenticationMethod(
+                                                                       OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                                                               .clientAssertion(it -> it.jwk(Resource.create(
+                                                                               "oidc-next-sign-public-jwk.json"))
+                                                                       .algorithm("RS256")
+                                                                       .keyId("sign-rsa"))
+                                                               .endpoints(it -> it
+                                                                       .authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                                                                       .tokenEndpointUri(tokenEndpointUri)
+                                                                       .tlsRequired(false))
+                                                               .authorizationCode(it -> it
+                                                                       .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                                                               .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                                                               .buildPrototype()));
+
+        assertThat(thrown.getMessage(), containsString("client-assertion.jwk"));
     }
 
     @Test

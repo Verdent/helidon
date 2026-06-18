@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -295,6 +296,10 @@ final class OidcTenantContextFactory {
                 .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(
                         uri,
                         tenantConfig.endpoints().tlsRequired()));
+        if (mutualTlsTokenEndpointAuthentication(tenantConfig)) {
+            pushedAuthorizationRequestEndpointUri(tenantConfig, metadata)
+                    .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(uri, true));
+        }
 
         /*
          * Spec: RFC 9126, 4 Authorization Request and 5 Authorization Server Metadata
@@ -313,7 +318,7 @@ final class OidcTenantContextFactory {
         }
         if ((mode == OidcPushedAuthorizationRequestMode.REQUIRED
                 || mode == OidcPushedAuthorizationRequestMode.AUTO && metadata.requirePushedAuthorizationRequests())
-                && metadata.pushedAuthorizationRequestEndpointUri().isEmpty()) {
+                && pushedAuthorizationRequestEndpointUri(tenantConfig, metadata).isEmpty()) {
             throw new IllegalStateException(
                     "well-known metadata pushed_authorization_request_endpoint must be present when Pushed "
                             + "Authorization Requests are required");
@@ -349,7 +354,7 @@ final class OidcTenantContextFactory {
                     "authorization-code.request-object.jwk must be configured when signed Request Objects are required");
         }
         if (wellKnownMetadataLoaded
-                && !pushedAuthorizationRequestsEnabled(authorizationCode, metadata)
+                && !pushedAuthorizationRequestsEnabled(tenantConfig, authorizationCode, metadata)
                 && !metadata.requestParameterSupported().orElse(false)) {
             /*
              * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
@@ -384,14 +389,24 @@ final class OidcTenantContextFactory {
                 });
     }
 
-    private static boolean pushedAuthorizationRequestsEnabled(OidcAuthorizationCodeConfig authorizationCode,
+    private static boolean pushedAuthorizationRequestsEnabled(OidcTenantConfig tenantConfig,
+                                                             OidcAuthorizationCodeConfig authorizationCode,
                                                              OidcProviderMetadata metadata) {
         return switch (authorizationCode.pushedAuthorizationRequests()) {
         case DISABLED -> false;
-        case AUTO -> metadata.pushedAuthorizationRequestEndpointUri().isPresent()
+        case AUTO -> pushedAuthorizationRequestEndpointUri(tenantConfig, metadata).isPresent()
                 || metadata.requirePushedAuthorizationRequests();
         case REQUIRED -> true;
         };
+    }
+
+    private static Optional<URI> pushedAuthorizationRequestEndpointUri(OidcTenantConfig tenantConfig,
+                                                                       OidcProviderMetadata metadata) {
+        if (mutualTlsTokenEndpointAuthentication(tenantConfig)) {
+            return metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
+                    .or(metadata::pushedAuthorizationRequestEndpointUri);
+        }
+        return metadata.pushedAuthorizationRequestEndpointUri();
     }
 
     private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,

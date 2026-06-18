@@ -22,15 +22,18 @@ final class OidcPushedAuthorizationRequestResult {
     private final OidcPushedAuthorizationRequestStatus status;
     private final String description;
     private final OidcPushedAuthorizationResponse response;
+    private final OidcTokenErrorResponse errorResponse;
     private final Throwable cause;
 
     private OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus status,
                                                  String description,
                                                  OidcPushedAuthorizationResponse response,
+                                                 OidcTokenErrorResponse errorResponse,
                                                  Throwable cause) {
         this.status = status;
         this.description = description;
         this.response = response;
+        this.errorResponse = errorResponse;
         this.cause = cause;
     }
 
@@ -38,6 +41,15 @@ final class OidcPushedAuthorizationRequestResult {
         return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.SUCCESS,
                                                         "Pushed Authorization Request succeeded",
                                                         response,
+                                                        null,
+                                                        null);
+    }
+
+    static OidcPushedAuthorizationRequestResult error(OidcTokenErrorResponse errorResponse) {
+        return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.ERROR_RESPONSE,
+                                                        "Pushed Authorization Request Endpoint returned an Error Response",
+                                                        null,
+                                                        errorResponse,
                                                         null);
     }
 
@@ -49,11 +61,16 @@ final class OidcPushedAuthorizationRequestResult {
         return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.FAILURE,
                                                         description,
                                                         null,
+                                                        null,
                                                         cause);
     }
 
     boolean succeeded() {
         return status == OidcPushedAuthorizationRequestStatus.SUCCESS;
+    }
+
+    boolean errorResponse() {
+        return status == OidcPushedAuthorizationRequestStatus.ERROR_RESPONSE;
     }
 
     String description() {
@@ -64,12 +81,17 @@ final class OidcPushedAuthorizationRequestResult {
         return Optional.ofNullable(response);
     }
 
+    Optional<OidcTokenErrorResponse> error() {
+        return Optional.ofNullable(errorResponse);
+    }
+
     Optional<Throwable> cause() {
         return Optional.ofNullable(cause);
     }
 
     private enum OidcPushedAuthorizationRequestStatus {
         SUCCESS,
+        ERROR_RESPONSE,
         FAILURE
     }
 }

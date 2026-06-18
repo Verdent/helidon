@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
@@ -97,7 +98,7 @@ final class OidcAuthenticationRequestFactory {
                                                                clientId,
                                                                authorizationParameters,
                                                                createdAt);
-        URI authorizationUri = pushedAuthorizationRequestsEnabled(authorizationCode, tenantContext.metadata())
+        URI authorizationUri = pushedAuthorizationRequestsEnabled(tenantConfig, authorizationCode, tenantContext.metadata())
                 ? pushedAuthorizationUri(authorizationEndpointUri,
                                          clientId,
                                          pushedAuthorizationRequest(tenantContext,
@@ -259,14 +260,27 @@ final class OidcAuthenticationRequestFactory {
                                   + query.rawValue());
     }
 
-    private boolean pushedAuthorizationRequestsEnabled(OidcAuthorizationCodeConfig authorizationCode,
+    private boolean pushedAuthorizationRequestsEnabled(OidcTenantConfig tenantConfig,
+                                                       OidcAuthorizationCodeConfig authorizationCode,
                                                        OidcProviderMetadata metadata) {
         return switch (authorizationCode.pushedAuthorizationRequests()) {
         case DISABLED -> false;
-        case AUTO -> metadata.pushedAuthorizationRequestEndpointUri().isPresent()
+        case AUTO -> pushedAuthorizationRequestEndpointUri(tenantConfig, metadata).isPresent()
                 || metadata.requirePushedAuthorizationRequests();
         case REQUIRED -> true;
         };
+    }
+
+    private static Optional<URI> pushedAuthorizationRequestEndpointUri(OidcTenantConfig tenantConfig,
+                                                                       OidcProviderMetadata metadata) {
+        OidcClientAuthenticationMethod method =
+                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
+        if (method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH) {
+            return metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
+                    .or(metadata::pushedAuthorizationRequestEndpointUri);
+        }
+        return metadata.pushedAuthorizationRequestEndpointUri();
     }
 
     private OidcPushedAuthorizationResponse pushedAuthorizationRequest(OidcTenantContext tenantContext,
@@ -275,6 +289,15 @@ final class OidcAuthenticationRequestFactory {
                 .pushedAuthorizationRequest(authorizationParameters);
         if (result.succeeded()) {
             return result.response().orElseThrow();
+        }
+        if (result.errorResponse()) {
+            OidcTokenErrorResponse error = result.error().orElseThrow();
+            throw new IllegalStateException(result.description()
+                                                    + ": "
+                                                    + error.error()
+                                                    + error.errorDescription()
+                                                            .map(description -> " (" + description + ")")
+                                                            .orElse(""));
         }
         if (result.cause().isPresent()) {
             throw new IllegalStateException(result.description(), result.cause().orElseThrow());

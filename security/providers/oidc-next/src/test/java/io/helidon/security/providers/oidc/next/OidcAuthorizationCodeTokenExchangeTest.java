@@ -313,14 +313,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(query.contains("nonce"), is(false));
 
         RecordedRequest request = RECORDED_REQUEST.get();
-        assertThat(request.formParameters().get("response_type"), is(List.of("code")));
-        assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
-        assertThat(request.formParameters().get("scope"), is(List.of("openid profile")));
-        assertThat(request.formParameters().containsKey("state"), is(false));
-        assertThat(request.formParameters().containsKey("nonce"), is(false));
-        assertThat(request.formParameters().containsKey("redirect_uri"), is(false));
-        assertThat(request.formParameters().containsKey("resource"), is(false));
-        assertThat(request.formParameters().containsKey("request_uri"), is(false));
+        assertThat(request.authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+        assertThat(request.formParameters().keySet(), is(Set.of("request")));
 
         String requestObject = request.formParameters().get("request").get(0);
         String[] requestObjectParts = requestObject.split("\\.", -1);
@@ -335,6 +330,13 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(requestObjectHeader.stringValue("alg").orElse(""), is("RS256"));
         assertThat(requestObjectHeader.stringValue("kid").orElse(""), is("sign-rsa"));
         assertThat(requestObjectPayload.stringValue("iss").orElse(""), is(CLIENT_ID));
+        assertThat(requestObjectPayload.stringValue("response_type").orElse(""), is("code"));
+        assertThat(requestObjectPayload.stringValue("client_id").orElse(""), is(CLIENT_ID));
+        assertThat(requestObjectPayload.stringValue("scope").orElse(""), is("openid profile"));
+        assertThat(requestObjectPayload.containsKey("state"), is(true));
+        assertThat(requestObjectPayload.containsKey("nonce"), is(true));
+        assertThat(requestObjectPayload.containsKey("code_challenge"), is(true));
+        assertThat(requestObjectPayload.stringValue("code_challenge_method").orElse(""), is("S256"));
         assertThat(requestObjectPayload.value("aud").orElseThrow()
                            .asArray()
                            .values()

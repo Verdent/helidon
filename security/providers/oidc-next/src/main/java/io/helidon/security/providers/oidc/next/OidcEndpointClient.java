@@ -209,6 +209,7 @@ final class OidcEndpointClient {
          */
         Parameters.Builder form = Parameters.builder("oidc-pushed-authorization-request-form");
         copyParameters(authorizationRequestParameters, form);
+        boolean clientIdAlreadyPresent = authorizationRequestParameters.names().contains("client_id");
         try {
             HttpClientRequest request = webClient.post()
                     .uri(endpointUri.orElseThrow())
@@ -219,7 +220,8 @@ final class OidcEndpointClient {
             clientAuthentication.applyPushedAuthorizationRequestAuthentication(endpointUri.orElseThrow(),
                                                                                metadata.issuer(),
                                                                                form,
-                                                                               request);
+                                                                               request,
+                                                                               clientIdAlreadyPresent);
 
             try (HttpClientResponse response = request.submit(form.build())) {
                 if (response.status() == Status.CREATED_201) {

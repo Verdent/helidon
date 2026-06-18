@@ -100,7 +100,8 @@ final class OidcAuthenticationRequestFactory {
         URI authorizationUri = pushedAuthorizationRequestsEnabled(authorizationCode, tenantContext.metadata())
                 ? pushedAuthorizationUri(authorizationEndpointUri,
                                          clientId,
-                                         pushedAuthorizationRequest(tenantContext, requestParameters))
+                                         pushedAuthorizationRequest(tenantContext,
+                                                                    pushedAuthorizationRequestParameters(requestParameters)))
                 : authorizationUri(authorizationEndpointUri, requestParameters);
 
         return new OidcAuthenticationRequest(authorizationUri, stateCookie.toString());
@@ -204,6 +205,25 @@ final class OidcAuthenticationRequestFactory {
                 .add("client_id", requiredParameter(authorizationParameters, "client_id"))
                 .add("scope", requiredParameter(authorizationParameters, "scope"))
                 .add("request", requestObject)
+                .build();
+    }
+
+    private Parameters pushedAuthorizationRequestParameters(Parameters requestParameters) {
+        if (!requestParameters.names().contains("request")) {
+            return requestParameters;
+        }
+
+        /*
+         * Spec: RFC 9126, 3 The "request" Request Parameter
+         * https://www.rfc-editor.org/rfc/rfc9126.html#section-3
+         * Quote: "Request parameters required by a given client authentication method are included in the
+         * `application/x-www-form-urlencoded` request directly and are the only parameters other than `request` in the
+         * form body".
+         * Quote: "All other request parameters, i.e., those pertaining to the authorization request itself, MUST appear
+         * as claims of the JWT representing the authorization request."
+         */
+        return Parameters.builder("oidc-pushed-request-object-authorization-request")
+                .add("request", requiredParameter(requestParameters, "request"))
                 .build();
     }
 

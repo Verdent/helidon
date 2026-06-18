@@ -785,8 +785,10 @@ Request Objects, and hosted client `request_uri` are not supported. URI-backed `
 rejected before the resource is created; use classpath, file, or configured content resources for this local private key
 material.
 
-Request Objects can be combined with PAR. In that mode the signed `request` parameter is sent to the PAR endpoint, and
-the browser redirect remains the PAR redirect with only `client_id` and the server-generated `request_uri`.
+Request Objects can be combined with PAR. In that mode the PAR body contains the signed `request` parameter plus any
+client-authentication parameters required by the selected client authentication method; authorization request parameters
+remain inside the signed JWT claims. The browser redirect remains the PAR redirect with only `client_id` and the
+server-generated `request_uri`.
 
 PKCE is enabled by default and uses `S256`.
 When Authorization Code Flow loads well-known metadata, `code_challenge_methods_supported` must include the configured

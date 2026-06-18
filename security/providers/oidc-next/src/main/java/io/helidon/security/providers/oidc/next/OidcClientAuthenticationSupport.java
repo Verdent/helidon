@@ -114,7 +114,8 @@ final class OidcClientAuthenticationSupport {
     void applyPushedAuthorizationRequestAuthentication(URI pushedAuthorizationRequestEndpointUri,
                                                        Optional<String> issuer,
                                                        Parameters.Builder form,
-                                                       HttpClientRequest request) {
+                                                       HttpClientRequest request,
+                                                       boolean clientIdAlreadyPresent) {
         /*
          * Spec: RFC 9126, 2 Pushed Authorization Request Endpoint
          * https://www.rfc-editor.org/rfc/rfc9126.html#section-2
@@ -125,7 +126,7 @@ final class OidcClientAuthenticationSupport {
          */
         URI assertionAudience = issuer.map(URI::create)
                 .orElse(pushedAuthorizationRequestEndpointUri);
-        applyAuthentication(assertionAudience, form, request, true);
+        applyAuthentication(assertionAudience, form, request, clientIdAlreadyPresent);
     }
 
     void applyIntrospectionEndpointAuthentication(URI introspectionEndpointUri,

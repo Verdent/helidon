@@ -27,7 +27,9 @@ import io.helidon.common.parameters.Parameters;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
+import io.helidon.security.jwt.jwk.JwkEC;
 import io.helidon.security.jwt.jwk.JwkKeys;
+import io.helidon.security.jwt.jwk.JwkRSA;
 
 final class OidcRequestObjectSigner {
     private static final String REQUEST = "request";
@@ -141,6 +143,11 @@ final class OidcRequestObjectSigner {
 
     private static Jwk validateSigningJwk(OidcRequestObjectConfig requestObject, Jwk jwk) {
         if (!Jwk.KEY_TYPE_RSA.equals(jwk.keyType()) && !Jwk.KEY_TYPE_EC.equals(jwk.keyType())) {
+            throw new IllegalArgumentException(
+                    "authorization-code.request-object.jwk must select an RSA or EC private JWK");
+        }
+        if ((jwk instanceof JwkRSA rsa && rsa.privateKey().isEmpty())
+                || (jwk instanceof JwkEC ec && ec.privateKey().isEmpty())) {
             throw new IllegalArgumentException(
                     "authorization-code.request-object.jwk must select an RSA or EC private JWK");
         }

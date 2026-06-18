@@ -360,6 +360,11 @@ final class OidcClientAuthenticationSupport {
             throw new IllegalArgumentException(
                     "client-assertion.jwk must select an RSA or EC private JWK for PRIVATE_KEY_JWT");
         }
+        if ((jwk instanceof JwkRSA rsa && rsa.privateKey().isEmpty())
+                || (jwk instanceof JwkEC ec && ec.privateKey().isEmpty())) {
+            throw new IllegalArgumentException(
+                    "client-assertion.jwk must select an RSA or EC private JWK for PRIVATE_KEY_JWT");
+        }
         String algorithm = jwk.algorithm();
         if (!isPrivateKeyJwtAlgorithm(algorithm)) {
             throw new IllegalArgumentException("client-assertion.jwk selected key algorithm must be one of "

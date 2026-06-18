@@ -92,11 +92,16 @@ final class OidcAuthenticationRequestFactory {
                                                                     state,
                                                                     nonce,
                                                                     pkceVerifier);
+        Parameters requestParameters = requestObjectParameters(tenantContext,
+                                                               authorizationCode,
+                                                               clientId,
+                                                               authorizationParameters,
+                                                               createdAt);
         URI authorizationUri = pushedAuthorizationRequestsEnabled(authorizationCode, tenantContext.metadata())
                 ? pushedAuthorizationUri(authorizationEndpointUri,
                                          clientId,
-                                         pushedAuthorizationRequest(tenantContext, authorizationParameters))
-                : authorizationUri(authorizationEndpointUri, authorizationParameters);
+                                         pushedAuthorizationRequest(tenantContext, requestParameters))
+                : authorizationUri(authorizationEndpointUri, requestParameters);
 
         return new OidcAuthenticationRequest(authorizationUri, stateCookie.toString());
     }
@@ -167,6 +172,41 @@ final class OidcAuthenticationRequestFactory {
         return parameters.build();
     }
 
+    private Parameters requestObjectParameters(OidcTenantContext tenantContext,
+                                               OidcAuthorizationCodeConfig authorizationCode,
+                                               String clientId,
+                                               Parameters authorizationParameters,
+                                               Instant createdAt) {
+        if (!OidcRequestObjectSigner.shouldUse(authorizationCode, tenantContext.metadata())) {
+            return authorizationParameters;
+        }
+        String requestObject = tenantContext.requestObjectSigner()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Request Object signing is enabled but no signing key is configured"))
+                .sign(clientId,
+                      tenantContext.metadata().issuer().orElseThrow(),
+                      authorizationParameters,
+                      createdAt);
+
+        /*
+         * Spec: OpenID Connect Core 1.0, 6.1 Passing a Request Object by Value
+         * https://openid.net/specs/openid-connect-core-1_0.html#RequestObject
+         * Quote: "The `request` parameter is used by the OpenID Connect authentication request to pass a Request
+         * Object by value."
+         * Quote: "The parameters `request` and `request_uri` MUST NOT be included in Request Objects."
+         * Quote: "However, even if a Request Object is used, a `scope` parameter MUST always be passed using the
+         * OAuth 2.0 request syntax containing the `openid` scope value."
+         * Quote: "The values for the `response_type` and `client_id` parameters MUST be included using the OAuth 2.0
+         * request syntax, since they are REQUIRED by OAuth 2.0."
+         */
+        return Parameters.builder("oidc-request-object-authorization-request")
+                .add("response_type", requiredParameter(authorizationParameters, "response_type"))
+                .add("client_id", requiredParameter(authorizationParameters, "client_id"))
+                .add("scope", requiredParameter(authorizationParameters, "scope"))
+                .add("request", requestObject)
+                .build();
+    }
+
     private URI authorizationUri(URI authorizationEndpointUri, Parameters authorizationParameters) {
         UriQueryWriteable query = UriQueryWriteable.create();
         for (String name : authorizationParameters.names()) {
@@ -220,6 +260,14 @@ final class OidcAuthenticationRequestFactory {
             throw new IllegalStateException(result.description(), result.cause().orElseThrow());
         }
         throw new IllegalStateException(result.description());
+    }
+
+    private String requiredParameter(Parameters parameters, String name) {
+        List<String> values = parameters.all(name);
+        if (values.size() != 1) {
+            throw new IllegalStateException("Authorization Request parameter must have exactly one value: " + name);
+        }
+        return values.getFirst();
     }
 
     private List<String> prompts(OidcAuthorizationCodeConfig authorizationCode) {

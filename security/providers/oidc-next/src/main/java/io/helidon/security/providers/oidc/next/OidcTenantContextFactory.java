@@ -201,6 +201,7 @@ final class OidcTenantContextFactory {
         validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateIdTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validatePushedAuthorizationRequestMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+        validateRequestObjectMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
     }
 
     private static void validateAuthorizationCodeCapabilityMetadata(OidcTenantConfig tenantConfig,
@@ -317,6 +318,80 @@ final class OidcTenantContextFactory {
                     "well-known metadata pushed_authorization_request_endpoint must be present when Pushed "
                             + "Authorization Requests are required");
         }
+    }
+
+    private static void validateRequestObjectMetadata(OidcTenantConfig tenantConfig,
+                                                      OidcProviderMetadata metadata,
+                                                      boolean wellKnownMetadataLoaded) {
+        OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
+        OidcRequestObjectConfig requestObject = authorizationCode.requestObject();
+
+        /*
+         * Spec: RFC 9101, 10.5 Downgrade Attack
+         * https://www.rfc-editor.org/rfc/rfc9101.html#section-10.5
+         * Quote: "When the value of it as server metadata is `true`, then the server MUST reject the authorization
+         * request from any client that does not conform to this specification."
+         * Quote: "It MUST also reject the request if the Request Object uses an `alg` value of `none`."
+         * Quote: "If omitted, the default value is `false`."
+         */
+        if (wellKnownMetadataLoaded
+                && metadata.requireSignedRequestObject()
+                && requestObject.mode() == OidcRequestObjectMode.DISABLED) {
+            throw new IllegalStateException(
+                    "well-known metadata require_signed_request_object cannot be true when "
+                            + "authorization-code.request-object.mode is DISABLED");
+        }
+        if (!OidcRequestObjectSigner.shouldUse(authorizationCode, metadata)) {
+            return;
+        }
+        if (requestObject.jwk().isEmpty()) {
+            throw new IllegalStateException(
+                    "authorization-code.request-object.jwk must be configured when signed Request Objects are required");
+        }
+        if (wellKnownMetadataLoaded
+                && !pushedAuthorizationRequestsEnabled(authorizationCode, metadata)
+                && !metadata.requestParameterSupported().orElse(false)) {
+            /*
+             * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+             * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+             * Quote: "Boolean value specifying whether the OP supports use of the `request` parameter, with `true`
+             * indicating support."
+             * Quote: "If omitted, the default value is `false`."
+             */
+            throw new IllegalStateException(
+                    "well-known metadata request_parameter_supported must be true when signed Request Objects are used "
+                            + "without Pushed Authorization Requests");
+        }
+        metadata.requestObjectSigningAlgorithmsSupported()
+                .ifPresent(supportedAlgorithms -> {
+                    /*
+                     * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+                     * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+                     * Quote: "JSON array containing a list of the JWS signing algorithms (`alg` values) supported by
+                     * the OP for Request Objects".
+                     * Quote: "These algorithms are used both when the Request Object is passed by value (using the
+                     * `request` parameter) and when it is passed by reference (using the `request_uri` parameter)."
+                     */
+                    String algorithm = OidcRequestObjectSigner.signingAlgorithm(requestObject)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "authorization-code.request-object.jwk must be configured when signed Request "
+                                            + "Objects are enabled"));
+                    if (!supportedAlgorithms.contains(algorithm)) {
+                        throw new IllegalStateException(
+                                "well-known metadata request_object_signing_alg_values_supported must include "
+                                        + algorithm);
+                    }
+                });
+    }
+
+    private static boolean pushedAuthorizationRequestsEnabled(OidcAuthorizationCodeConfig authorizationCode,
+                                                             OidcProviderMetadata metadata) {
+        return switch (authorizationCode.pushedAuthorizationRequests()) {
+        case DISABLED -> false;
+        case AUTO -> metadata.pushedAuthorizationRequestEndpointUri().isPresent()
+                || metadata.requirePushedAuthorizationRequests();
+        case REQUIRED -> true;
+        };
     }
 
     private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,

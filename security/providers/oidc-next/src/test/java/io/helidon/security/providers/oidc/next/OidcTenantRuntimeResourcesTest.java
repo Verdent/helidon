@@ -230,6 +230,24 @@ class OidcTenantRuntimeResourcesTest {
     }
 
     @Test
+    void wellKnownMetadataParsesRequestObjectSupport() {
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("request_parameter_supported", true)
+                .setStrings("request_object_signing_alg_values_supported", List.of("RS256", "ES256"))
+                .setStrings("request_object_encryption_alg_values_supported", List.of("RSA-OAEP"))
+                .setStrings("request_object_encryption_enc_values_supported", List.of("A256GCM"))
+                .set("require_signed_request_object", true)
+                .build());
+
+        assertThat(metadata.requestParameterSupported(), is(Optional.of(true)));
+        assertThat(metadata.requestObjectSigningAlgorithmsSupported().orElseThrow(), is(List.of("RS256", "ES256")));
+        assertThat(metadata.requestObjectEncryptionAlgorithmsSupported().orElseThrow(), is(List.of("RSA-OAEP")));
+        assertThat(metadata.requestObjectContentEncryptionAlgorithmsSupported().orElseThrow(), is(List.of("A256GCM")));
+        assertThat(metadata.requireSignedRequestObject(), is(true));
+    }
+
+    @Test
     void wellKnownMetadataParsesFlowAndTokenEndpointCapabilities() {
         OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())

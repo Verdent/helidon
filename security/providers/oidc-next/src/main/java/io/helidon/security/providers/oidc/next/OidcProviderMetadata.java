@@ -49,6 +49,11 @@ final class OidcProviderMetadata {
     private final boolean authorizationResponseIssuerParameterSupported;
     private final boolean tlsClientCertificateBoundAccessTokens;
     private final boolean requirePushedAuthorizationRequests;
+    private final Optional<Boolean> requestParameterSupported;
+    private final Optional<List<String>> requestObjectSigningAlgorithmsSupported;
+    private final Optional<List<String>> requestObjectEncryptionAlgorithmsSupported;
+    private final Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported;
+    private final boolean requireSignedRequestObject;
 
     private OidcProviderMetadata(Optional<String> issuer,
                                  Optional<URI> wellKnownUri,
@@ -73,7 +78,12 @@ final class OidcProviderMetadata {
                                  Optional<URI> pushedAuthorizationRequestEndpointUri,
                                  boolean authorizationResponseIssuerParameterSupported,
                                  boolean tlsClientCertificateBoundAccessTokens,
-                                 boolean requirePushedAuthorizationRequests) {
+                                 boolean requirePushedAuthorizationRequests,
+                                 Optional<Boolean> requestParameterSupported,
+                                 Optional<List<String>> requestObjectSigningAlgorithmsSupported,
+                                 Optional<List<String>> requestObjectEncryptionAlgorithmsSupported,
+                                 Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported,
+                                 boolean requireSignedRequestObject) {
         this.issuer = issuer;
         this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
@@ -101,6 +111,12 @@ final class OidcProviderMetadata {
         this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
         this.tlsClientCertificateBoundAccessTokens = tlsClientCertificateBoundAccessTokens;
         this.requirePushedAuthorizationRequests = requirePushedAuthorizationRequests;
+        this.requestParameterSupported = requestParameterSupported;
+        this.requestObjectSigningAlgorithmsSupported = requestObjectSigningAlgorithmsSupported.map(List::copyOf);
+        this.requestObjectEncryptionAlgorithmsSupported = requestObjectEncryptionAlgorithmsSupported.map(List::copyOf);
+        this.requestObjectContentEncryptionAlgorithmsSupported =
+                requestObjectContentEncryptionAlgorithmsSupported.map(List::copyOf);
+        this.requireSignedRequestObject = requireSignedRequestObject;
     }
 
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
@@ -128,6 +144,11 @@ final class OidcProviderMetadata {
                       false,
                       false,
                       endpoints.pushedAuthorizationRequestEndpointUri(),
+                      false,
+                      Optional.empty(),
+                      Optional.empty(),
+                      Optional.empty(),
+                      Optional.empty(),
                       false);
     }
 
@@ -353,6 +374,66 @@ final class OidcProviderMetadata {
                                        boolean tlsClientCertificateBoundAccessTokens,
                                        Optional<URI> pushedAuthorizationRequestEndpointUri,
                                        boolean requirePushedAuthorizationRequests) {
+        return create(issuer,
+                      wellKnownUri,
+                      authorizationEndpointUri,
+                      tokenEndpointUri,
+                      mutualTlsTokenEndpointUri,
+                      jwkSetUri,
+                      jwkSetUriFromWellKnownMetadata,
+                      responseTypesSupported,
+                      grantTypesSupported,
+                      codeChallengeMethodsSupported,
+                      tokenEndpointAuthenticationMethodsSupported,
+                      tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                      idTokenSigningAlgorithmsSupported,
+                      idTokenEncryptionAlgorithmsSupported,
+                      idTokenContentEncryptionAlgorithmsSupported,
+                      introspectionEndpointUri,
+                      introspectionEndpointAuthenticationMethodsSupported,
+                      introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                      userInfoEndpointUri,
+                      endSessionEndpointUri,
+                      authorizationResponseIssuerParameterSupported,
+                      tlsClientCertificateBoundAccessTokens,
+                      pushedAuthorizationRequestEndpointUri,
+                      requirePushedAuthorizationRequests,
+                      Optional.empty(),
+                      Optional.empty(),
+                      Optional.empty(),
+                      Optional.empty(),
+                      false);
+    }
+
+    static OidcProviderMetadata create(Optional<String> issuer,
+                                       Optional<URI> wellKnownUri,
+                                       Optional<URI> authorizationEndpointUri,
+                                       Optional<URI> tokenEndpointUri,
+                                       Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> jwkSetUri,
+                                       boolean jwkSetUriFromWellKnownMetadata,
+                                       Optional<List<String>> responseTypesSupported,
+                                       Optional<List<String>> grantTypesSupported,
+                                       Optional<List<String>> codeChallengeMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> tokenEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenSigningAlgorithmsSupported,
+                                       Optional<List<String>> idTokenEncryptionAlgorithmsSupported,
+                                       Optional<List<String>> idTokenContentEncryptionAlgorithmsSupported,
+                                       Optional<URI> introspectionEndpointUri,
+                                       Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
+                                       Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
+                                       Optional<URI> userInfoEndpointUri,
+                                       Optional<URI> endSessionEndpointUri,
+                                       boolean authorizationResponseIssuerParameterSupported,
+                                       boolean tlsClientCertificateBoundAccessTokens,
+                                       Optional<URI> pushedAuthorizationRequestEndpointUri,
+                                       boolean requirePushedAuthorizationRequests,
+                                       Optional<Boolean> requestParameterSupported,
+                                       Optional<List<String>> requestObjectSigningAlgorithmsSupported,
+                                       Optional<List<String>> requestObjectEncryptionAlgorithmsSupported,
+                                       Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported,
+                                       boolean requireSignedRequestObject) {
         return new OidcProviderMetadata(issuer,
                                         wellKnownUri,
                                         authorizationEndpointUri,
@@ -376,7 +457,12 @@ final class OidcProviderMetadata {
                                         pushedAuthorizationRequestEndpointUri,
                                         authorizationResponseIssuerParameterSupported,
                                         tlsClientCertificateBoundAccessTokens,
-                                        requirePushedAuthorizationRequests);
+                                        requirePushedAuthorizationRequests,
+                                        requestParameterSupported,
+                                        requestObjectSigningAlgorithmsSupported,
+                                        requestObjectEncryptionAlgorithmsSupported,
+                                        requestObjectContentEncryptionAlgorithmsSupported,
+                                        requireSignedRequestObject);
     }
 
     static OidcProviderMetadata fromWellKnownMetadataJson(JsonObject json) {
@@ -407,6 +493,12 @@ final class OidcProviderMetadata {
                               .orElse(false),
                       uriValue(json, "pushed_authorization_request_endpoint"),
                       json.booleanValue("require_pushed_authorization_requests")
+                              .orElse(false),
+                      json.booleanValue("request_parameter_supported"),
+                      stringArrayValue(json, "request_object_signing_alg_values_supported"),
+                      stringArrayValue(json, "request_object_encryption_alg_values_supported"),
+                      stringArrayValue(json, "request_object_encryption_enc_values_supported"),
+                      json.booleanValue("require_signed_request_object")
                               .orElse(false));
     }
 
@@ -450,7 +542,15 @@ final class OidcProviderMetadata {
                       pushedAuthorizationRequestEndpointUri
                               .or(wellKnownMetadata::pushedAuthorizationRequestEndpointUri),
                       requirePushedAuthorizationRequests
-                              || wellKnownMetadata.requirePushedAuthorizationRequests());
+                              || wellKnownMetadata.requirePushedAuthorizationRequests(),
+                      requestParameterSupported.or(wellKnownMetadata::requestParameterSupported),
+                      requestObjectSigningAlgorithmsSupported
+                              .or(wellKnownMetadata::requestObjectSigningAlgorithmsSupported),
+                      requestObjectEncryptionAlgorithmsSupported
+                              .or(wellKnownMetadata::requestObjectEncryptionAlgorithmsSupported),
+                      requestObjectContentEncryptionAlgorithmsSupported
+                              .or(wellKnownMetadata::requestObjectContentEncryptionAlgorithmsSupported),
+                      requireSignedRequestObject || wellKnownMetadata.requireSignedRequestObject());
     }
 
     Optional<String> issuer() {
@@ -551,6 +651,26 @@ final class OidcProviderMetadata {
 
     boolean requirePushedAuthorizationRequests() {
         return requirePushedAuthorizationRequests;
+    }
+
+    Optional<Boolean> requestParameterSupported() {
+        return requestParameterSupported;
+    }
+
+    Optional<List<String>> requestObjectSigningAlgorithmsSupported() {
+        return requestObjectSigningAlgorithmsSupported;
+    }
+
+    Optional<List<String>> requestObjectEncryptionAlgorithmsSupported() {
+        return requestObjectEncryptionAlgorithmsSupported;
+    }
+
+    Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported() {
+        return requestObjectContentEncryptionAlgorithmsSupported;
+    }
+
+    boolean requireSignedRequestObject() {
+        return requireSignedRequestObject;
     }
 
     static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {

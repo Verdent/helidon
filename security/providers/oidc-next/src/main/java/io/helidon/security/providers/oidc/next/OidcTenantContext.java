@@ -108,6 +108,10 @@ final class OidcTenantContext {
         return runtimeResources().endpointClient();
     }
 
+    Optional<OidcRequestObjectSigner> requestObjectSigner() {
+        return runtimeResources().requestObjectSigner();
+    }
+
     OidcClientAuthenticationSupport introspectionClientAuthentication() {
         return runtimeResources().introspectionClientAuthentication();
     }
@@ -164,6 +168,7 @@ final class OidcTenantContext {
     private record RuntimeResources(Optional<OidcEndpointPolicy> endpointPolicy,
                                     OidcProviderMetadata metadata,
                                     OidcEndpointClient endpointClient,
+                                    Optional<OidcRequestObjectSigner> requestObjectSigner,
                                     OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
@@ -177,6 +182,7 @@ final class OidcTenantContext {
             return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
+                                        OidcRequestObjectSigner.create(tenantConfig),
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
                                         idTokenDecryptor,

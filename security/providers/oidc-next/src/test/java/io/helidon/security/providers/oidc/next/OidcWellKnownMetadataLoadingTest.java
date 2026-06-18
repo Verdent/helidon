@@ -231,6 +231,121 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresRequestObjectsAndDisabled() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("require_signed_request_object", true)
+                                      .set("request_parameter_supported", true)
+                                      .setStrings("request_object_signing_alg_values_supported", List.of("RS256"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.DISABLED)))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("require_signed_request_object"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresRequestObjectsWithoutSigningKey() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("require_signed_request_object", true)
+                                      .set("request_parameter_supported", true)
+                                      .setStrings("request_object_signing_alg_values_supported", List.of("RS256"))
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("authorization-code.request-object.jwk"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportByValueRequestObjects() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .setStrings("request_object_signing_alg_values_supported", List.of("RS256"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("RS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("request_parameter_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportRequestObjectAlgorithm() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("request_parameter_supported", true)
+                                      .setStrings("request_object_signing_alg_values_supported", List.of("ES256"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("RS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("request_object_signing_alg_values_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantAcceptsSupportedRequestObjectMetadata() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("request_parameter_supported", true)
+                                      .setStrings("request_object_signing_alg_values_supported", List.of("RS256"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("RS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("ready"), context.ready(), is(true));
+    }
+
+    @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataResponseTypesAreMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())

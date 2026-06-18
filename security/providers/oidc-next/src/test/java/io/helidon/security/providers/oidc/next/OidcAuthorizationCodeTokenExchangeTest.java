@@ -35,6 +35,7 @@ import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
@@ -267,6 +268,91 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().containsKey("state"), is(true));
         assertThat(request.formParameters().containsKey("nonce"), is(true));
         assertThat(request.formParameters().containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationCanUseSignedRequestObjectWithPushedAuthorizationRequest(URI serverUri) {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile"))
+                        .prompts(List.of("login"))
+                        .resources(List.of("https://api.example.com", "urn:example:contacts"))
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("RS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                            .putTenant("default", tenant)
+                                                            .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("client_id"), is(CLIENT_ID));
+        assertThat(query.get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+        assertThat(query.contains("request"), is(false));
+        assertThat(query.contains("state"), is(false));
+        assertThat(query.contains("nonce"), is(false));
+
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().get("response_type"), is(List.of("code")));
+        assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+        assertThat(request.formParameters().get("scope"), is(List.of("openid profile")));
+        assertThat(request.formParameters().containsKey("state"), is(false));
+        assertThat(request.formParameters().containsKey("nonce"), is(false));
+        assertThat(request.formParameters().containsKey("redirect_uri"), is(false));
+        assertThat(request.formParameters().containsKey("resource"), is(false));
+        assertThat(request.formParameters().containsKey("request_uri"), is(false));
+
+        String requestObject = request.formParameters().get("request").get(0);
+        String[] requestObjectParts = requestObject.split("\\.", -1);
+        assertThat(requestObjectParts.length, is(3));
+        JsonObject requestObjectHeader = JsonParser.create(Base64.getUrlDecoder().decode(requestObjectParts[0]))
+                .readJsonObject();
+        JsonObject requestObjectPayload = JsonParser.create(Base64.getUrlDecoder().decode(requestObjectParts[1]))
+                .readJsonObject();
+        byte[] signedBytes = (requestObjectParts[0] + "." + requestObjectParts[1]).getBytes(StandardCharsets.US_ASCII);
+        byte[] signature = Base64.getUrlDecoder().decode(requestObjectParts[2]);
+        assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
+        assertThat(requestObjectHeader.stringValue("alg").orElse(""), is("RS256"));
+        assertThat(requestObjectHeader.stringValue("kid").orElse(""), is("sign-rsa"));
+        assertThat(requestObjectPayload.stringValue("iss").orElse(""), is(CLIENT_ID));
+        assertThat(requestObjectPayload.value("aud").orElseThrow()
+                           .asArray()
+                           .values()
+                           .stream()
+                           .map(value -> value.asString().value())
+                           .toList(),
+                   is(List.of(ISSUER.toString())));
+        assertThat(requestObjectPayload.stringValue("redirect_uri").orElse(""), is(REDIRECTION_ENDPOINT_URI.toString()));
+        assertThat(requestObjectPayload.stringValue("prompt").orElse(""), is("login"));
+        assertThat(requestObjectPayload.value("resource").orElseThrow()
+                           .asArray()
+                           .values()
+                           .stream()
+                           .map(value -> value.asString().value())
+                           .toList(),
+                   is(List.of("https://api.example.com", "urn:example:contacts")));
+        assertThat(requestObjectPayload.containsKey("request"), is(false));
+        assertThat(requestObjectPayload.containsKey("request_uri"), is(false));
     }
 
     @Test

@@ -461,6 +461,69 @@ class OidcProviderTest {
     }
 
     @Test
+    void authorizationCodeFlowInitiationCanUseSignedRequestObject() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.prompts(List.of("login"))
+                .resources(List.of("https://api.example.com", "urn:example:contacts"))
+                .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                        .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("response_type"), is("code"));
+        assertThat(query.get("client_id"), is("client-id"));
+        assertThat(query.get("scope"), is("openid profile"));
+        assertThat(query.contains("request"), is(true));
+        assertThat(query.contains("redirect_uri"), is(false));
+        assertThat(query.contains("state"), is(false));
+        assertThat(query.contains("nonce"), is(false));
+        assertThat(query.contains("code_challenge"), is(false));
+        assertThat(query.contains("resource"), is(false));
+
+        SignedJwt signedRequestObject = SignedJwt.parseToken(query.get("request"));
+        signedRequestObject.verifySignature(signKeys).checkValid();
+        Jwt requestObject = signedRequestObject.getJwt();
+        assertThat(requestObject.algorithm().orElse(""), is("RS256"));
+        assertThat(requestObject.keyId().orElse(""), is("sign-rsa"));
+        assertThat(requestObject.issuer().orElse(""), is("client-id"));
+        assertThat(requestObject.audience().orElseThrow(), is(List.of(ISSUER.toString())));
+        assertThat(requestObject.issueTime().isPresent(), is(true));
+        assertThat(requestObject.expirationTime().isPresent(), is(true));
+        assertThat(requestObject.jwtId().isPresent(), is(true));
+        assertThat(requestObject.payloadClaimsJson().get("response_type").asString().value(), is("code"));
+        assertThat(requestObject.payloadClaimsJson().get("client_id").asString().value(), is("client-id"));
+        assertThat(requestObject.payloadClaimsJson().get("redirect_uri").asString().value(),
+                   is(REDIRECTION_ENDPOINT_URI.toString()));
+        assertThat(requestObject.payloadClaimsJson().get("scope").asString().value(), is("openid profile"));
+        assertThat(requestObject.payloadClaimsJson().get("prompt").asString().value(), is("login"));
+        assertThat(requestObject.payloadClaimsJson().get("resource").asArray()
+                           .values()
+                           .stream()
+                           .map(value -> value.asString().value())
+                           .toList(),
+                   is(List.of("https://api.example.com", "urn:example:contacts")));
+        assertThat(requestObject.payloadClaimsJson().containsKey("request"), is(false));
+        assertThat(requestObject.payloadClaimsJson().containsKey("request_uri"), is(false));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(requestObject.payloadClaimsJson().get("state").asString().value(), is(state.state()));
+        assertThat(requestObject.payloadClaimsJson().get("nonce").asString().value(), is(state.nonce()));
+        assertThat(requestObject.payloadClaimsJson().get("code_challenge").asString().value(),
+                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
+                                                                     OidcPkceMethod.S256)));
+        assertThat(requestObject.payloadClaimsJson().get("code_challenge_method").asString().value(), is("S256"));
+    }
+
+    @Test
     void authorizationCodeFlowInitiationRequestsConsentForOfflineAccess() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.scopes(List.of("openid", "offline_access")));
         OidcProvider provider = provider(tenant);

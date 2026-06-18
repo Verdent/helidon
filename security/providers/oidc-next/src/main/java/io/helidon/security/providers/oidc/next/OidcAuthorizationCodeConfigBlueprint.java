@@ -88,6 +88,20 @@ interface OidcAuthorizationCodeConfigBlueprint {
     OidcPushedAuthorizationRequestMode pushedAuthorizationRequests();
 
     /**
+     * Signed Request Object configuration.
+     * <p>
+     * When enabled or required, the provider signs the Authentication Request parameters as an RFC 9101 Request Object
+     * and sends that JWT as the {@code request} parameter. This can be combined with Pushed Authorization Requests; in
+     * that case the signed {@code request} parameter is sent to the PAR endpoint and the browser receives the returned
+     * {@code request_uri}.
+     *
+     * @return signed Request Object configuration
+     */
+    @Option.Configured("request-object")
+    @Option.Default("create()")
+    OidcRequestObjectConfig requestObject();
+
+    /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.
      * <p>
      * Defaults to {@code true}. Disable only for confidential-client compatibility with a legacy Authorization Server

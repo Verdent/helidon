@@ -85,6 +85,7 @@ class OidcProviderConfigTest {
         OidcCookieConfig cookies = OidcCookieConfig.create();
         OidcSubjectMappingConfig subjectMapping = OidcSubjectMappingConfig.create();
         OidcClientAssertionConfig clientAssertion = OidcClientAssertionConfig.create();
+        OidcRequestObjectConfig requestObject = OidcRequestObjectConfig.create();
         OidcJwkSetConfig jwkSet = OidcJwkSetConfig.create();
         OidcIdTokenConfig idToken = OidcIdTokenConfig.create();
 
@@ -126,6 +127,12 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.prompts().isEmpty(), is(true));
         assertThat(authorizationCode.resources().isEmpty(), is(true));
         assertThat(authorizationCode.pushedAuthorizationRequests(), is(OidcPushedAuthorizationRequestMode.AUTO));
+        assertThat(authorizationCode.requestObject(), is(requestObject));
+        assertThat(requestObject.mode(), is(OidcRequestObjectMode.AUTO));
+        assertThat(requestObject.algorithm().isEmpty(), is(true));
+        assertThat(requestObject.keyId().isEmpty(), is(true));
+        assertThat(requestObject.jwk().isEmpty(), is(true));
+        assertThat(requestObject.lifetime(), is(Duration.ofMinutes(1)));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
@@ -167,6 +174,10 @@ class OidcProviderConfigTest {
                    is(List.of(OidcPushedAuthorizationRequestMode.DISABLED,
                               OidcPushedAuthorizationRequestMode.AUTO,
                               OidcPushedAuthorizationRequestMode.REQUIRED)));
+        assertThat(List.of(OidcRequestObjectMode.values()),
+                   is(List.of(OidcRequestObjectMode.DISABLED,
+                              OidcRequestObjectMode.AUTO,
+                              OidcRequestObjectMode.REQUIRED)));
         assertThat(clientAssertion.algorithm().isEmpty(), is(true));
         assertThat(clientAssertion.keyId().isEmpty(), is(true));
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
@@ -220,6 +231,13 @@ class OidcProviderConfigTest {
         assertThat(OidcPushedAuthorizationRequestMode.DISABLED.text(), is("disabled"));
         assertThat(OidcPushedAuthorizationRequestMode.AUTO.text(), is("auto"));
         assertThat(OidcPushedAuthorizationRequestMode.REQUIRED.text(), is("required"));
+    }
+
+    @Test
+    void requestObjectModesUseConfigTextValues() {
+        assertThat(OidcRequestObjectMode.DISABLED.text(), is("disabled"));
+        assertThat(OidcRequestObjectMode.AUTO.text(), is("auto"));
+        assertThat(OidcRequestObjectMode.REQUIRED.text(), is("required"));
     }
 
     @Test
@@ -310,6 +328,12 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.authorization-code.resources.0", "https://api.example.com"),
                         Map.entry("tenants.default.authorization-code.resources.1", "urn:example:contacts"),
                         Map.entry("tenants.default.authorization-code.pushed-authorization-requests", "REQUIRED"),
+                        Map.entry("tenants.default.authorization-code.request-object.mode", "REQUIRED"),
+                        Map.entry("tenants.default.authorization-code.request-object.algorithm", "RS256"),
+                        Map.entry("tenants.default.authorization-code.request-object.key-id", "sign-rsa"),
+                        Map.entry("tenants.default.authorization-code.request-object.jwk.resource-path",
+                                  "oidc-next-sign-jwk.json"),
+                        Map.entry("tenants.default.authorization-code.request-object.lifetime", "PT2M"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.encryption-secret",
                                   "this-secret-is-long-enough-for-config-test"),
@@ -387,6 +411,13 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.prompts(), is(List.of("login", "consent")));
         assertThat(authorizationCode.resources(), is(List.of("https://api.example.com", "urn:example:contacts")));
         assertThat(authorizationCode.pushedAuthorizationRequests(), is(OidcPushedAuthorizationRequestMode.REQUIRED));
+        OidcRequestObjectConfig requestObject = authorizationCode.requestObject();
+        assertThat(requestObject.mode(), is(OidcRequestObjectMode.REQUIRED));
+        assertThat(requestObject.algorithm().orElse(""), is("RS256"));
+        assertThat(requestObject.keyId().orElse(""), is("sign-rsa"));
+        assertThat(requestObject.jwk().orElseThrow().resourcePath().orElse(""), is("oidc-next-sign-jwk.json"));
+        assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
+        assertThat(requestObject.lifetime(), is(Duration.ofMinutes(2)));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
@@ -2067,6 +2098,92 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresValidRequestObjectConfiguration() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.lifetime(Duration.ZERO)))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.lifetime"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("none")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.algorithm"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId("sign-rsa")
+                                .algorithm("HS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.algorithm"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject
+                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .keyId(" sign-rsa")
+                                .algorithm("RS256")))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.key-id"));
+
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject
+                                .jwk(jwk -> jwk.uri(URI.create("https://issuer.example/request-object-jwk")))))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
+        assertThat(thrown.getMessage(), containsString("not a URI"));
     }
 
     @Test

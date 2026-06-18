@@ -27,9 +27,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.builder.api.Prototype;
-import io.helidon.config.Config;
 import io.helidon.common.tls.ConfiguredTlsManager;
 import io.helidon.common.tls.TlsConfig;
+import io.helidon.config.Config;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClient;
@@ -726,6 +726,7 @@ final class OidcConfigSupport {
                                    tokenEndpointTlsRequired,
                                    OidcConfigSupport::validateTokenEndpointUri);
         validatePushedAuthorizationRequests(authorizationCode, endpoints, wellKnownUri);
+        validateRequestObject(authorizationCode.requestObject());
         if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
             throw new IllegalArgumentException(
                     "issuer or well-known-uri must be configured when Authorization Code Flow is enabled");
@@ -754,6 +755,49 @@ final class OidcConfigSupport {
             throw new IllegalArgumentException(
                     "pushed-authorization-request-endpoint-uri or well-known-uri must be configured when "
                             + "authorization-code.pushed-authorization-requests is REQUIRED");
+        }
+    }
+
+    private static void validateRequestObject(OidcRequestObjectConfig requestObject) {
+        if (requestObject.lifetime().isZero() || requestObject.lifetime().isNegative()) {
+            throw new IllegalArgumentException("authorization-code.request-object.lifetime must be positive");
+        }
+        requestObject.algorithm()
+                .filter(algorithm -> algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip())
+                        || "none".equalsIgnoreCase(algorithm))
+                .ifPresent(ignored -> {
+                    /*
+                     * Spec: RFC 9101, 10.5 Downgrade Attack
+                     * https://www.rfc-editor.org/rfc/rfc9101.html#section-10.5
+                     * Quote: "It MUST also reject the request if the Request Object uses an `alg` value of `none`."
+                     */
+                    throw new IllegalArgumentException(
+                            "authorization-code.request-object.algorithm must not be blank, padded, or none");
+                });
+        requestObject.algorithm()
+                .filter(algorithm -> !OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm))
+                .ifPresent(algorithm -> {
+                    throw new IllegalArgumentException("authorization-code.request-object.algorithm must be one of "
+                                                               + OidcClientAuthenticationSupport
+                                                                       .privateKeyJwtAlgorithms());
+                });
+        requestObject.keyId()
+                .filter(keyId -> keyId.isBlank() || !keyId.equals(keyId.strip()))
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException(
+                            "authorization-code.request-object.key-id must not be blank or padded");
+                });
+        requestObject.jwk()
+                .filter(jwk -> jwk.uri().isPresent())
+                .ifPresent(ignored -> {
+                    throw new IllegalArgumentException(
+                            "authorization-code.request-object.jwk must be local private key material, not a URI");
+                });
+        if (requestObject.mode() == OidcRequestObjectMode.REQUIRED && requestObject.jwk().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "authorization-code.request-object.jwk must be configured when "
+                            + "authorization-code.request-object.mode is REQUIRED");
         }
     }
 

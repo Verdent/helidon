@@ -173,6 +173,27 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void authorizationCodeTenantLoadsWellKnownMutualTlsPushedAuthorizationRequestMetadata() {
+        URI mutualTlsPushedAuthorizationRequestEndpointUri = URI.create("https://issuer.example/mtls-par");
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("pushed_authorization_request_endpoint",
+                                           pushedAuthorizationRequestEndpointUri.toString())
+                                      .set("mtls_endpoint_aliases", JsonObject.builder()
+                                              .set("token_endpoint", "https://issuer.example/mtls-token")
+                                              .set("pushed_authorization_request_endpoint",
+                                                   mutualTlsPushedAuthorizationRequestEndpointUri.toString())
+                                              .build())
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("ready"), context.ready(), is(true));
+        assertThat(context.metadata().mutualTlsPushedAuthorizationRequestEndpointUri(),
+                   is(Optional.of(mutualTlsPushedAuthorizationRequestEndpointUri)));
+    }
+
+    @Test
     void authorizationCodeTenantDoesNotLoadWellKnownMetadataOnlyToDiscoverOptionalPushedAuthorizationRequests() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())

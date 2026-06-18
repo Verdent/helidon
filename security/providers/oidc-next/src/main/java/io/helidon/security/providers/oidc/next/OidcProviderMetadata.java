@@ -30,6 +30,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> authorizationEndpointUri;
     private final Optional<URI> tokenEndpointUri;
     private final Optional<URI> mutualTlsTokenEndpointUri;
+    private final Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri;
     private final Optional<URI> jwkSetUri;
     private final boolean jwkSetUriFromWellKnownMetadata;
     private final Optional<List<String>> responseTypesSupported;
@@ -60,6 +61,7 @@ final class OidcProviderMetadata {
                                  Optional<URI> authorizationEndpointUri,
                                  Optional<URI> tokenEndpointUri,
                                  Optional<URI> mutualTlsTokenEndpointUri,
+                                 Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                  Optional<URI> jwkSetUri,
                                  boolean jwkSetUriFromWellKnownMetadata,
                                  Optional<List<String>> responseTypesSupported,
@@ -89,6 +91,7 @@ final class OidcProviderMetadata {
         this.authorizationEndpointUri = authorizationEndpointUri;
         this.tokenEndpointUri = tokenEndpointUri;
         this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
+        this.mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsPushedAuthorizationRequestEndpointUri;
         this.jwkSetUri = jwkSetUri;
         this.jwkSetUriFromWellKnownMetadata = jwkSetUriFromWellKnownMetadata;
         this.responseTypesSupported = responseTypesSupported.map(List::copyOf);
@@ -125,6 +128,7 @@ final class OidcProviderMetadata {
                       wellKnownUri(tenantConfig.issuer(), endpoints),
                       endpoints.authorizationEndpointUri(),
                       endpoints.tokenEndpointUri(),
+                      Optional.empty(),
                       Optional.empty(),
                       endpoints.jwksUri(),
                       false,
@@ -239,6 +243,7 @@ final class OidcProviderMetadata {
                       authorizationEndpointUri,
                       tokenEndpointUri,
                       mutualTlsTokenEndpointUri,
+                      Optional.empty(),
                       jwkSetUri,
                       false,
                       responseTypesSupported,
@@ -262,6 +267,7 @@ final class OidcProviderMetadata {
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
                                        Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                        Optional<URI> jwkSetUri,
                                        boolean jwkSetUriFromWellKnownMetadata,
                                        Optional<List<String>> responseTypesSupported,
@@ -283,6 +289,7 @@ final class OidcProviderMetadata {
                       authorizationEndpointUri,
                       tokenEndpointUri,
                       mutualTlsTokenEndpointUri,
+                      mutualTlsPushedAuthorizationRequestEndpointUri,
                       jwkSetUri,
                       jwkSetUriFromWellKnownMetadata,
                       responseTypesSupported,
@@ -307,6 +314,7 @@ final class OidcProviderMetadata {
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
                                        Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                        Optional<URI> jwkSetUri,
                                        boolean jwkSetUriFromWellKnownMetadata,
                                        Optional<List<String>> responseTypesSupported,
@@ -329,6 +337,7 @@ final class OidcProviderMetadata {
                       authorizationEndpointUri,
                       tokenEndpointUri,
                       mutualTlsTokenEndpointUri,
+                      mutualTlsPushedAuthorizationRequestEndpointUri,
                       jwkSetUri,
                       jwkSetUriFromWellKnownMetadata,
                       responseTypesSupported,
@@ -355,6 +364,7 @@ final class OidcProviderMetadata {
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
                                        Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                        Optional<URI> jwkSetUri,
                                        boolean jwkSetUriFromWellKnownMetadata,
                                        Optional<List<String>> responseTypesSupported,
@@ -379,6 +389,7 @@ final class OidcProviderMetadata {
                       authorizationEndpointUri,
                       tokenEndpointUri,
                       mutualTlsTokenEndpointUri,
+                      mutualTlsPushedAuthorizationRequestEndpointUri,
                       jwkSetUri,
                       jwkSetUriFromWellKnownMetadata,
                       responseTypesSupported,
@@ -410,6 +421,7 @@ final class OidcProviderMetadata {
                                        Optional<URI> authorizationEndpointUri,
                                        Optional<URI> tokenEndpointUri,
                                        Optional<URI> mutualTlsTokenEndpointUri,
+                                       Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                        Optional<URI> jwkSetUri,
                                        boolean jwkSetUriFromWellKnownMetadata,
                                        Optional<List<String>> responseTypesSupported,
@@ -439,6 +451,7 @@ final class OidcProviderMetadata {
                                         authorizationEndpointUri,
                                         tokenEndpointUri,
                                         mutualTlsTokenEndpointUri,
+                                        mutualTlsPushedAuthorizationRequestEndpointUri,
                                         jwkSetUri,
                                         jwkSetUriFromWellKnownMetadata,
                                         responseTypesSupported,
@@ -471,7 +484,8 @@ final class OidcProviderMetadata {
                       Optional.empty(),
                       uriValue(json, "authorization_endpoint"),
                       uriValue(json, "token_endpoint"),
-                      mutualTlsTokenEndpointUri(json),
+                      mutualTlsEndpointUri(json, "token_endpoint"),
+                      mutualTlsEndpointUri(json, "pushed_authorization_request_endpoint"),
                       jwkSetUri,
                       jwkSetUri.isPresent(),
                       stringArrayValue(json, "response_types_supported"),
@@ -515,6 +529,9 @@ final class OidcProviderMetadata {
                       mutualTlsTokenEndpointUri.or(() -> tokenEndpointUri.isPresent()
                               ? Optional.empty()
                               : wellKnownMetadata.mutualTlsTokenEndpointUri()),
+                      mutualTlsPushedAuthorizationRequestEndpointUri.or(() -> pushedAuthorizationRequestEndpointUri.isPresent()
+                              ? Optional.empty()
+                              : wellKnownMetadata.mutualTlsPushedAuthorizationRequestEndpointUri()),
                       mergedJwkSetUri,
                       mergedJwkSetUriFromWellKnownMetadata,
                       responseTypesSupported.or(wellKnownMetadata::responseTypesSupported),
@@ -575,6 +592,10 @@ final class OidcProviderMetadata {
 
     Optional<URI> mutualTlsTokenEndpointUri() {
         return mutualTlsTokenEndpointUri;
+    }
+
+    Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri() {
+        return mutualTlsPushedAuthorizationRequestEndpointUri;
     }
 
     Optional<URI> jwkSetUri() {
@@ -710,16 +731,19 @@ final class OidcProviderMetadata {
                         .toList());
     }
 
-    private static Optional<URI> mutualTlsTokenEndpointUri(JsonObject json) {
+    private static Optional<URI> mutualTlsEndpointUri(JsonObject json, String endpointName) {
         /*
          * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
          * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
          * Quote: "The parameter value itself consists of one or more endpoint parameters, such as `token_endpoint`,
          * `revocation_endpoint`, `introspection_endpoint`, etc., conventionally defined for the top level of
          * authorization server metadata."
+         * Quote: "An OAuth client intending to do mutual TLS [...] MUST use the alias URL of the endpoint within the
+         * `mtls_endpoint_aliases`, when present, in preference to the endpoint URL of the same name at the top level of
+         * metadata."
          */
         return json.objectValue("mtls_endpoint_aliases")
-                .flatMap(aliases -> uriValue(aliases, "token_endpoint"));
+                .flatMap(aliases -> uriValue(aliases, endpointName));
     }
 
     private void validateWellKnownMetadataIssuer(OidcProviderMetadata wellKnownMetadata) {

@@ -190,7 +190,17 @@ final class OidcEndpointClient {
     }
 
     OidcPushedAuthorizationRequestResult pushedAuthorizationRequest(Parameters authorizationRequestParameters) {
-        Optional<URI> endpointUri = metadata.pushedAuthorizationRequestEndpointUri();
+        /*
+         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+         * Quote: "An OAuth client intending to do mutual TLS [...] MUST use the alias URL of the endpoint within the
+         * `mtls_endpoint_aliases`, when present, in preference to the endpoint URL of the same name at the top level of
+         * metadata."
+         */
+        Optional<URI> endpointUri = clientAuthentication.usesMutualTls()
+                ? metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
+                        .or(metadata::pushedAuthorizationRequestEndpointUri)
+                : metadata.pushedAuthorizationRequestEndpointUri();
         if (endpointUri.isEmpty()) {
             return OidcPushedAuthorizationRequestResult.failure(
                     "Pushed Authorization Request Endpoint is not configured");
@@ -238,8 +248,24 @@ final class OidcEndpointClient {
                                 e);
                     }
                 }
-                return OidcPushedAuthorizationRequestResult.failure(
-                        "Pushed Authorization Request Endpoint rejected request");
+                /*
+                 * Spec: RFC 9126, 2.3 Error Response
+                 * https://www.rfc-editor.org/rfc/rfc9126.html#section-2.3
+                 * Quote: "The authorization server returns an error response with the same format as is specified for
+                 * error responses from the token endpoint".
+                 */
+                if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
+                    return OidcPushedAuthorizationRequestResult.failure(
+                            "Pushed Authorization Request Endpoint Error Response is invalid");
+                }
+                try {
+                    return OidcPushedAuthorizationRequestResult.error(
+                            OidcTokenErrorResponse.fromJson(response.as(JsonObject.class)));
+                } catch (RuntimeException e) {
+                    return OidcPushedAuthorizationRequestResult.failure(
+                            "Pushed Authorization Request Endpoint Error Response is invalid",
+                            e);
+                }
             }
         } catch (RuntimeException e) {
             return OidcPushedAuthorizationRequestResult.failure(

@@ -1,6 +1,6 @@
 # oidc-next Code Quality Audit
 
-Date: 2026-06-18
+Date: 2026-06-19
 
 Scope: current `security/providers/oidc-next` provider implementation. This file is a live audit log and should be
 updated as files are reviewed and cleanup decisions are made.
@@ -104,6 +104,12 @@ Applied cleanup:
   `OidcClientAuthenticationConfigValidator`, WebClient defaulting lives in `OidcWebClientFactory`, endpoint-policy
   resolution lives in `OidcEndpointPolicyResolver`, and shared resource indicator validation lives in
   `OidcResourceIndicators`.
+- Audited endpoint-level outbound public API against configured outbound target behavior. Endpoint-level Client
+  Credentials Grant now applies the same resource-indicator validation as config, endpoint-level Token Exchange no
+  longer uses `null` as a public API sentinel, and the README now documents endpoint-level Client Credentials Grant and
+  Token Exchange examples.
+- Removed the remaining one-line optional-text helper from `OidcOutboundPolicy`; scope absence is now expressed directly
+  at the two construction sites.
 
 ## Cleanup Candidates To Apply
 

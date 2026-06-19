@@ -127,6 +127,8 @@ interface TestOidcEndpointsConfigBlueprint {
 
     Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> authorization();
 
+    Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> pushedAuthorization();
+
     Optional<TestOidcEndpointHandler<TestOidcTokenEndpointContext>> token();
 
     Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> jwks();

@@ -27,6 +27,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.tests.integration.security.oidcnext.OidcIntegrationSupport.BrowserSession;
+import io.helidon.tests.integration.security.oidcnext.idp.TestOidcRequest;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webserver.WebServer;
@@ -143,8 +144,12 @@ class OidcAuthorizationCodeFlowIT {
                 }
 
                 assertThat(idp.tokenRequests().size(), is(1));
-                assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
-                           is("authorization_code"));
+                TestOidcRequest authorizationRequest = idp.authorizationRequests().getFirst();
+                assertThat(authorizationRequest.queryParam("code_challenge").orElse("").isBlank(), is(false));
+                assertThat(authorizationRequest.queryParam("code_challenge_method").orElse(""), is("S256"));
+                TestOidcRequest tokenRequest = idp.tokenRequests().getFirst();
+                assertThat(tokenRequest.formParam("grant_type").orElse(""), is("authorization_code"));
+                assertThat(tokenRequest.formParam("code_verifier").orElse("").isBlank(), is(false));
                 assertThat(idp.userInfoRequests().size(), is(1));
                 String userInfoToken = idp.userInfoRequests().getFirst().bearerToken().orElseThrow();
                 assertThat(userInfoToken.startsWith("opaque-access-"), is(true));

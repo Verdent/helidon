@@ -55,7 +55,7 @@ class OidcIdTokenValidatorTest {
     private static JwkKeys encryptKeys;
     private static URI jwksUri;
 
-    private final OidcIdTokenValidator validator = OidcIdTokenValidator.create();
+    private final OidcIdTokenValidator validator = new OidcIdTokenValidator();
 
     @BeforeAll
     static void initClass() throws Exception {

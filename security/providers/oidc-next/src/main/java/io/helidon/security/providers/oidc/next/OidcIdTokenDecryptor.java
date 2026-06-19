@@ -100,9 +100,10 @@ final class OidcIdTokenDecryptor {
         List<Jwk> jwks = keys.keys();
         Optional<String> keyId = headers.keyId();
         if (keyId.isPresent()) {
-            return keys.forKeyId(keyId.orElseThrow())
+            String id = keyId.orElseThrow();
+            return keys.forKeyId(id)
                     .orElseThrow(() -> new IllegalStateException(
-                            "ID Token decryption key is not configured for kid: " + keyId.orElseThrow()));
+                            "ID Token decryption key is not configured for kid: " + id));
         }
         /*
          * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order

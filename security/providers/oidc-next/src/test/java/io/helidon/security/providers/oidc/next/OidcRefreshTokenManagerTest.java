@@ -24,6 +24,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -816,17 +817,17 @@ class OidcRefreshTokenManagerTest {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create(tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.create(
+                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         "default",
                         new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                         OLD_ACCESS_TOKEN,
                         "Bearer",
-                        refreshToken,
-                        "openid profile",
-                        userInfo,
+                        Optional.ofNullable(refreshToken),
+                        Optional.of("openid profile"),
+                        Optional.ofNullable(userInfo),
                         createdAt,
                         expiresAt,
-                        accessTokenExpiresAt));
+                        Optional.ofNullable(accessTokenExpiresAt)));
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {

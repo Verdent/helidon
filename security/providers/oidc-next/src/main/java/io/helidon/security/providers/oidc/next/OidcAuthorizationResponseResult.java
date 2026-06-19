@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.http.SetCookie;
@@ -24,39 +25,39 @@ import io.helidon.http.SetCookie;
 final class OidcAuthorizationResponseResult {
     private final OidcAuthorizationResponseStatus status;
     private final String description;
-    private final OidcTenantContext tenantContext;
-    private final OidcAuthenticationRequestState authenticationRequestState;
-    private final String authorizationCode;
-    private final String error;
-    private final String errorDescription;
+    private final Optional<OidcTenantContext> tenantContext;
+    private final Optional<OidcAuthenticationRequestState> authenticationRequestState;
+    private final Optional<String> authorizationCode;
+    private final Optional<String> error;
+    private final Optional<String> errorDescription;
     private final List<SetCookie> stateCookies;
 
     private OidcAuthorizationResponseResult(OidcAuthorizationResponseStatus status,
                                             String description,
-                                            OidcTenantContext tenantContext,
-                                            OidcAuthenticationRequestState authenticationRequestState,
-                                            String authorizationCode,
-                                            String error,
-                                            String errorDescription,
+                                            Optional<OidcTenantContext> tenantContext,
+                                            Optional<OidcAuthenticationRequestState> authenticationRequestState,
+                                            Optional<String> authorizationCode,
+                                            Optional<String> error,
+                                            Optional<String> errorDescription,
                                             List<SetCookie> stateCookies) {
         this.status = status;
         this.description = description;
-        this.tenantContext = tenantContext;
-        this.authenticationRequestState = authenticationRequestState;
-        this.authorizationCode = authorizationCode;
-        this.error = error;
-        this.errorDescription = errorDescription;
+        this.tenantContext = Objects.requireNonNull(tenantContext);
+        this.authenticationRequestState = Objects.requireNonNull(authenticationRequestState);
+        this.authorizationCode = Objects.requireNonNull(authorizationCode);
+        this.error = Objects.requireNonNull(error);
+        this.errorDescription = Objects.requireNonNull(errorDescription);
         this.stateCookies = List.copyOf(stateCookies);
     }
 
     static OidcAuthorizationResponseResult invalid(String description, List<SetCookie> stateCookies) {
         return new OidcAuthorizationResponseResult(OidcAuthorizationResponseStatus.INVALID,
                                                    description,
-                                                   null,
-                                                   null,
-                                                   null,
-                                                   null,
-                                                   null,
+                                                   Optional.empty(),
+                                                   Optional.empty(),
+                                                   Optional.empty(),
+                                                   Optional.empty(),
+                                                   Optional.empty(),
                                                    stateCookies);
     }
 
@@ -67,11 +68,11 @@ final class OidcAuthorizationResponseResult {
                                                               List<SetCookie> stateCookies) {
         return new OidcAuthorizationResponseResult(OidcAuthorizationResponseStatus.AUTHORIZATION_ERROR,
                                                    "OpenID Provider returned an Authorization Error Response",
-                                                   tenantContext,
-                                                   state,
-                                                   null,
-                                                   error,
-                                                   errorDescription,
+                                                   Optional.of(tenantContext),
+                                                   Optional.of(state),
+                                                   Optional.empty(),
+                                                   Optional.of(error),
+                                                   Optional.ofNullable(errorDescription),
                                                    stateCookies);
     }
 
@@ -81,11 +82,11 @@ final class OidcAuthorizationResponseResult {
                                                      List<SetCookie> stateCookies) {
         return new OidcAuthorizationResponseResult(OidcAuthorizationResponseStatus.VALIDATED,
                                                    "Authorization Response state is valid",
-                                                   tenantContext,
-                                                   state,
-                                                   authorizationCode,
-                                                   null,
-                                                   null,
+                                                   Optional.of(tenantContext),
+                                                   Optional.of(state),
+                                                   Optional.of(authorizationCode),
+                                                   Optional.empty(),
+                                                   Optional.empty(),
                                                    stateCookies);
     }
 
@@ -106,23 +107,23 @@ final class OidcAuthorizationResponseResult {
     }
 
     Optional<OidcTenantContext> tenantContext() {
-        return Optional.ofNullable(tenantContext);
+        return tenantContext;
     }
 
     Optional<OidcAuthenticationRequestState> authenticationRequestState() {
-        return Optional.ofNullable(authenticationRequestState);
+        return authenticationRequestState;
     }
 
     Optional<String> authorizationCode() {
-        return Optional.ofNullable(authorizationCode);
+        return authorizationCode;
     }
 
     Optional<String> error() {
-        return Optional.ofNullable(error);
+        return error;
     }
 
     Optional<String> errorDescription() {
-        return Optional.ofNullable(errorDescription);
+        return errorDescription;
     }
 
     List<SetCookie> stateCookies() {

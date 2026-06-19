@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.http.HeaderNames;
@@ -36,22 +38,17 @@ final class OidcLogoutHandler {
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
 
-    private OidcLogoutHandler(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    OidcLogoutHandler(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.config = Objects.requireNonNull(config);
         this.tenantRuntimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
     }
 
-    static OidcLogoutHandler create(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcLogoutHandler(config, tenantRuntimeRegistry);
-    }
-
     Set<String> paths() {
-        Set<String> paths = new LinkedHashSet<>();
-        logoutTenants().stream()
+        Set<String> paths = logoutTenants().stream()
                 .map(Map.Entry::getValue)
                 .map(OidcLogoutHandler::logoutEndpointPath)
-                .forEach(paths::add);
-        return Set.copyOf(paths);
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return Collections.unmodifiableSet(paths);
     }
 
     void process(ServerRequest request, ServerResponse response) {

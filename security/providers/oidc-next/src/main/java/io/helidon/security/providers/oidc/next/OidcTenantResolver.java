@@ -31,13 +31,9 @@ final class OidcTenantResolver {
     private final OidcProviderConfig config;
     private final OidcTenantResolutionConfig tenantResolution;
 
-    private OidcTenantResolver(OidcProviderConfig config) {
+    OidcTenantResolver(OidcProviderConfig config) {
         this.config = config;
         this.tenantResolution = config.tenantResolution();
-    }
-
-    static OidcTenantResolver create(OidcProviderConfig config) {
-        return new OidcTenantResolver(config);
     }
 
     Optional<String> tenantId(ProviderRequest request) {

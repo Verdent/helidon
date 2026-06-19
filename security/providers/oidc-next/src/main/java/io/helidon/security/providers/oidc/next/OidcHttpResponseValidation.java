@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 
 import io.helidon.http.HeaderName;
@@ -45,17 +44,13 @@ final class OidcHttpResponseValidation {
     }
 
     private static boolean hasHeaderValue(HttpClientResponse response, HeaderName headerName, String expectedValue) {
-        return headerValues(response, headerName)
+        return response.headers()
+                .get(headerName)
+                .allValues()
                 .stream()
                 .map(value -> value.toLowerCase(Locale.ROOT))
                 .flatMap(value -> Arrays.stream(value.split(",")))
                 .map(String::strip)
                 .anyMatch(expectedValue::equals);
-    }
-
-    private static List<String> headerValues(HttpClientResponse response, HeaderName headerName) {
-        return response.headers()
-                .get(headerName)
-                .allValues();
     }
 }

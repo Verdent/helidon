@@ -17,10 +17,12 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.helidon.config.Config;
 import io.helidon.http.HeaderNames;
@@ -49,9 +51,9 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         OidcProviderConfig providerConfig = Objects.requireNonNull(config);
         OidcTenantRuntimeRegistry runtimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
         this.config = providerConfig;
-        this.authorizationResponseProcessor = OidcAuthorizationResponseProcessor.create(providerConfig, runtimeRegistry);
-        this.logoutHandler = OidcLogoutHandler.create(providerConfig, runtimeRegistry);
-        this.idTokenValidator = OidcIdTokenValidator.create();
+        this.authorizationResponseProcessor = new OidcAuthorizationResponseProcessor(providerConfig, runtimeRegistry);
+        this.logoutHandler = new OidcLogoutHandler(providerConfig, runtimeRegistry);
+        this.idTokenValidator = new OidcIdTokenValidator();
     }
 
     /**
@@ -117,18 +119,17 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     Set<String> redirectionEndpointPaths() {
-        Set<String> paths = new LinkedHashSet<>();
-        config.tenants()
+        Set<String> paths = config.tenants()
                 .values()
                 .stream()
                 .filter(OidcTenantConfig::enabled)
                 .map(OidcTenantConfig::authorizationCode)
                 .flatMap(Optional::stream)
                 .filter(OidcAuthorizationCodeConfig::enabled)
-                .map(OidcConfigSupport::redirectionEndpointUri)
+                .map(OidcEndpointUris::redirectionEndpointUri)
                 .map(OidcUri::path)
-                .forEach(paths::add);
-        return Set.copyOf(paths);
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return Collections.unmodifiableSet(paths);
     }
 
     Set<String> logoutEndpointPaths() {
@@ -198,7 +199,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
             return;
         }
 
-        OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.create(
+        OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.fromTokenResponse(
                 tenantContext.tenantId(),
                 tokenResponse,
                 validatedIdToken,

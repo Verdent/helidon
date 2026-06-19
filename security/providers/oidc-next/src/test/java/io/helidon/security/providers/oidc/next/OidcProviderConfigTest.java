@@ -206,6 +206,19 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void endpointCredentialsUseConfigTextValues() {
+        assertThat(OidcEndpointCredential.BEARER_TOKEN.text(), is("bearer-token"));
+        assertThat(OidcEndpointCredential.AUTHENTICATION_COOKIE.text(), is("authentication-cookie"));
+    }
+
+    @Test
+    void authenticationFailureResponsesUseConfigTextValues() {
+        assertThat(OidcAuthenticationFailureResponse.UNAUTHORIZED.text(), is("unauthorized"));
+        assertThat(OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT.text(),
+                   is("authorization-code-redirect"));
+    }
+
+    @Test
     void userInfoStoragePoliciesUseConfigTextValues() {
         assertThat(OidcUserInfoStoragePolicy.MAPPED.text(), is("mapped"));
         assertThat(OidcUserInfoStoragePolicy.ALL.text(), is("all"));
@@ -629,13 +642,13 @@ class OidcProviderConfigTest {
                         .buildPrototype())
                 .buildPrototype();
 
-        assertThat(OidcConfigSupport.createWebClient(defaultTenant).prototype().readTimeout().orElseThrow(),
+        assertThat(OidcWebClientFactory.create(defaultTenant).prototype().readTimeout().orElseThrow(),
                    is(Duration.ofSeconds(10)));
-        assertThat(OidcConfigSupport.createWebClient(configuredTenant).prototype().readTimeout().orElseThrow(),
+        assertThat(OidcWebClientFactory.create(configuredTenant).prototype().readTimeout().orElseThrow(),
                    is(Duration.ofSeconds(2)));
-        assertThat(OidcConfigSupport.createWebClient(socketConfiguredTenant).prototype().readTimeout().isEmpty(),
+        assertThat(OidcWebClientFactory.create(socketConfiguredTenant).prototype().readTimeout().isEmpty(),
                    is(true));
-        assertThat(OidcConfigSupport.createWebClient(socketConfiguredTenant).prototype().socketOptions().readTimeout(),
+        assertThat(OidcWebClientFactory.create(socketConfiguredTenant).prototype().socketOptions().readTimeout(),
                    is(Duration.ofSeconds(4)));
     }
 

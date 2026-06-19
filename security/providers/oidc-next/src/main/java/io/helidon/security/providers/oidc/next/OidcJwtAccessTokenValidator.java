@@ -32,11 +32,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     private static final String NONE_ALGORITHM = "none";
     private static final List<String> ALLOWED_ACCESS_TOKEN_TYPES = List.of("at+jwt", "application/at+jwt");
 
-    private OidcJwtAccessTokenValidator() {
-    }
-
-    static OidcJwtAccessTokenValidator create() {
-        return new OidcJwtAccessTokenValidator();
+    OidcJwtAccessTokenValidator() {
     }
 
     @Override

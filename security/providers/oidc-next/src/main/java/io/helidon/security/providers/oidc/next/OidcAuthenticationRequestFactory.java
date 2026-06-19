@@ -41,12 +41,12 @@ final class OidcAuthenticationRequestFactory {
 
     private final SecureRandom secureRandom;
 
-    private OidcAuthenticationRequestFactory(SecureRandom secureRandom) {
-        this.secureRandom = secureRandom;
+    OidcAuthenticationRequestFactory() {
+        this(new SecureRandom());
     }
 
-    static OidcAuthenticationRequestFactory create() {
-        return new OidcAuthenticationRequestFactory(new SecureRandom());
+    private OidcAuthenticationRequestFactory(SecureRandom secureRandom) {
+        this.secureRandom = secureRandom;
     }
 
     OidcAuthenticationRequest create(OidcRequestContext context) {
@@ -60,7 +60,7 @@ final class OidcAuthenticationRequestFactory {
                 .issuer()
                 .orElseThrow(() -> new IllegalStateException("issuer is not configured"));
         URI redirectionEndpointUri = resolveRedirectionEndpointUri(
-                OidcConfigSupport.redirectionEndpointUri(authorizationCode),
+                OidcEndpointUris.redirectionEndpointUri(authorizationCode),
                 context.environment());
         if (tenantConfig.endpoints().tlsRequired() && !"https".equalsIgnoreCase(redirectionEndpointUri.getScheme())) {
             throw new IllegalStateException(

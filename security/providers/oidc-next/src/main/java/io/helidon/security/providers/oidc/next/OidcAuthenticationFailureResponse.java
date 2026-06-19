@@ -30,14 +30,18 @@ public enum OidcAuthenticationFailureResponse {
      */
     AUTHORIZATION_CODE_REDIRECT("authorization-code-redirect");
 
-    private final String configValue;
+    private final String text;
 
-    OidcAuthenticationFailureResponse(String configValue) {
-        this.configValue = configValue;
+    OidcAuthenticationFailureResponse(String text) {
+        this.text = text;
     }
 
-    @Override
-    public String toString() {
-        return configValue;
+    /**
+     * Config text value.
+     *
+     * @return config text value
+     */
+    public String text() {
+        return text;
     }
 }

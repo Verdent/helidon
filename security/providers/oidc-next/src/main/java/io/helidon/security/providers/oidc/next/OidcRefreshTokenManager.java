@@ -29,15 +29,14 @@ final class OidcRefreshTokenManager {
     private final OidcIdTokenValidator idTokenValidator;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
 
+    OidcRefreshTokenManager(Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
+        this(new OidcIdTokenValidator(), accessTokenValidators);
+    }
+
     private OidcRefreshTokenManager(OidcIdTokenValidator idTokenValidator,
                                     Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
         this.idTokenValidator = idTokenValidator;
         this.accessTokenValidators = accessTokenValidators;
-    }
-
-    static OidcRefreshTokenManager create(
-            Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
-        return new OidcRefreshTokenManager(OidcIdTokenValidator.create(), accessTokenValidators);
     }
 
     RefreshResult refreshIfNeeded(OidcLocalAuthenticationResult authenticationResult,
@@ -169,26 +168,23 @@ final class OidcRefreshTokenManager {
          * Quote: "The authorization server MAY issue a new refresh token, in which case the client MUST discard the
          * old refresh token and replace it with the new refresh token."
          */
-        return OidcLocalAuthenticationResult.create(
+        return OidcLocalAuthenticationResult.fromStoredValues(
                 current.tenantId(),
                 idToken,
                 tokenResponse.accessToken(),
                 tokenResponse.tokenType(),
                 tokenResponse.refreshToken()
-                        .or(() -> current.refreshToken())
-                        .orElse(null),
+                        .or(() -> current.refreshToken()),
                 tokenResponse.scope()
-                        .or(() -> current.scope())
-                        .orElse(null),
-                userInfo.orElse(null),
+                        .or(() -> current.scope()),
+                userInfo,
                 refreshedAt,
                 idToken.jwt()
                         .expirationTime()
                         .filter(expirationTime -> expirationTime.isBefore(current.expiresAt()))
                         .orElse(current.expiresAt()),
                 tokenResponse.expiresIn()
-                        .map(refreshedAt::plusSeconds)
-                        .orElse(null));
+                        .map(refreshedAt::plusSeconds));
     }
 
     private boolean refreshNeeded(Instant expiresAt, Duration skew, Instant now) {

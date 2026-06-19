@@ -35,8 +35,6 @@ final class OidcTokenExchangeTokenManager {
                                   Instant now) {
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(),
                                          tokenHash(subjectToken),
-                                         OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE,
-                                         OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE,
                                          policy.tokenExchangeScope().orElse(""),
                                          policy.tokenExchangeResource().orElse(""),
                                          policy.tokenExchangeAudience().orElse(""));
@@ -86,8 +84,6 @@ final class OidcTokenExchangeTokenManager {
 
     private record CacheKey(String tenantId,
                             String subjectTokenHash,
-                            String subjectTokenType,
-                            String requestedTokenType,
                             String scope,
                             String resource,
                             String audience) {

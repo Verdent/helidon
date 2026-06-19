@@ -1471,9 +1471,9 @@ successful response must contain `issued_token_type=urn:ietf:params:oauth:token-
 and first-class `act` or `may_act` handling are not implemented by this outbound mode.
 
 Exchanged tokens are cached only when the response includes a positive `expires_in`. The cache key includes the tenant id,
-a SHA-256 hash of the subject token, the fixed subject and requested token types, configured scopes, resource, and
-audience. Raw subject tokens are not stored in cache keys. The cache uses the tenant token-validation clock skew and does
-not assume that input-token revocation automatically revokes already exchanged tokens.
+a SHA-256 hash of the subject token, configured scopes, resource, and audience. Raw subject tokens are not stored in cache
+keys. The cache uses the tenant token-validation clock skew and does not assume that input-token revocation automatically
+revokes already exchanged tokens.
 
 ```yaml
 security:
@@ -1517,6 +1517,22 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer("https://issuer.example")
         .outboundTargets(List.of(ordersApi))
         .buildPrototype();
+```
+
+Endpoint-level Token Propagation:
+
+```java
+EndpointConfig outboundEndpoint = EndpointConfig.builder()
+        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+        .build();
+```
+
+Endpoint-level Token Propagation without audience validation is explicit:
+
+```java
+EndpointConfig outboundEndpoint = EndpointConfig.builder()
+        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagationWithoutAudienceValidation())
+        .build();
 ```
 
 Programmatic Client Credentials Grant target configuration with scopes and a resource indicator:

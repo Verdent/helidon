@@ -40,14 +40,6 @@ final class OidcTenantContextFactory {
         this.initializer = initializer;
     }
 
-    static OidcTenantContextFactory create() {
-        return create(false, false);
-    }
-
-    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant) {
-        return create(outboundTargetClientCredentialsGrant, false);
-    }
-
     static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
                                            boolean outboundTargetTokenExchange) {
         return create(defaultInitializer(outboundTargetClientCredentialsGrant, outboundTargetTokenExchange));
@@ -69,7 +61,7 @@ final class OidcTenantContextFactory {
                                                        boolean outboundTargetTokenExchange) {
         return (tenantId, tenantConfig) -> {
             try {
-                WebClient webClient = OidcConfigSupport.createWebClient(tenantConfig);
+                WebClient webClient = OidcWebClientFactory.create(tenantConfig);
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
                 boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig,
                                                                          staticMetadata,
@@ -158,7 +150,7 @@ final class OidcTenantContextFactory {
 
     private static void validateIssuerMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
         metadata.issuerUri()
-                .ifPresent(uri -> OidcConfigSupport.validateIssuerUri(uri, tenantConfig.endpoints().tlsRequired()));
+                .ifPresent(uri -> OidcEndpointUris.validateIssuerUri(uri, tenantConfig.endpoints().tlsRequired()));
     }
 
     private static void validateAuthorizationCodeMetadata(OidcTenantConfig tenantConfig,
@@ -181,7 +173,7 @@ final class OidcTenantContextFactory {
                 .orElseThrow(() -> new IllegalStateException(
                         "well-known metadata issuer must be present for Authorization Code Flow"));
         metadata.authorizationEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateAuthorizationEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateAuthorizationEndpointUri(
                                          uri,
                                          tenantConfig.endpoints().tlsRequired()),
                                  () -> {
@@ -190,7 +182,7 @@ final class OidcTenantContextFactory {
                                                      + "Authorization Code Flow");
                                  });
         metadata.tokenEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
                                          tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
@@ -293,12 +285,12 @@ final class OidcTenantContextFactory {
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
         OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests();
         metadata.pushedAuthorizationRequestEndpointUri()
-                .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(
+                .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(
                         uri,
                         tenantConfig.endpoints().tlsRequired()));
         if (mutualTlsTokenEndpointAuthentication(tenantConfig)) {
             pushedAuthorizationRequestEndpointUri(tenantConfig, metadata)
-                    .ifPresent(uri -> OidcConfigSupport.validatePushedAuthorizationRequestEndpointUri(uri, true));
+                    .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri, true));
         }
 
         /*
@@ -455,7 +447,7 @@ final class OidcTenantContextFactory {
          * Quote: "`token_endpoint` OPTIONAL.  URL of the authorization server's OAuth 2.0 token endpoint".
          */
         metadata.tokenEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
                                          tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
@@ -500,7 +492,7 @@ final class OidcTenantContextFactory {
          * Quote: "`token_endpoint` OPTIONAL.  URL of the authorization server's OAuth 2.0 token endpoint".
          */
         metadata.tokenEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
                                          tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
@@ -621,7 +613,7 @@ final class OidcTenantContextFactory {
          * Quote: "`jwks_uri` REQUIRED. URL of the OP's JSON Web Key Set [JWK] document."
          */
         metadata.jwkSetUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateJwksUri(uri, tenantConfig.endpoints().tlsRequired()),
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateJwksUri(uri, tenantConfig.endpoints().tlsRequired()),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata jwks_uri must be present for JWT access-token "
@@ -644,7 +636,7 @@ final class OidcTenantContextFactory {
          * endpoint".
          */
         metadata.introspectionEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateIntrospectionEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateIntrospectionEndpointUri(
                                          uri,
                                          introspectionEndpointTlsRequired(tenantConfig)),
                                  () -> {
@@ -713,7 +705,7 @@ final class OidcTenantContextFactory {
          * Quote: "`userinfo_endpoint` OPTIONAL. URL of the OP's UserInfo Endpoint."
          */
         metadata.userInfoEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateUserInfoEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateUserInfoEndpointUri(
                                          uri,
                                          tenantConfig.endpoints().tlsRequired()),
                                  () -> {
@@ -739,7 +731,7 @@ final class OidcTenantContextFactory {
          * Quote: "This URL MUST use the `https` scheme and MAY contain port, path, and query parameter components."
          */
         metadata.endSessionEndpointUri()
-                .ifPresentOrElse(uri -> OidcConfigSupport.validateEndSessionEndpointUri(
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateEndSessionEndpointUri(
                                          uri,
                                          tenantConfig.endpoints().tlsRequired()),
                                  () -> {
@@ -763,7 +755,7 @@ final class OidcTenantContextFactory {
          */
         metadata.mutualTlsTokenEndpointUri()
                 .or(metadata::tokenEndpointUri)
-                .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(uri, true));
+                .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(uri, true));
     }
 
     private static void validateCertificateBoundAccessTokenMetadata(OidcTenantConfig tenantConfig,

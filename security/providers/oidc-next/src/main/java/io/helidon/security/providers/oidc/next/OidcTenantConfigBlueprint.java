@@ -21,7 +21,7 @@ import io.helidon.builder.api.Prototype;
 /**
  * OpenID Connect tenant configuration.
  */
-@Prototype.Blueprint(decorator = OidcConfigSupport.TenantDecorator.class)
+@Prototype.Blueprint(decorator = OidcTenantConfigDecorator.class)
 @Prototype.Configured
 interface OidcTenantConfigBlueprint extends OidcTenantConfigOptionsBlueprint {
 }

@@ -104,13 +104,16 @@ import java.time.Duration;
 import java.util.List;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.security.EndpointConfig;
 import io.helidon.security.Security;
+import io.helidon.security.Subject;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcAuthenticationFailureResponse;
 import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
+import io.helidon.security.providers.oidc.next.OidcOutboundPolicy;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
@@ -1534,6 +1537,30 @@ EndpointConfig outboundEndpoint = EndpointConfig.builder()
         .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagationWithoutAudienceValidation())
         .build();
 ```
+
+Endpoint-level Client Credentials Grant:
+
+```java
+EndpointConfig outboundEndpoint = EndpointConfig.builder()
+        .customObject(OidcOutboundPolicy.class,
+                      OidcOutboundPolicy.clientCredentialsGrant(List.of("inventory.read"),
+                                                                List.of("https://inventory.example.com")))
+        .build();
+```
+
+Endpoint-level Token Exchange:
+
+```java
+EndpointConfig outboundEndpoint = EndpointConfig.builder()
+        .customObject(OidcOutboundPolicy.class,
+                      OidcOutboundPolicy.tokenExchange(List.of("orders.read"),
+                                                       "https://orders.example.com",
+                                                       "api://orders"))
+        .build();
+```
+
+Use `OidcOutboundPolicy.tokenExchangeForResource(...)` or
+`OidcOutboundPolicy.tokenExchangeForAudience(...)` when only one Token Exchange target parameter is needed.
 
 Programmatic Client Credentials Grant target configuration with scopes and a resource indicator:
 

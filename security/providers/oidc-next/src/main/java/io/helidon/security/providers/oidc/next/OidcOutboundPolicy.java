@@ -114,13 +114,14 @@ public final class OidcOutboundPolicy {
      */
     public static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes, List<String> resources) {
         OidcScopeSupport.validateConfiguredScopes(scopes, "Client Credentials Grant scopes");
+        OidcResourceIndicators.validate(resources, "Client Credentials Grant resources");
         String scope = OidcScopeSupport.serializeScopes(scopes);
         return new OidcOutboundPolicy(false,
                                       true,
                                       false,
                                       Optional.empty(),
                                       false,
-                                      optionalText(scope),
+                                      scope.isEmpty() ? Optional.empty() : Optional.of(scope),
                                       resources,
                                       Optional.empty(),
                                       Optional.empty(),
@@ -128,20 +129,55 @@ public final class OidcOutboundPolicy {
     }
 
     /**
-     * Create a Token Exchange policy.
+     * Create a Token Exchange policy with both a resource and an audience.
      *
      * @param scopes requested scopes
-     * @param resource requested resource, or {@code null} when only an audience is requested
-     * @param audience requested audience, or {@code null} when only a resource is requested
+     * @param resource requested resource
+     * @param audience requested audience
      * @return outbound policy
      */
     public static OidcOutboundPolicy tokenExchange(List<String> scopes, String resource, String audience) {
-        OidcScopeSupport.validateConfiguredScopes(scopes, "Token Exchange scopes");
-        Optional<String> requestedResource = optionalConfiguredText(resource, "resource");
-        Optional<String> requestedAudience = optionalConfiguredText(audience, "audience");
+        return tokenExchange(scopes,
+                             Optional.of(nonBlank(resource, "resource")),
+                             Optional.of(nonBlank(audience, "audience")));
+    }
+
+    /**
+     * Create a Token Exchange policy with only a requested resource.
+     *
+     * @param scopes requested scopes
+     * @param resource requested resource
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy tokenExchangeForResource(List<String> scopes, String resource) {
+        return tokenExchange(scopes,
+                             Optional.of(nonBlank(resource, "resource")),
+                             Optional.empty());
+    }
+
+    /**
+     * Create a Token Exchange policy with only a requested audience.
+     *
+     * @param scopes requested scopes
+     * @param audience requested audience
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy tokenExchangeForAudience(List<String> scopes, String audience) {
+        return tokenExchange(scopes,
+                             Optional.empty(),
+                             Optional.of(nonBlank(audience, "audience")));
+    }
+
+    private static OidcOutboundPolicy tokenExchange(List<String> scopes,
+                                                    Optional<String> requestedResource,
+                                                    Optional<String> requestedAudience) {
+        Objects.requireNonNull(requestedResource);
+        Objects.requireNonNull(requestedAudience);
         if (requestedResource.isEmpty() && requestedAudience.isEmpty()) {
             throw new IllegalArgumentException("Token Exchange resource or audience must be configured");
         }
+        OidcScopeSupport.validateConfiguredScopes(scopes, "Token Exchange scopes");
+        requestedResource.ifPresent(value -> OidcResourceIndicators.validate(List.of(value), "Token Exchange resource"));
         String scope = OidcScopeSupport.serializeScopes(scopes);
         return new OidcOutboundPolicy(false,
                                       false,
@@ -150,7 +186,7 @@ public final class OidcOutboundPolicy {
                                       false,
                                       Optional.empty(),
                                       List.of(),
-                                      optionalText(scope),
+                                      scope.isEmpty() ? Optional.empty() : Optional.of(scope),
                                       requestedResource,
                                       requestedAudience);
     }
@@ -200,8 +236,8 @@ public final class OidcOutboundPolicy {
         }
         if (config.tokenExchangeEnabled()) {
             return Optional.of(tokenExchange(config.tokenExchangeScopes(),
-                                             config.tokenExchangeResource().orElse(null),
-                                             config.tokenExchangeAudience().orElse(null)));
+                                             config.tokenExchangeResource(),
+                                             config.tokenExchangeAudience()));
         }
         return Optional.empty();
     }
@@ -251,14 +287,6 @@ public final class OidcOutboundPolicy {
 
     Optional<String> tokenExchangeAudience() {
         return tokenExchangeAudience;
-    }
-
-    private static Optional<String> optionalText(String value) {
-        return value.isEmpty() ? Optional.empty() : Optional.of(value);
-    }
-
-    private static Optional<String> optionalConfiguredText(String value, String name) {
-        return value == null ? Optional.empty() : Optional.of(nonBlank(value, name));
     }
 
     private static String nonBlank(String value, String name) {

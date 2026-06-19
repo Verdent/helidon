@@ -26,6 +26,7 @@ import io.helidon.json.JsonObject;
 public final class TestOidcTokenResponse {
     private final String accessToken;
     private final String tokenType;
+    private final String issuedTokenType;
     private final Long expiresIn;
     private final String scope;
     private final String idToken;
@@ -33,12 +34,14 @@ public final class TestOidcTokenResponse {
 
     TestOidcTokenResponse(String accessToken,
                           String tokenType,
+                          String issuedTokenType,
                           Long expiresIn,
                           String scope,
                           String idToken,
                           String refreshToken) {
         this.accessToken = accessToken;
         this.tokenType = tokenType;
+        this.issuedTokenType = issuedTokenType;
         this.expiresIn = expiresIn;
         this.scope = scope;
         this.idToken = idToken;
@@ -61,6 +64,15 @@ public final class TestOidcTokenResponse {
      */
     public String tokenType() {
         return tokenType;
+    }
+
+    /**
+     * Issued token type.
+     *
+     * @return issued token type
+     */
+    public Optional<String> issuedTokenType() {
+        return Optional.ofNullable(issuedTokenType);
     }
 
     /**
@@ -108,6 +120,9 @@ public final class TestOidcTokenResponse {
         JsonObject.Builder builder = JsonObject.builder()
                 .set("access_token", accessToken)
                 .set("token_type", tokenType);
+        if (issuedTokenType != null) {
+            builder.set("issued_token_type", issuedTokenType);
+        }
         if (expiresIn != null) {
             builder.set("expires_in", expiresIn);
         }

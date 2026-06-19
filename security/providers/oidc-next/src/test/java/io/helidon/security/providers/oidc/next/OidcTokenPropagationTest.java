@@ -198,7 +198,7 @@ class OidcTokenPropagationTest {
                 .method("GET")
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation())
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
@@ -218,7 +218,7 @@ class OidcTokenPropagationTest {
                 .method("GET")
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation())
+                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);

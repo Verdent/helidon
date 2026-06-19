@@ -46,24 +46,18 @@ final class OidcOutboundOrchestrator {
             new OidcClientCredentialsTokenManager();
     private final OidcTokenExchangeTokenManager tokenExchangeTokenManager = new OidcTokenExchangeTokenManager();
 
-    private OidcOutboundOrchestrator(OidcProviderConfig providerConfig,
-                                     OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    OidcOutboundOrchestrator(OidcProviderConfig providerConfig, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
         OutboundConfig.Builder outboundConfig = OutboundConfig.builder();
         providerConfig.outboundTargets().forEach(outboundConfig::addTarget);
         this.outboundConfig = outboundConfig.build();
     }
 
-    static OidcOutboundOrchestrator create(OidcProviderConfig providerConfig,
-                                           OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcOutboundOrchestrator(providerConfig, tenantRuntimeRegistry);
-    }
-
     boolean isSupported(ProviderRequest providerRequest,
                         SecurityEnvironment outboundEnv,
-                        EndpointConfig outboundConfig) {
+                        EndpointConfig endpointConfig) {
         return tenantRuntimeRegistry.tenantConfig(providerRequest)
-                .flatMap(tenantConfig -> outboundPolicy(tenantConfig, outboundEnv, outboundConfig))
+                .flatMap(tenantConfig -> outboundPolicy(tenantConfig, outboundEnv, endpointConfig))
                 .isPresent();
     }
 
@@ -114,7 +108,7 @@ final class OidcOutboundOrchestrator {
 
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
-                                    EndpointConfig outboundConfig) {
+                                    EndpointConfig endpointConfig) {
         Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
         if (tenantContext.filter(it -> !it.ready()).isPresent()) {
             return OidcResponseFactory.tenantUnavailableForOutbound(tenantContext.orElseThrow());
@@ -122,7 +116,7 @@ final class OidcOutboundOrchestrator {
 
         Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
                 .filter(OidcTenantContext::ready)
-                .flatMap(readyTenant -> outboundPolicy(readyTenant.tenantConfig(), outboundEnv, outboundConfig));
+                .flatMap(readyTenant -> outboundPolicy(readyTenant.tenantConfig(), outboundEnv, endpointConfig));
         if (outboundPolicy.isEmpty()) {
             return OutboundSecurityResponse.abstain();
         }
@@ -160,9 +154,9 @@ final class OidcOutboundOrchestrator {
                                                                  OidcOutboundPolicy outboundPolicy) {
         OidcTenantContext clientCredentialsContext;
         try {
-            OidcConfigSupport.validateClientCredentialsGrant(tenantContext.tenantConfig(),
-                                                             tenantContext.tenantConfig().endpoints(),
-                                                             "Client Credentials Grant");
+            OidcClientAuthenticationConfigValidator.validateClientCredentialsGrant(tenantContext.tenantConfig(),
+                                                                                  tenantContext.tenantConfig().endpoints(),
+                                                                                  "Client Credentials Grant");
             clientCredentialsContext = tokenEndpointContext(tenantContext);
         } catch (RuntimeException e) {
             return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
@@ -195,8 +189,8 @@ final class OidcOutboundOrchestrator {
 
         OidcTenantContext tokenExchangeContext;
         try {
-            OidcConfigSupport.validateTokenExchange(tenantContext.tenantConfig(),
-                                                    tenantContext.tenantConfig().endpoints());
+            OidcClientAuthenticationConfigValidator.validateTokenExchange(tenantContext.tenantConfig(),
+                                                                         tenantContext.tenantConfig().endpoints());
             tokenExchangeContext = tokenEndpointContext(tenantContext);
         } catch (RuntimeException e) {
             return OidcResponseFactory.tokenExchangeFailed(OidcTokenExchangeResult.failure(e.getMessage(), e));
@@ -221,9 +215,9 @@ final class OidcOutboundOrchestrator {
             metadata = new OidcProviderMetadataLoader(tenantContext.webClient()).load(metadata);
         }
         metadata.tokenEndpointUri()
-                .ifPresent(uri -> OidcConfigSupport.validateTokenEndpointUri(
+                .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(
                         uri,
-                        OidcConfigSupport.tokenEndpointTlsRequired(tenantContext.tenantConfig())));
+                        OidcClientAuthenticationConfigValidator.tokenEndpointTlsRequired(tenantContext.tenantConfig())));
         return metadata == tenantContext.metadata()
                 ? tenantContext
                 : OidcTenantContext.ready(tenantContext.tenantId(),

@@ -16,17 +16,19 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.Optional;
 
 final class OidcBearerTokenExtractionResult {
-    private static final OidcBearerTokenExtractionResult EMPTY = new OidcBearerTokenExtractionResult(null, null);
+    private static final OidcBearerTokenExtractionResult EMPTY =
+            new OidcBearerTokenExtractionResult(Optional.empty(), Optional.empty());
 
-    private final String bearerToken;
-    private final String errorDescription;
+    private final Optional<String> bearerToken;
+    private final Optional<String> errorDescription;
 
-    private OidcBearerTokenExtractionResult(String bearerToken, String errorDescription) {
-        this.bearerToken = bearerToken;
-        this.errorDescription = errorDescription;
+    private OidcBearerTokenExtractionResult(Optional<String> bearerToken, Optional<String> errorDescription) {
+        this.bearerToken = Objects.requireNonNull(bearerToken);
+        this.errorDescription = Objects.requireNonNull(errorDescription);
     }
 
     static OidcBearerTokenExtractionResult empty() {
@@ -34,22 +36,22 @@ final class OidcBearerTokenExtractionResult {
     }
 
     static OidcBearerTokenExtractionResult bearerToken(String bearerToken) {
-        return new OidcBearerTokenExtractionResult(bearerToken, null);
+        return new OidcBearerTokenExtractionResult(Optional.of(bearerToken), Optional.empty());
     }
 
     static OidcBearerTokenExtractionResult invalidRequest(String errorDescription) {
-        return new OidcBearerTokenExtractionResult(null, errorDescription);
+        return new OidcBearerTokenExtractionResult(Optional.empty(), Optional.of(errorDescription));
     }
 
     Optional<String> bearerToken() {
-        return Optional.ofNullable(bearerToken);
+        return bearerToken;
     }
 
     boolean invalidRequest() {
-        return errorDescription != null;
+        return errorDescription.isPresent();
     }
 
     Optional<String> errorDescription() {
-        return Optional.ofNullable(errorDescription);
+        return errorDescription;
     }
 }

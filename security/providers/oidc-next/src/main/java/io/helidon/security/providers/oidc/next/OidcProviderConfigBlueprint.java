@@ -32,7 +32,7 @@ import io.helidon.webserver.WebServer;
 /**
  * Configuration of the new OIDC security provider.
  */
-@Prototype.Blueprint(decorator = OidcConfigSupport.ProviderDecorator.class)
+@Prototype.Blueprint(decorator = OidcProviderConfigDecorator.class)
 @Prototype.Configured(value = OidcProviderService.PROVIDER_CONFIG_KEY, root = false)
 @Prototype.Provides({SecurityProvider.class, AuthenticationProvider.class, OutboundSecurityProvider.class})
 interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, Prototype.Factory<OidcProvider> {

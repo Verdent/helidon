@@ -20,11 +20,11 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.SetCookie;
+import io.helidon.json.JsonObject;
 
 import org.junit.jupiter.api.Test;
 
@@ -421,7 +421,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                            URI redirectionEndpointUri,
                                                            Instant now) {
         OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(config);
-        return OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry)
+        return new OidcAuthorizationResponseProcessor(config, tenantRuntimeRegistry)
                 .process(parameters, cookies, redirectionEndpointUri, now);
     }
 
@@ -437,7 +437,7 @@ class OidcAuthorizationResponseProcessorTest {
                         tenantId,
                         tenantConfig,
                         providerMetadata(authorizationResponseIssuerParameterSupported))));
-        return OidcAuthorizationResponseProcessor.create(config, tenantRuntimeRegistry)
+        return new OidcAuthorizationResponseProcessor(config, tenantRuntimeRegistry)
                 .process(parameters, cookies, redirectionEndpointUri, now);
     }
 
@@ -481,15 +481,11 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     private static OidcProviderMetadata providerMetadata(boolean authorizationResponseIssuerParameterSupported) {
-        return OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
-                                           Optional.empty(),
-                                           Optional.of(AUTHORIZATION_ENDPOINT_URI),
-                                           Optional.of(TOKEN_ENDPOINT_URI),
-                                           Optional.empty(),
-                                           Optional.empty(),
-                                           Optional.empty(),
-                                           Optional.empty(),
-                                           Optional.empty(),
-                                           authorizationResponseIssuerParameterSupported);
+        return OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
+                .set("token_endpoint", TOKEN_ENDPOINT_URI.toString())
+                .set("authorization_response_iss_parameter_supported", authorizationResponseIssuerParameterSupported)
+                .build());
     }
 }

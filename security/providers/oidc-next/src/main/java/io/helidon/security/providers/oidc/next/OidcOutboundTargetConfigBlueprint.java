@@ -26,7 +26,7 @@ import io.helidon.builder.api.Prototype;
 /**
  * OIDC-specific outbound target configuration.
  */
-@Prototype.Blueprint(decorator = OidcConfigSupport.OutboundTargetDecorator.class)
+@Prototype.Blueprint(decorator = OidcOutboundTargetConfigDecorator.class)
 @Prototype.Configured
 interface OidcOutboundTargetConfigBlueprint {
     /**

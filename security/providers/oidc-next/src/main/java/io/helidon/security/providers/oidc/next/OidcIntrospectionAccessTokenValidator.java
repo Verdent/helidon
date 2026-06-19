@@ -33,11 +33,7 @@ import io.helidon.webclient.api.WebClient;
 
 final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
 
-    private OidcIntrospectionAccessTokenValidator() {
-    }
-
-    static OidcIntrospectionAccessTokenValidator create() {
-        return new OidcIntrospectionAccessTokenValidator();
+    OidcIntrospectionAccessTokenValidator() {
     }
 
     @Override
@@ -48,9 +44,10 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         if (endpointUri.isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
+        URI uri = endpointUri.orElseThrow();
 
         try (HttpClientResponse response = request(tenantContext.webClient(),
-                                                   endpointUri.orElseThrow(),
+                                                   uri,
                                                    token,
                                                    tenantContext.introspectionClientAuthentication())) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
@@ -93,7 +90,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 return OidcValidationResult.failure("Bearer Token introspection response is inactive");
             }
 
-            OidcValidatedIntrospection validated = OidcValidatedIntrospection.create(request.token(), jsonObject);
+            OidcValidatedIntrospection validated = new OidcValidatedIntrospection(request.token(), jsonObject);
             OidcValidationResult<OidcValidatedAccessToken> claimValidation = validateClaims(validated, request);
             if (!claimValidation.succeeded()) {
                 return claimValidation;

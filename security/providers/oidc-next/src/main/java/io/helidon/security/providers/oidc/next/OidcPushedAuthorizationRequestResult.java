@@ -16,41 +16,42 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.Optional;
 
 final class OidcPushedAuthorizationRequestResult {
     private final OidcPushedAuthorizationRequestStatus status;
     private final String description;
-    private final OidcPushedAuthorizationResponse response;
-    private final OidcTokenErrorResponse errorResponse;
-    private final Throwable cause;
+    private final Optional<OidcPushedAuthorizationResponse> response;
+    private final Optional<OidcTokenErrorResponse> errorResponse;
+    private final Optional<Throwable> cause;
 
     private OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus status,
                                                  String description,
-                                                 OidcPushedAuthorizationResponse response,
-                                                 OidcTokenErrorResponse errorResponse,
-                                                 Throwable cause) {
+                                                 Optional<OidcPushedAuthorizationResponse> response,
+                                                 Optional<OidcTokenErrorResponse> errorResponse,
+                                                 Optional<Throwable> cause) {
         this.status = status;
         this.description = description;
-        this.response = response;
-        this.errorResponse = errorResponse;
-        this.cause = cause;
+        this.response = Objects.requireNonNull(response);
+        this.errorResponse = Objects.requireNonNull(errorResponse);
+        this.cause = Objects.requireNonNull(cause);
     }
 
     static OidcPushedAuthorizationRequestResult success(OidcPushedAuthorizationResponse response) {
         return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.SUCCESS,
                                                         "Pushed Authorization Request succeeded",
-                                                        response,
-                                                        null,
-                                                        null);
+                                                        Optional.of(response),
+                                                        Optional.empty(),
+                                                        Optional.empty());
     }
 
     static OidcPushedAuthorizationRequestResult error(OidcTokenErrorResponse errorResponse) {
         return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.ERROR_RESPONSE,
                                                         "Pushed Authorization Request Endpoint returned an Error Response",
-                                                        null,
-                                                        errorResponse,
-                                                        null);
+                                                        Optional.empty(),
+                                                        Optional.of(errorResponse),
+                                                        Optional.empty());
     }
 
     static OidcPushedAuthorizationRequestResult failure(String description) {
@@ -60,9 +61,9 @@ final class OidcPushedAuthorizationRequestResult {
     static OidcPushedAuthorizationRequestResult failure(String description, Throwable cause) {
         return new OidcPushedAuthorizationRequestResult(OidcPushedAuthorizationRequestStatus.FAILURE,
                                                         description,
-                                                        null,
-                                                        null,
-                                                        cause);
+                                                        Optional.empty(),
+                                                        Optional.empty(),
+                                                        Optional.ofNullable(cause));
     }
 
     boolean succeeded() {
@@ -78,15 +79,15 @@ final class OidcPushedAuthorizationRequestResult {
     }
 
     Optional<OidcPushedAuthorizationResponse> response() {
-        return Optional.ofNullable(response);
+        return response;
     }
 
     Optional<OidcTokenErrorResponse> error() {
-        return Optional.ofNullable(errorResponse);
+        return errorResponse;
     }
 
     Optional<Throwable> cause() {
-        return Optional.ofNullable(cause);
+        return cause;
     }
 
     private enum OidcPushedAuthorizationRequestStatus {

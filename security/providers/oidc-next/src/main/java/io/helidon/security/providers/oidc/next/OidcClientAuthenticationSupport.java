@@ -73,10 +73,6 @@ final class OidcClientAuthenticationSupport {
                 : null;
     }
 
-    static OidcClientAuthenticationSupport create(OidcTenantConfig tenantConfig) {
-        return tokenEndpoint(tenantConfig);
-    }
-
     static OidcClientAuthenticationSupport tokenEndpoint(OidcTenantConfig tenantConfig) {
         return new OidcClientAuthenticationSupport(tokenEndpointAuthenticationMethod(tenantConfig),
                                                    tenantConfig.clientId(),
@@ -256,10 +252,6 @@ final class OidcClientAuthenticationSupport {
 
     static String privateKeyJwtAlgorithms() {
         return PRIVATE_KEY_JWT_ALGORITHMS.toString();
-    }
-
-    static String defaultClientSecretJwtAlgorithm() {
-        return DEFAULT_CLIENT_SECRET_JWT_ALGORITHM;
     }
 
     private String clientAssertion(URI endpointUri) {

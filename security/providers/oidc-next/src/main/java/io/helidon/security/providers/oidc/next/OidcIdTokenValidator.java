@@ -34,11 +34,7 @@ final class OidcIdTokenValidator {
     private static final String AUTHENTICATION_TIME_CLAIM = "auth_time";
     private static final int MAX_SUBJECT_LENGTH = 255;
 
-    private OidcIdTokenValidator() {
-    }
-
-    static OidcIdTokenValidator create() {
-        return new OidcIdTokenValidator();
+    OidcIdTokenValidator() {
     }
 
     OidcValidationResult<OidcValidatedIdToken> validate(String token,

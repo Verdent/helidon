@@ -125,7 +125,8 @@ final class OidcCookieStateHandler {
 
     Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
-            return Optional.of(fromJson(JsonParser.create(unprotect(cookieValue)).readJsonObject()));
+            JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
+            return Optional.of(authenticationRequestStateFromJson(json));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -133,8 +134,8 @@ final class OidcCookieStateHandler {
 
     Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue) {
         try {
-            return Optional.of(localAuthenticationResultFromJson(JsonParser.create(unprotect(cookieValue))
-                                                                      .readJsonObject()));
+            JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
+            return Optional.of(localAuthenticationResultFromJson(json));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -171,7 +172,7 @@ final class OidcCookieStateHandler {
         return builder.build();
     }
 
-    private OidcAuthenticationRequestState fromJson(JsonObject json) {
+    private OidcAuthenticationRequestState authenticationRequestStateFromJson(JsonObject json) {
         return new OidcAuthenticationRequestState(
                 json.stringValue("tenant_id").orElseThrow(),
                 json.stringValue("state").orElseThrow(),
@@ -193,17 +194,17 @@ final class OidcCookieStateHandler {
                                                                 resolvedIdToken.encrypted(),
                                                                 signedJwt,
                                                                 jwt);
-        return OidcLocalAuthenticationResult.create(
+        return OidcLocalAuthenticationResult.fromStoredValues(
                 json.stringValue("tenant_id").orElseThrow(),
                 idToken,
                 json.stringValue("access_token").orElseThrow(),
                 json.stringValue("token_type").orElseThrow(),
-                json.stringValue("refresh_token").orElse(null),
-                json.stringValue("scope").orElse(null),
-                json.objectValue("userinfo").orElse(null),
+                json.stringValue("refresh_token"),
+                json.stringValue("scope"),
+                json.objectValue("userinfo"),
                 Instant.parse(json.stringValue("created_at").orElseThrow()),
                 Instant.parse(json.stringValue("expires_at").orElseThrow()),
-                json.stringValue("access_token_expires_at").map(Instant::parse).orElse(null));
+                json.stringValue("access_token_expires_at").map(Instant::parse));
     }
 
     private String protect(String value) {

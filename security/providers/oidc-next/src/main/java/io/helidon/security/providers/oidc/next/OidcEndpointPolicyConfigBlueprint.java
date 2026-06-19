@@ -26,7 +26,7 @@ import io.helidon.builder.api.Prototype;
 /**
  * OIDC endpoint authentication policy configuration.
  */
-@Prototype.Blueprint(decorator = OidcConfigSupport.EndpointPolicyDecorator.class)
+@Prototype.Blueprint(decorator = OidcEndpointPolicyConfigDecorator.class)
 @Prototype.Configured
 interface OidcEndpointPolicyConfigBlueprint {
     /**
@@ -41,10 +41,6 @@ interface OidcEndpointPolicyConfigBlueprint {
     @Description("Accepted credential types for requests handled by this endpoint. When omitted, the provider infers "
             + "accepted credentials from the tenant configuration.")
     @Option.Configured
-    @Option.AllowedValue(value = "bearer-token",
-                         description = "OAuth 2.0 Bearer Token credential accepted by Protected Resource authentication")
-    @Option.AllowedValue(value = "authentication-cookie",
-                         description = "Local authentication cookie created by Authorization Code Flow")
     @Option.Singular("acceptedCredential")
     List<OidcEndpointCredential> acceptedCredentials();
 
@@ -59,9 +55,5 @@ interface OidcEndpointPolicyConfigBlueprint {
     @Description("Response returned when no accepted credential authenticates the request. When omitted, "
             + "authentication-cookie-only endpoints redirect and all other endpoint policies return 401.")
     @Option.Configured
-    @Option.AllowedValue(value = "unauthorized",
-                         description = "Return an HTTP 401 authentication failure")
-    @Option.AllowedValue(value = "authorization-code-redirect",
-                         description = "Start Authorization Code Flow by redirecting to the Authorization Endpoint")
     Optional<OidcAuthenticationFailureResponse> authenticationFailureResponse();
 }

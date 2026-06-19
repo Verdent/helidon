@@ -202,7 +202,7 @@ class OidcTenantLifecycleTest {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 config,
                 OidcTenantContextFactory.create(retryOnceInitializer(attempts)));
-        OidcOutboundOrchestrator outbound = OidcOutboundOrchestrator.create(config, registry);
+        OidcOutboundOrchestrator outbound = new OidcOutboundOrchestrator(config, registry);
         ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
@@ -232,7 +232,7 @@ class OidcTenantLifecycleTest {
                 config,
                 OidcTenantContextFactory.create(initializer));
         OidcAuthenticationOrchestrator authentication = OidcAuthenticationOrchestrator.create(config, registry);
-        OidcOutboundOrchestrator outbound = OidcOutboundOrchestrator.create(config, registry);
+        OidcOutboundOrchestrator outbound = new OidcOutboundOrchestrator(config, registry);
         ProviderRequest request = OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
                                                            SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()

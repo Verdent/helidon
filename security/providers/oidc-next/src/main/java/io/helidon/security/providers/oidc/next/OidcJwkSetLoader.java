@@ -43,10 +43,6 @@ final class OidcJwkSetLoader {
         this.webClient = webClient;
     }
 
-    JwkKeys load(URI uri) {
-        return load(uri, false);
-    }
-
     JwkKeys load(URI uri, boolean openIdProviderJwkSet) {
         JsonObject jsonObject = loadJson(uri);
         if (openIdProviderJwkSet) {

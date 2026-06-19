@@ -37,15 +37,19 @@ import io.helidon.security.Security;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
+import io.helidon.security.providers.oidc.next.OidcEndpointConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
+import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.security.WebClientSecurity;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.security.SecurityFeature;
@@ -74,19 +78,13 @@ final class OidcIntegrationSupport {
                 .issuer(idp.issuer().toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
-                .endpoints(endpoints -> endpoints
-                        .authorizationEndpointUri(idp.authorizationEndpointUri())
-                        .tokenEndpointUri(idp.tokenEndpointUri())
-                        .jwksUri(idp.jwksUri())
-                        .introspectionEndpointUri(idp.introspectionEndpointUri())
-                        .userInfoEndpointUri(idp.userInfoEndpointUri())
-                        .tlsRequired(false))
+                .endpoints(endpoints -> authorizationCodeEndpoints(idp, endpoints))
                 .authorizationCode(authorizationCode -> {
                     authorizationCode.scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .userInfo(userInfo -> {
-                })
+                .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
+                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET));
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
@@ -108,8 +106,8 @@ final class OidcIntegrationSupport {
                     authorizationCode.scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .userInfo(userInfo -> {
-                })
+                .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
+                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
         return OidcProviderConfig.builder()
@@ -155,6 +153,15 @@ final class OidcIntegrationSupport {
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())
                 .buildPrototype();
+    }
+
+    static void authorizationCodeEndpoints(TestOidcServer idp, OidcEndpointConfig.Builder endpoints) {
+        endpoints.authorizationEndpointUri(idp.authorizationEndpointUri())
+                .tokenEndpointUri(idp.tokenEndpointUri())
+                .jwksUri(idp.jwksUri())
+                .introspectionEndpointUri(idp.introspectionEndpointUri())
+                .userInfoEndpointUri(idp.userInfoEndpointUri())
+                .tlsRequired(false);
     }
 
     static WebServer rpServer(OidcProviderConfig providerConfig,
@@ -209,6 +216,13 @@ final class OidcIntegrationSupport {
                 .encodeToString((clientId + ":" + clientSecret).getBytes(StandardCharsets.UTF_8));
     }
 
+    static WebClient outboundClient() {
+        return WebClient.builder()
+                .servicesDiscoverServices(false)
+                .addService(WebClientSecurity.create())
+                .build();
+    }
+
     static String clientCredentialsToken(TestOidcServer idp, String clientId, String clientSecret) {
         WebClient client = WebClient.builder()
                 .build();
@@ -252,9 +266,15 @@ final class OidcIntegrationSupport {
         }
 
         HttpClientResponse post(URI uri, Parameters form) {
-            HttpClientResponse response = cookieHeader()
-                    .map(header -> client.post().uri(uri).header(HeaderNames.COOKIE, header).submit(form))
-                    .orElseGet(() -> client.post().uri(uri).submit(form));
+            return post(uri, form, request -> {
+            });
+        }
+
+        HttpClientResponse post(URI uri, Parameters form, Consumer<HttpClientRequest> customizer) {
+            HttpClientRequest request = client.post().uri(uri);
+            cookieHeader().ifPresent(header -> request.header(HeaderNames.COOKIE, header));
+            customizer.accept(request);
+            HttpClientResponse response = request.submit(form);
             rememberCookies(response);
             return response;
         }

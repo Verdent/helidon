@@ -47,7 +47,9 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.json.JsonValue;
+import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -65,6 +67,8 @@ public final class TestOidcServer implements AutoCloseable {
     private static final String SIGNING_KEY_ID = "sign-rsa";
     private static final String VERIFY_KEY_ID = "verify-rsa";
     private static final String SIGNING_ALGORITHM = "RS256";
+    private static final String TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
+    private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
     private final TestOidcServerConfig config;
     private final WebServer server;
@@ -72,10 +76,12 @@ public final class TestOidcServer implements AutoCloseable {
     private final String jwks;
     private final AtomicLong ids = new AtomicLong();
     private final Map<String, AuthorizationCode> authorizationCodes = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<String>>> pushedAuthorizationRequests = new ConcurrentHashMap<>();
     private final Map<String, RefreshState> refreshTokens = new ConcurrentHashMap<>();
     private final Map<String, IssuedAccessToken> accessTokens = new ConcurrentHashMap<>();
     private final List<TestOidcRequest> metadataRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> authorizationRequests = new CopyOnWriteArrayList<>();
+    private final List<TestOidcRequest> pushedAuthorizationEndpointRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> tokenRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> jwksRequests = new CopyOnWriteArrayList<>();
     private final List<TestOidcRequest> introspectionRequests = new CopyOnWriteArrayList<>();
@@ -95,6 +101,7 @@ public final class TestOidcServer implements AutoCloseable {
         routing.get("/.well-known/openid-configuration", this::metadataEndpoint);
         routing.get("/authorize", this::authorizationEndpoint);
         routing.post("/authorize/login", this::loginEndpoint);
+        routing.post("/par", this::pushedAuthorizationEndpoint);
         routing.post("/token", this::tokenEndpoint);
         routing.get("/jwks", this::jwksEndpoint);
         routing.post("/introspect", this::introspectionEndpoint);
@@ -147,6 +154,15 @@ public final class TestOidcServer implements AutoCloseable {
      */
     public URI authorizationEndpointUri() {
         return issuer.resolve("/authorize");
+    }
+
+    /**
+     * Pushed Authorization Request endpoint URI.
+     *
+     * @return Pushed Authorization Request endpoint URI
+     */
+    public URI pushedAuthorizationRequestEndpointUri() {
+        return issuer.resolve("/par");
     }
 
     /**
@@ -222,6 +238,15 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
+     * Recorded Pushed Authorization Request endpoint requests.
+     *
+     * @return requests
+     */
+    public List<TestOidcRequest> pushedAuthorizationEndpointRequests() {
+        return List.copyOf(pushedAuthorizationEndpointRequests);
+    }
+
+    /**
      * Recorded JWKS endpoint requests.
      *
      * @return requests
@@ -266,6 +291,7 @@ public final class TestOidcServer implements AutoCloseable {
         JsonObject.Builder builder = JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri().toString())
+                .set("pushed_authorization_request_endpoint", pushedAuthorizationRequestEndpointUri().toString())
                 .set("token_endpoint", tokenEndpointUri().toString())
                 .set("jwks_uri", jwksUri().toString())
                 .set("introspection_endpoint", introspectionEndpointUri().toString())
@@ -273,7 +299,7 @@ public final class TestOidcServer implements AutoCloseable {
                 .set("end_session_endpoint", logoutEndpointUri().toString())
                 .setStrings("response_types_supported", List.of("code"))
                 .setStrings("grant_types_supported",
-                            List.of("authorization_code", "refresh_token", "client_credentials"))
+                            List.of("authorization_code", "refresh_token", "client_credentials", TOKEN_EXCHANGE_GRANT))
                 .setStrings("code_challenge_methods_supported", List.of("S256"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
                 .setStrings("subject_types_supported", List.of("public"))
@@ -313,6 +339,17 @@ public final class TestOidcServer implements AutoCloseable {
         TestOidcRequest oidcRequest = TestOidcRequest.create(request, true);
         authorizationRequests.add(oidcRequest);
         defaultLogin(oidcRequest, response);
+    }
+
+    private void pushedAuthorizationEndpoint(ServerRequest request, ServerResponse response) {
+        TestOidcRequest oidcRequest = TestOidcRequest.create(request, true);
+        pushedAuthorizationEndpointRequests.add(oidcRequest);
+        Optional<TestOidcEndpointHandler<TestOidcEndpointContext>> handler = config.endpoints().pushedAuthorization();
+        if (handler.isPresent()) {
+            handler.orElseThrow().handle(new EndpointContext(oidcRequest, response, this::defaultPushedAuthorization));
+            return;
+        }
+        defaultPushedAuthorization(oidcRequest, response);
     }
 
     private void tokenEndpoint(ServerRequest request, ServerResponse response) {
@@ -375,12 +412,13 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     private void defaultAuthorization(TestOidcRequest request, ServerResponse response) {
+        Map<String, List<String>> authorizationParameters = authorizationParameters(request.queryParameters());
         if (config.browserLogin()) {
             response.header(HeaderNames.CONTENT_TYPE, "text/html; charset=UTF-8")
-                    .send(loginForm(request.queryParameters()));
+                    .send(loginForm(authorizationParameters));
             return;
         }
-        authorize(request.queryParameters(), authorizationUser().username(), response);
+        authorize(authorizationParameters, authorizationUser().username(), response);
     }
 
     private void defaultLogin(TestOidcRequest request, ServerResponse response) {
@@ -392,6 +430,78 @@ public final class TestOidcServer implements AutoCloseable {
             throw new IllegalArgumentException("Invalid test user password");
         }
         authorize(request.formParameters(), username, response);
+    }
+
+    private void defaultPushedAuthorization(TestOidcRequest request, ServerResponse response) {
+        authenticateClient(request);
+        String requestUri = "urn:helidon:test:par:" + ids.incrementAndGet();
+        pushedAuthorizationRequests.put(requestUri, pushedAuthorizationParameters(request.formParameters()));
+        sendJson(response.status(Status.CREATED_201),
+                 JsonObject.builder()
+                         .set("request_uri", requestUri)
+                         .set("expires_in", 90)
+                         .build());
+    }
+
+    private Map<String, List<String>> authorizationParameters(Map<String, List<String>> queryParameters) {
+        Optional<String> requestUri = first(queryParameters, "request_uri");
+        if (requestUri.isEmpty()) {
+            return queryParameters;
+        }
+        return Optional.ofNullable(pushedAuthorizationRequests.remove(requestUri.orElseThrow()))
+                .orElseThrow(() -> new IllegalArgumentException("request_uri is invalid"));
+    }
+
+    private Map<String, List<String>> pushedAuthorizationParameters(Map<String, List<String>> formParameters) {
+        Optional<String> requestObject = first(formParameters, "request");
+        if (requestObject.isEmpty()) {
+            return Map.copyOf(formParameters);
+        }
+
+        String[] parts = requestObject.orElseThrow().split("\\.", -1);
+        if (parts.length != 3) {
+            throw new IllegalArgumentException("request object is invalid");
+        }
+        JsonObject payload = JsonParser.create(Base64.getUrlDecoder().decode(parts[1]))
+                .readJsonObject();
+        Map<String, List<String>> parameters = new LinkedHashMap<>();
+        copyRequestObjectString(payload, parameters, "response_type");
+        copyRequestObjectString(payload, parameters, "client_id");
+        copyRequestObjectString(payload, parameters, "redirect_uri");
+        copyRequestObjectString(payload, parameters, "scope");
+        copyRequestObjectString(payload, parameters, "state");
+        copyRequestObjectString(payload, parameters, "nonce");
+        copyRequestObjectString(payload, parameters, "prompt");
+        copyRequestObjectString(payload, parameters, "code_challenge");
+        copyRequestObjectString(payload, parameters, "code_challenge_method");
+        copyRequestObjectStrings(payload, parameters, "resource");
+        return Map.copyOf(parameters);
+    }
+
+    private void copyRequestObjectString(JsonObject payload, Map<String, List<String>> parameters, String name) {
+        payload.value(name)
+                .filter(value -> value.type() == JsonValueType.STRING)
+                .map(value -> value.asString().value())
+                .ifPresent(value -> parameters.put(name, List.of(value)));
+    }
+
+    private void copyRequestObjectStrings(JsonObject payload, Map<String, List<String>> parameters, String name) {
+        payload.value(name)
+                .ifPresent(value -> {
+                    if (value.type() == JsonValueType.STRING) {
+                        parameters.put(name, List.of(value.asString().value()));
+                        return;
+                    }
+                    if (value.type() == JsonValueType.ARRAY) {
+                        parameters.put(name,
+                                       value.asArray()
+                                               .values()
+                                               .stream()
+                                               .filter(item -> item.type() == JsonValueType.STRING)
+                                               .map(item -> item.asString().value())
+                                               .toList());
+                    }
+                });
     }
 
     private void authorize(Map<String, List<String>> parameters, String username, ServerResponse response) {
@@ -443,6 +553,7 @@ public final class TestOidcServer implements AutoCloseable {
         case "authorization_code" -> authorizationCodeTokens(request);
         case "client_credentials" -> clientCredentialsTokens(request);
         case "refresh_token" -> refreshTokenTokens(request);
+        case TOKEN_EXCHANGE_GRANT -> tokenExchangeTokens(request);
         default -> throw new IllegalArgumentException("Unsupported grant_type: " + grantType);
         };
     }
@@ -500,12 +611,38 @@ public final class TestOidcServer implements AutoCloseable {
                              config.tokenDefaults().refreshToken().idTokenEnabled());
     }
 
+    private TestOidcTokenResponse tokenExchangeTokens(TestOidcRequest request) {
+        TestOidcClientConfig client = authenticateClient(request);
+        String subjectToken = required(request.formParameters(), "subject_token");
+        IssuedAccessToken subject = Optional.ofNullable(accessTokens.get(subjectToken))
+                .filter(this::active)
+                .orElseThrow(() -> new IllegalArgumentException("subject_token is invalid"));
+        List<String> scopes = scopes(request.formParam("scope"));
+        return tokenResponse(client.clientId(),
+                             subject.subject(),
+                             subject.username(),
+                             scopes,
+                             null,
+                             false,
+                             ACCESS_TOKEN_TYPE);
+    }
+
     private TestOidcTokenResponse tokenResponse(String clientId,
                                                 String subject,
                                                 String username,
                                                 List<String> scopes,
                                                 String nonce,
                                                 boolean idTokenAllowed) {
+        return tokenResponse(clientId, subject, username, scopes, nonce, idTokenAllowed, null);
+    }
+
+    private TestOidcTokenResponse tokenResponse(String clientId,
+                                                String subject,
+                                                String username,
+                                                List<String> scopes,
+                                                String nonce,
+                                                boolean idTokenAllowed,
+                                                String issuedTokenType) {
         String scope = String.join(" ", scopes);
         Instant issuedAt = Instant.now();
         TestOidcTokenConfig accessTokenConfig = config.tokenDefaults().accessToken();
@@ -532,6 +669,7 @@ public final class TestOidcServer implements AutoCloseable {
                                                accessTokenClaims));
         return new TestOidcTokenResponse(accessToken,
                                          "Bearer",
+                                         issuedTokenType,
                                          accessTokenConfig.expiresIn().toSeconds(),
                                          scope,
                                          idToken,

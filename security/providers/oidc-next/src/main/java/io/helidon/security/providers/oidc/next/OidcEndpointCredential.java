@@ -30,14 +30,18 @@ public enum OidcEndpointCredential {
      */
     AUTHENTICATION_COOKIE("authentication-cookie");
 
-    private final String configValue;
+    private final String text;
 
-    OidcEndpointCredential(String configValue) {
-        this.configValue = configValue;
+    OidcEndpointCredential(String text) {
+        this.text = text;
     }
 
-    @Override
-    public String toString() {
-        return configValue;
+    /**
+     * Config text value.
+     *
+     * @return config text value
+     */
+    public String text() {
+        return text;
     }
 }

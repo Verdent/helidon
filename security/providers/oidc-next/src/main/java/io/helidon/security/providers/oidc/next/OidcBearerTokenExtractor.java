@@ -199,7 +199,7 @@ final class OidcBearerTokenExtractor {
                 paddingSeen = true;
                 continue;
             }
-            if (paddingSeen || !b64TokenCharacter(c)) {
+            if (paddingSeen || !validB64TokenCharacter(c)) {
                 return true;
             }
             payloadCharacterSeen = true;
@@ -207,7 +207,7 @@ final class OidcBearerTokenExtractor {
         return false;
     }
 
-    private static boolean b64TokenCharacter(char c) {
+    private static boolean validB64TokenCharacter(char c) {
         return c >= 'A' && c <= 'Z'
                 || c >= 'a' && c <= 'z'
                 || c >= '0' && c <= '9'

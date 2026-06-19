@@ -16,41 +16,42 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.Optional;
 
 final class OidcTokenEndpointResult {
     private final OidcTokenEndpointStatus status;
     private final String description;
-    private final OidcTokenResponse tokenResponse;
-    private final OidcTokenErrorResponse errorResponse;
-    private final Throwable cause;
+    private final Optional<OidcTokenResponse> tokenResponse;
+    private final Optional<OidcTokenErrorResponse> errorResponse;
+    private final Optional<Throwable> cause;
 
     private OidcTokenEndpointResult(OidcTokenEndpointStatus status,
                                     String description,
-                                    OidcTokenResponse tokenResponse,
-                                    OidcTokenErrorResponse errorResponse,
-                                    Throwable cause) {
+                                    Optional<OidcTokenResponse> tokenResponse,
+                                    Optional<OidcTokenErrorResponse> errorResponse,
+                                    Optional<Throwable> cause) {
         this.status = status;
         this.description = description;
-        this.tokenResponse = tokenResponse;
-        this.errorResponse = errorResponse;
-        this.cause = cause;
+        this.tokenResponse = Objects.requireNonNull(tokenResponse);
+        this.errorResponse = Objects.requireNonNull(errorResponse);
+        this.cause = Objects.requireNonNull(cause);
     }
 
     static OidcTokenEndpointResult success(OidcTokenResponse tokenResponse) {
         return new OidcTokenEndpointResult(OidcTokenEndpointStatus.SUCCESS,
                                            "Token Endpoint exchange succeeded",
-                                           tokenResponse,
-                                           null,
-                                           null);
+                                           Optional.of(tokenResponse),
+                                           Optional.empty(),
+                                           Optional.empty());
     }
 
     static OidcTokenEndpointResult error(OidcTokenErrorResponse errorResponse) {
         return new OidcTokenEndpointResult(OidcTokenEndpointStatus.ERROR_RESPONSE,
                                            "Token Endpoint returned an Error Response",
-                                           null,
-                                           errorResponse,
-                                           null);
+                                           Optional.empty(),
+                                           Optional.of(errorResponse),
+                                           Optional.empty());
     }
 
     static OidcTokenEndpointResult failure(String description) {
@@ -60,9 +61,9 @@ final class OidcTokenEndpointResult {
     static OidcTokenEndpointResult failure(String description, Throwable cause) {
         return new OidcTokenEndpointResult(OidcTokenEndpointStatus.FAILURE,
                                            description,
-                                           null,
-                                           null,
-                                           cause);
+                                           Optional.empty(),
+                                           Optional.empty(),
+                                           Optional.ofNullable(cause));
     }
 
     boolean succeeded() {
@@ -78,15 +79,15 @@ final class OidcTokenEndpointResult {
     }
 
     Optional<OidcTokenResponse> tokenResponse() {
-        return Optional.ofNullable(tokenResponse);
+        return tokenResponse;
     }
 
     Optional<OidcTokenErrorResponse> error() {
-        return Optional.ofNullable(errorResponse);
+        return errorResponse;
     }
 
     Optional<Throwable> cause() {
-        return Optional.ofNullable(cause);
+        return cause;
     }
 
     private enum OidcTokenEndpointStatus {

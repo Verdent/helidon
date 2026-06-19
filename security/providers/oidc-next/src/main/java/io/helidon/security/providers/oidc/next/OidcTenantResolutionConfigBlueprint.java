@@ -24,7 +24,7 @@ import io.helidon.builder.api.Prototype;
 /**
  * Tenant id resolution configuration.
  */
-@Prototype.Blueprint(decorator = OidcConfigSupport.TenantResolutionDecorator.class)
+@Prototype.Blueprint(decorator = OidcTenantResolutionConfigDecorator.class)
 @Prototype.Configured
 interface OidcTenantResolutionConfigBlueprint {
     /**

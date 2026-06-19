@@ -16,21 +16,22 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.Optional;
 
 final class OidcValidationResult<T> {
-    private final T validatedToken;
-    private final String errorDescription;
-    private final Throwable cause;
+    private final Optional<T> validatedToken;
+    private final Optional<String> errorDescription;
+    private final Optional<Throwable> cause;
 
-    private OidcValidationResult(T validatedToken, String errorDescription, Throwable cause) {
-        this.validatedToken = validatedToken;
-        this.errorDescription = errorDescription;
-        this.cause = cause;
+    private OidcValidationResult(Optional<T> validatedToken, Optional<String> errorDescription, Optional<Throwable> cause) {
+        this.validatedToken = Objects.requireNonNull(validatedToken);
+        this.errorDescription = Objects.requireNonNull(errorDescription);
+        this.cause = Objects.requireNonNull(cause);
     }
 
     static <T> OidcValidationResult<T> success(T validatedToken) {
-        return new OidcValidationResult<>(validatedToken, null, null);
+        return new OidcValidationResult<>(Optional.of(validatedToken), Optional.empty(), Optional.empty());
     }
 
     static <T> OidcValidationResult<T> failure(String errorDescription) {
@@ -38,22 +39,24 @@ final class OidcValidationResult<T> {
     }
 
     static <T> OidcValidationResult<T> failure(String errorDescription, Throwable cause) {
-        return new OidcValidationResult<>(null, errorDescription, cause);
+        return new OidcValidationResult<>(Optional.empty(),
+                                          Optional.of(errorDescription),
+                                          Optional.ofNullable(cause));
     }
 
     boolean succeeded() {
-        return validatedToken != null;
+        return validatedToken.isPresent();
     }
 
     Optional<T> validatedToken() {
-        return Optional.ofNullable(validatedToken);
+        return validatedToken;
     }
 
     Optional<String> errorDescription() {
-        return Optional.ofNullable(errorDescription);
+        return errorDescription;
     }
 
     Optional<Throwable> cause() {
-        return Optional.ofNullable(cause);
+        return cause;
     }
 }

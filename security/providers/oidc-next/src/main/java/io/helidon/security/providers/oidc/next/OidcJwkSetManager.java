@@ -61,19 +61,11 @@ final class OidcJwkSetManager {
         this.clock = clock;
     }
 
-    static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata, WebClient webClient) {
-        return create(tenantId, metadata, webClient, OidcJwkSetConfig.create());
-    }
-
     static OidcJwkSetManager create(String tenantId,
                                     OidcProviderMetadata metadata,
                                     WebClient webClient,
                                     OidcJwkSetConfig config) {
         return new OidcJwkSetManager(tenantId, metadata, config, new OidcJwkSetLoader(webClient), Clock.systemUTC());
-    }
-
-    static OidcJwkSetManager create(String tenantId, OidcProviderMetadata metadata, Clock clock) {
-        return create(tenantId, metadata, clock, OidcJwkSetConfig.create());
     }
 
     static OidcJwkSetManager create(String tenantId,

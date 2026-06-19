@@ -38,15 +38,9 @@ final class OidcAuthorizationResponseProcessor {
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
 
-    private OidcAuthorizationResponseProcessor(OidcProviderConfig config,
-                                               OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    OidcAuthorizationResponseProcessor(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.config = Objects.requireNonNull(config);
         this.tenantRuntimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
-    }
-
-    static OidcAuthorizationResponseProcessor create(OidcProviderConfig config,
-                                                     OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcAuthorizationResponseProcessor(config, tenantRuntimeRegistry);
     }
 
     OidcAuthorizationResponseResult process(UriQuery parameters,
@@ -284,17 +278,29 @@ final class OidcAuthorizationResponseProcessor {
                                                     OidcAuthenticationRequestState state) {
     }
 
-    private record ParameterValue(String value, boolean valid) {
+    private record ParameterValue(Optional<String> text) {
+        ParameterValue {
+            text = Objects.requireNonNull(text);
+        }
+
         private static ParameterValue present(String value) {
-            return new ParameterValue(value, true);
+            return new ParameterValue(Optional.of(value));
         }
 
         private static ParameterValue invalidParameter() {
-            return new ParameterValue(null, false);
+            return new ParameterValue(Optional.empty());
+        }
+
+        private String value() {
+            return text.orElseThrow();
         }
 
         private boolean invalid() {
-            return !valid;
+            return text.isEmpty();
+        }
+
+        private boolean valid() {
+            return text.isPresent();
         }
     }
 }

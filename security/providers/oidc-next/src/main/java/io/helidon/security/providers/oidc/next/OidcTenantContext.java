@@ -46,11 +46,11 @@ final class OidcTenantContext {
         return ready(tenantId,
                      tenantConfig,
                      OidcProviderMetadata.fromStaticConfig(tenantConfig),
-                     OidcConfigSupport.createWebClient(tenantConfig));
+                     OidcWebClientFactory.create(tenantConfig));
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        return ready(tenantId, tenantConfig, metadata, OidcConfigSupport.createWebClient(tenantConfig));
+        return ready(tenantId, tenantConfig, metadata, OidcWebClientFactory.create(tenantConfig));
     }
 
     static OidcTenantContext ready(String tenantId,
@@ -179,7 +179,7 @@ final class OidcTenantContext {
                                                OidcProviderMetadata metadata,
                                                WebClient webClient) {
             OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
-            return new RuntimeResources(OidcConfigSupport.endpointPolicy(tenantConfig),
+            return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
                                         OidcRequestObjectSigner.create(tenantConfig),

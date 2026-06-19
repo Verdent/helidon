@@ -33,14 +33,10 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
     private final JsonObject claims;
     private final Jwt jwt;
 
-    private OidcValidatedIntrospection(String rawToken, JsonObject claims) {
+    OidcValidatedIntrospection(String rawToken, JsonObject claims) {
         this.rawToken = rawToken;
         this.claims = claims;
         this.jwt = toJwt(claims);
-    }
-
-    static OidcValidatedIntrospection create(String rawToken, JsonObject claims) {
-        return new OidcValidatedIntrospection(rawToken, claims);
     }
 
     @Override

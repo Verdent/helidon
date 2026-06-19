@@ -40,14 +40,14 @@ final class OidcTenantRuntimeRegistry {
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
         return create(config,
                       OidcTenantContextFactory.create(
-                              OidcConfigSupport.targetClientCredentialsGrantEnabled(config.outboundTargets()),
-                              OidcConfigSupport.targetTokenExchangeEnabled(config.outboundTargets())));
+                              OidcOutboundPolicy.targetClientCredentialsGrantEnabled(config.outboundTargets()),
+                              OidcOutboundPolicy.targetTokenExchangeEnabled(config.outboundTargets())));
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config,
                                             OidcTenantContextFactory tenantContextFactory) {
         return new OidcTenantRuntimeRegistry(config,
-                                             OidcTenantResolver.create(config),
+                                             new OidcTenantResolver(config),
                                              tenantContextFactory);
     }
 

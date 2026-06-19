@@ -126,8 +126,9 @@ final class OidcRequestObjectSigner {
                 .build();
         Optional<String> keyId = requestObject.keyId();
         if (keyId.isPresent()) {
+            String id = keyId.orElseThrow();
             return validateSigningJwk(requestObject,
-                                      keys.forKeyId(keyId.orElseThrow())
+                                      keys.forKeyId(id)
                                               .orElseThrow(() -> new IllegalArgumentException(
                                                       "authorization-code.request-object.key-id does not match a "
                                                               + "configured JWK")));

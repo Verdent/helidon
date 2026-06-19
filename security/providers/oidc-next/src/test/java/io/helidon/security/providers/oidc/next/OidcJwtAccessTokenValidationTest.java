@@ -1011,14 +1011,10 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private static OidcJwkSetManager jwkSetManager(URI jwksUri, Clock clock, OidcJwkSetConfig config) {
-        OidcProviderMetadata metadata = OidcProviderMetadata.create(Optional.of(ISSUER.toString()),
-                                                                    Optional.empty(),
-                                                                    Optional.empty(),
-                                                                    Optional.empty(),
-                                                                    Optional.of(jwksUri),
-                                                                    Optional.empty(),
-                                                                    Optional.empty(),
-                                                                    Optional.empty());
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .endpoints(it -> it.jwksUri(jwksUri))
+                .buildPrototype());
         return OidcJwkSetManager.create("default", metadata, clock, config);
     }
 

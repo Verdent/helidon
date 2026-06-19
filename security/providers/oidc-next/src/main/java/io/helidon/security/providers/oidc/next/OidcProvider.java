@@ -42,7 +42,7 @@ public final class OidcProvider
         this.config = Objects.requireNonNull(config);
         OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(config);
         this.authentication = OidcAuthenticationOrchestrator.create(config, tenantRuntimeRegistry);
-        this.outbound = OidcOutboundOrchestrator.create(config, tenantRuntimeRegistry);
+        this.outbound = new OidcOutboundOrchestrator(config, tenantRuntimeRegistry);
     }
 
     /**

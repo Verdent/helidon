@@ -43,7 +43,7 @@ final class OidcEndpointClient {
                        WebClient webClient) {
         this.metadata = metadata;
         this.webClient = webClient;
-        this.clientAuthentication = OidcClientAuthenticationSupport.create(tenantConfig);
+        this.clientAuthentication = OidcClientAuthenticationSupport.tokenEndpoint(tenantConfig);
         this.authorizationCodeResources = List.copyOf(tenantConfig.authorizationCode()
                                                               .map(OidcAuthorizationCodeConfig::resources)
                                                               .orElseGet(List::of));
@@ -205,6 +205,7 @@ final class OidcEndpointClient {
             return OidcPushedAuthorizationRequestResult.failure(
                     "Pushed Authorization Request Endpoint is not configured");
         }
+        URI uri = endpointUri.orElseThrow();
         if (authorizationRequestParameters.names().contains("request_uri")) {
             return OidcPushedAuthorizationRequestResult.failure(
                     "Pushed Authorization Request form must not contain request_uri");
@@ -222,12 +223,12 @@ final class OidcEndpointClient {
         boolean clientIdAlreadyPresent = authorizationRequestParameters.names().contains("client_id");
         try {
             HttpClientRequest request = webClient.post()
-                    .uri(endpointUri.orElseThrow())
+                    .uri(uri)
                     .followRedirects(false)
                     .header(HeaderValues.ACCEPT_JSON)
                     .header(HeaderValues.CACHE_NO_CACHE)
                     .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
-            clientAuthentication.applyPushedAuthorizationRequestAuthentication(endpointUri.orElseThrow(),
+            clientAuthentication.applyPushedAuthorizationRequestAuthentication(uri,
                                                                                metadata.issuer(),
                                                                                form,
                                                                                request,
@@ -279,6 +280,7 @@ final class OidcEndpointClient {
         if (endpointUri.isEmpty()) {
             return Optional.empty();
         }
+        URI uri = endpointUri.orElseThrow();
 
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.1 UserInfo Request
@@ -288,7 +290,7 @@ final class OidcEndpointClient {
          * Quote: "Clients MUST send requests with a valid Access Token."
          */
         try (HttpClientResponse response = webClient.get()
-                .uri(endpointUri.orElseThrow())
+                .uri(uri)
                 .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)
                 .header(HeaderValues.CACHE_NO_CACHE)
@@ -348,14 +350,15 @@ final class OidcEndpointClient {
         if (endpointUri.isEmpty()) {
             return failureResult.create("Token Endpoint is not configured", null);
         }
+        URI uri = endpointUri.orElseThrow();
         try {
             HttpClientRequest request = webClient.post()
-                    .uri(endpointUri.orElseThrow())
+                    .uri(uri)
                     .followRedirects(false)
                     .header(HeaderValues.ACCEPT_JSON)
                     .header(HeaderValues.CACHE_NO_CACHE)
                     .header(HeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
-            clientAuthentication.applyTokenEndpointAuthentication(endpointUri.orElseThrow(), form, request);
+            clientAuthentication.applyTokenEndpointAuthentication(uri, form, request);
 
             try (HttpClientResponse response = request.submit(form.build())) {
                 if (response.status().family() == Status.Family.SUCCESSFUL) {

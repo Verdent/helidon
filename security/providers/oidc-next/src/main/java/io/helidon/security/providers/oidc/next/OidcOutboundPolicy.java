@@ -17,83 +17,169 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.security.providers.common.OutboundTarget;
 
-final class OidcOutboundPolicy {
+/**
+ * Endpoint-level OIDC outbound policy.
+ * <p>
+ * Use this type as an {@link io.helidon.security.EndpointConfig} custom object when an outbound rule should apply to a
+ * single outbound security request instead of a configured outbound target.
+ */
+public final class OidcOutboundPolicy {
     private final boolean tokenPropagation;
     private final boolean clientCredentialsGrant;
     private final boolean tokenExchange;
-    private final String audience;
+    private final Optional<String> audience;
     private final boolean audienceValidation;
-    private final String clientCredentialsScope;
+    private final Optional<String> clientCredentialsScope;
     private final List<String> clientCredentialsResources;
-    private final String tokenExchangeScope;
-    private final String tokenExchangeResource;
-    private final String tokenExchangeAudience;
+    private final Optional<String> tokenExchangeScope;
+    private final Optional<String> tokenExchangeResource;
+    private final Optional<String> tokenExchangeAudience;
 
     private OidcOutboundPolicy(boolean tokenPropagation,
                                boolean clientCredentialsGrant,
                                boolean tokenExchange,
-                               String audience,
+                               Optional<String> audience,
                                boolean audienceValidation,
-                               String clientCredentialsScope,
+                               Optional<String> clientCredentialsScope,
                                List<String> clientCredentialsResources,
-                               String tokenExchangeScope,
-                               String tokenExchangeResource,
-                               String tokenExchangeAudience) {
+                               Optional<String> tokenExchangeScope,
+                               Optional<String> tokenExchangeResource,
+                               Optional<String> tokenExchangeAudience) {
         this.tokenPropagation = tokenPropagation;
         this.clientCredentialsGrant = clientCredentialsGrant;
         this.tokenExchange = tokenExchange;
-        this.audience = audience;
+        this.audience = Objects.requireNonNull(audience);
         this.audienceValidation = audienceValidation;
-        this.clientCredentialsScope = clientCredentialsScope;
+        this.clientCredentialsScope = Objects.requireNonNull(clientCredentialsScope);
         this.clientCredentialsResources = List.copyOf(clientCredentialsResources);
-        this.tokenExchangeScope = tokenExchangeScope;
-        this.tokenExchangeResource = tokenExchangeResource;
-        this.tokenExchangeAudience = tokenExchangeAudience;
+        this.tokenExchangeScope = Objects.requireNonNull(tokenExchangeScope);
+        this.tokenExchangeResource = Objects.requireNonNull(tokenExchangeResource);
+        this.tokenExchangeAudience = Objects.requireNonNull(tokenExchangeAudience);
     }
 
-    static OidcOutboundPolicy tokenPropagation() {
-        return tokenPropagation(null);
+    /**
+     * Create a Token Propagation policy with audience validation.
+     *
+     * @param audience expected downstream audience
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy tokenPropagation(String audience) {
+        return tokenPropagation(Optional.of(nonBlank(audience, "audience")), true);
     }
 
-    static OidcOutboundPolicy tokenPropagation(String audience) {
-        return tokenPropagation(audience, true);
+    /**
+     * Create a Token Propagation policy without audience validation.
+     * <p>
+     * This should be used only for testing, local development, or legacy opaque-token deployments.
+     *
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy tokenPropagationWithoutAudienceValidation() {
+        return tokenPropagation(Optional.empty(), false);
     }
 
-    static OidcOutboundPolicy tokenPropagation(String audience, boolean audienceValidation) {
-        return new OidcOutboundPolicy(true, false, false, audience, audienceValidation, null, List.of(),
-                                      null, null, null);
+    private static OidcOutboundPolicy tokenPropagation(Optional<String> audience, boolean audienceValidation) {
+        return new OidcOutboundPolicy(true,
+                                      false,
+                                      false,
+                                      audience,
+                                      audienceValidation,
+                                      Optional.empty(),
+                                      List.of(),
+                                      Optional.empty(),
+                                      Optional.empty(),
+                                      Optional.empty());
     }
 
-    static OidcOutboundPolicy clientCredentialsGrant() {
+    /**
+     * Create a Client Credentials Grant policy with no configured scopes or resource indicators.
+     *
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy clientCredentialsGrant() {
         return clientCredentialsGrant(List.of(), List.of());
     }
 
-    static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes) {
-        return clientCredentialsGrant(scopes, List.of());
+    /**
+     * Create a Client Credentials Grant policy.
+     *
+     * @param scopes requested scopes
+     * @param resources requested resource indicators
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes, List<String> resources) {
+        OidcScopeSupport.validateConfiguredScopes(scopes, "Client Credentials Grant scopes");
+        String scope = OidcScopeSupport.serializeScopes(scopes);
+        return new OidcOutboundPolicy(false,
+                                      true,
+                                      false,
+                                      Optional.empty(),
+                                      false,
+                                      optionalText(scope),
+                                      resources,
+                                      Optional.empty(),
+                                      Optional.empty(),
+                                      Optional.empty());
     }
 
-    static OidcOutboundPolicy clientCredentialsGrant(List<String> scopes, List<String> resources) {
-        String scope = OidcConfigSupport.clientCredentialsScope(scopes);
-        return new OidcOutboundPolicy(false, true, false, null, false, scope.isEmpty() ? null : scope, resources,
-                                      null, null, null);
-    }
-
-    static OidcOutboundPolicy tokenExchange(String resource, String audience) {
-        return tokenExchange(List.of(), resource, audience);
-    }
-
-    static OidcOutboundPolicy tokenExchange(List<String> scopes, String resource, String audience) {
-        String scope = OidcConfigSupport.tokenExchangeScope(scopes);
-        return new OidcOutboundPolicy(false, false, true, null, false, null, List.of(),
-                                      scope.isEmpty() ? null : scope, resource, audience);
+    /**
+     * Create a Token Exchange policy.
+     *
+     * @param scopes requested scopes
+     * @param resource requested resource, or {@code null} when only an audience is requested
+     * @param audience requested audience, or {@code null} when only a resource is requested
+     * @return outbound policy
+     */
+    public static OidcOutboundPolicy tokenExchange(List<String> scopes, String resource, String audience) {
+        OidcScopeSupport.validateConfiguredScopes(scopes, "Token Exchange scopes");
+        Optional<String> requestedResource = optionalConfiguredText(resource, "resource");
+        Optional<String> requestedAudience = optionalConfiguredText(audience, "audience");
+        if (requestedResource.isEmpty() && requestedAudience.isEmpty()) {
+            throw new IllegalArgumentException("Token Exchange resource or audience must be configured");
+        }
+        String scope = OidcScopeSupport.serializeScopes(scopes);
+        return new OidcOutboundPolicy(false,
+                                      false,
+                                      true,
+                                      Optional.empty(),
+                                      false,
+                                      Optional.empty(),
+                                      List.of(),
+                                      optionalText(scope),
+                                      requestedResource,
+                                      requestedAudience);
     }
 
     static OidcOutboundPolicy tokenPropagationAndClientCredentialsGrant() {
-        return new OidcOutboundPolicy(true, true, false, null, true, null, List.of(), null, null, null);
+        return new OidcOutboundPolicy(true,
+                                      true,
+                                      false,
+                                      Optional.empty(),
+                                      true,
+                                      Optional.empty(),
+                                      List.of(),
+                                      Optional.empty(),
+                                      Optional.empty(),
+                                      Optional.empty());
+    }
+
+    static boolean targetClientCredentialsGrantEnabled(List<OutboundTarget> outboundTargets) {
+        return outboundTargets.stream()
+                .map(OidcOutboundPolicy::fromTarget)
+                .flatMap(Optional::stream)
+                .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
+    }
+
+    static boolean targetTokenExchangeEnabled(List<OutboundTarget> outboundTargets) {
+        return outboundTargets.stream()
+                .map(OidcOutboundPolicy::fromTarget)
+                .flatMap(Optional::stream)
+                .anyMatch(OidcOutboundPolicy::tokenExchangeEnabled);
     }
 
     static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
@@ -106,7 +192,7 @@ final class OidcOutboundPolicy {
 
     static Optional<OidcOutboundPolicy> fromTargetConfig(OidcOutboundTargetConfig config) {
         if (config.tokenPropagationEnabled()) {
-            return Optional.of(tokenPropagation(config.audience().orElse(null), config.audienceValidationEnabled()));
+            return Optional.of(tokenPropagation(config.audience(), config.audienceValidationEnabled()));
         }
         if (config.clientCredentialsGrantEnabled()) {
             return Optional.of(clientCredentialsGrant(config.clientCredentialsScopes(),
@@ -140,7 +226,7 @@ final class OidcOutboundPolicy {
     }
 
     Optional<String> audience() {
-        return Optional.ofNullable(audience);
+        return audience;
     }
 
     boolean audienceValidationEnabled() {
@@ -148,7 +234,7 @@ final class OidcOutboundPolicy {
     }
 
     Optional<String> clientCredentialsScope() {
-        return Optional.ofNullable(clientCredentialsScope);
+        return clientCredentialsScope;
     }
 
     List<String> clientCredentialsResources() {
@@ -156,14 +242,30 @@ final class OidcOutboundPolicy {
     }
 
     Optional<String> tokenExchangeScope() {
-        return Optional.ofNullable(tokenExchangeScope);
+        return tokenExchangeScope;
     }
 
     Optional<String> tokenExchangeResource() {
-        return Optional.ofNullable(tokenExchangeResource);
+        return tokenExchangeResource;
     }
 
     Optional<String> tokenExchangeAudience() {
-        return Optional.ofNullable(tokenExchangeAudience);
+        return tokenExchangeAudience;
+    }
+
+    private static Optional<String> optionalText(String value) {
+        return value.isEmpty() ? Optional.empty() : Optional.of(value);
+    }
+
+    private static Optional<String> optionalConfiguredText(String value, String name) {
+        return value == null ? Optional.empty() : Optional.of(nonBlank(value, name));
+    }
+
+    private static String nonBlank(String value, String name) {
+        Objects.requireNonNull(value, name);
+        if (value.isBlank() || !value.equals(value.strip())) {
+            throw new IllegalArgumentException(name + " must not be blank or padded");
+        }
+        return value;
     }
 }

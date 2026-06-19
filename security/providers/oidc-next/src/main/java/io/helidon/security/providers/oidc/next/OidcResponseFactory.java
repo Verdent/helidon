@@ -39,14 +39,6 @@ final class OidcResponseFactory {
     private OidcResponseFactory() {
     }
 
-    static AuthenticationResponse missingBearerToken() {
-        return missingBearerToken(DEFAULT_CHALLENGE_REALM, Optional.empty());
-    }
-
-    static AuthenticationResponse missingBearerToken(Optional<String> localAuthenticationRemovalCookie) {
-        return missingBearerToken(DEFAULT_CHALLENGE_REALM, localAuthenticationRemovalCookie);
-    }
-
     static AuthenticationResponse missingBearerToken(String realm) {
         return missingBearerToken(realm, Optional.empty());
     }
@@ -75,10 +67,6 @@ final class OidcResponseFactory {
         return builder.build();
     }
 
-    static AuthenticationResponse bearerTokenValidationNotConfigured() {
-        return bearerTokenValidationNotConfigured(DEFAULT_CHALLENGE_REALM);
-    }
-
     static AuthenticationResponse bearerTokenValidationNotConfigured(String realm) {
         String description = "Bearer Token validation is not configured";
         return AuthenticationResponse.builder()
@@ -87,10 +75,6 @@ final class OidcResponseFactory {
                 .description(description)
                 .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, description))
                 .build();
-    }
-
-    static AuthenticationResponse invalidBearerToken(String description) {
-        return invalidBearerToken(description, DEFAULT_CHALLENGE_REALM);
     }
 
     static AuthenticationResponse invalidBearerToken(String description, String realm) {
@@ -123,10 +107,6 @@ final class OidcResponseFactory {
                 .user(subject);
         authenticationCookie.ifPresent(cookie -> builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), cookie));
         return builder.build();
-    }
-
-    static AuthenticationResponse invalidBearerTokenRequest(String description) {
-        return invalidBearerTokenRequest(description, DEFAULT_CHALLENGE_REALM);
     }
 
     static AuthenticationResponse invalidBearerTokenRequest(String description, String realm) {

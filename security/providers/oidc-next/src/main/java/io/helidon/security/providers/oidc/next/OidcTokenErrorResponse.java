@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -23,13 +24,13 @@ import io.helidon.json.JsonValueType;
 
 final class OidcTokenErrorResponse {
     private final String error;
-    private final String errorDescription;
-    private final String errorUri;
+    private final Optional<String> errorDescription;
+    private final Optional<String> errorUri;
 
-    private OidcTokenErrorResponse(String error, String errorDescription, String errorUri) {
+    private OidcTokenErrorResponse(String error, Optional<String> errorDescription, Optional<String> errorUri) {
         this.error = error;
-        this.errorDescription = errorDescription;
-        this.errorUri = errorUri;
+        this.errorDescription = Objects.requireNonNull(errorDescription);
+        this.errorUri = Objects.requireNonNull(errorUri);
     }
 
     static OidcTokenErrorResponse fromJson(JsonObject json) {
@@ -44,12 +45,12 @@ final class OidcTokenErrorResponse {
         if (!OidcOAuthErrorFields.validError(error)) {
             throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
         }
-        String errorDescription = stringValue(json, "error_description").orElse(null);
-        if (errorDescription != null && !OidcOAuthErrorFields.validErrorDescription(errorDescription)) {
+        Optional<String> errorDescription = stringValue(json, "error_description");
+        if (errorDescription.filter(description -> !OidcOAuthErrorFields.validErrorDescription(description)).isPresent()) {
             throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
         }
-        String errorUri = stringValue(json, "error_uri").orElse(null);
-        if (errorUri != null && !OidcOAuthErrorFields.validErrorUri(errorUri)) {
+        Optional<String> errorUri = stringValue(json, "error_uri");
+        if (errorUri.filter(uri -> !OidcOAuthErrorFields.validErrorUri(uri)).isPresent()) {
             throw new IllegalArgumentException("Token Endpoint Error Response is invalid");
         }
         return new OidcTokenErrorResponse(error,
@@ -62,11 +63,11 @@ final class OidcTokenErrorResponse {
     }
 
     Optional<String> errorDescription() {
-        return Optional.ofNullable(errorDescription);
+        return errorDescription;
     }
 
     Optional<String> errorUri() {
-        return Optional.ofNullable(errorUri);
+        return errorUri;
     }
 
     private static Optional<String> stringValue(JsonObject json, String name) {

@@ -152,7 +152,7 @@ final class OidcSubjectMapper {
     private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken,
                                             OidcSubjectMappingConfig subjectMapping) {
         String principalId = principalId(validatedToken.claims(), subjectMapping).orElseThrow();
-        Principal.Builder principalBuilder = principal(validatedToken.claims(), principalId, subjectMapping);
+        Principal.Builder principalBuilder = principalBuilder(validatedToken.claims(), principalId, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(validatedToken.rawToken());
@@ -212,9 +212,9 @@ final class OidcSubjectMapper {
         return builder;
     }
 
-    private static Principal.Builder principal(JsonObject claims,
-                                               String principalId,
-                                               OidcSubjectMappingConfig subjectMapping) {
+    private static Principal.Builder principalBuilder(JsonObject claims,
+                                                      String principalId,
+                                                      OidcSubjectMappingConfig subjectMapping) {
         String name = firstClaimValue(claims, subjectMapping.principalNameClaimPaths())
                 .orElse(principalId);
         Principal.Builder builder = Principal.builder()

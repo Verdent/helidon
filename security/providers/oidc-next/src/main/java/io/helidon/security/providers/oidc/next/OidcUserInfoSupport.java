@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -145,21 +146,26 @@ final class OidcUserInfoSupport {
         return builder.build();
     }
 
-    record Result(Optional<JsonObject> userInfo, String failureDescription) {
+    record Result(Optional<JsonObject> userInfo, Optional<String> failureDescription) {
+        Result {
+            userInfo = Objects.requireNonNull(userInfo);
+            failureDescription = Objects.requireNonNull(failureDescription);
+        }
+
         private static Result success(Optional<JsonObject> userInfo) {
-            return new Result(userInfo, null);
+            return new Result(userInfo, Optional.empty());
         }
 
         private static Result failure(String errorDescription) {
-            return new Result(Optional.empty(), errorDescription);
+            return new Result(Optional.empty(), Optional.of(errorDescription));
         }
 
         boolean succeeded() {
-            return failureDescription == null;
+            return failureDescription.isEmpty();
         }
 
         Optional<String> errorDescription() {
-            return Optional.ofNullable(failureDescription);
+            return failureDescription;
         }
     }
 }

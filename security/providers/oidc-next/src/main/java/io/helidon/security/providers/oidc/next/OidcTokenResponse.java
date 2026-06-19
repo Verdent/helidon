@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -25,23 +26,23 @@ import io.helidon.json.JsonValueType;
 final class OidcTokenResponse {
     private final String accessToken;
     private final String tokenType;
-    private final String idToken;
-    private final String refreshToken;
-    private final Long expiresIn;
-    private final String scope;
+    private final Optional<String> idToken;
+    private final Optional<String> refreshToken;
+    private final Optional<Long> expiresIn;
+    private final Optional<String> scope;
 
     private OidcTokenResponse(String accessToken,
                               String tokenType,
-                              String idToken,
-                              String refreshToken,
-                              Long expiresIn,
-                              String scope) {
+                              Optional<String> idToken,
+                              Optional<String> refreshToken,
+                              Optional<Long> expiresIn,
+                              Optional<String> scope) {
         this.accessToken = accessToken;
         this.tokenType = tokenType;
-        this.idToken = idToken;
-        this.refreshToken = refreshToken;
-        this.expiresIn = expiresIn;
-        this.scope = scope;
+        this.idToken = Objects.requireNonNull(idToken);
+        this.refreshToken = Objects.requireNonNull(refreshToken);
+        this.expiresIn = Objects.requireNonNull(expiresIn);
+        this.scope = Objects.requireNonNull(scope);
     }
 
     static OidcTokenResponse fromAuthorizationCodeJson(JsonObject json) {
@@ -80,20 +81,21 @@ final class OidcTokenResponse {
     private static OidcTokenResponse create(JsonObject json, boolean requireIdToken) {
         String accessToken = requiredString(json, "access_token");
         String tokenType = requiredString(json, "token_type");
-        String idToken = requireIdToken ? requiredString(json, "id_token") : stringValue(json, "id_token").orElse(null);
+        Optional<String> idToken = requireIdToken
+                ? Optional.of(requiredString(json, "id_token"))
+                : stringValue(json, "id_token");
         if (!"bearer".equalsIgnoreCase(tokenType)) {
             throw new IllegalArgumentException("Token Endpoint response token_type is not supported");
         }
         return new OidcTokenResponse(accessToken,
                                      tokenType,
                                      idToken,
-                                     stringValue(json, "refresh_token").orElse(null),
-                                     expiresIn(json).orElse(null),
+                                     stringValue(json, "refresh_token"),
+                                     expiresIn(json),
                                      stringValue(json, "scope")
                                              .map(scope -> OidcScopeSupport.validateScopeString(
                                                      scope,
-                                                     "Token Endpoint response field scope"))
-                                             .orElse(null));
+                                                     "Token Endpoint response field scope")));
     }
 
     String accessToken() {
@@ -105,19 +107,19 @@ final class OidcTokenResponse {
     }
 
     Optional<String> idToken() {
-        return Optional.ofNullable(idToken);
+        return idToken;
     }
 
     Optional<String> refreshToken() {
-        return Optional.ofNullable(refreshToken);
+        return refreshToken;
     }
 
     Optional<Long> expiresIn() {
-        return Optional.ofNullable(expiresIn);
+        return expiresIn;
     }
 
     Optional<String> scope() {
-        return Optional.ofNullable(scope);
+        return scope;
     }
 
     private static String requiredString(JsonObject json, String name) {

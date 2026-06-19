@@ -35,15 +35,10 @@ final class OidcRequestContext {
     private OidcBearerTokenExtractionResult bearerTokenExtractionResult;
     private Map<String, List<String>> cookies;
 
-    private OidcRequestContext(ProviderRequest providerRequest,
-                               OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    OidcRequestContext(ProviderRequest providerRequest,
+                       OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.providerRequest = providerRequest;
         this.tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
-    }
-
-    static OidcRequestContext create(ProviderRequest providerRequest,
-                                     OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
-        return new OidcRequestContext(providerRequest, tenantRuntimeRegistry);
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
@@ -78,7 +73,7 @@ final class OidcRequestContext {
     private Optional<OidcEndpointPolicy> endpointPolicy(OidcEndpointPolicyConfig endpointPolicyConfig) {
         return tenantContext
                 .filter(OidcTenantContext::ready)
-                .flatMap(tenant -> OidcConfigSupport.endpointPolicy(tenant.tenantConfig(), endpointPolicyConfig));
+                .flatMap(tenant -> OidcEndpointPolicyResolver.resolve(tenant.tenantConfig(), endpointPolicyConfig));
     }
 
     Optional<OidcTenantContext> tenantContext() {

@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -24,24 +25,23 @@ import io.helidon.json.JsonValueType;
 
 final class OidcTokenExchangeResponse {
     static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
-    static final String BEARER_TOKEN_TYPE = "Bearer";
 
     private final String accessToken;
     private final String issuedTokenType;
     private final String tokenType;
-    private final Long expiresIn;
-    private final String scope;
+    private final Optional<Long> expiresIn;
+    private final Optional<String> scope;
 
     private OidcTokenExchangeResponse(String accessToken,
                                       String issuedTokenType,
                                       String tokenType,
-                                      Long expiresIn,
-                                      String scope) {
+                                      Optional<Long> expiresIn,
+                                      Optional<String> scope) {
         this.accessToken = accessToken;
         this.issuedTokenType = issuedTokenType;
         this.tokenType = tokenType;
-        this.expiresIn = expiresIn;
-        this.scope = scope;
+        this.expiresIn = Objects.requireNonNull(expiresIn);
+        this.scope = Objects.requireNonNull(scope);
     }
 
     static OidcTokenExchangeResponse fromJson(JsonObject json) {
@@ -66,12 +66,11 @@ final class OidcTokenExchangeResponse {
         return new OidcTokenExchangeResponse(accessToken,
                                              issuedTokenType,
                                              tokenType,
-                                             expiresIn(json).orElse(null),
+                                             expiresIn(json),
                                              stringValue(json, "scope")
                                                      .map(scope -> OidcScopeSupport.validateScopeString(
                                                              scope,
-                                                             "Token Exchange response field scope"))
-                                                     .orElse(null));
+                                                             "Token Exchange response field scope")));
     }
 
     String accessToken() {
@@ -87,11 +86,11 @@ final class OidcTokenExchangeResponse {
     }
 
     Optional<Long> expiresIn() {
-        return Optional.ofNullable(expiresIn);
+        return expiresIn;
     }
 
     Optional<String> scope() {
-        return Optional.ofNullable(scope);
+        return scope;
     }
 
     private static String requiredString(JsonObject json, String name) {

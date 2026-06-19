@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -1693,15 +1694,17 @@ class OidcFeatureRouteTest {
         Instant now = Instant.now();
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
         OidcValidatedIdToken idToken = new OidcValidatedIdToken(rawIdToken, encrypted, signedJwt, signedJwt.getJwt());
-        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.create(tenantId,
-                                                                                   idToken,
-                                                                                   "access-token",
-                                                                                   "Bearer",
-                                                                                   null,
-                                                                                   "openid profile",
-                                                                                   now.minusSeconds(1),
-                                                                                   now.plusSeconds(60),
-                                                                                   now.plusSeconds(600));
+        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromStoredValues(
+                tenantId,
+                idToken,
+                "access-token",
+                "Bearer",
+                Optional.empty(),
+                Optional.of("openid profile"),
+                Optional.empty(),
+                now.minusSeconds(1),
+                now.plusSeconds(60),
+                Optional.of(now.plusSeconds(600)));
         return OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(result);
     }

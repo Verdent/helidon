@@ -45,6 +45,7 @@ final class OidcProviderMetadata {
     private final Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported;
     private final Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported;
     private final Optional<URI> userInfoEndpointUri;
+    private final Optional<List<String>> userInfoSigningAlgorithmsSupported;
     private final Optional<URI> endSessionEndpointUri;
     private final Optional<URI> pushedAuthorizationRequestEndpointUri;
     private final boolean authorizationResponseIssuerParameterSupported;
@@ -76,6 +77,7 @@ final class OidcProviderMetadata {
                                  Optional<List<String>> introspectionEndpointAuthenticationMethodsSupported,
                                  Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                  Optional<URI> userInfoEndpointUri,
+                                 Optional<List<String>> userInfoSigningAlgorithmsSupported,
                                  Optional<URI> endSessionEndpointUri,
                                  Optional<URI> pushedAuthorizationRequestEndpointUri,
                                  boolean authorizationResponseIssuerParameterSupported,
@@ -109,6 +111,7 @@ final class OidcProviderMetadata {
         this.introspectionEndpointAuthenticationSigningAlgorithmsSupported =
                 introspectionEndpointAuthenticationSigningAlgorithmsSupported.map(List::copyOf);
         this.userInfoEndpointUri = userInfoEndpointUri;
+        this.userInfoSigningAlgorithmsSupported = userInfoSigningAlgorithmsSupported.map(List::copyOf);
         this.endSessionEndpointUri = endSessionEndpointUri;
         this.pushedAuthorizationRequestEndpointUri = pushedAuthorizationRequestEndpointUri;
         this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
@@ -144,6 +147,7 @@ final class OidcProviderMetadata {
                                         Optional.empty(),
                                         Optional.empty(),
                                         endpoints.userInfoEndpointUri(),
+                                        Optional.empty(),
                                         endpoints.endSessionEndpointUri(),
                                         endpoints.pushedAuthorizationRequestEndpointUri(),
                                         false,
@@ -178,6 +182,7 @@ final class OidcProviderMetadata {
                                         stringArrayValue(json, "introspection_endpoint_auth_methods_supported"),
                                         stringArrayValue(json, "introspection_endpoint_auth_signing_alg_values_supported"),
                                         uriValue(json, "userinfo_endpoint"),
+                                        stringArrayValue(json, "userinfo_signing_alg_values_supported"),
                                         uriValue(json, "end_session_endpoint"),
                                         uriValue(json, "pushed_authorization_request_endpoint"),
                                         json.booleanValue("authorization_response_iss_parameter_supported")
@@ -231,6 +236,7 @@ final class OidcProviderMetadata {
                                         introspectionEndpointAuthenticationSigningAlgorithmsSupported
                                                 .or(wellKnown::introspectionEndpointAuthenticationSigningAlgorithmsSupported),
                                         userInfoEndpointUri.or(wellKnown::userInfoEndpointUri),
+                                        userInfoSigningAlgorithmsSupported.or(wellKnown::userInfoSigningAlgorithmsSupported),
                                         endSessionEndpointUri.or(wellKnown::endSessionEndpointUri),
                                         pushedAuthorizationRequestEndpointUri
                                                 .or(wellKnown::pushedAuthorizationRequestEndpointUri),
@@ -332,6 +338,10 @@ final class OidcProviderMetadata {
 
     Optional<URI> userInfoEndpointUri() {
         return userInfoEndpointUri;
+    }
+
+    Optional<List<String>> userInfoSigningAlgorithmsSupported() {
+        return userInfoSigningAlgorithmsSupported;
     }
 
     Optional<URI> endSessionEndpointUri() {

@@ -275,10 +275,10 @@ final class OidcEndpointClient {
         }
     }
 
-    Optional<JsonObject> userInfo(String accessToken) {
+    OidcUserInfoEndpointResult userInfo(String accessToken) {
         Optional<URI> endpointUri = metadata.userInfoEndpointUri();
         if (endpointUri.isEmpty()) {
-            return Optional.empty();
+            return OidcUserInfoEndpointResult.failure("UserInfo Endpoint is not configured");
         }
         URI uri = endpointUri.orElseThrow();
 
@@ -292,7 +292,7 @@ final class OidcEndpointClient {
         try (HttpClientResponse response = webClient.get()
                 .uri(uri)
                 .followRedirects(false)
-                .header(HeaderValues.ACCEPT_JSON)
+                .header(HeaderNames.ACCEPT, "application/json, application/jwt")
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                 .request()) {
@@ -304,15 +304,28 @@ final class OidcEndpointClient {
                  * returned."
                  * Quote: "The content-type of the HTTP response MUST be `application/json` if the response body is a
                  * text JSON object; the response body SHOULD be encoded using UTF-8."
+                 * Quote: "If the UserInfo Response is signed and/or encrypted, then the Claims are returned in a JWT
+                 * and the content-type MUST be `application/jwt`."
                  */
-                if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
-                    return Optional.empty();
+                if (OidcHttpResponseValidation.hasJsonContentType(response)) {
+                    try {
+                        return OidcUserInfoEndpointResult.json(response.as(JsonObject.class));
+                    } catch (RuntimeException e) {
+                        return OidcUserInfoEndpointResult.failure("UserInfo Endpoint response is invalid", e);
+                    }
                 }
-                return Optional.of(response.as(JsonObject.class));
+                if (OidcHttpResponseValidation.hasJwtContentType(response)) {
+                    try {
+                        return OidcUserInfoEndpointResult.jwt(response.as(String.class));
+                    } catch (RuntimeException e) {
+                        return OidcUserInfoEndpointResult.failure("UserInfo Endpoint response is invalid", e);
+                    }
+                }
+                return OidcUserInfoEndpointResult.failure("UserInfo Endpoint response is invalid");
             }
-            return Optional.empty();
+            return OidcUserInfoEndpointResult.failure("UserInfo Endpoint returned an Error Response");
         } catch (RuntimeException e) {
-            return Optional.empty();
+            return OidcUserInfoEndpointResult.failure("UserInfo Endpoint is unavailable", e);
         }
     }
 

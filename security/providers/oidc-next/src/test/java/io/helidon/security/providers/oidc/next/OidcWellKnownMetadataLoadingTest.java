@@ -700,7 +700,9 @@ class OidcWellKnownMetadataLoadingTest {
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         Throwable failureCause = context.failureCause().orElseThrow();
-        assertThat(failureCause.getMessage(), is("Failed to load well-known metadata"));
+        assertThat(failureCause.getMessage(),
+                   is("Failed to load well-known metadata from "
+                              + issuer.resolve("/.well-known/openid-configuration")));
         assertThat(failureCause.getCause().getMessage(),
                    is("well-known metadata response must be application/json"));
     }
@@ -720,8 +722,13 @@ class OidcWellKnownMetadataLoadingTest {
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         Throwable failureCause = context.failureCause().orElseThrow();
-        assertThat(failureCause.getMessage(), is("Failed to load well-known metadata"));
-        assertThat(failureCause.getCause().getMessage(), is("well-known metadata is unavailable"));
+        assertThat(failureCause.getMessage(),
+                   is("Failed to load well-known metadata from "
+                              + issuer.resolve("/.well-known/openid-configuration")));
+        assertThat(failureCause.getCause().getMessage(),
+                   is("well-known metadata is unavailable: uri="
+                              + issuer.resolve("/.well-known/openid-configuration")
+                              + ", status=201"));
     }
 
     @Test

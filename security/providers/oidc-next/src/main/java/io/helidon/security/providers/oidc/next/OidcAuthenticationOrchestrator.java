@@ -65,6 +65,11 @@ final class OidcAuthenticationOrchestrator {
         }
 
         if (context.bearerTokenInvalidRequest()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Bearer token request rejected: reason="
+                                   + OidcDiagnostics.sanitizeLogValue(context.bearerTokenErrorDescription()));
+            }
             return OidcResponseFactory.invalidBearerTokenRequest(context.bearerTokenErrorDescription(),
                                                                  context.bearerChallengeRealm());
         }
@@ -149,7 +154,12 @@ final class OidcAuthenticationOrchestrator {
         }
         OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
         if (OidcSubjectMapper.localPrincipalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
-            LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has no principal claim");
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC local authentication result rejected: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + ", reason=no-principal-claim");
+            }
             return LocalAuthenticationOutcome.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
                                                                         .toString()));
         }
@@ -157,7 +167,13 @@ final class OidcAuthenticationOrchestrator {
             result.scope()
                     .ifPresent(scope -> OidcScopeSupport.parseScopeString(scope, "local authentication scope"));
         } catch (IllegalArgumentException e) {
-            LOGGER.log(System.Logger.Level.DEBUG, "Local authentication result has invalid scope", e);
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC local authentication result rejected: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + ", reason=invalid-scope"
+                                   + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            }
             return LocalAuthenticationOutcome.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
                                                                         .toString()));
         }
@@ -211,6 +227,12 @@ final class OidcAuthenticationOrchestrator {
                 .method()
                 .map(accessTokenValidators::get);
         if (validator.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Bearer token rejected: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", reason=token-validation-not-configured");
+            }
             return OidcResponseFactory.bearerTokenValidationNotConfigured(tenantContext.bearerChallengeRealm());
         }
         return authenticateBearerToken(OidcAccessTokenValidationRequest.protectedResource(bearerToken.orElseThrow(),
@@ -227,13 +249,32 @@ final class OidcAuthenticationOrchestrator {
                     OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),
                                           tenantContext.subjectMapping()));
         }
-        validationResult.cause()
-                .ifPresent(cause -> LOGGER.log(System.Logger.Level.DEBUG,
-                                                validationResult.errorDescription()
-                                                        .orElse("Bearer Token validation failed"),
-                                                cause));
+        debugBearerTokenValidationFailure(tenantContext, validationResult);
         String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
         return OidcResponseFactory.invalidBearerToken(errorDescription, tenantContext.bearerChallengeRealm());
+    }
+
+    private static void debugBearerTokenValidationFailure(OidcTenantContext tenantContext,
+                                                          OidcValidationResult<?> validationResult) {
+        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            return;
+        }
+        String method = tenantContext.tokenValidation()
+                .method()
+                .map(Enum::name)
+                .orElse("none");
+        String description = validationResult.errorDescription()
+                .map(OidcDiagnostics::sanitizeLogValue)
+                .orElse("Bearer Token validation failed");
+        String cause = validationResult.cause()
+                .map(OidcDiagnostics::safeExceptionType)
+                .orElse("<none>");
+        LOGGER.log(System.Logger.Level.DEBUG,
+                   "OIDC Bearer token rejected: tenant="
+                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                           + ", method=" + method
+                           + ", reason=" + description
+                           + ", cause=" + cause);
     }
 
     private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {

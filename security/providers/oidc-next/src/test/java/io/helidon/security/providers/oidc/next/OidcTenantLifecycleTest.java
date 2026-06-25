@@ -35,7 +35,6 @@ import io.helidon.security.SecurityResponse;
 
 import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -68,10 +67,10 @@ class OidcTenantLifecycleTest {
                    is(OidcTenantState.DISABLED));
         assertThat(authenticationResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(authenticationResponse.statusCode().orElse(-1), is(503));
-        assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant is disabled: tenant"));
+        assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(provider.isOutboundSupported(request, outboundEnv, outboundConfig), is(true));
         assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(outboundResponse.description().orElse(""), is("OIDC tenant is disabled: tenant"));
+        assertThat(outboundResponse.description().orElse(""), is("OIDC tenant is unavailable"));
     }
 
     @Test
@@ -186,7 +185,7 @@ class OidcTenantLifecycleTest {
 
         assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(first.statusCode().orElse(-1), is(503));
-        assertThat(first.description().orElse(""), is("OIDC tenant is not ready: tenant"));
+        assertThat(first.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(second.description().orElse(""), is("Bearer Token is required"));
         assertThat(attempts.get(), is(2));
@@ -215,10 +214,9 @@ class OidcTenantLifecycleTest {
 
         assertThat(supported, is(true));
         assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(first.description().orElse(""), is("OIDC tenant is not ready: tenant"));
+        assertThat(first.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(second.description().orElse(""),
-                   containsString("token-endpoint-uri or well-known-uri"));
+        assertThat(second.description().orElse(""), is("Client Credentials Grant failed"));
         assertThat(attempts.get(), is(2));
     }
 
@@ -247,11 +245,11 @@ class OidcTenantLifecycleTest {
 
         assertThat(authenticationResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(authenticationResponse.statusCode().orElse(-1), is(503));
-        assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
+        assertThat(authenticationResponse.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(authenticationResponse.throwable().isEmpty(), is(true));
         assertThat(outbound.isSupported(request, outboundEnv, outboundConfig), is(true));
         assertThat(outboundResponse.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(outboundResponse.description().orElse(""), is("OIDC tenant initialization failed: tenant"));
+        assertThat(outboundResponse.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(outboundResponse.throwable().isEmpty(), is(true));
     }
 

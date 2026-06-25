@@ -994,8 +994,7 @@ class OidcClientCredentialsGrantTest {
                                                                       EndpointConfig.create());
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""),
-                   is("Client Credentials Grant failed: invalid_client: client authentication failed"));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
@@ -1016,7 +1015,7 @@ class OidcClientCredentialsGrantTest {
                                                                       EndpointConfig.create());
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), containsString("temporarily_unavailable"));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
         assertThat(REQUEST_COUNT.get(), is(1));
         assertThat(REDIRECTED_REQUEST_COUNT.get(), is(0));
         assertThat(RECORDED_REQUEST.get().tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
@@ -1039,8 +1038,7 @@ class OidcClientCredentialsGrantTest {
                                                                       outboundConfig);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""),
-                   containsString("token-endpoint-uri or well-known-uri"));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 

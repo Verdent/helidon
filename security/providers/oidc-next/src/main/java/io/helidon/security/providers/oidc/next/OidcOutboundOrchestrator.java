@@ -32,12 +32,15 @@ import io.helidon.security.EndpointConfig;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcOutboundOrchestrator {
+    private static final System.Logger LOGGER = System.getLogger(OidcOutboundOrchestrator.class.getName());
+
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OutboundConfig outboundConfig;
     private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache =
@@ -110,18 +113,63 @@ final class OidcOutboundOrchestrator {
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig endpointConfig) {
         Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
+        if (tenantContext.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG, "OIDC outbound abstained: reason=no-tenant");
+            }
+        }
         if (tenantContext.filter(it -> !it.ready()).isPresent()) {
-            return OidcResponseFactory.tenantUnavailableForOutbound(tenantContext.orElseThrow());
+            OidcTenantContext unavailableTenant = tenantContext.orElseThrow();
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC outbound failed: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(unavailableTenant.tenantId())
+                                   + ", reason=tenant-" + unavailableTenant.state().name().toLowerCase(Locale.ROOT));
+            }
+            return OidcResponseFactory.tenantUnavailableForOutbound(unavailableTenant);
         }
 
+        Optional<OidcTenantContext> tlsBlockedTenant = tenantContext.filter(OidcTenantContext::ready)
+                .filter(readyTenant -> !outboundTargetTlsAllowed(readyTenant.tenantConfig(), outboundEnv));
+        if (tlsBlockedTenant.isPresent()) {
+            OidcTenantContext readyTenant = tlsBlockedTenant.orElseThrow();
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC outbound abstained: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + ", reason=tls-required"
+                                   + ", target=" + safeTargetUri(outboundEnv));
+            }
+            return OutboundSecurityResponse.abstain();
+        }
         Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
                 .filter(OidcTenantContext::ready)
                 .flatMap(readyTenant -> outboundPolicy(readyTenant.tenantConfig(), outboundEnv, endpointConfig));
         if (outboundPolicy.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                tenantContext.filter(OidcTenantContext::ready)
+                        .ifPresent(readyTenant -> {
+                            String tenantId = OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId());
+                            LOGGER.log(System.Logger.Level.DEBUG,
+                                       "OIDC outbound abstained: tenant="
+                                               + tenantId
+                                               + ", reason=no-outbound-policy"
+                                               + ", target=" + safeTargetUri(outboundEnv));
+                        });
+            }
             return OutboundSecurityResponse.abstain();
         }
         OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
         if (policy.strategyCount() > 1) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                tenantContext.ifPresent(readyTenant -> {
+                    String tenantId = OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId());
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                               "OIDC outbound failed: tenant="
+                                       + tenantId
+                                       + ", reason=ambiguous-outbound-policy");
+                });
+            }
             return OidcResponseFactory.ambiguousOutboundRequest();
         }
         if (policy.tokenPropagationEnabled()) {
@@ -139,14 +187,30 @@ final class OidcOutboundOrchestrator {
     private OutboundSecurityResponse propagateToken(ProviderRequest providerRequest,
                                                    SecurityEnvironment outboundEnv,
                                                    OidcOutboundPolicy outboundPolicy) {
-        return providerRequest.subject()
-                .flatMap(subject -> subject.publicCredential(TokenCredential.class))
-                .filter(credential -> audienceMatches(credential,
-                                                      outboundPolicy.audience(),
-                                                      outboundPolicy.audienceValidationEnabled()))
-                .map(credential -> OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv,
-                                                                                          credential.token())))
-                .orElseGet(OutboundSecurityResponse::abstain);
+        Optional<Subject> subject = providerRequest.subject();
+        if (subject.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG, "OIDC token propagation abstained: reason=no-subject");
+            }
+            return OutboundSecurityResponse.abstain();
+        }
+        Optional<TokenCredential> credential = subject.orElseThrow()
+                .publicCredential(TokenCredential.class);
+        if (credential.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG, "OIDC token propagation abstained: reason=no-token-credential");
+            }
+            return OutboundSecurityResponse.abstain();
+        }
+        if (!audienceMatches(credential.orElseThrow(),
+                             outboundPolicy.audience(),
+                             outboundPolicy.audienceValidationEnabled())) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG, "OIDC token propagation abstained: reason=audience-mismatch");
+            }
+            return OutboundSecurityResponse.abstain();
+        }
+        return OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv, credential.orElseThrow().token()));
     }
 
     private OutboundSecurityResponse secureWithClientCredentials(OidcTenantContext tenantContext,
@@ -159,6 +223,12 @@ final class OidcOutboundOrchestrator {
                                                                                   "Client Credentials Grant");
             clientCredentialsContext = tokenEndpointContext(tenantContext);
         } catch (RuntimeException e) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Client Credentials Grant failed before token request: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            }
             return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
         }
 
@@ -170,6 +240,12 @@ final class OidcOutboundOrchestrator {
                                                                                  resources,
                                                                                  now);
         if (!tokenResult.succeeded()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Client Credentials Grant failed: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", reason=token-endpoint-failure");
+            }
             return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
         }
 
@@ -184,6 +260,12 @@ final class OidcOutboundOrchestrator {
         Optional<TokenCredential> subjectToken = providerRequest.subject()
                 .flatMap(subject -> subject.publicCredential(TokenCredential.class));
         if (subjectToken.isEmpty()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Token Exchange abstained: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", reason=no-subject-token-credential");
+            }
             return OutboundSecurityResponse.abstain();
         }
 
@@ -193,6 +275,12 @@ final class OidcOutboundOrchestrator {
                                                                          tenantContext.tenantConfig().endpoints());
             tokenExchangeContext = tokenEndpointContext(tenantContext);
         } catch (RuntimeException e) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Token Exchange failed before token request: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            }
             return OidcResponseFactory.tokenExchangeFailed(OidcTokenExchangeResult.failure(e.getMessage(), e));
         }
 
@@ -202,6 +290,12 @@ final class OidcOutboundOrchestrator {
                                                                               subjectToken.orElseThrow().token(),
                                                                               now);
         if (!tokenResult.succeeded()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC Token Exchange failed: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", reason=token-endpoint-failure");
+            }
             return OidcResponseFactory.tokenExchangeFailed(tokenResult);
         }
 
@@ -274,5 +368,12 @@ final class OidcOutboundOrchestrator {
                     return false;
                 })
                 .orElse(false);
+    }
+
+    private static String safeTargetUri(SecurityEnvironment outboundEnv) {
+        if (outboundEnv == null || outboundEnv.targetUri() == null) {
+            return "<unknown>";
+        }
+        return OidcDiagnostics.safeUri(outboundEnv.targetUri());
     }
 }

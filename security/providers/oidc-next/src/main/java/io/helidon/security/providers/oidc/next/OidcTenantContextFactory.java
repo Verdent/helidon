@@ -88,7 +88,12 @@ final class OidcTenantContextFactory {
                 validateCertificateBoundAccessTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
-                LOGGER.log(System.Logger.Level.DEBUG, "OIDC tenant initialization failed: " + tenantId, e);
+                if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                               "OIDC tenant initialization failed: tenant="
+                                       + OidcDiagnostics.sanitizeLogValue(tenantId)
+                                       + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+                }
                 return OidcTenantContext.failed(tenantId, tenantConfig, e);
             }
         };

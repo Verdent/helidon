@@ -2321,7 +2321,7 @@ class OidcProviderConfigTest {
                                                                                    .build()));
 
         assertThat(headerResponse.description().orElse(""), is("Bearer Token is required"));
-        assertThat(queryResponse.description().orElse(""), is("Bearer Token is not a valid signed JWT"));
+        assertThat(queryResponse.description().orElse(""), is("Bearer Token is invalid"));
     }
 
     @Test

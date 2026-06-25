@@ -148,10 +148,13 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
             return;
         }
         if (result.authorizationError()) {
-            LOGGER.log(System.Logger.Level.DEBUG,
-                       "OpenID Provider returned an Authorization Error Response: "
-                               + result.error().orElse("unknown")
-                               + result.errorDescription().map(description -> ": " + description).orElse(""));
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OpenID Provider returned an Authorization Error Response: error="
+                                   + result.error()
+                                           .map(OidcDiagnostics::sanitizeLogValue)
+                                           .orElse("unknown"));
+            }
             response.status(Status.BAD_REQUEST_400)
                     .send("OpenID Provider returned an Authorization Error Response");
             return;

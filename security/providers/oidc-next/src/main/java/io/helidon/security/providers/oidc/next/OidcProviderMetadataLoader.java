@@ -46,9 +46,11 @@ final class OidcProviderMetadataLoader {
              * Quote: "A successful response MUST use the 200 OK HTTP status code and return a JSON object using the
              * `application/json` content type that contains a set of Claims as its members that are a subset of the
              * Metadata values defined in Section 3."
-             */
+            */
             if (response.status() != Status.OK_200) {
-                throw new IllegalStateException("well-known metadata is unavailable");
+                throw new IllegalStateException("well-known metadata is unavailable: uri="
+                                                        + OidcDiagnostics.safeUri(wellKnownUri)
+                                                        + ", status=" + response.status().code());
             }
             /*
              * Spec: OpenID Connect Discovery 1.0, 4.2 OpenID Provider Configuration Response
@@ -64,7 +66,9 @@ final class OidcProviderMetadataLoader {
             JsonObject json = response.as(JsonObject.class);
             return staticMetadata.mergeWellKnownMetadata(OidcProviderMetadata.fromWellKnownMetadataJson(json));
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to load well-known metadata", e);
+            throw new IllegalStateException("Failed to load well-known metadata from "
+                                                    + OidcDiagnostics.safeUri(wellKnownUri),
+                                            e);
         }
     }
 }

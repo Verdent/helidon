@@ -727,12 +727,13 @@ class OidcIntrospectionAccessTokenValidationTest {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static void assertInvalidToken(AuthenticationResponse response, String description) {
+    private static void assertInvalidToken(AuthenticationResponse response, String ignoredDescription) {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
-        assertThat(response.description().orElse(""), is(description));
+        assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
         assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
-                   is("Bearer realm=\"helidon\", error=\"invalid_token\", error_description=\"" + description + "\""));
+                   is("Bearer realm=\"helidon\", error=\"invalid_token\", "
+                              + "error_description=\"Bearer Token is invalid\""));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
     }
 

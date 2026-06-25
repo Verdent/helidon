@@ -83,6 +83,36 @@ The supported standards surface is intentionally scoped:
   tokens, but DPoP proof validation, DPoP Token Endpoint behavior, nonce handling, replay protection, and outbound DPoP
   proof generation are not supported.
 
+## Provider Coverage Matrix
+
+The matrix below describes current interoperability coverage. It is a test coverage map, not a conformance claim.
+Keycloak is the always-runnable Testcontainers baseline. The synthetic local IDP is still required for deterministic
+negative cases, strict protocol variants, and features that real providers do not expose predictably.
+
+| Capability | Keycloak CI coverage | Synthetic and unit coverage | Remaining provider gap |
+| --- | --- | --- | --- |
+| Discovery and OAuth metadata | Yes: discovery metadata and endpoint loading. | Metadata parsing, endpoint override, and startup validation. | Cloud metadata quirks. |
+| Authorization Code Flow | Yes: browser login, callback, mixed browser/API use. | Callback state, issuer, nonce, PKCE, cookie, and error boundaries. | Cloud redirect and cookie policies. |
+| Pushed Authorization Requests | Yes: PAR endpoint discovered from Keycloak. | PAR request/response and metadata enforcement. | Providers that require PAR. |
+| Signed Request Objects | No Keycloak CI path. | Signed by-value JAR request construction and metadata checks. | FAPI-style providers requiring JAR. |
+| Refresh-token renewal | Yes: Keycloak refresh flow. | Refresh response parsing, token validation, rotation, and resource parameters. | Provider-specific refresh policies. |
+| JSON UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching and claim storage. | JWT or encrypted UserInfo is not implemented. |
+| RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
+| Bearer introspection | Yes: valid, inactive, wrong-audience, and unknown tokens. | Response parsing, errors, issuer/audience/time validation, and endpoint failures. | Opaque-token cloud providers. |
+| JWT access tokens | Keycloak default JWT is covered as rejected because it is not RFC 9068. | Strict RFC 9068 JWT success and negative validation. | Real provider issuing RFC 9068-style tokens. |
+| mTLS and certificate-bound tokens | No Keycloak CI path. | Token Endpoint mTLS config and certificate-bound access-token validation. | Real mTLS provider setup. |
+| Token Propagation | Yes: validated Keycloak token propagated through WebClient. | Audience validation, abstain/failure paths, and target matching. | Downstream audience policy variations. |
+| Client Credentials Grant | Yes: Keycloak token endpoint and outbound WebClient use. | Request shape, caching, auth methods, resources, and metadata checks. | Non-basic client authentication with real providers. |
+| Token Exchange | Yes: Keycloak standard token exchange. | RFC 8693 request shape, response validation, caching, and failures. | Provider-specific OBO/token-exchange variants. |
+| Multi-tenant routing | No dedicated Keycloak multi-issuer CI path. | Tenant resolution, tenant lifecycle, and route behavior. | Multi-provider deployments. |
+| Security-negative boundaries | Real providers are not used for most negative cases. | Bearer ambiguity, DPoP-bound rejection, state replay, malformed tokens, and endpoint errors. | Keep synthetic by design. |
+| Unsupported specs | No CI path. | Rejection or config guardrails where security-sensitive. | DPoP, JARM, RAR, JWT UserInfo, revocation, and back-channel logout remain queued. |
+
+Manual or credentialed smoke tests should be added only when they prove a behavior Keycloak cannot cover. Good candidates
+are OCI IAM, Auth0, Okta, Microsoft Entra ID, or another provider required by Helidon users. Each smoke test should record
+metadata quirks, token endpoint authentication methods, token formats, UserInfo format, PAR/JAR/DPoP/JARM/RAR support,
+logout behavior, and mTLS or certificate-bound token support.
+
 ## Configuration Shape
 
 The provider config key is `oidc-next`.
@@ -2009,6 +2039,35 @@ verification keys. Outbound targets that carry tokens should normally be constra
 though HTTPS is enforced by default. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` still require an HTTPS Token
 Endpoint and HTTPS well-known metadata when discovery supplies that endpoint, because mutual TLS client authentication
 cannot happen over HTTP.
+
+## Troubleshooting And Diagnostics
+
+Caller-facing authentication failures are intentionally vague. RFC 6750 Bearer challenges use controlled local strings:
+missing Bearer credentials return only `WWW-Authenticate: Bearer realm="..."`, malformed Bearer requests use
+`invalid_request` with `Bearer Token request is invalid`, and invalid presented tokens use `invalid_token` with
+`Bearer Token is invalid`. The provider does not relay provider `error_description` values, token claims, introspection
+payloads, stack traces, cookie values, tokens, or secrets to callers.
+
+Use DEBUG logging for `io.helidon.security.providers.oidc.next` when investigating operational failures. DEBUG output is
+designed to give safe categories such as tenant id, validation method, endpoint role, config key, sanitized metadata or
+JWK Set URI, JWT `kid`, and failure category. It still does not log raw access tokens, ID Tokens, refresh tokens, DPoP
+proofs, cookies, authorization headers, client assertions, private keys, client secrets, provider response bodies, full
+claims, or full introspection responses.
+
+Common checks:
+
+| Symptom | Check |
+| --- | --- |
+| `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
+| `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. |
+| `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
+| `Bearer Token request is invalid` | Check for multiple Bearer token sources, multiple Authorization Bearer values, malformed `access_token` query parameters, or non-HTTPS transport when secure transport is required. |
+| Browser login loops or callback failures | Check redirect URI registration, reverse proxy requested-URI discovery, `X-Forwarded-*` headers, cookie domain/path/SameSite settings, clock skew, PKCE metadata, PAR/JAR requirements, and cookie encryption secret consistency. |
+| UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
+| Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
+| Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |
+| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. |
+| mTLS or certificate-bound token failures | Check WebServer client certificate configuration, tenant `webclient.tls`, mTLS endpoint aliases, HTTPS endpoint requirements, and the token/introspection `cnf.x5t#S256` thumbprint. |
 
 ## Configuration Reference
 

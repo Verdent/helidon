@@ -107,11 +107,15 @@ final class OidcJwkSetManager {
 
     private JwkKeys loadJwkKeys() {
         URI uri = jwkSetUri()
-                .orElseThrow(() -> new IllegalStateException("JWK Set URI is not configured for tenant: " + tenantId));
+                .orElseThrow(() -> new IllegalStateException("JWK Set URI is not configured for tenant: "
+                                                                     + OidcDiagnostics.sanitizeLogValue(tenantId)));
         try {
             return jwkSetLoader.load(uri, metadata.jwkSetUriFromWellKnownMetadata());
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to load JWK Set for tenant: " + tenantId, e);
+            throw new IllegalStateException("Failed to load JWK Set for tenant: "
+                                                    + OidcDiagnostics.sanitizeLogValue(tenantId)
+                                                    + ", uri=" + OidcDiagnostics.safeUri(uri),
+                                            e);
         }
     }
 

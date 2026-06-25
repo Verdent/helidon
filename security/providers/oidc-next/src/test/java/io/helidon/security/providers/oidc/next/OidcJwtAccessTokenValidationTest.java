@@ -261,6 +261,21 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void dpopBoundJwtAccessTokenIsRejectedEvenWithMatchingCertificateBoundClaim() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("jkt", "dpop-key-thumbprint")
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token,
+                                                       certificate);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
     void certificateBoundJwtAccessTokenIsRejectedAsBearer() {
         String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
                 .set("x5t#S256", "certificate-thumbprint")
@@ -279,6 +294,20 @@ class OidcJwtAccessTokenValidationTest {
                 .build()));
 
         AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       token,
+                                                       certificate);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void certificateBoundJwtAccessTokenAuthenticatesWhenRequiredWithMatchingPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))
+                .build()));
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED),
                                                        token,
                                                        certificate);
 
@@ -775,6 +804,15 @@ class OidcJwtAccessTokenValidationTest {
         Instant now = Instant.now();
         String token = signedToken(it -> it.issueTime(now.minus(2, ChronoUnit.HOURS))
                 .expirationTime(now.minus(5, ChronoUnit.MINUTES)));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void futureNotBeforeIsRejected() {
+        String token = signedToken(it -> it.notBefore(Instant.now().plus(5, ChronoUnit.MINUTES)));
 
         AuthenticationResponse response = authenticate(provider(), token);
 

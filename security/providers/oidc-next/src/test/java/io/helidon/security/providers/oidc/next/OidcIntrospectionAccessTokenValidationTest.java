@@ -285,6 +285,15 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void missingActiveIntrospectionResponseIsRejected() {
+        responseBody = validResponse(it -> it.unset("active")).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+    }
+
+    @Test
     void wrongIssuerIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("iss", "https://other.example")).toString();
 
@@ -388,6 +397,21 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void dpopBoundIntrospectionResponseIsRejectedEvenWithMatchingCertificateBoundClaim() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("jkt", "dpop-key-thumbprint")
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN,
+                                                       certificate);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
     void certificateBoundIntrospectionResponseIsRejectedAsBearer() {
         responseBody = validResponse(it -> it.set("cnf", cnf -> cnf.set("x5t#S256", "certificate-thumbprint")))
                 .toString();
@@ -405,6 +429,20 @@ class OidcIntrospectionAccessTokenValidationTest {
                 .toString();
 
         AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
+                                                       OPAQUE_TOKEN,
+                                                       certificate);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void certificateBoundIntrospectionResponseAuthenticatesWhenRequiredWithMatchingPeerCertificate() {
+        Certificate certificate = OidcTestCertificates.certificate("client-certificate");
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf
+                .set("x5t#S256", OidcTestCertificates.thumbprint(certificate))))
+                .toString();
+
+        AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED),
                                                        OPAQUE_TOKEN,
                                                        certificate);
 

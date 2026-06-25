@@ -196,8 +196,12 @@ final class OidcRefreshTokenManager {
     }
 
     private void logFailure(String description, Optional<Throwable> cause) {
-        cause.ifPresentOrElse(error -> LOGGER.log(System.Logger.Level.DEBUG, description, error),
-                              () -> LOGGER.log(System.Logger.Level.DEBUG, description));
+        if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            LOGGER.log(System.Logger.Level.DEBUG,
+                       "OIDC local authentication refresh failed: reason="
+                               + OidcDiagnostics.sanitizeLogValue(description)
+                               + ", cause=" + cause.map(OidcDiagnostics::safeExceptionType).orElse("<none>"));
+        }
     }
 
     private boolean invalidGrant(OidcTokenEndpointResult tokenResult) {

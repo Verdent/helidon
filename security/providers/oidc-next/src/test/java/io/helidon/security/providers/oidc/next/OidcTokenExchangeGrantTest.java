@@ -225,8 +225,7 @@ class OidcTokenExchangeGrantTest {
                                                                       EndpointConfig.create());
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""),
-                   is("Token Exchange failed: invalid_target: requested target is not allowed"));
+        assertThat(response.description().orElse(""), is("Token Exchange failed"));
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
@@ -338,7 +337,7 @@ class OidcTokenExchangeGrantTest {
                                                                       EndpointConfig.create());
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), containsString("tenant initialization failed"));
+        assertThat(response.description().orElse(""), is("OIDC tenant is unavailable"));
         assertThat(REQUEST_COUNT.get(), is(0));
     }
 

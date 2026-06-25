@@ -33,6 +33,9 @@ final class OidcResponseFactory {
     private static final String INVALID_TOKEN = "invalid_token";
     private static final String INVALID_REQUEST_DESCRIPTION = "Bearer Token request is invalid";
     private static final String INVALID_TOKEN_DESCRIPTION = "Bearer Token is invalid";
+    private static final String TENANT_UNAVAILABLE_DESCRIPTION = "OIDC tenant is unavailable";
+    private static final String CLIENT_CREDENTIALS_FAILURE_DESCRIPTION = "Client Credentials Grant failed";
+    private static final String TOKEN_EXCHANGE_FAILURE_DESCRIPTION = "Token Exchange failed";
     private static final String DEFAULT_CHALLENGE_REALM =
             OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM;
 
@@ -68,12 +71,11 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse bearerTokenValidationNotConfigured(String realm) {
-        String description = "Bearer Token validation is not configured";
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
-                .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, description))
+                .description(INVALID_TOKEN_DESCRIPTION)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, INVALID_TOKEN_DESCRIPTION))
                 .build();
     }
 
@@ -81,8 +83,8 @@ final class OidcResponseFactory {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
-                .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, description))
+                .description(INVALID_TOKEN_DESCRIPTION)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, INVALID_TOKEN_DESCRIPTION))
                 .build();
     }
 
@@ -113,8 +115,8 @@ final class OidcResponseFactory {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
-                .description(description)
-                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_REQUEST, description))
+                .description(INVALID_REQUEST_DESCRIPTION)
+                .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_REQUEST, INVALID_REQUEST_DESCRIPTION))
                 .build();
     }
 
@@ -129,24 +131,22 @@ final class OidcResponseFactory {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(503)
-                .description(tenantUnavailableDescription(tenantContext))
+                .description(TENANT_UNAVAILABLE_DESCRIPTION)
                 .build();
     }
 
     static OutboundSecurityResponse clientCredentialsGrantFailed(OidcTokenEndpointResult result) {
-        OutboundSecurityResponse.Builder builder = OutboundSecurityResponse.builder()
+        return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description(clientCredentialsFailureDescription(result));
-        result.cause().ifPresent(builder::throwable);
-        return builder.build();
+                .description(CLIENT_CREDENTIALS_FAILURE_DESCRIPTION)
+                .build();
     }
 
     static OutboundSecurityResponse tokenExchangeFailed(OidcTokenExchangeResult result) {
-        OutboundSecurityResponse.Builder builder = OutboundSecurityResponse.builder()
+        return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description(tokenExchangeFailureDescription(result));
-        result.cause().ifPresent(builder::throwable);
-        return builder.build();
+                .description(TOKEN_EXCHANGE_FAILURE_DESCRIPTION)
+                .build();
     }
 
     static OutboundSecurityResponse ambiguousOutboundRequest() {
@@ -159,35 +159,8 @@ final class OidcResponseFactory {
     static OutboundSecurityResponse tenantUnavailableForOutbound(OidcTenantContext tenantContext) {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description(tenantUnavailableDescription(tenantContext))
+                .description(TENANT_UNAVAILABLE_DESCRIPTION)
                 .build();
-    }
-
-    private static String tenantUnavailableDescription(OidcTenantContext tenantContext) {
-        return switch (tenantContext.state()) {
-            case NOT_READY -> "OIDC tenant is not ready: " + tenantContext.tenantId();
-            case DISABLED -> "OIDC tenant is disabled: " + tenantContext.tenantId();
-            case FAILED -> "OIDC tenant initialization failed: " + tenantContext.tenantId();
-            case READY -> "OIDC tenant is ready: " + tenantContext.tenantId();
-        };
-    }
-
-    private static String clientCredentialsFailureDescription(OidcTokenEndpointResult result) {
-        return result.error()
-                .map(error -> error.errorDescription()
-                        .map(description -> error.error() + ": " + description)
-                        .orElse(error.error()))
-                .map(description -> "Client Credentials Grant failed: " + description)
-                .orElseGet(() -> "Client Credentials Grant failed: " + result.description());
-    }
-
-    private static String tokenExchangeFailureDescription(OidcTokenExchangeResult result) {
-        return result.error()
-                .map(error -> error.errorDescription()
-                        .map(description -> error.error() + ": " + description)
-                        .orElse(error.error()))
-                .map(description -> "Token Exchange failed: " + description)
-                .orElseGet(() -> "Token Exchange failed: " + result.description());
     }
 
     private static String bearerChallenge(String realm) {

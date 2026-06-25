@@ -26,6 +26,8 @@ import io.helidon.json.JsonValue;
 import io.helidon.json.JsonValueType;
 
 final class OidcUserInfoSupport {
+    private static final OidcUserInfoJwtValidator USER_INFO_JWT_VALIDATOR = new OidcUserInfoJwtValidator();
+
     private OidcUserInfoSupport() {
     }
 
@@ -40,14 +42,29 @@ final class OidcUserInfoSupport {
             return Result.success(Optional.empty());
         }
 
-        Optional<JsonObject> userInfo = tenantContext.endpointClient().userInfo(accessToken);
-        if (userInfo.isEmpty()) {
-            return Result.failure("UserInfo Endpoint request failed");
+        OidcUserInfoEndpointResult endpointResult = tenantContext.endpointClient().userInfo(accessToken);
+        if (!endpointResult.succeeded()) {
+            return Result.failure("UserInfo Endpoint request failed", endpointResult.cause().orElse(null));
         }
-        if (!subjectMatches(userInfo.orElseThrow(), idToken)) {
+        Optional<JsonObject> userInfo = endpointResult.json();
+        if (userInfo.isEmpty() && endpointResult.jwt().isPresent()) {
+            OidcValidationResult<JsonObject> validationResult = USER_INFO_JWT_VALIDATOR.validate(
+                    endpointResult.jwt().orElseThrow(),
+                    tenantContext,
+                    idToken);
+            if (!validationResult.succeeded()) {
+                return Result.failure("UserInfo response is invalid", validationResult.cause().orElse(null));
+            }
+            userInfo = validationResult.validatedToken();
+        }
+        if (userInfo.isEmpty()) {
             return Result.failure("UserInfo response is invalid");
         }
-        return Result.success(storedUserInfo(tenantContext.tenantConfig(), userInfo.orElseThrow()));
+        JsonObject userInfoClaims = userInfo.orElseThrow();
+        if (!subjectMatches(userInfoClaims, idToken)) {
+            return Result.failure("UserInfo response is invalid");
+        }
+        return Result.success(storedUserInfo(tenantContext.tenantConfig(), userInfoClaims));
     }
 
     static boolean subjectMatches(JsonObject userInfo, OidcValidatedIdToken idToken) {
@@ -146,18 +163,25 @@ final class OidcUserInfoSupport {
         return builder.build();
     }
 
-    record Result(Optional<JsonObject> userInfo, Optional<String> failureDescription) {
+    record Result(Optional<JsonObject> userInfo,
+                  Optional<String> failureDescription,
+                  Optional<Throwable> cause) {
         Result {
             userInfo = Objects.requireNonNull(userInfo);
             failureDescription = Objects.requireNonNull(failureDescription);
+            cause = Objects.requireNonNull(cause);
         }
 
         private static Result success(Optional<JsonObject> userInfo) {
-            return new Result(userInfo, Optional.empty());
+            return new Result(userInfo, Optional.empty(), Optional.empty());
         }
 
         private static Result failure(String errorDescription) {
-            return new Result(Optional.empty(), Optional.of(errorDescription));
+            return failure(errorDescription, null);
+        }
+
+        private static Result failure(String errorDescription, Throwable cause) {
+            return new Result(Optional.empty(), Optional.of(errorDescription), Optional.ofNullable(cause));
         }
 
         boolean succeeded() {

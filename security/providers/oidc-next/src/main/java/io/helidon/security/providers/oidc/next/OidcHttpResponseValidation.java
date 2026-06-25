@@ -25,6 +25,9 @@ import io.helidon.http.HttpMediaTypes;
 import io.helidon.webclient.api.HttpClientResponse;
 
 final class OidcHttpResponseValidation {
+    private static final String APPLICATION = "application";
+    private static final String JWT = "jwt";
+
     private OidcHttpResponseValidation() {
     }
 
@@ -32,6 +35,14 @@ final class OidcHttpResponseValidation {
         return response.headers()
                 .contentType()
                 .filter(HttpMediaTypes.JSON_PREDICATE::test)
+                .isPresent();
+    }
+
+    static boolean hasJwtContentType(HttpClientResponse response) {
+        return response.headers()
+                .contentType()
+                .filter(contentType -> APPLICATION.equalsIgnoreCase(contentType.type())
+                        && JWT.equalsIgnoreCase(contentType.subtype()))
                 .isPresent();
     }
 

@@ -40,7 +40,7 @@ The current implementation supports:
 The current implementation does not yet support:
 
 - DPoP or token binding other than RFC 8705 certificate-bound access-token validation.
-- Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
+- Encrypted JWT UserInfo responses.
 - Hosted Request Objects through client-hosted `request_uri`, unsigned Request Objects, or encrypted Request Objects.
 
 ## Supported Standards Boundary
@@ -52,8 +52,9 @@ Dynamic Client Registration server, Device Flow client, CIBA client, or browser 
 The supported standards surface is intentionally scoped:
 
 - OpenID Connect Core 1.0: Authorization Code Flow, Authentication Request construction, ID Token validation, encrypted
-  ID Token decryption before validation, JSON UserInfo retrieval, offline access prompt handling, and JWT client
-  authentication. Implicit Flow, Hybrid Flow, OP behavior, and JWT UserInfo responses are not implemented.
+  ID Token decryption before validation, JSON and signed JWT UserInfo retrieval, offline access prompt handling, and JWT
+  client authentication. Implicit Flow, Hybrid Flow, OP behavior, and encrypted JWT UserInfo responses are not
+  implemented.
 - OpenID Connect Discovery 1.0 and OAuth 2.0 Authorization Server Metadata, RFC 8414: metadata loading and validation for
   issuer, endpoint, JWKS, client-authentication, PKCE, PAR, JAR, Token Exchange, mTLS aliases, logout, and UserInfo
   capabilities. The provider derives the OpenID Connect discovery URI from `issuer`; configure an OAuth authorization
@@ -96,7 +97,7 @@ negative cases, strict protocol variants, and features that real providers do no
 | Pushed Authorization Requests | Yes: PAR endpoint discovered from Keycloak. | PAR request/response and metadata enforcement. | Providers that require PAR. |
 | Signed Request Objects | No Keycloak CI path. | Signed by-value JAR request construction and metadata checks. | FAPI-style providers requiring JAR. |
 | Refresh-token renewal | Yes: Keycloak refresh flow. | Refresh response parsing, token validation, rotation, and resource parameters. | Provider-specific refresh policies. |
-| JSON UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching and claim storage. | JWT or encrypted UserInfo is not implemented. |
+| JSON and signed JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWT validation, and claim storage. | Encrypted JWT UserInfo is not implemented. |
 | RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
 | Bearer introspection | Yes: valid, inactive, wrong-audience, and unknown tokens. | Response parsing, errors, issuer/audience/time validation, and endpoint failures. | Opaque-token cloud providers. |
 | JWT access tokens | Keycloak default JWT is covered as rejected because it is not RFC 9068. | Strict RFC 9068 JWT success and negative validation. | Real provider issuing RFC 9068-style tokens. |
@@ -106,7 +107,7 @@ negative cases, strict protocol variants, and features that real providers do no
 | Token Exchange | Yes: Keycloak standard token exchange. | RFC 8693 request shape, response validation, caching, and failures. | Provider-specific OBO/token-exchange variants. |
 | Multi-tenant routing | No dedicated Keycloak multi-issuer CI path. | Tenant resolution, tenant lifecycle, and route behavior. | Multi-provider deployments. |
 | Security-negative boundaries | Real providers are not used for most negative cases. | Bearer ambiguity, DPoP-bound rejection, state replay, malformed tokens, and endpoint errors. | Keep synthetic by design. |
-| Unsupported specs | No CI path. | Rejection or config guardrails where security-sensitive. | DPoP, JARM, RAR, JWT UserInfo, revocation, and back-channel logout remain queued. |
+| Unsupported specs | No CI path. | Rejection or config guardrails where security-sensitive. | DPoP, JARM, RAR, revocation, and back-channel logout remain queued. |
 
 Manual or credentialed smoke tests should be added only when they prove a behavior Keycloak cannot cover. Good candidates
 are OCI IAM, Auth0, Okta, Microsoft Entra ID, or another provider required by Helidon users. Each smoke test should record
@@ -1071,7 +1072,10 @@ When `user-info` is configured and not explicitly disabled:
 - Authorization Code Flow must be configured and enabled.
 - A UserInfo Endpoint is required, either explicitly or from well-known metadata.
 - The provider calls the UserInfo Endpoint with the access token returned by the Token Endpoint.
-- The UserInfo response must be a successful JSON object response with `Content-Type: application/json`.
+- The UserInfo response must be a successful JSON object response with `Content-Type: application/json`, or a signed JWT
+  response with `Content-Type: application/jwt`.
+- Signed JWT UserInfo responses are verified with the OpenID Provider JWK Set. The JWT `iss` must match the issuer,
+  `aud` must include the tenant `client-id`, and `sub` must exactly match the ID Token `sub`.
 - The UserInfo response must contain `sub`, and it must exactly match the ID Token `sub`.
 
 By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used by `subject-mapping`, and claims listed

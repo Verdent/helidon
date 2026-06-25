@@ -45,6 +45,7 @@ import io.helidon.security.Subject;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.webclient.api.HttpClientResponse;
@@ -89,7 +90,7 @@ class OidcFeatureRouteTest {
     private static String tokenEndpointResponseBody;
     private static String userInfoEndpointResponseBody;
     private static Status userInfoEndpointStatus;
-    private static boolean userInfoEndpointJsonContentType;
+    private static String userInfoEndpointContentType;
     private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
 
     @BeforeAll
@@ -110,8 +111,8 @@ class OidcFeatureRouteTest {
         routing.get("/userinfo", (request, response) -> {
             USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
             response.status(userInfoEndpointStatus);
-            if (userInfoEndpointStatus.family() == Status.Family.SUCCESSFUL && userInfoEndpointJsonContentType) {
-                response.header(HeaderValues.CONTENT_TYPE_JSON);
+            if (userInfoEndpointStatus.family() == Status.Family.SUCCESSFUL && userInfoEndpointContentType != null) {
+                response.header(HeaderNames.CONTENT_TYPE, userInfoEndpointContentType);
             }
             response.send(userInfoEndpointResponseBody);
         });
@@ -124,7 +125,7 @@ class OidcFeatureRouteTest {
         tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(NONCE)).toString();
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT).build().toString();
         userInfoEndpointStatus = Status.OK_200;
-        userInfoEndpointJsonContentType = true;
+        userInfoEndpointContentType = "application/json";
         USER_INFO_AUTHORIZATION.set("");
     }
 
@@ -441,6 +442,68 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void redirectionEndpointRouteMergesSignedJwtUserInfoClaims(URI serverUri) {
+        userInfoEndpointContentType = "application/jwt";
+        userInfoEndpointResponseBody = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, jwt -> jwt
+                .preferredUsername("userinfo-user")
+                .email("userinfo@example.org")
+                .addUserGroup("admin")
+                .addUserGroup("auditor"));
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer access-token"));
+
+                SetCookie localAuthenticationCookie = SetCookie.parse(response.headers()
+                        .get(HeaderNames.SET_COOKIE)
+                        .allValues()
+                        .stream()
+                        .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
+                        .findFirst()
+                        .orElseThrow());
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                        .orElseThrow()
+                        .userInfo()
+                        .orElseThrow();
+                assertThat(storedUserInfo.stringValue("preferred_username").orElse(""), is("userinfo-user"));
+                assertThat(storedUserInfo.value("email").isEmpty(), is(true));
+                assertThat(storedUserInfo.value("groups").isPresent(), is(true));
+
+                AuthenticationResponse authentication = OidcProvider.create(providerConfig(tenant))
+                        .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                                .targetUri(URI.create("https://rp.example/resource"))
+                                .header(HeaderNames.COOKIE.defaultCase(),
+                                        localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                                .build()));
+
+                assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                Subject subject = authentication.user().orElseThrow();
+                assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
+                assertThat(subject.principal().getName(), is("userinfo-user"));
+                assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
+                assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
+                           is(List.of("admin", "auditor")));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteStoresExplicitUserInfoAttributes(URI serverUri) {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
                 .set("preferred_username", "userinfo-user")
@@ -619,6 +682,51 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void redirectionEndpointRouteRejectsInvalidSignedJwtUserInfo(URI serverUri) {
+        userInfoEndpointContentType = "application/jwt";
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            for (String invalidResponse : List.of(tamperedSignature(signedUserInfo(SUBJECT,
+                                                                                   ISSUER.toString(),
+                                                                                   CLIENT_ID,
+                                                                                   jwt -> { })),
+                                                  unsignedUserInfo(),
+                                                  signedUserInfo("other-subject",
+                                                                 ISSUER.toString(),
+                                                                 CLIENT_ID,
+                                                                 jwt -> { }),
+                                                  signedUserInfo(SUBJECT,
+                                                                 "https://other-issuer.example",
+                                                                 CLIENT_ID,
+                                                                 jwt -> { }),
+                                                  signedUserInfo(SUBJECT,
+                                                                 ISSUER.toString(),
+                                                                 "other-client",
+                                                                 jwt -> { }))) {
+                userInfoEndpointResponseBody = invalidResponse;
+                URI callbackUri = callbackUri(rpServer);
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
+
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .get("/oidc/callback")
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                    assertThat(response.as(String.class), is("UserInfo response is invalid"));
+                    assertNoLocalAuthenticationCookie(response, tenant);
+                }
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteRejectsUserInfoEndpointError(URI serverUri) {
         userInfoEndpointStatus = Status.UNAUTHORIZED_401;
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
@@ -673,7 +781,7 @@ class OidcFeatureRouteTest {
 
     @Test
     void redirectionEndpointRouteRejectsUserInfoResponseWithoutJsonContentType(URI serverUri) {
-        userInfoEndpointJsonContentType = false;
+        userInfoEndpointContentType = null;
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
@@ -1761,6 +1869,45 @@ class OidcFeatureRouteTest {
                 .build();
         return SignedJwt.sign(jwt, signKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static String signedUserInfo(String subject,
+                                         String issuer,
+                                         String audience,
+                                         Consumer<Jwt.Builder> customizer) {
+        Instant now = Instant.now();
+        Jwt.Builder jwt = Jwt.builder()
+                .type("JWT")
+                .subject(subject)
+                .issuer(issuer)
+                .algorithm("RS256")
+                .keyId("verify-rsa")
+                .issueTime(now)
+                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .addAudience(audience);
+        customizer.accept(jwt);
+        return SignedJwt.sign(jwt.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
+                .tokenContent();
+    }
+
+    private static String unsignedUserInfo() {
+        Instant now = Instant.now();
+        Jwt jwt = Jwt.builder()
+                .type("JWT")
+                .subject(SUBJECT)
+                .issuer(ISSUER.toString())
+                .algorithm(Jwk.ALG_NONE)
+                .issueTime(now)
+                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .addAudience(CLIENT_ID)
+                .build();
+        return SignedJwt.sign(jwt, Jwk.NONE_JWK)
+                .tokenContent();
+    }
+
+    private static String tamperedSignature(String jwt) {
+        char replacement = jwt.endsWith("A") ? 'B' : 'A';
+        return jwt.substring(0, jwt.length() - 1) + replacement;
     }
 
     private static String encryptedIdToken(String signedIdToken) {

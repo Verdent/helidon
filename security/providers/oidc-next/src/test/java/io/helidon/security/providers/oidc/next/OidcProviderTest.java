@@ -426,6 +426,27 @@ class OidcProviderTest {
     }
 
     @Test
+    void authorizationCodeFlowWithAbsoluteRedirectionEndpointDoesNotRequireRequestOrigin() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .path("/resource")
+                .transport("http")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(
+                request(null, environment));
+
+        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("redirect_uri"), is(REDIRECTION_ENDPOINT_URI.toString()));
+
+        OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        assertThat(state.originalUri(), is(URI.create("/resource")));
+        assertThat(state.redirectionEndpointUri(), is(REDIRECTION_ENDPOINT_URI));
+    }
+
+    @Test
     void authorizationCodeFlowInitiationCanRequestPrompts() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.prompts(List.of("login", "consent")));
         OidcProvider provider = provider(tenant);
@@ -679,6 +700,23 @@ class OidcProviderTest {
         assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
         assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
                    is(resolvedRedirectionEndpointUri));
+    }
+
+    @Test
+    void authorizationCodeFlowRequiresRequestOriginForLocalRedirectionEndpoint() {
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code
+                .redirectionEndpointUri(URI.create("/oidc/callback")));
+        OidcProvider provider = provider(tenant);
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                                                    () -> provider.authenticate(request(null, environment)));
+
+        assertThat(thrown.getMessage(),
+                   containsString("Host header or target URI is required when redirection-endpoint-uri"));
     }
 
     @Test

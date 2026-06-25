@@ -43,6 +43,46 @@ The current implementation does not yet support:
 - Signed or encrypted JWT UserInfo responses. UserInfo responses must be JSON objects.
 - Hosted Request Objects through client-hosted `request_uri`, unsigned Request Objects, or encrypted Request Objects.
 
+## Supported Standards Boundary
+
+`oidc-next` implements client-side and resource-server-side OAuth/OIDC behavior. It is an OpenID Connect Relying Party,
+an OAuth client, and an OAuth Protected Resource provider. It is not an OpenID Provider, OAuth Authorization Server,
+Dynamic Client Registration server, Device Flow client, CIBA client, or browser session-management implementation.
+
+The supported standards surface is intentionally scoped:
+
+- OpenID Connect Core 1.0: Authorization Code Flow, Authentication Request construction, ID Token validation, encrypted
+  ID Token decryption before validation, JSON UserInfo retrieval, offline access prompt handling, and JWT client
+  authentication. Implicit Flow, Hybrid Flow, OP behavior, and JWT UserInfo responses are not implemented.
+- OpenID Connect Discovery 1.0 and OAuth 2.0 Authorization Server Metadata, RFC 8414: metadata loading and validation for
+  issuer, endpoint, JWKS, client-authentication, PKCE, PAR, JAR, Token Exchange, mTLS aliases, logout, and UserInfo
+  capabilities. The provider derives the OpenID Connect discovery URI from `issuer`; configure an OAuth authorization
+  server metadata URI explicitly when needed.
+- OAuth 2.0, RFC 6749: Authorization Code token exchange, refresh-token exchange, Client Credentials Grant, token
+  endpoint error parsing, scopes, and client authentication. Authorization Server behavior is not implemented.
+- OAuth 2.0 Bearer Token Usage, RFC 6750: Protected Resource Bearer authentication from the Authorization header and,
+  when explicitly enabled, the query parameter. Ambiguous or insecure Bearer token requests are rejected.
+- PKCE, RFC 7636: `S256` is the default. `plain` is available only for confidential-client compatibility; public clients
+  must use PKCE with `S256`.
+- Token Introspection, RFC 7662: Protected Resource access-token validation with authenticated introspection requests.
+  Introspection response caching is not enabled by default.
+- Token Exchange, RFC 8693: outbound Bearer access-token to Bearer access-token exchange. SAML, ID Token exchange,
+  actor-token, delegation-chain, `act`, and `may_act` semantics are not implemented.
+- Mutual TLS, RFC 8705: Token Endpoint mTLS client authentication, mTLS endpoint aliases, and certificate-bound
+  access-token validation. Certificate-bound token validation applies to Protected Resource Bearer requests.
+- Resource Indicators, RFC 8707: `resource` parameters for Authorization Code Flow, refresh requests, Client Credentials
+  Grant, and Token Exchange where configured.
+- JWT Access Token Profile, RFC 9068: signed JWT access-token validation. Disabling audience validation is a compatibility
+  relaxation, not full RFC 9068 conformance.
+- JWT-Secured Authorization Request, RFC 9101: signed by-value Request Objects. Unsigned, encrypted, and hosted
+  `request_uri` Request Objects are not implemented.
+- Pushed Authorization Requests, RFC 9126: PAR request and response handling, including metadata-driven enforcement.
+- Authorization Server Issuer Identification, RFC 9207: authorization response `iss` validation when present or when
+  metadata advertises support.
+- DPoP, RFC 9449: DPoP is not implemented. DPoP-bound access tokens with `cnf.jkt` are rejected when presented as Bearer
+  tokens, but DPoP proof validation, DPoP Token Endpoint behavior, nonce handling, replay protection, and outbound DPoP
+  proof generation are not supported.
+
 ## Configuration Shape
 
 The provider config key is `oidc-next`.

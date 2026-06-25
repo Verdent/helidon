@@ -197,6 +197,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                                                                                   tokenResponse.accessToken(),
                                                                                   validatedIdToken);
         if (!userInfoResult.succeeded()) {
+            debugUserInfoFailure(tenantContext, userInfoResult);
             response.status(Status.BAD_GATEWAY_502)
                     .send(userInfoResult.errorDescription().orElseThrow());
             return;
@@ -224,5 +225,22 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
          */
         response.headers().add(HeaderNames.LOCATION, OidcUri.localReference(state.originalUri()).toString());
         response.send();
+    }
+
+    private static void debugUserInfoFailure(OidcTenantContext tenantContext, OidcUserInfoSupport.Result result) {
+        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            return;
+        }
+        String reason = result.errorDescription()
+                .map(OidcDiagnostics::sanitizeLogValue)
+                .orElse("UserInfo failed");
+        String cause = result.cause()
+                .map(OidcDiagnostics::safeExceptionType)
+                .orElse("<none>");
+        LOGGER.log(System.Logger.Level.DEBUG,
+                   "OIDC UserInfo rejected: tenant="
+                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                           + ", reason=" + reason
+                           + ", cause=" + cause);
     }
 }

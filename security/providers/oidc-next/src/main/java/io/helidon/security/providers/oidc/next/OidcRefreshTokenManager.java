@@ -121,7 +121,7 @@ final class OidcRefreshTokenManager {
                                       expiresAt,
                                       now,
                                       userInfoResult.errorDescription().orElseThrow() + " during refresh",
-                                      Optional.empty());
+                                      userInfoResult.cause());
             }
 
             return RefreshResult.refreshed(refresh(authenticationResult,

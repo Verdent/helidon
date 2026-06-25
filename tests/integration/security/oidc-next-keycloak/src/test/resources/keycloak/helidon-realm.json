@@ -81,6 +81,18 @@
           }
         },
         {
+          "name": "helidon-service-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "helidon-service",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
           "name": "preferred-username-access-token",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-property-mapper",
@@ -126,6 +138,9 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "authorizationServicesEnabled": false,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      },
       "protocolMappers": [
         {
           "name": "helidon-api-audience",

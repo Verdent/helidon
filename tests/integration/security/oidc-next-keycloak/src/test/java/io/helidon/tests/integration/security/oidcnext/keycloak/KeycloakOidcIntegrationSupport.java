@@ -234,6 +234,33 @@ final class KeycloakOidcIntegrationSupport {
                 .buildPrototype();
     }
 
+    static OidcProviderConfig tokenExchangeProviderConfig(OutboundTarget outboundTarget) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(KeycloakOidcContainer.issuer().toString())
+                .clientId(SERVICE_CLIENT_ID)
+                .clientSecret(SERVICE_CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints
+                        .tokenEndpointUri(KeycloakOidcContainer.tokenEndpointUri())
+                        .introspectionEndpointUri(KeycloakOidcContainer.introspectionEndpointUri())
+                        .tlsRequired(false))
+                .tokenTransport(transport -> transport.secureTransportRequired(false))
+                .protectedResource(resource -> resource
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.INTROSPECTION)
+                                .audience(API_AUDIENCE)
+                                .introspection(introspection -> introspection
+                                        .clientId(API_AUDIENCE)
+                                        .clientSecret(API_CLIENT_SECRET))
+                                .audienceValidationEnabled(false)))
+                .subjectMapping(subjectMapping -> subjectMapping
+                        .principalIdClaimPaths(List.of("preferred_username", "client_id", "sub")))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .addOutboundTarget(outboundTarget)
+                .buildPrototype();
+    }
+
     static WebServer rpServer(OidcProviderConfig providerConfig, Consumer<HttpRouting.Builder> routes) {
         return rpServer(0, providerConfig, routes);
     }
@@ -374,6 +401,20 @@ final class KeycloakOidcIntegrationSupport {
                 .customObject(OidcOutboundTargetConfig.class,
                               OidcOutboundTargetConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
+    }
+
+    static OutboundTarget tokenExchangeOutboundTarget(URI downstreamUri) {
+        return OutboundTarget.builder("keycloak-token-exchange")
+                .addTransport(downstreamUri.getScheme())
+                .addHost(downstreamUri.getHost())
+                .addPath("/downstream")
+                .addMethod("GET")
+                .customObject(OidcOutboundTargetConfig.class,
+                              OidcOutboundTargetConfig.builder()
+                                      .tokenExchangeEnabled(true)
+                                      .tokenExchangeAudience(API_AUDIENCE)
                                       .buildPrototype())
                 .build();
     }

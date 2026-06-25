@@ -116,11 +116,52 @@ class OidcBearerTokenExtractorTest {
     }
 
     @Test
+    void acceptsAuthorizationHeaderBearerTokenWhenTransportIsSecureAndTargetUriIsMissing() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .transport("https")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.invalidRequest(), is(false));
+        assertThat(result.bearerToken().orElseThrow(), is("access-token"));
+    }
+
+    @Test
     void rejectsAuthorizationHeaderBearerTokenWhenTargetUriIsInsecure() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
                         .targetUri(URI.create("http://rp.example/resource"))
                         .transport("https")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
+    }
+
+    @Test
+    void rejectsAuthorizationHeaderBearerTokenWhenOnlyHostIsPresent() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .header("Host", "rp.example")
+                        .header("Authorization", "Bearer access-token")
+                        .build(),
+                OidcTokenTransportConfig.create());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
+    }
+
+    @Test
+    void rejectsAuthorizationHeaderBearerTokenWhenOnlyForwardedProtoIsSecure() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .header("X-Forwarded-Proto", "https")
                         .header("Authorization", "Bearer access-token")
                         .build(),
                 OidcTokenTransportConfig.create());
@@ -193,6 +234,38 @@ class OidcBearerTokenExtractorTest {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
                         .queryParam("access_token", List.of("first-token", "second-token"))
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .queryParameterEnabled(true)
+                        .buildPrototype());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
+    }
+
+    @Test
+    void rejectsRepeatedQueryParameterBearerTokensFromTargetUri() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource?access_token=first-token&access_token=second-token"))
+                        .queryParam("access_token", "second-token")
+                        .build(),
+                OidcTokenTransportConfig.builder()
+                        .queryParameterEnabled(true)
+                        .buildPrototype());
+
+        assertThat(result.bearerToken().isEmpty(), is(true));
+        assertThat(result.invalidRequest(), is(true));
+        assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
+    }
+
+    @Test
+    void rejectsEncodedRepeatedQueryParameterBearerTokensFromTargetUri() {
+        OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource?access%5Ftoken=first-token&access_token=second-token"))
+                        .queryParam("access_token", "second-token")
                         .build(),
                 OidcTokenTransportConfig.builder()
                         .queryParameterEnabled(true)

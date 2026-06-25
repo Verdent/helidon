@@ -215,6 +215,40 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     @Test
+    void duplicateAuthorizationResponseStateFails() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code"
+                                                                                 + "&state=stored-state"
+                                                                                 + "&state=stored-state"),
+                                                         Map.of(),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response state must appear exactly once"));
+        assertThat(result.stateCookies().isEmpty(), is(true));
+    }
+
+    @Test
+    void blankAuthorizationResponseStateFails() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state="),
+                                                         Map.of(),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response state must appear exactly once"));
+        assertThat(result.stateCookies().isEmpty(), is(true));
+    }
+
+    @Test
     void reusedAuthorizationResponseStateWithoutCookieFails() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
@@ -228,6 +262,73 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.invalid(), is(true));
         assertThat(result.description(), is("Authentication Request state cookie is missing or invalid"));
         assertThat(result.stateCookies().isEmpty(), is(true));
+    }
+
+    @Test
+    void malformedAuthenticationRequestStateCookieFails() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=stored-state"),
+                                                         Map.of("__Host-helidon-oidc-state", List.of("not-protected")),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authentication Request state cookie is missing or invalid"));
+        assertThat(result.stateCookies().isEmpty(), is(true));
+    }
+
+    @Test
+    void authenticationRequestStateCookieWithWrongTenantIdFails() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("second",
+                                                                          "stored-state",
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=stored-state"),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authentication Request state cookie is missing or invalid"));
+        assertThat(result.stateCookies().isEmpty(), is(true));
+    }
+
+    @Test
+    void ambiguousAuthenticationRequestStateCookiesFailAndClearAllStateCookies() {
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("second-secret", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", defaultTenant)
+                .putTenant("second", secondTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState defaultState = authenticationRequestState("default",
+                                                                                "stored-state",
+                                                                                REDIRECTION_ENDPOINT_URI,
+                                                                                NOW.plusSeconds(60));
+        OidcAuthenticationRequestState secondState = authenticationRequestState("second",
+                                                                               "stored-state",
+                                                                               REDIRECTION_ENDPOINT_URI,
+                                                                               NOW.plusSeconds(60));
+        SetCookie defaultCookie = stateCookie(defaultTenant, defaultState);
+        SetCookie secondCookie = stateCookie(secondTenant, secondState);
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=stored-state"),
+                                                         Map.of(defaultCookie.name(),
+                                                                List.of(defaultCookie.value(), secondCookie.value())),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authentication Request state is ambiguous"));
+        assertThat(result.stateCookies().size(), is(2));
     }
 
     @Test
@@ -368,7 +469,8 @@ class OidcAuthorizationResponseProcessorTest {
 
         OidcAuthorizationResponseResult result = process(config,
                                                          UriQuery.create("error=access_denied"
-                                                                                 + "&error_uri=https://issuer.example/error%20docs"
+                                                                                 + "&error_uri=https://issuer.example/"
+                                                                                 + "error%20docs"
                                                                                  + "&state=stored-state"),
                                                          cookies(tenant, state),
                                                          REDIRECTION_ENDPOINT_URI,
@@ -443,9 +545,13 @@ class OidcAuthorizationResponseProcessorTest {
 
     private static Map<String, List<String>> cookies(OidcTenantConfig tenantConfig,
                                                      OidcAuthenticationRequestState state) {
-        SetCookie cookie = OidcCookieStateHandler.create(tenantConfig)
-                .createAuthenticationRequestCookie(state);
+        SetCookie cookie = stateCookie(tenantConfig, state);
         return Map.of(cookie.name(), List.of(cookie.value()));
+    }
+
+    private static SetCookie stateCookie(OidcTenantConfig tenantConfig, OidcAuthenticationRequestState state) {
+        return OidcCookieStateHandler.create(tenantConfig)
+                .createAuthenticationRequestCookie(state);
     }
 
     private static OidcAuthenticationRequestState authenticationRequestState(String tenantId,

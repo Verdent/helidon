@@ -62,4 +62,8 @@ final class KeycloakOidcContainer {
     static URI tokenEndpointUri() {
         return issuer().resolve("/realms/" + REALM + "/protocol/openid-connect/token");
     }
+
+    static URI introspectionEndpointUri() {
+        return issuer().resolve("/realms/" + REALM + "/protocol/openid-connect/token/introspect");
+    }
 }

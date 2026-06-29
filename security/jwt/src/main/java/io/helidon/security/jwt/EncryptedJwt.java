@@ -118,6 +118,19 @@ public final class EncryptedJwt {
     }
 
     /**
+     * Builder of an encrypted payload.
+     * <p>
+     * Unlike {@link #builder(SignedJwt)}, this builder encrypts the supplied payload directly and does not identify it as a
+     * Nested JWT using the {@code cty} header parameter.
+     *
+     * @param payload payload to be encrypted
+     * @return encrypted payload builder instance
+     */
+    public static Builder payloadBuilder(byte[] payload) {
+        return new Builder(payload);
+    }
+
+    /**
      * Create new EncryptedJwt.
      * Content is encrypted by {@link SupportedEncryption#A256GCM} and content encryption key is
      * encrypted by {@link SupportedAlgorithm#RSA_OAEP} for transportation.
@@ -297,7 +310,7 @@ public final class EncryptedJwt {
      * Selected {@link Jwk} needs to have private key set.
      *
      * @param jwkKeys jwk keys
-     * @return empty optional if any error has occurred or SignedJwt instance if the decryption and validation was successful
+     * @return signed JWT instance
      */
     public SignedJwt decrypt(JwkKeys jwkKeys) {
         return decrypt(jwkKeys, null);
@@ -310,7 +323,7 @@ public final class EncryptedJwt {
      * Provided {@link Jwk} needs to have private key set.
      *
      * @param jwk jwk keys
-     * @return empty optional if any error has occurred or SignedJwt instance if the decryption and validation was successful
+     * @return signed JWT instance
      */
     public SignedJwt decrypt(Jwk jwk) {
         return decrypt(null, jwk);
@@ -325,9 +338,49 @@ public final class EncryptedJwt {
      *
      * @param jwkKeys    jwk keys
      * @param defaultJwk default jwk
-     * @return empty optional if any error has occurred or SignedJwt instance if the decryption and validation was successful
+     * @return signed JWT instance
      */
     public SignedJwt decrypt(JwkKeys jwkKeys, Jwk defaultJwk) {
+        byte[] payload = decryptPayload(jwkKeys, defaultJwk);
+        try {
+            return SignedJwt.parseToken(new String(payload, StandardCharsets.UTF_8));
+        } finally {
+            Arrays.fill(payload, (byte) 0);
+        }
+    }
+
+    /**
+     * Decrypt the authenticated payload of the encrypted JWT.
+     * Encrypted JWT needs to have a {@code kid} header specified to determine the {@link Jwk} from the
+     * {@link JwkKeys} instance.
+     *
+     * @param jwkKeys JWK keys
+     * @return decrypted payload
+     */
+    public byte[] decryptPayload(JwkKeys jwkKeys) {
+        return decryptPayload(jwkKeys, null);
+    }
+
+    /**
+     * Decrypt the authenticated payload of the encrypted JWT using the provided JWK.
+     *
+     * @param jwk JWK used for content key decryption
+     * @return decrypted payload
+     */
+    public byte[] decryptPayload(Jwk jwk) {
+        return decryptPayload(null, jwk);
+    }
+
+    /**
+     * Decrypt the authenticated payload of the encrypted JWT.
+     * If the {@code kid} header is specified, it is used to select the corresponding key from {@code jwkKeys}.
+     * Otherwise, {@code defaultJwk} is used.
+     *
+     * @param jwkKeys    JWK keys
+     * @param defaultJwk default JWK
+     * @return decrypted payload
+     */
+    public byte[] decryptPayload(JwkKeys jwkKeys, Jwk defaultJwk) {
         Errors.Collector errors = Errors.collector();
 
         String headerBase64 = encode(header.headerJsonObject().toString().getBytes(StandardCharsets.UTF_8));
@@ -335,11 +388,10 @@ public final class EncryptedJwt {
         String kid = header.keyId().orElse(null);
         String enc = header.encryption().orElse(null);
         Jwk jwk = null;
-        String algorithm = null;
         if (kid != null) {
             if (jwkKeys != null) {
                 jwk = jwkKeys.forKeyId(kid).orElse(null);
-            } else if (kid.equals(defaultJwk.keyId())) {
+            } else if (defaultJwk != null && kid.equals(defaultJwk.keyId())) {
                 jwk = defaultJwk;
             } else {
                 errors.fatal("Could not find JWK for kid: " + kid);
@@ -394,30 +446,31 @@ public final class EncryptedJwt {
         }
 
         byte[] decryptedKey = unwrapRsa(supportedAlgorithm, privateKey, encryptedKey);
-        byte[] macKey;
-        byte[] encKey;
-        if (aesAlgorithm.hasHmac()) {
-            int keySizeInBytes = aesAlgorithm.keySize / 8;
-            macKey = new byte[keySizeInBytes];
-            encKey = new byte[keySizeInBytes];
-            System.arraycopy(decryptedKey, 0, macKey, 0, keySizeInBytes);
-            System.arraycopy(decryptedKey, keySizeInBytes, encKey, 0, keySizeInBytes);
-        } else {
-            encKey = decryptedKey;
-            macKey = EMPTY_BYTES;
+        byte[] macKey = EMPTY_BYTES;
+        byte[] encKey = EMPTY_BYTES;
+        try {
+            if (aesAlgorithm.hasHmac()) {
+                int keySizeInBytes = aesAlgorithm.keySize / 8;
+                macKey = new byte[keySizeInBytes];
+                encKey = new byte[keySizeInBytes];
+                System.arraycopy(decryptedKey, 0, macKey, 0, keySizeInBytes);
+                System.arraycopy(decryptedKey, keySizeInBytes, encKey, 0, keySizeInBytes);
+            } else {
+                encKey = decryptedKey;
+            }
+            // Base64 headers are used as AAD. This AAD has to use US-ASCII encoding.
+            EncryptionParts encryptionParts = new EncryptionParts(encKey,
+                                                                  macKey,
+                                                                  iv,
+                                                                  headerBase64.getBytes(StandardCharsets.US_ASCII),
+                                                                  encryptedPayload,
+                                                                  authTag);
+            return aesAlgorithm.decrypt(encryptionParts);
+        } finally {
+            Arrays.fill(decryptedKey, (byte) 0);
+            Arrays.fill(macKey, (byte) 0);
+            Arrays.fill(encKey, (byte) 0);
         }
-        //Base64 headers are used as an aad. This aad has to be in US_ASCII encoding.
-        EncryptionParts encryptionParts = new EncryptionParts(encKey,
-                                                              macKey,
-                                                              iv,
-                                                              headerBase64.getBytes(StandardCharsets.US_ASCII),
-                                                              encryptedPayload, authTag);
-
-        String decryptedPayload = new String(aesAlgorithm.decrypt(encryptionParts), StandardCharsets.UTF_8);
-        Arrays.fill(decryptedKey, (byte) 0); //clear the decrypted key from the memory
-        Arrays.fill(macKey, (byte) 0);
-        Arrays.fill(encKey, (byte) 0);
-        return SignedJwt.parseToken(decryptedPayload);
     }
 
     /**
@@ -491,7 +544,8 @@ public final class EncryptedJwt {
      */
     public static class Builder implements io.helidon.common.Builder<Builder, EncryptedJwt> {
 
-        private final SignedJwt jwt;
+        private final byte[] payload;
+        private final boolean nestedJwt;
         private final JwtHeaders.Builder headersBuilder = JwtHeaders.builder();
         private Jwk jwk;
         private SupportedAlgorithm algorithm = SupportedAlgorithm.RSA_OAEP;
@@ -500,7 +554,14 @@ public final class EncryptedJwt {
         private String kid;
 
         private Builder(SignedJwt jwt) {
-            this.jwt = Objects.requireNonNull(jwt);
+            this.payload = Objects.requireNonNull(jwt).tokenContent().getBytes(StandardCharsets.UTF_8);
+            this.nestedJwt = true;
+        }
+
+        private Builder(byte[] payload) {
+            Objects.requireNonNull(payload);
+            this.payload = Arrays.copyOf(payload, payload.length);
+            this.nestedJwt = false;
         }
 
         /**
@@ -560,7 +621,9 @@ public final class EncryptedJwt {
         public EncryptedJwt build() {
             headersBuilder.algorithm(algorithm.toString());
             headersBuilder.encryption(encryption.toString());
-            headersBuilder.contentType("JWT");
+            if (nestedJwt) {
+                headersBuilder.contentType("JWT");
+            }
             PublicKey publicKey;
             if (jwk == null && jwks != null) {
                 jwk = jwks.forKeyId(kid)
@@ -581,8 +644,8 @@ public final class EncryptedJwt {
             StringBuilder tokenBuilder = new StringBuilder();
             String headersBase64 = encode(headers.headerJsonObject().toString());
             AesAlgorithm contentEncryption = CONTENT_ENCRYPTION.get(encryption);
-            //Base64 headers are used as an aad. This aad has to be in US_ASCII encoding.
-            EncryptionParts encryptionParts = contentEncryption.encrypt(jwt.tokenContent().getBytes(StandardCharsets.UTF_8),
+            // Base64 headers are used as AAD. This AAD has to use US-ASCII encoding.
+            EncryptionParts encryptionParts = contentEncryption.encrypt(payload,
                                                                         headersBase64.getBytes(StandardCharsets.US_ASCII));
             byte[] mac = encryptionParts.mac();
             byte[] aesKey = encryptionParts.key();

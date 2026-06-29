@@ -46,10 +46,12 @@ import org.junit.jupiter.api.Test;
 import static io.helidon.security.jwt.EncryptedJwt.SupportedEncryption;
 import static io.helidon.security.jwt.EncryptedJwt.builder;
 import static io.helidon.security.jwt.EncryptedJwt.parseToken;
+import static io.helidon.security.jwt.EncryptedJwt.payloadBuilder;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -92,6 +94,34 @@ public class EncryptedJwtTest {
         assertThat(headers.encryption(), is(Optional.of(SupportedEncryption.A256GCM.toString())));
         assertThat(headers.contentType(), is(Optional.of("JWT")));
         assertThat(headers.keyId(), is(Optional.of(kid)));
+    }
+
+    @Test
+    void testPayloadEncryptAndDecrypt() {
+        byte[] expectedPayload = "{\"sub\":\"encrypted-user\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] sourcePayload = expectedPayload.clone();
+        EncryptedJwt.Builder builder = payloadBuilder(sourcePayload)
+                .jwks(jwkKeys, "RS_512");
+        sourcePayload[0] = 'X';
+
+        EncryptedJwt encryptedJwt = builder.build();
+
+        assertThat(encryptedJwt.headers().contentType(), is(Optional.empty()));
+        assertArrayEquals(expectedPayload, parseToken(encryptedJwt.token()).decryptPayload(jwkKeys));
+    }
+
+    @Test
+    void testPayloadWithTamperedAuthenticationTagIsRejected() {
+        EncryptedJwt encryptedJwt = payloadBuilder("payload".getBytes(StandardCharsets.UTF_8))
+                .jwks(jwkKeys, "RS_512")
+                .build();
+        String[] tokenParts = encryptedJwt.token().split("\\.", -1);
+        byte[] authenticationTag = Base64.getUrlDecoder().decode(tokenParts[4]);
+        authenticationTag[0] ^= 1;
+        tokenParts[4] = Base64.getUrlEncoder().withoutPadding().encodeToString(authenticationTag);
+        String tamperedToken = String.join(".", tokenParts);
+
+        assertThrows(JwtException.class, () -> parseToken(tamperedToken).decryptPayload(jwkKeys));
     }
 
     @Test
@@ -196,6 +226,21 @@ public class EncryptedJwtTest {
     }
 
     @Test
+    void testNimbusPayloadToHelidon() throws JOSEException {
+        JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
+        RSAPublicKey publicKey = (RSAPublicKey) jwk.publicKey();
+        String payload = "{\"sub\":\"nimbus-user\"}";
+
+        JWEHeader header = new JWEHeader(JWEAlgorithm.RSA_OAEP_256, EncryptionMethod.A256GCM);
+        JWEObject jweObject = new JWEObject(header, new Payload(payload));
+        jweObject.encrypt(new RSAEncrypter(publicKey));
+
+        byte[] decrypted = parseToken(jweObject.serialize()).decryptPayload(jwk);
+
+        assertThat(new String(decrypted, StandardCharsets.UTF_8), is(payload));
+    }
+
+    @Test
     void testHelidonToNimbus() throws ParseException, JOSEException {
         JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
         RSAPrivateKey privateKey = (RSAPrivateKey) jwk.privateKey().orElseThrow();
@@ -212,6 +257,25 @@ public class EncryptedJwtTest {
 
         assertThat(JsonParser.create(signedJWT.getPayload().toString()).readJsonObject(),
                    is(signedJwt.getJwt().payloadJsonObject()));
+    }
+
+    @Test
+    void testHelidonPayloadToNimbus() throws ParseException, JOSEException {
+        JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
+        RSAPrivateKey privateKey = (RSAPrivateKey) jwk.privateKey().orElseThrow();
+        String payload = "{\"sub\":\"helidon-user\"}";
+
+        EncryptedJwt encryptedJwt = payloadBuilder(payload.getBytes(StandardCharsets.UTF_8))
+                .jwk(jwk)
+                .algorithm(SupportedAlgorithm.RSA_OAEP_256)
+                .encryption(SupportedEncryption.A256GCM)
+                .build();
+
+        JWEObject jweObject = JWEObject.parse(encryptedJwt.token());
+        jweObject.decrypt(new RSADecrypter(privateKey));
+
+        assertThat(jweObject.getHeader().getContentType(), is((String) null));
+        assertThat(jweObject.getPayload().toString(), is(payload));
     }
 
 }

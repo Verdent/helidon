@@ -37,6 +37,7 @@ final class OidcEndpointClient {
     private final WebClient webClient;
     private final OidcClientAuthenticationSupport clientAuthentication;
     private final List<String> authorizationCodeResources;
+    private final String userInfoAccept;
 
     OidcEndpointClient(OidcTenantConfig tenantConfig,
                        OidcProviderMetadata metadata,
@@ -47,6 +48,11 @@ final class OidcEndpointClient {
         this.authorizationCodeResources = List.copyOf(tenantConfig.authorizationCode()
                                                               .map(OidcAuthorizationCodeConfig::resources)
                                                               .orElseGet(List::of));
+        this.userInfoAccept = tenantConfig.userInfo()
+                .flatMap(OidcUserInfoConfig::jwt)
+                .isPresent()
+                        ? "application/jwt"
+                        : "application/json";
     }
 
     OidcTokenEndpointResult exchangeAuthorizationCode(String authorizationCode,
@@ -292,7 +298,7 @@ final class OidcEndpointClient {
         try (HttpClientResponse response = webClient.get()
                 .uri(uri)
                 .followRedirects(false)
-                .header(HeaderNames.ACCEPT, "application/json, application/jwt")
+                .header(HeaderNames.ACCEPT, userInfoAccept)
                 .header(HeaderValues.CACHE_NO_CACHE)
                 .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                 .request()) {

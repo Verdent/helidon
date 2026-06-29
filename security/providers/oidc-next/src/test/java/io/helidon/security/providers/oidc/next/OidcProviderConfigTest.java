@@ -78,6 +78,7 @@ class OidcProviderConfigTest {
         OidcLogoutConfig logout = OidcLogoutConfig.create();
         OidcEndSessionConfig endSession = OidcEndSessionConfig.create();
         OidcUserInfoConfig userInfo = OidcUserInfoConfig.create();
+        OidcUserInfoJwtConfig userInfoJwt = OidcUserInfoJwtConfig.create();
         OidcProtectedResourceConfig protectedResource = OidcProtectedResourceConfig.create();
         OidcEndpointPolicyConfig endpointPolicy = OidcEndpointPolicyConfig.create();
         OidcTokenTransportConfig tokenTransport = OidcTokenTransportConfig.create();
@@ -120,8 +121,14 @@ class OidcProviderConfigTest {
         assertThat(endSession.allowedPostLogoutRedirectUris().isEmpty(), is(true));
         assertThat(tenantConfig.userInfo().isEmpty(), is(true));
         assertThat(userInfo.enabled(), is(true));
+        assertThat(userInfo.jwt().isEmpty(), is(true));
         assertThat(userInfo.storagePolicy(), is(OidcUserInfoStoragePolicy.MAPPED));
         assertThat(userInfo.attributeClaimPaths().isEmpty(), is(true));
+        assertThat(userInfoJwt.signingAlgorithm().isEmpty(), is(true));
+        assertThat(userInfoJwt.encryptionAlgorithm().isEmpty(), is(true));
+        assertThat(userInfoJwt.contentEncryptionAlgorithm().isEmpty(), is(true));
+        assertThat(userInfoJwt.decryptionJwk().isEmpty(), is(true));
+        assertThat(userInfoJwt.clockSkew(), is(Duration.ofMinutes(1)));
         assertThat(protectedResource.enabled(), is(true));
         assertThat(authorizationCode.scopes(), is(List.of("openid")));
         assertThat(authorizationCode.prompts().isEmpty(), is(true));
@@ -369,6 +376,12 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.user-info.storage-policy", "all"),
                         Map.entry("tenants.default.user-info.attribute-claim-paths.0", "email"),
                         Map.entry("tenants.default.user-info.attribute-claim-paths.1", "iam.department"),
+                        Map.entry("tenants.default.user-info.jwt.signing-algorithm", "RS256"),
+                        Map.entry("tenants.default.user-info.jwt.encryption-algorithm", "RSA-OAEP-256"),
+                        Map.entry("tenants.default.user-info.jwt.content-encryption-algorithm", "A256GCM"),
+                        Map.entry("tenants.default.user-info.jwt.decryption-jwk.resource-path",
+                                  "oidc-next-encrypt-jwk.json"),
+                        Map.entry("tenants.default.user-info.jwt.clock-skew", "PT2M"),
                         Map.entry("tenants.default.subject-mapping.principal-id-mode", "claim-path"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
@@ -456,6 +469,13 @@ class OidcProviderConfigTest {
         assertThat(userInfo.enabled(), is(false));
         assertThat(userInfo.storagePolicy(), is(OidcUserInfoStoragePolicy.ALL));
         assertThat(userInfo.attributeClaimPaths(), is(List.of("email", "iam.department")));
+        OidcUserInfoJwtConfig userInfoJwt = userInfo.jwt().orElseThrow();
+        assertThat(userInfoJwt.signingAlgorithm().orElseThrow(), is("RS256"));
+        assertThat(userInfoJwt.encryptionAlgorithm().orElseThrow(), is("RSA-OAEP-256"));
+        assertThat(userInfoJwt.contentEncryptionAlgorithm().orElseThrow(), is("A256GCM"));
+        assertThat(userInfoJwt.decryptionJwk().orElseThrow().location(), is("oidc-next-encrypt-jwk.json"));
+        assertThat(userInfoJwt.clockSkew(), is(Duration.ofMinutes(2)));
+        assertThat(providerConfig.toString().contains("oidc-next-encrypt-jwk.json"), is(false));
         assertThat(tenant.subjectMapping().principalIdMode(), is(OidcPrincipalIdMode.CLAIM_PATH));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
@@ -766,6 +786,52 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("user-info.attribute-claim-paths"));
+    }
+
+    @Test
+    void userInfoJwtRejectsMissingOrUnsafeSigningAlgorithm() {
+        assertInvalidUserInfoJwt(jwt -> { }, "signing-algorithm, encryption-algorithm, or both");
+        for (String algorithm : List.of("", " RS256", "none")) {
+            assertInvalidUserInfoJwt(jwt -> jwt.signingAlgorithm(algorithm), "signing-algorithm");
+        }
+        assertInvalidUserInfoJwt(jwt -> jwt.signingAlgorithm("HS256"), "HS*");
+    }
+
+    @Test
+    void userInfoJwtRejectsInvalidEncryptionConfiguration() {
+        assertInvalidUserInfoJwt(jwt -> jwt.contentEncryptionAlgorithm("A256GCM"), "requires encryption-algorithm");
+        assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256"), "decryption-jwk");
+        assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("ECDH-ES")
+                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")),
+                                 "encryption-algorithm is not supported");
+        assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256")
+                                         .contentEncryptionAlgorithm("unsupported")
+                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")),
+                                 "content-encryption-algorithm is not supported");
+        assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256")
+                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                                         .clockSkew(Duration.ofSeconds(-1)),
+                                 "clock-skew");
+    }
+
+    @Test
+    void userInfoJwtAcceptsRegisteredResponseCombinations() {
+        OidcTenantConfig signed = userInfoTenantBuilder()
+                .userInfo(userInfo -> userInfo.jwt(jwt -> jwt.signingAlgorithm("RS256")))
+                .buildPrototype();
+        OidcTenantConfig encrypted = userInfoTenantBuilder()
+                .userInfo(userInfo -> userInfo.jwt(jwt -> jwt
+                        .encryptionAlgorithm("RSA-OAEP-256")
+                        .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))))
+                .buildPrototype();
+
+        assertThat(signed.userInfo().orElseThrow().jwt().orElseThrow().signingAlgorithm().orElseThrow(), is("RS256"));
+        assertThat(encrypted.userInfo().orElseThrow()
+                           .jwt()
+                           .orElseThrow()
+                           .contentEncryptionAlgorithm()
+                           .isEmpty(),
+                   is(true));
     }
 
     @Test
@@ -2530,6 +2596,10 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("post-logout-redirect-uri"));
         assertThat(metadata, containsString("allowed-post-logout-redirect-uris"));
         assertThat(metadata, containsString("user-info"));
+        assertThat(metadata, containsString("signing-algorithm"));
+        assertThat(metadata, containsString("encryption-algorithm"));
+        assertThat(metadata, containsString("content-encryption-algorithm"));
+        assertThat(metadata, containsString("decryption-jwk"));
         assertThat(metadata, containsString("storage-policy"));
         assertThat(metadata, containsString("attribute-claim-paths"));
         assertThat(metadata, containsString("endpoint-policy"));
@@ -2601,6 +2671,26 @@ class OidcProviderConfigTest {
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
+    }
+
+    private static OidcTenantConfig.Builder userInfoTenantBuilder() {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.encryptionSecret("this-secret-is-long-enough-for-config-test"));
+    }
+
+    private static void assertInvalidUserInfoJwt(Consumer<OidcUserInfoJwtConfig.Builder> customizer,
+                                                 String expectedMessage) {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> userInfoTenantBuilder()
+                .userInfo(userInfo -> userInfo.jwt(customizer))
+                .buildPrototype());
+        assertThat(thrown.getMessage(), containsString(expectedMessage));
     }
 
     private static SSLContext defaultSslContext() {

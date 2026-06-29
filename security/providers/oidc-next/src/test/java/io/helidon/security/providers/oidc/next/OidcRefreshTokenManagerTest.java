@@ -38,6 +38,7 @@ import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
+import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -84,18 +85,23 @@ class OidcRefreshTokenManagerTest {
     private static final AtomicReference<String> RECORDED_USER_INFO_AUTHORIZATION = new AtomicReference<>();
 
     private static JwkKeys signKeys;
+    private static JwkKeys encryptKeys;
     private static String verifyJwkSet;
     private static volatile int responseStatus;
     private static volatile String responseBody;
     private static volatile int introspectionResponseStatus;
     private static volatile String introspectionResponseBody;
     private static volatile int userInfoResponseStatus;
+    private static volatile String userInfoResponseContentType;
     private static volatile String userInfoResponseBody;
 
     @BeforeAll
     static void initClass() {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
+                .build();
+        encryptKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
         verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
     }
@@ -116,6 +122,7 @@ class OidcRefreshTokenManagerTest {
         introspectionResponseStatus = 200;
         introspectionResponseBody = activeIntrospectionResponse().toString();
         userInfoResponseStatus = 200;
+        userInfoResponseContentType = "application/json";
         userInfoResponseBody = userInfoResponse(SUBJECT, "refetched-user").toString();
         RECORDED_REQUEST.set(null);
         RECORDED_INTROSPECTION_REQUEST.set(null);
@@ -438,6 +445,38 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void refreshRequeriesEncryptedUserInfo(URI serverUri) {
+        JsonObject claims = userInfoResponse(SUBJECT, "encrypted-refetched-user");
+        userInfoResponseContentType = "application/jwt";
+        userInfoResponseBody = EncryptedJwt.payloadBuilder(claims.toString().getBytes(StandardCharsets.UTF_8))
+                .jwks(encryptKeys, "encrypt-rsa")
+                .algorithm(EncryptedJwt.SupportedAlgorithm.RSA_OAEP_256)
+                .encryption(EncryptedJwt.SupportedEncryption.A256GCM)
+                .build()
+                .token();
+        OidcTenantConfig tenant = tenantWithUserInfo(serverUri, userInfo -> userInfo.jwt(jwt -> jwt
+                .encryptionAlgorithm("RSA-OAEP-256")
+                .contentEncryptionAlgorithm("A256GCM")
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+        Instant now = Instant.now();
+        SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                        now.minusSeconds(60),
+                                                                        now.plusSeconds(3600),
+                                                                        now.minusSeconds(1),
+                                                                        OLD_REFRESH_TOKEN,
+                                                                        JsonObject.builder()
+                                                                                .set("sub", SUBJECT)
+                                                                                .build(),
+                                                                        it -> { });
+
+        AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().getName(), is("encrypted-refetched-user"));
+        assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is("Bearer " + REFRESHED_ACCESS_TOKEN));
+    }
+
+    @Test
     void invalidRefreshedUserInfoClearsExpiredLocalAuthentication(URI serverUri) {
         userInfoResponseBody = userInfoResponse("other-subject", "refetched-user").toString();
         OidcTenantConfig tenant = tenantWithUserInfo(serverUri);
@@ -678,7 +717,7 @@ class OidcRefreshTokenManagerTest {
     private static void handleUserInfoEndpoint(ServerRequest request, ServerResponse response) {
         RECORDED_USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
         response.status(userInfoResponseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .header(HeaderNames.CONTENT_TYPE, userInfoResponseContentType)
                 .send(userInfoResponseBody);
     }
 
@@ -745,6 +784,11 @@ class OidcRefreshTokenManagerTest {
     }
 
     private static OidcTenantConfig tenantWithUserInfo(URI serverUri) {
+        return tenantWithUserInfo(serverUri, userInfo -> { });
+    }
+
+    private static OidcTenantConfig tenantWithUserInfo(URI serverUri,
+                                                       Consumer<OidcUserInfoConfig.Builder> userInfo) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -756,7 +800,7 @@ class OidcRefreshTokenManagerTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .userInfo(it -> { })
+                .userInfo(userInfo)
                 .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
                 .buildPrototype();
     }

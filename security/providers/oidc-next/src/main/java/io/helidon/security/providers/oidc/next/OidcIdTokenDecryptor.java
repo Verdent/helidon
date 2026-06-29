@@ -16,27 +16,24 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
-import io.helidon.common.configurable.Resource;
-import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.JwtHeaders;
 import io.helidon.security.jwt.SignedJwt;
-import io.helidon.security.jwt.jwk.Jwk;
-import io.helidon.security.jwt.jwk.JwkKeys;
 
 final class OidcIdTokenDecryptor {
-    private final Optional<JwkKeys> decryptionKeys;
+    private final OidcJweDecryptor jweDecryptor;
     private final boolean encryptionRequired;
     private final List<String> allowedEncryptionAlgorithms;
     private final List<String> allowedContentEncryptionAlgorithms;
 
-    private OidcIdTokenDecryptor(Optional<JwkKeys> decryptionKeys,
+    private OidcIdTokenDecryptor(OidcJweDecryptor jweDecryptor,
                                  boolean encryptionRequired,
                                  List<String> allowedEncryptionAlgorithms,
                                  List<String> allowedContentEncryptionAlgorithms) {
-        this.decryptionKeys = decryptionKeys;
+        this.jweDecryptor = jweDecryptor;
         this.encryptionRequired = encryptionRequired;
         this.allowedEncryptionAlgorithms = List.copyOf(allowedEncryptionAlgorithms);
         this.allowedContentEncryptionAlgorithms = List.copyOf(allowedContentEncryptionAlgorithms);
@@ -44,8 +41,9 @@ final class OidcIdTokenDecryptor {
 
     static OidcIdTokenDecryptor create(OidcTenantConfig tenantConfig) {
         OidcIdTokenConfig idToken = tenantConfig.idToken();
-        return new OidcIdTokenDecryptor(idToken.decryptionJwk()
-                                                  .map(OidcIdTokenDecryptor::loadKeys),
+        return new OidcIdTokenDecryptor(OidcJweDecryptor.create(idToken.decryptionJwk(),
+                                                               "id-token.decryption-jwk",
+                                                               "ID Token"),
                                           idToken.encryptionRequired(),
                                           idToken.allowedEncryptionAlgorithms(),
                                           idToken.allowedContentEncryptionAlgorithms());
@@ -67,12 +65,14 @@ final class OidcIdTokenDecryptor {
         }
 
         validateEncryptedHeaders(headers);
-        JwkKeys keys = decryptionKeys.orElseThrow(() -> new IllegalStateException(
-                "ID Token decryption keys are not configured"));
-        Jwk selectedKey = selectDecryptionKey(headers, keys);
-        validateDecryptionKeyUse(selectedKey);
-        EncryptedJwt encryptedJwt = EncryptedJwt.parseToken(headers, token);
-        return new OidcResolvedIdToken(token, true, encryptedJwt.decrypt(keys, selectedKey));
+        byte[] payload = jweDecryptor.decrypt(token, headers);
+        try {
+            return new OidcResolvedIdToken(token,
+                                           true,
+                                           SignedJwt.parseToken(new String(payload, StandardCharsets.UTF_8)));
+        } finally {
+            Arrays.fill(payload, (byte) 0);
+        }
     }
 
     private void validateEncryptedHeaders(JwtHeaders headers) {
@@ -94,58 +94,6 @@ final class OidcIdTokenDecryptor {
         if (!allowedContentEncryptionAlgorithms.contains(contentEncryption)) {
             throw new IllegalStateException("Encrypted ID Token JWE enc header is not allowed: " + contentEncryption);
         }
-    }
-
-    private static Jwk selectDecryptionKey(JwtHeaders headers, JwkKeys keys) {
-        List<Jwk> jwks = keys.keys();
-        Optional<String> keyId = headers.keyId();
-        if (keyId.isPresent()) {
-            String id = keyId.orElseThrow();
-            return keys.forKeyId(id)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "ID Token decryption key is not configured for kid: " + id));
-        }
-        /*
-         * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
-         * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
-         * Quote: "If there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided in
-         * the JOSE Header."
-         */
-        if (jwks.size() > 1) {
-            throw new IllegalStateException("Encrypted ID Token JWE kid is required when multiple decryption keys exist");
-        }
-        return jwks.getFirst();
-    }
-
-    private static void validateDecryptionKeyUse(Jwk key) {
-        /*
-         * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
-         * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
-         * Quote: "The key usage of the respective keys MUST include encryption."
-         */
-        key.usage()
-                .filter(usage -> !Jwk.USE_ENCRYPTION.equals(usage))
-                .ifPresent(usage -> {
-                    throw new IllegalStateException("ID Token decryption JWK use must be enc");
-                });
-        key.operations()
-                .filter(operations -> !operations.contains(Jwk.OPERATION_UNWRAP_KEY)
-                        && !operations.contains(Jwk.OPERATION_DECRYPT))
-                .ifPresent(operations -> {
-                    throw new IllegalStateException("ID Token decryption JWK key_ops must allow unwrapKey or decrypt");
-                });
-    }
-
-    private static JwkKeys loadKeys(Resource resource) {
-        resource.cacheBytes();
-        JwkKeys keys = JwkKeys.builder()
-                .resource(resource)
-                .build();
-        List<Jwk> jwks = keys.keys();
-        if (jwks.isEmpty()) {
-            throw new IllegalArgumentException("id-token.decryption-jwk must contain at least one JWK");
-        }
-        return keys;
     }
 
     record OidcResolvedIdToken(String rawToken, boolean encrypted, SignedJwt signedJwt) {

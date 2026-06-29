@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -35,14 +34,21 @@ final class OidcUserInfoJwtValidator {
 
     OidcValidationResult<JsonObject> validate(String token,
                                               OidcTenantContext tenantContext,
-                                              OidcValidatedIdToken idToken) {
+                                              OidcValidatedIdToken idToken,
+                                              OidcUserInfoJwtConfig config) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("UserInfo response is not a valid signed JWT", e);
         }
+        return validate(signedJwt, tenantContext, idToken, config);
+    }
 
+    OidcValidationResult<JsonObject> validate(SignedJwt signedJwt,
+                                              OidcTenantContext tenantContext,
+                                              OidcValidatedIdToken idToken,
+                                              OidcUserInfoJwtConfig config) {
         Jwt jwt;
         try {
             jwt = signedJwt.getJwt();
@@ -50,7 +56,7 @@ final class OidcUserInfoJwtValidator {
             return OidcValidationResult.failure("UserInfo JWT payload is invalid", e);
         }
 
-        Errors headerErrors = headerValidator(tenantContext).validate(jwt);
+        Errors headerErrors = headerValidator(config).validate(jwt);
         if (!headerErrors.isValid()) {
             return OidcValidationResult.failure("UserInfo JWT header is invalid");
         }
@@ -71,22 +77,18 @@ final class OidcUserInfoJwtValidator {
             return OidcValidationResult.failure("UserInfo JWT validation is not configured");
         }
 
-        Errors claimErrors = claimValidator(tenantContext,
-                                            expectedIssuer.orElseThrow(),
+        Errors claimErrors = claimValidator(expectedIssuer.orElseThrow(),
                                             clientId.orElseThrow(),
-                                            idToken).validate(jwt);
+                                            idToken,
+                                            config).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("UserInfo JWT claims are invalid");
         }
         return OidcValidationResult.success(jwt.payloadJsonObject());
     }
 
-    private JwtValidator headerValidator(OidcTenantContext tenantContext) {
-        List<String> allowedAlgorithms = tenantContext.tenantConfig()
-                .idToken()
-                .allowedAlgorithms();
-        Optional<List<String>> metadataAlgorithms = tenantContext.metadata()
-                .userInfoSigningAlgorithmsSupported();
+    private JwtValidator headerValidator(OidcUserInfoJwtConfig config) {
+        String expectedAlgorithm = config.signingAlgorithm().orElseThrow();
         return JwtValidator.builder()
                 .addCriticalValidator()
                 .addValidator(JwtScope.HEADER, (jwt, collector) -> {
@@ -94,27 +96,18 @@ final class OidcUserInfoJwtValidator {
                     if (algorithm == null) {
                         collector.fatal(jwt, "JWT alg header is mandatory");
                     } else if (NONE_ALGORITHM.equalsIgnoreCase(algorithm)) {
-                        /*
-                         * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
-                         * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
-                         * Quote: "If signed, the UserInfo Response MUST contain the Claims iss (issuer) and aud
-                         * (audience) as members."
-                         */
                         collector.fatal(jwt, "JWT alg header must not be none");
-                    } else if (!allowedAlgorithms.contains(algorithm)) {
-                        collector.fatal(jwt, "JWT alg header is not allowed: " + algorithm);
-                    } else if (metadataAlgorithms.isPresent()
-                            && !metadataAlgorithms.orElseThrow().contains(algorithm)) {
-                        collector.fatal(jwt, "JWT alg header is not supported by UserInfo metadata: " + algorithm);
+                    } else if (!expectedAlgorithm.equals(algorithm)) {
+                        collector.fatal(jwt, "JWT alg header does not match registered UserInfo algorithm");
                     }
                 }, "alg")
                 .build();
     }
 
-    private JwtValidator claimValidator(OidcTenantContext tenantContext,
-                                        String expectedIssuer,
+    private JwtValidator claimValidator(String expectedIssuer,
                                         String clientId,
-                                        OidcValidatedIdToken idToken) {
+                                        OidcValidatedIdToken idToken,
+                                        OidcUserInfoJwtConfig config) {
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
          * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
@@ -125,13 +118,13 @@ final class OidcUserInfoJwtValidator {
         Instant now = Instant.now();
         return JwtValidator.builder()
                 .addExpirationValidator(it -> it.now(now)
-                        .allowedTimeSkew(tenantContext.tenantConfig().idToken().clockSkew())
+                        .allowedTimeSkew(config.clockSkew())
                         .mandatory(false))
                 .addIssueTimeValidator(it -> it.now(now)
-                        .allowedTimeSkew(tenantContext.tenantConfig().idToken().clockSkew())
+                        .allowedTimeSkew(config.clockSkew())
                         .mandatory(false))
                 .addNotBeforeValidator(it -> it.now(now)
-                        .allowedTimeSkew(tenantContext.tenantConfig().idToken().clockSkew()))
+                        .allowedTimeSkew(config.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)
                 .addValidator((jwt, collector) -> validateSubject(jwt, idToken, collector), "sub")

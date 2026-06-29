@@ -46,6 +46,8 @@ final class OidcProviderMetadata {
     private final Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported;
     private final Optional<URI> userInfoEndpointUri;
     private final Optional<List<String>> userInfoSigningAlgorithmsSupported;
+    private final Optional<List<String>> userInfoEncryptionAlgorithmsSupported;
+    private final Optional<List<String>> userInfoContentEncryptionAlgorithmsSupported;
     private final Optional<URI> endSessionEndpointUri;
     private final Optional<URI> pushedAuthorizationRequestEndpointUri;
     private final boolean authorizationResponseIssuerParameterSupported;
@@ -78,6 +80,8 @@ final class OidcProviderMetadata {
                                  Optional<List<String>> introspectionEndpointAuthenticationSigningAlgorithmsSupported,
                                  Optional<URI> userInfoEndpointUri,
                                  Optional<List<String>> userInfoSigningAlgorithmsSupported,
+                                 Optional<List<String>> userInfoEncryptionAlgorithmsSupported,
+                                 Optional<List<String>> userInfoContentEncryptionAlgorithmsSupported,
                                  Optional<URI> endSessionEndpointUri,
                                  Optional<URI> pushedAuthorizationRequestEndpointUri,
                                  boolean authorizationResponseIssuerParameterSupported,
@@ -112,6 +116,9 @@ final class OidcProviderMetadata {
                 introspectionEndpointAuthenticationSigningAlgorithmsSupported.map(List::copyOf);
         this.userInfoEndpointUri = userInfoEndpointUri;
         this.userInfoSigningAlgorithmsSupported = userInfoSigningAlgorithmsSupported.map(List::copyOf);
+        this.userInfoEncryptionAlgorithmsSupported = userInfoEncryptionAlgorithmsSupported.map(List::copyOf);
+        this.userInfoContentEncryptionAlgorithmsSupported =
+                userInfoContentEncryptionAlgorithmsSupported.map(List::copyOf);
         this.endSessionEndpointUri = endSessionEndpointUri;
         this.pushedAuthorizationRequestEndpointUri = pushedAuthorizationRequestEndpointUri;
         this.authorizationResponseIssuerParameterSupported = authorizationResponseIssuerParameterSupported;
@@ -148,6 +155,8 @@ final class OidcProviderMetadata {
                                         Optional.empty(),
                                         endpoints.userInfoEndpointUri(),
                                         Optional.empty(),
+                                        Optional.empty(),
+                                        Optional.empty(),
                                         endpoints.endSessionEndpointUri(),
                                         endpoints.pushedAuthorizationRequestEndpointUri(),
                                         false,
@@ -183,6 +192,8 @@ final class OidcProviderMetadata {
                                         stringArrayValue(json, "introspection_endpoint_auth_signing_alg_values_supported"),
                                         uriValue(json, "userinfo_endpoint"),
                                         stringArrayValue(json, "userinfo_signing_alg_values_supported"),
+                                        stringArrayValue(json, "userinfo_encryption_alg_values_supported"),
+                                        stringArrayValue(json, "userinfo_encryption_enc_values_supported"),
                                         uriValue(json, "end_session_endpoint"),
                                         uriValue(json, "pushed_authorization_request_endpoint"),
                                         json.booleanValue("authorization_response_iss_parameter_supported")
@@ -237,6 +248,10 @@ final class OidcProviderMetadata {
                                                 .or(wellKnown::introspectionEndpointAuthenticationSigningAlgorithmsSupported),
                                         userInfoEndpointUri.or(wellKnown::userInfoEndpointUri),
                                         userInfoSigningAlgorithmsSupported.or(wellKnown::userInfoSigningAlgorithmsSupported),
+                                        userInfoEncryptionAlgorithmsSupported
+                                                .or(wellKnown::userInfoEncryptionAlgorithmsSupported),
+                                        userInfoContentEncryptionAlgorithmsSupported
+                                                .or(wellKnown::userInfoContentEncryptionAlgorithmsSupported),
                                         endSessionEndpointUri.or(wellKnown::endSessionEndpointUri),
                                         pushedAuthorizationRequestEndpointUri
                                                 .or(wellKnown::pushedAuthorizationRequestEndpointUri),
@@ -342,6 +357,14 @@ final class OidcProviderMetadata {
 
     Optional<List<String>> userInfoSigningAlgorithmsSupported() {
         return userInfoSigningAlgorithmsSupported;
+    }
+
+    Optional<List<String>> userInfoEncryptionAlgorithmsSupported() {
+        return userInfoEncryptionAlgorithmsSupported;
+    }
+
+    Optional<List<String>> userInfoContentEncryptionAlgorithmsSupported() {
+        return userInfoContentEncryptionAlgorithmsSupported;
     }
 
     Optional<URI> endSessionEndpointUri() {

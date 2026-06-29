@@ -26,8 +26,6 @@ import io.helidon.json.JsonValue;
 import io.helidon.json.JsonValueType;
 
 final class OidcUserInfoSupport {
-    private static final OidcUserInfoJwtValidator USER_INFO_JWT_VALIDATOR = new OidcUserInfoJwtValidator();
-
     private OidcUserInfoSupport() {
     }
 
@@ -46,19 +44,31 @@ final class OidcUserInfoSupport {
         if (!endpointResult.succeeded()) {
             return Result.failure("UserInfo Endpoint request failed", endpointResult.cause().orElse(null));
         }
-        Optional<JsonObject> userInfo = endpointResult.json();
-        if (userInfo.isEmpty() && endpointResult.jwt().isPresent()) {
-            OidcValidationResult<JsonObject> validationResult = USER_INFO_JWT_VALIDATOR.validate(
-                    endpointResult.jwt().orElseThrow(),
-                    tenantContext,
-                    idToken);
+        Optional<OidcUserInfoJwtProcessor> jwtProcessor = tenantContext.userInfoJwtProcessor();
+        Optional<JsonObject> userInfo;
+        if (endpointResult.json().isPresent()) {
+            if (jwtProcessor.isPresent()) {
+                return Result.failure("UserInfo response is invalid",
+                                      "Registered JWT UserInfo response was returned as JSON",
+                                      null);
+            }
+            userInfo = endpointResult.json();
+        } else if (endpointResult.jwt().isPresent()) {
+            if (jwtProcessor.isEmpty()) {
+                return Result.failure("UserInfo response is invalid",
+                                      "Unexpected JWT UserInfo response",
+                                      null);
+            }
+            OidcValidationResult<JsonObject> validationResult = jwtProcessor.orElseThrow()
+                    .validate(endpointResult.jwt().orElseThrow(), tenantContext, idToken);
             if (!validationResult.succeeded()) {
-                return Result.failure("UserInfo response is invalid", validationResult.cause().orElse(null));
+                return Result.failure("UserInfo response is invalid",
+                                      validationResult.errorDescription().orElse("UserInfo JWT validation failed"),
+                                      validationResult.cause().orElse(null));
             }
             userInfo = validationResult.validatedToken();
-        }
-        if (userInfo.isEmpty()) {
-            return Result.failure("UserInfo response is invalid");
+        } else {
+            return Result.failure("UserInfo response is invalid", "UserInfo response body is missing", null);
         }
         JsonObject userInfoClaims = userInfo.orElseThrow();
         if (!subjectMatches(userInfoClaims, idToken)) {
@@ -165,15 +175,17 @@ final class OidcUserInfoSupport {
 
     record Result(Optional<JsonObject> userInfo,
                   Optional<String> failureDescription,
+                  Optional<String> diagnosticDescription,
                   Optional<Throwable> cause) {
         Result {
             userInfo = Objects.requireNonNull(userInfo);
             failureDescription = Objects.requireNonNull(failureDescription);
+            diagnosticDescription = Objects.requireNonNull(diagnosticDescription);
             cause = Objects.requireNonNull(cause);
         }
 
         private static Result success(Optional<JsonObject> userInfo) {
-            return new Result(userInfo, Optional.empty(), Optional.empty());
+            return new Result(userInfo, Optional.empty(), Optional.empty(), Optional.empty());
         }
 
         private static Result failure(String errorDescription) {
@@ -181,7 +193,14 @@ final class OidcUserInfoSupport {
         }
 
         private static Result failure(String errorDescription, Throwable cause) {
-            return new Result(Optional.empty(), Optional.of(errorDescription), Optional.ofNullable(cause));
+            return failure(errorDescription, errorDescription, cause);
+        }
+
+        private static Result failure(String errorDescription, String diagnosticDescription, Throwable cause) {
+            return new Result(Optional.empty(),
+                              Optional.of(errorDescription),
+                              Optional.of(diagnosticDescription),
+                              Optional.ofNullable(cause));
         }
 
         boolean succeeded() {

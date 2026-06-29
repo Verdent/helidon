@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.List;
+import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
@@ -35,6 +36,18 @@ interface OidcUserInfoConfigBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(true)
     boolean enabled();
+
+    /**
+     * Expected signed and/or encrypted JWT UserInfo response configuration.
+     * <p>
+     * When omitted, the UserInfo response must be a JSON object. When present, its registered signing and encryption
+     * algorithms determine whether a signed JWT, directly encrypted Claims Set, or signed-then-encrypted Nested JWT is
+     * required.
+     *
+     * @return UserInfo JWT response configuration
+     */
+    @Option.Configured
+    Optional<OidcUserInfoJwtConfig> jwt();
 
     /**
      * UserInfo claims stored in the protected local authentication result cookie.

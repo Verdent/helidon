@@ -139,6 +139,10 @@ final class OidcTenantContext {
         return runtimeResources().idTokenDecryptor();
     }
 
+    Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor() {
+        return runtimeResources().userInfoJwtProcessor();
+    }
+
     Optional<OidcEndpointPolicy> endpointPolicy() {
         if (!ready()) {
             return Optional.empty();
@@ -172,6 +176,7 @@ final class OidcTenantContext {
                                     OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
+                                    Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
                                     OidcCookieStateHandler cookieStateHandler,
                                     WebClient webClient) {
         private static RuntimeResources create(String tenantId,
@@ -186,6 +191,7 @@ final class OidcTenantContext {
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
                                         idTokenDecryptor,
+                                        OidcUserInfoJwtProcessor.create(tenantConfig),
                                         OidcCookieStateHandler.create(tenantConfig, idTokenDecryptor),
                                         webClient);
         }

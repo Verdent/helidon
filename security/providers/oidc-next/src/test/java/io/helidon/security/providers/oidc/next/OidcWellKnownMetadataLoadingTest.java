@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.pki.Keys;
@@ -1003,6 +1004,72 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void userInfoJwtTenantLoadsEncryptionMetadata() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .setStrings("userinfo_signing_alg_values_supported", List.of("RS256"))
+                                      .setStrings("userinfo_encryption_alg_values_supported", List.of("RSA-OAEP-256"))
+                                      .setStrings("userinfo_encryption_enc_values_supported", List.of("A256GCM"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = userInfoJwtTenant(jwt -> jwt
+                .signingAlgorithm("RS256")
+                .encryptionAlgorithm("RSA-OAEP-256")
+                .contentEncryptionAlgorithm("A256GCM")
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")));
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().userInfoSigningAlgorithmsSupported(), is(Optional.of(List.of("RS256"))));
+        assertThat(context.metadata().userInfoEncryptionAlgorithmsSupported(),
+                   is(Optional.of(List.of("RSA-OAEP-256"))));
+        assertThat(context.metadata().userInfoContentEncryptionAlgorithmsSupported(),
+                   is(Optional.of(List.of("A256GCM"))));
+    }
+
+    @Test
+    void userInfoJwtTenantRejectsUnsupportedMetadataAlgorithms() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .setStrings("userinfo_signing_alg_values_supported", List.of("ES256"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext signingContext = tenantContext(userInfoJwtTenant(jwt -> jwt.signingAlgorithm("RS256")));
+
+        assertThat(signingContext.state(), is(OidcTenantState.FAILED));
+        assertThat(signingContext.failureCause().orElseThrow().getMessage(),
+                   containsString("userinfo_signing_alg_values_supported"));
+
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .setStrings("userinfo_encryption_alg_values_supported", List.of("RSA-OAEP"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext encryptionContext = tenantContext(userInfoJwtTenant(jwt -> jwt
+                .encryptionAlgorithm("RSA-OAEP-256")
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+
+        assertThat(encryptionContext.state(), is(OidcTenantState.FAILED));
+        assertThat(encryptionContext.failureCause().orElseThrow().getMessage(),
+                   containsString("userinfo_encryption_alg_values_supported"));
+    }
+
+    @Test
+    void userInfoJwtTenantValidatesDefaultContentEncryptionMetadata() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .setStrings("userinfo_encryption_alg_values_supported", List.of("RSA-OAEP-256"))
+                                      .setStrings("userinfo_encryption_enc_values_supported", List.of("A256GCM"))
+                                      .build()
+                                      .toString());
+        OidcTenantContext context = tenantContext(userInfoJwtTenant(jwt -> jwt
+                .encryptionAlgorithm("RSA-OAEP-256")
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("userinfo_encryption_enc_values_supported"));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("A128CBC-HS256"));
+    }
+
+    @Test
     void jwtProtectedResourceTenantLoadsJwkSetUriFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())
@@ -1264,6 +1331,19 @@ class OidcWellKnownMetadataLoadingTest {
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig userInfoJwtTenant(Consumer<OidcUserInfoJwtConfig.Builder> customizer) {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(userInfo -> userInfo.jwt(customizer))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
     }
 

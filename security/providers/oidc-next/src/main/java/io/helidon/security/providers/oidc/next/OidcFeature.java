@@ -231,7 +231,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
             return;
         }
-        String reason = result.errorDescription()
+        String reason = result.diagnosticDescription()
                 .map(OidcDiagnostics::sanitizeLogValue)
                 .orElse("UserInfo failed");
         String cause = result.cause()

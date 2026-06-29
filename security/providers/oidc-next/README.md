@@ -97,7 +97,7 @@ negative cases, strict protocol variants, and features that real providers do no
 | Pushed Authorization Requests | Yes: PAR endpoint discovered from Keycloak. | PAR request/response and metadata enforcement. | Providers that require PAR. |
 | Signed Request Objects | No Keycloak CI path. | Signed by-value JAR request construction and metadata checks. | FAPI-style providers requiring JAR. |
 | Refresh-token renewal | Yes: Keycloak refresh flow. | Refresh response parsing, token validation, rotation, and resource parameters. | Provider-specific refresh policies. |
-| JSON and signed JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWT validation, and claim storage. | Encrypted JWT UserInfo is not implemented. |
+| JSON and JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWS, direct JWE, nested JWS-in-JWE, and claim storage. | Real provider emitting signed or encrypted JWT UserInfo. |
 | RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
 | Bearer introspection | Yes: valid, inactive, wrong-audience, and unknown tokens. | Response parsing, errors, issuer/audience/time validation, and endpoint failures. | Opaque-token cloud providers. |
 | JWT access tokens | Keycloak default JWT is covered as rejected because it is not RFC 9068. | Strict RFC 9068 JWT success and negative validation. | Real provider issuing RFC 9068-style tokens. |
@@ -1072,11 +1072,52 @@ When `user-info` is configured and not explicitly disabled:
 - Authorization Code Flow must be configured and enabled.
 - A UserInfo Endpoint is required, either explicitly or from well-known metadata.
 - The provider calls the UserInfo Endpoint with the access token returned by the Token Endpoint.
-- The UserInfo response must be a successful JSON object response with `Content-Type: application/json`, or a signed JWT
-  response with `Content-Type: application/jwt`.
+- Without `user-info.jwt`, the registered/default response format is JSON and the response must use
+  `Content-Type: application/json`.
+- With `user-info.jwt`, the response must use `Content-Type: application/jwt`. The configured registration algorithms
+  determine whether the response must be signed, encrypted, or signed and then encrypted.
 - Signed JWT UserInfo responses are verified with the OpenID Provider JWK Set. The JWT `iss` must match the issuer,
-  `aud` must include the tenant `client-id`, and `sub` must exactly match the ID Token `sub`.
+  `aud` must include the tenant `client-id`, optional time claims are validated, and `sub` must exactly match the ID
+  Token `sub`.
+- Encryption-only UserInfo responses are decrypted directly to a JSON Claims Set. OpenID Connect does not require
+  `iss` or `aud` when the response is not signed, but `sub` remains mandatory and must exactly match the ID Token.
 - The UserInfo response must contain `sub`, and it must exactly match the ID Token `sub`.
+
+The `user-info.jwt` values must match the client metadata registered at the OpenID Provider. They are exact negotiated
+algorithms, not allow-lists:
+
+| Configuration | Registered metadata | Required response |
+| --- | --- | --- |
+| `user-info.jwt` omitted | No JWT response metadata | JSON object |
+| `signing-algorithm` | `userinfo_signed_response_alg` | Signed JWS |
+| `encryption-algorithm` | `userinfo_encrypted_response_alg` | Directly encrypted Claims Set |
+| Both algorithms | Both metadata values | Signed JWS encrypted as a Nested JWT |
+
+Signed and encrypted UserInfo:
+
+```yaml
+user-info:
+  jwt:
+    signing-algorithm: "RS256"
+    encryption-algorithm: "RSA-OAEP-256"
+    content-encryption-algorithm: "A256GCM"
+    decryption-jwk:
+      resource-path: "userinfo-decryption-jwks.json"
+```
+
+For encryption-only UserInfo, omit `signing-algorithm`. For signed-only UserInfo, configure only `signing-algorithm`;
+decryption keys are then unnecessary. If `encryption-algorithm` is configured and `content-encryption-algorithm` is
+omitted, the OpenID Connect Registration default `A128CBC-HS256` is required.
+
+Supported JWE key management algorithms are `RSA-OAEP-256`, `RSA-OAEP`, and legacy `RSA1_5`. Supported content
+encryption algorithms are `A128GCM`, `A192GCM`, `A256GCM`, `A128CBC-HS256`, `A192CBC-HS384`, and
+`A256CBC-HS512`. `RSA1_5` is not recommended and emits a startup warning. UserInfo signing algorithm `none` and `HS*`
+algorithms are rejected. When well-known metadata publishes UserInfo signing or encryption capabilities, the configured
+registration algorithms must be advertised.
+
+UserInfo and ID Token algorithms are separate client-registration properties. Their configuration is therefore kept
+separate. Both can reference the same private JWK Set resource when the provider registration uses the same RP key, but
+configuring ID Token decryption does not implicitly enable UserInfo decryption.
 
 By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used by `subject-mapping`, and claims listed
 in `attribute-claim-paths`. This follows the OpenID Connect Core privacy guidance: "Only necessary UserInfo data should
@@ -1126,6 +1167,11 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile", "email")))
         .userInfo(userInfo -> userInfo
+                .jwt(jwt -> jwt
+                        .signingAlgorithm("RS256")
+                        .encryptionAlgorithm("RSA-OAEP-256")
+                        .contentEncryptionAlgorithm("A256GCM")
+                        .decryptionJwk(Resource.create("userinfo-decryption-jwks.json")))
                 .storagePolicy(OidcUserInfoStoragePolicy.MAPPED)
                 .attributeClaimPaths(List.of("email", "department")))
         .cookies(cookies -> cookies.encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
@@ -2189,8 +2235,19 @@ UserInfo options:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether UserInfo requests are enabled when `user-info` is configured. Defaults to `true`. |
+| `jwt` | Exact registered signed and/or encrypted UserInfo JWT response configuration. When omitted, JSON is required. |
 | `storage-policy` | UserInfo claim storage policy: `mapped`, `all`, or `none`. Defaults to `mapped`. |
 | `attribute-claim-paths` | Additional dotted UserInfo claim paths stored when `storage-policy` is `mapped`. The provider also stores `sub` and paths used by `subject-mapping`. |
+
+UserInfo JWT options:
+
+| Key | Description |
+| --- | --- |
+| `signing-algorithm` | Exact `userinfo_signed_response_alg` registered for this client. `none` and `HS*` are rejected. |
+| `encryption-algorithm` | Exact `userinfo_encrypted_response_alg` registered for this client. |
+| `content-encryption-algorithm` | Exact `userinfo_encrypted_response_enc`. Defaults to `A128CBC-HS256` when encryption is configured. |
+| `decryption-jwk` | Confidential private RP JWK Set resource used for UserInfo decryption. Required with `encryption-algorithm`. |
+| `clock-skew` | Clock skew for optional signed UserInfo JWT time claims. Defaults to `PT1M`. |
 
 Logout options:
 

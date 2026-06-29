@@ -88,6 +88,7 @@ public final class EncryptedJwt {
 
     private final String token;
     private final JwtHeaders header;
+    private final String protectedHeaderBase64;
     private final byte[] iv;
     private final byte[] encryptedKey;
     private final byte[] authTag;
@@ -95,12 +96,14 @@ public final class EncryptedJwt {
 
     private EncryptedJwt(String token,
                          JwtHeaders header,
+                         String protectedHeaderBase64,
                          byte[] iv,
                          byte[] encryptedKey,
                          byte[] authTag,
                          byte[] encryptedPayload) {
         this.token = token;
         this.header = header;
+        this.protectedHeaderBase64 = protectedHeaderBase64;
         this.iv = iv;
         this.encryptedKey = encryptedKey;
         this.authTag = authTag;
@@ -174,7 +177,14 @@ public final class EncryptedJwt {
 
             // these all can fail
             JwtHeaders header = JwtHeaders.parseBase64(headerBase64, collector);
-            return parse(token, collector, header, encryptedKeyBase64, ivBase64, payloadBase64, authTagBase64);
+            return parse(token,
+                         collector,
+                         header,
+                         headerBase64,
+                         encryptedKeyBase64,
+                         ivBase64,
+                         payloadBase64,
+                         authTagBase64);
         } else {
             throw new JwtException("Not a JWE token: " + token);
         }
@@ -203,12 +213,20 @@ public final class EncryptedJwt {
 
         Matcher matcher = JWE_PATTERN.matcher(token);
         if (matcher.matches()) {
+            String headerBase64 = matcher.group(1);
             String encryptedKeyBase64 = matcher.group(2);
             String ivBase64 = matcher.group(3);
             String payloadBase64 = matcher.group(4);
             String authTagBase64 = matcher.group(5);
 
-            return parse(token, collector, header, encryptedKeyBase64, ivBase64, payloadBase64, authTagBase64);
+            return parse(token,
+                         collector,
+                         header,
+                         headerBase64,
+                         encryptedKeyBase64,
+                         ivBase64,
+                         payloadBase64,
+                         authTagBase64);
         } else {
             throw new JwtException("Not a JWE token: " + token);
         }
@@ -242,6 +260,7 @@ public final class EncryptedJwt {
     private static EncryptedJwt parse(String token,
                                       Errors.Collector collector,
                                       JwtHeaders header,
+                                      String protectedHeaderBase64,
                                       String encryptedKeyBase64,
                                       String ivBase64,
                                       String payloadBase64,
@@ -254,7 +273,13 @@ public final class EncryptedJwt {
         // if failed, do not continue
         collector.collect().checkValid();
 
-        return new EncryptedJwt(token, header, iv, encryptedKey, authTag, encryptedPayload);
+        return new EncryptedJwt(token,
+                                header,
+                                protectedHeaderBase64,
+                                iv,
+                                encryptedKey,
+                                authTag,
+                                encryptedPayload);
     }
 
     private static byte[] wrapRsa(SupportedAlgorithm supportedAlgorithm, PublicKey publicKey, byte[] unencryptedKey) {
@@ -383,7 +408,6 @@ public final class EncryptedJwt {
     public byte[] decryptPayload(JwkKeys jwkKeys, Jwk defaultJwk) {
         Errors.Collector errors = Errors.collector();
 
-        String headerBase64 = encode(header.headerJsonObject().toString().getBytes(StandardCharsets.UTF_8));
         String alg = header.algorithm().orElse(null);
         String kid = header.keyId().orElse(null);
         String enc = header.encryption().orElse(null);
@@ -462,7 +486,7 @@ public final class EncryptedJwt {
             EncryptionParts encryptionParts = new EncryptionParts(encKey,
                                                                   macKey,
                                                                   iv,
-                                                                  headerBase64.getBytes(StandardCharsets.US_ASCII),
+                                                                  protectedHeaderBase64.getBytes(StandardCharsets.US_ASCII),
                                                                   encryptedPayload,
                                                                   authTag);
             return aesAlgorithm.decrypt(encryptionParts);
@@ -661,6 +685,7 @@ public final class EncryptedJwt {
                     .append(encode(encryptionParts.authTag())).toString();
             return new EncryptedJwt(token,
                                     headers,
+                                    headersBase64,
                                     encryptionParts.iv,
                                     encryptedAesKey,
                                     encryptionParts.authTag(),

@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.builder.api.Prototype;
+import io.helidon.security.jwt.EncryptedJwt;
 
 final class OidcTenantConfigDecorator
         implements Prototype.BuilderDecorator<OidcTenantConfig.BuilderBase<?, ?>> {
@@ -409,6 +410,7 @@ final class OidcTenantConfigDecorator
             return;
         }
         validateClaimPaths(userInfo.attributeClaimPaths(), "user-info.attribute-claim-paths", false);
+        userInfo.jwt().ifPresent(OidcTenantConfigDecorator::validateUserInfoJwt);
 
         configuredAuthorizationCode
                 .filter(OidcAuthorizationCodeConfig::enabled)
@@ -421,6 +423,66 @@ final class OidcTenantConfigDecorator
                                                     "UserInfo",
                                                     endpoints.tlsRequired(),
                                                     OidcEndpointUris::validateUserInfoEndpointUri);
+    }
+
+    private static void validateUserInfoJwt(OidcUserInfoJwtConfig jwt) {
+        Optional<String> signingAlgorithm = jwt.signingAlgorithm();
+        Optional<String> encryptionAlgorithm = jwt.encryptionAlgorithm();
+        Optional<String> contentEncryptionAlgorithm = jwt.contentEncryptionAlgorithm();
+        if (contentEncryptionAlgorithm.isPresent() && encryptionAlgorithm.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "user-info.jwt.content-encryption-algorithm requires encryption-algorithm");
+        }
+        if (signingAlgorithm.isEmpty() && encryptionAlgorithm.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "user-info.jwt must configure signing-algorithm, encryption-algorithm, or both");
+        }
+        signingAlgorithm.ifPresent(algorithm -> {
+            if (algorithm.isBlank() || !algorithm.equals(algorithm.strip()) || "none".equalsIgnoreCase(algorithm)) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.signing-algorithm must not be blank, padded, or none");
+            }
+            if (algorithm.toUpperCase(Locale.ROOT).startsWith("HS")) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.signing-algorithm must not use an HS* algorithm");
+            }
+        });
+        encryptionAlgorithm.ifPresent(algorithm -> {
+            if (algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.encryption-algorithm must not be blank or padded");
+            }
+            if (Arrays.stream(EncryptedJwt.SupportedAlgorithm.values())
+                    .map(Object::toString)
+                    .noneMatch(algorithm::equals)) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.encryption-algorithm is not supported: " + algorithm);
+            }
+            if ("RSA1_5".equals(algorithm) && LOGGER.isLoggable(System.Logger.Level.WARNING)) {
+                LOGGER.log(System.Logger.Level.WARNING,
+                           "user-info.jwt.encryption-algorithm is RSA1_5. This should be used only for legacy OpenID "
+                                   + "Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
+            }
+        });
+        contentEncryptionAlgorithm.ifPresent(algorithm -> {
+            if (algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.content-encryption-algorithm must not be blank or padded");
+            }
+            if (Arrays.stream(EncryptedJwt.SupportedEncryption.values())
+                    .map(Object::toString)
+                    .noneMatch(algorithm::equals)) {
+                throw new IllegalArgumentException(
+                        "user-info.jwt.content-encryption-algorithm is not supported: " + algorithm);
+            }
+        });
+        if (encryptionAlgorithm.isPresent() && jwt.decryptionJwk().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "user-info.jwt.decryption-jwk must be configured when encryption-algorithm is configured");
+        }
+        if (jwt.clockSkew().isNegative()) {
+            throw new IllegalArgumentException("user-info.jwt.clock-skew must not be negative");
+        }
     }
 
     private static void validateLogout(OidcTenantConfig.BuilderBase<?, ?> tenant,

@@ -717,6 +717,46 @@ final class OidcTenantContextFactory {
                                      throw new IllegalStateException(
                                              "well-known metadata userinfo_endpoint must be present for UserInfo");
                                  });
+
+        Optional<OidcUserInfoJwtConfig> userInfoJwt = tenantConfig.userInfo()
+                .flatMap(OidcUserInfoConfig::jwt);
+        if (userInfoJwt.isEmpty()) {
+            return;
+        }
+        OidcUserInfoJwtConfig jwt = userInfoJwt.orElseThrow();
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * Quote: "`userinfo_signing_alg_values_supported` OPTIONAL. JSON array containing a list of the JWS signing
+         * algorithms (`alg` values) supported by the UserInfo Endpoint to encode the Claims in a JWT."
+         * Quote: "`userinfo_encryption_alg_values_supported` OPTIONAL. JSON array containing a list of the JWE
+         * encryption algorithms (`alg` values) supported by the UserInfo Endpoint to encode the Claims in a JWT."
+         * Quote: "`userinfo_encryption_enc_values_supported` OPTIONAL. JSON array containing a list of the JWE
+         * encryption algorithms (`enc` values) supported by the UserInfo Endpoint to encode the Claims in a JWT."
+         */
+        jwt.signingAlgorithm().ifPresent(algorithm -> metadata.userInfoSigningAlgorithmsSupported()
+                .filter(supported -> !supported.contains(algorithm))
+                .ifPresent(supported -> {
+                    throw new IllegalStateException(
+                            "well-known metadata userinfo_signing_alg_values_supported must include " + algorithm);
+                }));
+        jwt.encryptionAlgorithm().ifPresent(algorithm -> metadata.userInfoEncryptionAlgorithmsSupported()
+                .filter(supported -> !supported.contains(algorithm))
+                .ifPresent(supported -> {
+                    throw new IllegalStateException(
+                            "well-known metadata userinfo_encryption_alg_values_supported must include " + algorithm);
+                }));
+        if (jwt.encryptionAlgorithm().isPresent()) {
+            String contentEncryptionAlgorithm = jwt.contentEncryptionAlgorithm()
+                    .orElse(OidcUserInfoJwtConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+            metadata.userInfoContentEncryptionAlgorithmsSupported()
+                    .filter(supported -> !supported.contains(contentEncryptionAlgorithm))
+                    .ifPresent(supported -> {
+                        throw new IllegalStateException(
+                                "well-known metadata userinfo_encryption_enc_values_supported must include "
+                                        + contentEncryptionAlgorithm);
+                    });
+        }
     }
 
     private static void validateEndSessionMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {

@@ -120,7 +120,7 @@ final class OidcRefreshTokenManager {
                 return refreshFailure(authenticationResult,
                                       expiresAt,
                                       now,
-                                      userInfoResult.errorDescription().orElseThrow() + " during refresh",
+                                      userInfoResult.diagnosticDescription().orElseThrow() + " during refresh",
                                       userInfoResult.cause());
             }
 

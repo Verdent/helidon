@@ -17,11 +17,22 @@
 package io.helidon.security.jwt;
 
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.MGF1ParameterSpec;
 import java.text.ParseException;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PSource;
 
 import io.helidon.common.Errors;
 import io.helidon.common.configurable.Resource;
@@ -122,6 +133,47 @@ public class EncryptedJwtTest {
         String tamperedToken = String.join(".", tokenParts);
 
         assertThrows(JwtException.class, () -> parseToken(tamperedToken).decryptPayload(jwkKeys));
+    }
+
+    @Test
+    void testOriginalProtectedHeaderIsUsedAsAdditionalAuthenticatedData() throws GeneralSecurityException {
+        JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
+        byte[] payload = "{\"sub\":\"non-canonical-header\"}".getBytes(StandardCharsets.UTF_8);
+        String protectedHeader = "{ \"enc\" : \"A256GCM\", \"kid\" : \"RS_512\", "
+                + "\"alg\" : \"RSA-OAEP-256\" }";
+        String protectedHeaderBase64 = Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(protectedHeader.getBytes(StandardCharsets.UTF_8));
+
+        KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+        keyGenerator.init(256);
+        SecretKey contentEncryptionKey = keyGenerator.generateKey();
+        byte[] initializationVector = new byte[12];
+        new SecureRandom().nextBytes(initializationVector);
+
+        Cipher contentCipher = Cipher.getInstance("AES/GCM/NoPadding");
+        contentCipher.init(Cipher.ENCRYPT_MODE, contentEncryptionKey, new GCMParameterSpec(128, initializationVector));
+        contentCipher.updateAAD(protectedHeaderBase64.getBytes(StandardCharsets.US_ASCII));
+        byte[] ciphertextAndTag = contentCipher.doFinal(payload);
+        byte[] ciphertext = Arrays.copyOf(ciphertextAndTag, ciphertextAndTag.length - 16);
+        byte[] authenticationTag = Arrays.copyOfRange(ciphertextAndTag, ciphertext.length, ciphertextAndTag.length);
+
+        Cipher keyCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        keyCipher.init(Cipher.WRAP_MODE,
+                       jwk.publicKey(),
+                       new OAEPParameterSpec("SHA-256",
+                                             "MGF1",
+                                             MGF1ParameterSpec.SHA256,
+                                             PSource.PSpecified.DEFAULT));
+        byte[] encryptedKey = keyCipher.wrap(contentEncryptionKey);
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        String token = protectedHeaderBase64 + "."
+                + encoder.encodeToString(encryptedKey) + "."
+                + encoder.encodeToString(initializationVector) + "."
+                + encoder.encodeToString(ciphertext) + "."
+                + encoder.encodeToString(authenticationTag);
+
+        assertArrayEquals(payload, parseToken(token).decryptPayload(jwkKeys));
     }
 
     @Test

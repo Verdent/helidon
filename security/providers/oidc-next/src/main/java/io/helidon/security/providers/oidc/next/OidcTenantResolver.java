@@ -39,8 +39,11 @@ final class OidcTenantResolver {
     Optional<String> tenantId(ProviderRequest request) {
         if (request != null) {
             SecurityEnvironment environment = request.env();
-            Optional<String> tenantId = headerTenantId(environment)
-                    .or(() -> pathTenantId(environment))
+            TenantHeaderResolution headerResolution = headerTenantId(environment);
+            if (headerResolution.present()) {
+                return headerResolution.tenantId();
+            }
+            Optional<String> tenantId = pathTenantId(environment)
                     .or(() -> pathTemplateTenantId(environment))
                     .or(() -> hostTenantId(environment));
             if (tenantId.isPresent()) {
@@ -50,9 +53,10 @@ final class OidcTenantResolver {
         return defaultTenantId();
     }
 
-    private Optional<String> headerTenantId(SecurityEnvironment environment) {
+    private TenantHeaderResolution headerTenantId(SecurityEnvironment environment) {
         return tenantResolution.headerName()
-                .flatMap(header -> firstHeaderValue(environment, header));
+                .map(header -> tenantHeaderValue(environment, header))
+                .orElseGet(TenantHeaderResolution::absent);
     }
 
     private Optional<String> pathTenantId(SecurityEnvironment environment) {
@@ -107,6 +111,17 @@ final class OidcTenantResolver {
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
                 .findFirst();
+    }
+
+    private static TenantHeaderResolution tenantHeaderValue(SecurityEnvironment environment, String headerName) {
+        List<String> values = environment.headers().get(headerName);
+        if (values == null || values.isEmpty()) {
+            return TenantHeaderResolution.absent();
+        }
+        if (values.size() != 1) {
+            return TenantHeaderResolution.invalid();
+        }
+        return TenantHeaderResolution.present(nonBlank(values.getFirst().strip()));
     }
 
     private static List<String> pathSegments(String path) {
@@ -184,5 +199,19 @@ final class OidcTenantResolver {
             return Optional.empty();
         }
         return Optional.of(value);
+    }
+
+    private record TenantHeaderResolution(boolean present, Optional<String> tenantId) {
+        private static TenantHeaderResolution absent() {
+            return new TenantHeaderResolution(false, Optional.empty());
+        }
+
+        private static TenantHeaderResolution invalid() {
+            return present(Optional.empty());
+        }
+
+        private static TenantHeaderResolution present(Optional<String> tenantId) {
+            return new TenantHeaderResolution(true, tenantId);
+        }
     }
 }

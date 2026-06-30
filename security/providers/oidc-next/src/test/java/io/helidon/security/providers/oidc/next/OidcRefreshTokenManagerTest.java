@@ -862,16 +862,18 @@ class OidcRefreshTokenManagerTest {
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
-                        "default",
-                        new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
-                        OLD_ACCESS_TOKEN,
-                        "Bearer",
-                        Optional.ofNullable(refreshToken),
-                        Optional.of("openid profile"),
-                        Optional.ofNullable(userInfo),
-                        createdAt,
-                        expiresAt,
-                        Optional.ofNullable(accessTokenExpiresAt)));
+                        OidcLocalAuthenticationState.builder()
+                                .tenantId("default")
+                                .idToken(new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()))
+                                .accessToken(OLD_ACCESS_TOKEN)
+                                .tokenType("Bearer")
+                                .refreshToken(Optional.ofNullable(refreshToken))
+                                .scope("openid profile")
+                                .userInfo(Optional.ofNullable(userInfo))
+                                .createdAt(createdAt)
+                                .expiresAt(expiresAt)
+                                .accessTokenExpiresAt(Optional.ofNullable(accessTokenExpiresAt))
+                                .buildPrototype()));
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {

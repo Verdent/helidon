@@ -194,17 +194,25 @@ final class OidcCookieStateHandler {
                                                                 resolvedIdToken.encrypted(),
                                                                 signedJwt,
                                                                 jwt);
-        return OidcLocalAuthenticationResult.fromStoredValues(
-                json.stringValue("tenant_id").orElseThrow(),
-                idToken,
-                json.stringValue("access_token").orElseThrow(),
-                json.stringValue("token_type").orElseThrow(),
-                json.stringValue("refresh_token"),
-                json.stringValue("scope"),
-                json.objectValue("userinfo"),
-                Instant.parse(json.stringValue("created_at").orElseThrow()),
-                Instant.parse(json.stringValue("expires_at").orElseThrow()),
-                json.stringValue("access_token_expires_at").map(Instant::parse));
+        String tenantId = json.stringValue("tenant_id").orElseThrow();
+        String accessToken = json.stringValue("access_token").orElseThrow();
+        String tokenType = json.stringValue("token_type").orElseThrow();
+        Instant createdAt = Instant.parse(json.stringValue("created_at").orElseThrow());
+        Instant expiresAt = Instant.parse(json.stringValue("expires_at").orElseThrow());
+        Optional<Instant> accessTokenExpiresAt = json.stringValue("access_token_expires_at").map(Instant::parse);
+        OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
+                .tenantId(tenantId)
+                .idToken(idToken)
+                .accessToken(accessToken)
+                .tokenType(tokenType)
+                .refreshToken(json.stringValue("refresh_token"))
+                .scope(json.stringValue("scope"))
+                .userInfo(json.objectValue("userinfo"))
+                .createdAt(createdAt)
+                .expiresAt(expiresAt)
+                .accessTokenExpiresAt(accessTokenExpiresAt)
+                .buildPrototype();
+        return OidcLocalAuthenticationResult.fromStoredValues(state);
     }
 
     private String protect(String value) {

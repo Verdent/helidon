@@ -74,10 +74,12 @@ final class OidcOutboundTargetConfigDecorator
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "audience must be configured when Token Propagation audience validation is enabled"));
             } else {
-                LOGGER.log(System.Logger.Level.WARNING,
-                           "Token Propagation audience validation is disabled. Propagated bearer tokens will not "
-                                   + "be checked locally for the downstream audience and this should be used only "
-                                   + "for testing, local development, or legacy opaque-token deployments.");
+                if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                               "Token Propagation audience validation is disabled. Propagated bearer tokens will not "
+                                       + "be checked locally for the downstream audience and this should be used only "
+                                       + "for testing, local development, or legacy opaque-token deployments.");
+                }
             }
         }
         if (target.tokenExchangeEnabled()) {

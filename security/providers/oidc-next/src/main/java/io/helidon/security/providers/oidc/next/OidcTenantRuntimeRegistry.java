@@ -17,17 +17,17 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import io.helidon.common.LazyValue;
 import io.helidon.security.ProviderRequest;
 
 final class OidcTenantRuntimeRegistry {
     private final OidcProviderConfig config;
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantContextFactory tenantContextFactory;
-    private final ConcurrentMap<String, CompletableFuture<OidcTenantContext>> contexts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, LazyValue<OidcTenantContext>> contexts = new ConcurrentHashMap<>();
 
     private OidcTenantRuntimeRegistry(OidcProviderConfig config,
                                       OidcTenantResolver tenantResolver,
@@ -62,13 +62,23 @@ final class OidcTenantRuntimeRegistry {
     }
 
     Optional<OidcTenantContext> tenantContext(String tenantId) {
-        CompletableFuture<OidcTenantContext> existing = contexts.get(tenantId);
-        if (existing != null) {
-            return Optional.of(existing.join());
-        }
-
         return tenantConfig(tenantId)
-                .map(tenantConfig -> initialize(tenantId, tenantConfig));
+                .map(tenantConfig -> {
+                    /*
+                     * The map callback installs only a lightweight lazy holder; it never performs discovery or other
+                     * remote tenant initialization. LazyValue.get() runs after computeIfAbsent returns. Its first
+                     * caller performs initialization synchronously, same-tenant callers wait without holding a map
+                     * lock, and different tenant keys initialize independently.
+                     *
+                     * The default factory converts operational failures into a definitive FAILED context, which the
+                     * LazyValue caches like READY and DISABLED contexts. If the factory violates its contract and
+                     * throws instead, LazyValue remains unloaded so a later caller can retry.
+                     */
+                    LazyValue<OidcTenantContext> context = contexts.computeIfAbsent(
+                            tenantId,
+                            _ -> LazyValue.create(() -> tenantContextFactory.create(tenantId, tenantConfig)));
+                    return context.get();
+                });
     }
 
     int cachedTenantCount() {
@@ -77,34 +87,5 @@ final class OidcTenantRuntimeRegistry {
 
     private Optional<OidcTenantConfig> tenantConfig(String tenantId) {
         return Optional.ofNullable(config.tenants().get(tenantId));
-    }
-
-    private OidcTenantContext initialize(String tenantId, OidcTenantConfig tenantConfig) {
-        /*
-         * Tenant creation may perform discovery and other remote I/O. Keep it outside ConcurrentMap update callbacks:
-         * a slow callback holds map-internal update coordination and can block a different tenant whose key happens to
-         * occupy the same bin. The future map performs only atomic leader election here. Callers for the same tenant
-         * join the elected leader without holding a map lock, while different tenants initialize independently.
-         *
-         * Initialization is deliberately synchronous: the elected caller performs the work and returns only after the
-         * tenant has reached a definitive READY, DISABLED, or FAILED state. The incomplete future is merely a wait point
-         * for concurrent callers. Once completed, the same map entry becomes the permanent context cache.
-         */
-        CompletableFuture<OidcTenantContext> loading = new CompletableFuture<>();
-        CompletableFuture<OidcTenantContext> existing = contexts.putIfAbsent(tenantId, loading);
-        if (existing != null) {
-            return existing.join();
-        }
-
-        try {
-            OidcTenantContext created = tenantContextFactory.create(tenantId, tenantConfig);
-            loading.complete(created);
-            return created;
-        } catch (RuntimeException | Error e) {
-            loading.completeExceptionally(e);
-            // Factory contract violations are not tenant outcomes and must not poison all later requests permanently.
-            contexts.remove(tenantId, loading);
-            throw e;
-        }
     }
 }

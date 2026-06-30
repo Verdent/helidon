@@ -20,7 +20,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -51,7 +53,9 @@ final class OidcUserInfoJwtProcessor {
 
     OidcValidationResult<JsonObject> validate(String token,
                                               OidcTenantContext tenantContext,
-                                              OidcValidatedIdToken idToken) {
+                                              OidcValidatedIdToken idToken,
+                                              Instant validationTime) {
+        Objects.requireNonNull(validationTime);
         JwtHeaders headers;
         try {
             headers = JwtHeaders.parseToken(token);
@@ -63,18 +67,19 @@ final class OidcUserInfoJwtProcessor {
             if (headers.encryption().isPresent()) {
                 return OidcValidationResult.failure("Encrypted UserInfo response was not registered");
             }
-            return SIGNED_JWT_VALIDATOR.validate(token, tenantContext, idToken, config);
+            return SIGNED_JWT_VALIDATOR.validate(token, tenantContext, idToken, config, validationTime);
         }
         if (headers.encryption().isEmpty()) {
             return OidcValidationResult.failure("Registered encrypted UserInfo response is not encrypted");
         }
-        return validateEncrypted(token, headers, tenantContext, idToken);
+        return validateEncrypted(token, headers, tenantContext, idToken, validationTime);
     }
 
     private OidcValidationResult<JsonObject> validateEncrypted(String token,
                                                                JwtHeaders headers,
                                                                OidcTenantContext tenantContext,
-                                                               OidcValidatedIdToken idToken) {
+                                                               OidcValidatedIdToken idToken,
+                                                               Instant validationTime) {
         String expectedAlgorithm = config.encryptionAlgorithm().orElseThrow();
         if (headers.algorithm().filter(expectedAlgorithm::equals).isEmpty()) {
             return OidcValidationResult.failure("UserInfo JWE alg header does not match registration");
@@ -119,7 +124,11 @@ final class OidcUserInfoJwtProcessor {
             String decodedPayload = decodeUtf8(payload);
             if (signed) {
                 SignedJwt signedJwt = SignedJwt.parseToken(decodedPayload);
-                return SIGNED_JWT_VALIDATOR.validate(signedJwt, tenantContext, idToken, config);
+                return SIGNED_JWT_VALIDATOR.validate(signedJwt,
+                                                     tenantContext,
+                                                     idToken,
+                                                     config,
+                                                     validationTime);
             }
             JsonObject claims = JsonParser.create(decodedPayload).readJsonObject();
             return OidcValidationResult.success(claims);

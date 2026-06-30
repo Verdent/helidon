@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -35,20 +36,23 @@ final class OidcUserInfoJwtValidator {
     OidcValidationResult<JsonObject> validate(String token,
                                               OidcTenantContext tenantContext,
                                               OidcValidatedIdToken idToken,
-                                              OidcUserInfoJwtConfig config) {
+                                              OidcUserInfoJwtConfig config,
+                                              Instant validationTime) {
         SignedJwt signedJwt;
         try {
             signedJwt = SignedJwt.parseToken(token);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("UserInfo response is not a valid signed JWT", e);
         }
-        return validate(signedJwt, tenantContext, idToken, config);
+        return validate(signedJwt, tenantContext, idToken, config, validationTime);
     }
 
     OidcValidationResult<JsonObject> validate(SignedJwt signedJwt,
                                               OidcTenantContext tenantContext,
                                               OidcValidatedIdToken idToken,
-                                              OidcUserInfoJwtConfig config) {
+                                              OidcUserInfoJwtConfig config,
+                                              Instant validationTime) {
+        Objects.requireNonNull(validationTime);
         Jwt jwt;
         try {
             jwt = signedJwt.getJwt();
@@ -80,7 +84,8 @@ final class OidcUserInfoJwtValidator {
         Errors claimErrors = claimValidator(expectedIssuer.orElseThrow(),
                                             clientId.orElseThrow(),
                                             idToken,
-                                            config).validate(jwt);
+                                            config,
+                                            validationTime).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("UserInfo JWT claims are invalid");
         }
@@ -107,7 +112,8 @@ final class OidcUserInfoJwtValidator {
     private JwtValidator claimValidator(String expectedIssuer,
                                         String clientId,
                                         OidcValidatedIdToken idToken,
-                                        OidcUserInfoJwtConfig config) {
+                                        OidcUserInfoJwtConfig config,
+                                        Instant validationTime) {
         /*
          * Spec: OpenID Connect Core 1.0, 5.3.2 Successful UserInfo Response
          * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
@@ -115,15 +121,14 @@ final class OidcUserInfoJwtValidator {
          * Quote: "The iss value MUST be the OP's Issuer Identifier URL."
          * Quote: "The aud value MUST be or include the RP's Client ID value."
          */
-        Instant now = Instant.now();
         return JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now)
+                .addExpirationValidator(it -> it.now(validationTime)
                         .allowedTimeSkew(config.clockSkew())
                         .mandatory(false))
-                .addIssueTimeValidator(it -> it.now(now)
+                .addIssueTimeValidator(it -> it.now(validationTime)
                         .allowedTimeSkew(config.clockSkew())
                         .mandatory(false))
-                .addNotBeforeValidator(it -> it.now(now)
+                .addNotBeforeValidator(it -> it.now(validationTime)
                         .allowedTimeSkew(config.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)

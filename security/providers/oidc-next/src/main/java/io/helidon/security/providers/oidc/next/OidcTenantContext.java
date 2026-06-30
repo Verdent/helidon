@@ -60,10 +60,6 @@ final class OidcTenantContext {
         return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata, webClient, null);
     }
 
-    static OidcTenantContext notReady(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.NOT_READY, null, null, null);
-    }
-
     static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
         return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null, null, null);
     }
@@ -94,10 +90,6 @@ final class OidcTenantContext {
 
     boolean ready() {
         return state == OidcTenantState.READY;
-    }
-
-    boolean cacheable() {
-        return state != OidcTenantState.NOT_READY;
     }
 
     OidcProviderMetadata metadata() {

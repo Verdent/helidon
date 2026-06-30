@@ -50,6 +50,7 @@ class OidcIdTokenValidatorTest {
     private static final String SUBJECT = "user1-id";
     private static final String NONCE = "nonce-value";
     private static final String COOKIE_SECRET = "test-cookie-secret";
+    private static final Instant VALIDATION_TIME = Instant.parse("2026-06-30T12:00:00Z");
 
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
@@ -298,11 +299,22 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void expiredIdTokenIsRejected() {
-        Instant now = Instant.now();
-        String idToken = signedIdToken(it -> it.issueTime(now.minus(2, ChronoUnit.HOURS))
-                .expirationTime(now.minus(5, ChronoUnit.MINUTES)));
+        String idToken = signedIdToken(it -> it.issueTime(VALIDATION_TIME.minus(2, ChronoUnit.HOURS))
+                .expirationTime(VALIDATION_TIME.minus(5, ChronoUnit.MINUTES)));
 
         var result = validate(idToken);
+
+        assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
+    void suppliedValidationTimeDeterminesTokenExpiration() {
+        String idToken = signedIdToken(_ -> { });
+
+        var result = validator.validate(idToken,
+                                        tenantContext(),
+                                        authenticationRequestState(),
+                                        VALIDATION_TIME.plus(2, ChronoUnit.HOURS));
 
         assertFailure(result, "ID Token claims are invalid");
     }
@@ -410,11 +422,14 @@ class OidcIdTokenValidatorTest {
     }
 
     private OidcValidationResult<OidcValidatedIdToken> validate(String idToken) {
-        return validator.validate(idToken, tenantContext(), authenticationRequestState());
+        return validator.validate(idToken, tenantContext(), authenticationRequestState(), VALIDATION_TIME);
     }
 
     private OidcValidationResult<OidcValidatedIdToken> validate(String idToken, OidcTenantConfig tenantConfig) {
-        return validator.validate(idToken, OidcTenantContext.ready("default", tenantConfig), authenticationRequestState());
+        return validator.validate(idToken,
+                                  OidcTenantContext.ready("default", tenantConfig),
+                                  authenticationRequestState(),
+                                  VALIDATION_TIME);
     }
 
     private static OidcTenantContext tenantContext() {
@@ -478,7 +493,6 @@ class OidcIdTokenValidatorTest {
     }
 
     private static OidcAuthenticationRequestState authenticationRequestState() {
-        Instant now = Instant.now();
         return new OidcAuthenticationRequestState("default",
                                                      "state-value",
                                                      NONCE,
@@ -486,8 +500,8 @@ class OidcIdTokenValidatorTest {
                                                      ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      REDIRECTION_ENDPOINT_URI,
-                                                     now.minusSeconds(1),
-                                                     now.plusSeconds(300));
+                                                     VALIDATION_TIME.minusSeconds(1),
+                                                     VALIDATION_TIME.plusSeconds(300));
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {
@@ -510,15 +524,14 @@ class OidcIdTokenValidatorTest {
                                         String keyId,
                                         String signingKeyId,
                                         Consumer<Jwt.Builder> customizer) {
-        Instant now = Instant.now();
         Jwt.Builder builder = Jwt.builder()
                 .type("JWT")
                 .subject(SUBJECT)
                 .issuer(ISSUER.toString())
                 .algorithm(algorithm)
                 .keyId(keyId)
-                .issueTime(now)
-                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .issueTime(VALIDATION_TIME)
+                .expirationTime(VALIDATION_TIME.plus(1, ChronoUnit.HOURS))
                 .nonce(NONCE);
         if (audience) {
             builder.addAudience(CLIENT_ID);
@@ -529,14 +542,13 @@ class OidcIdTokenValidatorTest {
     }
 
     private static String unsignedIdToken(Consumer<Jwt.Builder> customizer) {
-        Instant now = Instant.now();
         Jwt.Builder builder = Jwt.builder()
                 .type("JWT")
                 .subject(SUBJECT)
                 .issuer(ISSUER.toString())
                 .algorithm(Jwk.ALG_NONE)
-                .issueTime(now)
-                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .issueTime(VALIDATION_TIME)
+                .expirationTime(VALIDATION_TIME.plus(1, ChronoUnit.HOURS))
                 .nonce(NONCE)
                 .addAudience(CLIENT_ID);
         customizer.accept(builder);

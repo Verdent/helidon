@@ -102,7 +102,8 @@ final class OidcRefreshTokenManager {
                 OidcValidationResult<OidcValidatedIdToken> idTokenValidationResult =
                         idTokenValidator.validateRefresh(refreshedIdToken.orElseThrow(),
                                                          tenantContext,
-                                                         authenticationResult.idToken());
+                                                         authenticationResult.idToken(),
+                                                         now);
                 if (!idTokenValidationResult.succeeded()) {
                     return refreshFailure(authenticationResult,
                                           expiresAt,
@@ -116,7 +117,8 @@ final class OidcRefreshTokenManager {
 
             OidcUserInfoSupport.Result userInfoResult = OidcUserInfoSupport.userInfo(tenantContext,
                                                                                       tokenResponse.accessToken(),
-                                                                                      idToken);
+                                                                                      idToken,
+                                                                                      now);
             if (!userInfoResult.succeeded()) {
                 return refreshFailure(authenticationResult,
                                       expiresAt,

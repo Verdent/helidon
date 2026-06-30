@@ -1407,7 +1407,7 @@ class OidcFeatureRouteTest {
                             localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
+                    assertThat(response.as(String.class), is("Logout request is invalid"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
                 assertThat(cookies.size(), is(2));
@@ -1437,7 +1437,7 @@ class OidcFeatureRouteTest {
                             localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
+                assertThat(response.as(String.class), is("Logout request is invalid"));
             }
         } finally {
             rpServer.stop();
@@ -1494,7 +1494,7 @@ class OidcFeatureRouteTest {
                             localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is not allowed"));
+                assertThat(response.as(String.class), is("Logout request is invalid"));
             }
         } finally {
             rpServer.stop();
@@ -1642,7 +1642,7 @@ class OidcFeatureRouteTest {
                     .header(HeaderNames.COOKIE, localAuthenticationHeader)
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+                assertThat(response.as(String.class), is("Logout request is invalid"));
             }
 
             try (HttpClientResponse response = WebClient.builder()
@@ -1654,7 +1654,7 @@ class OidcFeatureRouteTest {
                     .header(HeaderNames.COOKIE, localAuthenticationHeader)
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+                assertThat(response.as(String.class), is("Logout request is invalid"));
             }
 
             try (HttpClientResponse response = WebClient.builder()
@@ -1667,7 +1667,7 @@ class OidcFeatureRouteTest {
                     .header(HeaderNames.COOKIE, localAuthenticationHeader)
                     .request()) {
                 assertThat(response.status(), is(Status.BAD_REQUEST_400));
-                assertThat(response.as(String.class), is("post_logout_redirect_uri is invalid"));
+                assertThat(response.as(String.class), is("Logout request is invalid"));
             }
         } finally {
             rpServer.stop();

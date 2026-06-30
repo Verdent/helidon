@@ -18,7 +18,6 @@ package io.helidon.security.providers.oidc.next;
 
 enum OidcTenantState {
     READY,
-    NOT_READY,
     DISABLED,
     FAILED
 }

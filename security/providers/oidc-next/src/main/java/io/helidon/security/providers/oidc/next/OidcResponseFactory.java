@@ -33,6 +33,7 @@ final class OidcResponseFactory {
     private static final String INVALID_TOKEN = "invalid_token";
     private static final String INVALID_REQUEST_DESCRIPTION = "Bearer Token request is invalid";
     private static final String INVALID_TOKEN_DESCRIPTION = "Bearer Token is invalid";
+    private static final String AUTHORIZATION_CODE_FLOW_UNAVAILABLE_DESCRIPTION = "OIDC authentication is unavailable";
     private static final String TENANT_UNAVAILABLE_DESCRIPTION = "OIDC tenant is unavailable";
     private static final String CLIENT_CREDENTIALS_FAILURE_DESCRIPTION = "Client Credentials Grant failed";
     private static final String TOKEN_EXCHANGE_FAILURE_DESCRIPTION = "Token Exchange failed";
@@ -101,6 +102,17 @@ final class OidcResponseFactory {
                 .responseHeader(HeaderNames.SET_COOKIE.defaultCase(),
                                 List.copyOf(cookies))
                 .build();
+    }
+
+    static AuthenticationResponse authorizationCodeFlowUnavailable(Optional<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(Status.SERVICE_UNAVAILABLE_503.code())
+                .description(AUTHORIZATION_CODE_FLOW_UNAVAILABLE_DESCRIPTION);
+        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
+                HeaderNames.SET_COOKIE.defaultCase(),
+                cookie));
+        return builder.build();
     }
 
     static AuthenticationResponse localAuthenticationSucceeded(Subject subject, Optional<String> authenticationCookie) {

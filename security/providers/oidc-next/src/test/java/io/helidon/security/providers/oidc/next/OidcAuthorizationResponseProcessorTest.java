@@ -61,7 +61,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.tenantContext().orElseThrow().tenantId(), is("default"));
         assertThat(result.authenticationRequestState().orElseThrow().state(), is("stored-state"));
 
-        SetCookie removalCookie = result.stateCookies().get(0);
+        SetCookie removalCookie = result.stateCookies().getFirst();
         assertThat(removalCookie.name(), is("__Host-helidon-oidc-state"));
         assertThat(removalCookie.value(), is(""));
         assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));

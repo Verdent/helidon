@@ -56,7 +56,7 @@ final class OidcOutboundTargetConfigDecorator
         }
         target.audience()
                 .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("audience must not be blank or padded");
                 });
         if (target.tokenPropagationEnabled()) {
@@ -89,7 +89,7 @@ final class OidcOutboundTargetConfigDecorator
         }
         target.tokenExchangeAudience()
                 .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("token-exchange-audience must not be blank or padded");
                 });
         OidcScopeSupport.validateConfiguredScopes(target.clientCredentialsScopes(), "client-credentials-scopes");

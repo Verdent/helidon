@@ -118,7 +118,6 @@ class OidcTenantLifecycleTest {
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch enteredInitializer = new CountDownLatch(1);
         CountDownLatch finishInitializer = new CountDownLatch(1);
-        ExecutorService executor = Executors.newFixedThreadPool(taskCount);
         OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, tenantConfig) -> {
             attempts.incrementAndGet();
             enteredInitializer.countDown();
@@ -126,6 +125,7 @@ class OidcTenantLifecycleTest {
             return OidcTenantContext.ready(tenantId, tenantConfig);
         });
         List<Future<OidcTenantContext>> futures = new ArrayList<>();
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
         try {
             for (int i = 0; i < taskCount; i++) {

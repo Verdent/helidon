@@ -57,7 +57,7 @@ final class OidcEndpointPolicyResolver {
                                                                                           authenticationCookieSupported);
         if (acceptedCredentials.isEmpty()) {
             endpointPolicy.authenticationFailureResponse()
-                    .ifPresent(ignored -> {
+                    .ifPresent(_ -> {
                         throw new IllegalArgumentException(
                                 "endpoint-policy requires Protected Resource or Authorization Code Flow to be enabled");
                     });

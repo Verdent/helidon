@@ -802,7 +802,7 @@ class OidcProviderConfigTest {
 
     @Test
     void userInfoJwtRejectsMissingOrUnsafeSigningAlgorithm() {
-        assertInvalidUserInfoJwt(jwt -> { }, "signing-algorithm, encryption-algorithm, or both");
+        assertInvalidUserInfoJwt(_ -> { }, "signing-algorithm, encryption-algorithm, or both");
         for (String algorithm : List.of("", " RS256", "none")) {
             assertInvalidUserInfoJwt(jwt -> jwt.signingAlgorithm(algorithm), "signing-algorithm");
         }
@@ -1710,7 +1710,7 @@ class OidcProviderConfigTest {
     @Test
     void logoutEndSessionRequiresEndpointOrWellKnownUri() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .logout(logout -> logout.endSession(endSession -> { }))
+                .logout(logout -> logout.endSession(_ -> { }))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri or well-known-uri"));
@@ -1720,7 +1720,7 @@ class OidcProviderConfigTest {
     void logoutEndSessionRejectsInsecureEndpointByDefault() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .endpoints(it -> it.endSessionEndpointUri(URI.create("http://issuer.example/logout")))
-                .logout(logout -> logout.endSession(endSession -> { }))
+                .logout(logout -> logout.endSession(_ -> { }))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri must use https"));
@@ -1742,7 +1742,7 @@ class OidcProviderConfigTest {
     void logoutEndSessionRejectsEndpointWithFragment() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .endpoints(it -> it.endSessionEndpointUri(URI.create("https://issuer.example/logout#fragment")))
-                .logout(logout -> logout.endSession(endSession -> { }))
+                .logout(logout -> logout.endSession(_ -> { }))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("end-session-endpoint-uri must not include a fragment"));
@@ -1793,7 +1793,7 @@ class OidcProviderConfigTest {
     void logoutEndSessionRequiresAuthorizationCodeWhenIdTokenHintIsRequired() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
-                .logout(logout -> logout.endSession(endSession -> { }))
+                .logout(logout -> logout.endSession(_ -> { }))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code"));
@@ -1868,7 +1868,7 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code"));
@@ -1883,7 +1883,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .userInfoEndpointUri(URI.create("http://issuer.example/userinfo")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
@@ -1900,7 +1900,7 @@ class OidcProviderConfigTest {
                         .userInfoEndpointUri(URI.create("http://issuer.example/userinfo"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -1917,7 +1917,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .userInfoEndpointUri(URI.create("https://issuer.example/userinfo#fragment")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
@@ -2665,7 +2665,7 @@ class OidcProviderConfigTest {
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant() {
-        return jwtProtectedResourceTenant(it -> { });
+        return jwtProtectedResourceTenant(_ -> { });
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant(

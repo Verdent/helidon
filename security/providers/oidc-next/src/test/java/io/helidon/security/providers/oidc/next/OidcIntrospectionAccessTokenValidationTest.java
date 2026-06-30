@@ -86,7 +86,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         routing.post("/redirected-introspect", (request, response) -> {
             REDIRECTED_REQUEST_COUNT.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
-                    .send(validResponse(it -> { }));
+                    .send(validResponse(_ -> { }));
         });
     }
 
@@ -95,7 +95,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         introspectionEndpointUri = serverUri.resolve("introspect");
         redirectedIntrospectionEndpointUri = serverUri.resolve("redirected-introspect");
         responseStatus = 200;
-        responseBody = validResponse(it -> { }).toString();
+        responseBody = validResponse(_ -> { }).toString();
         responseContentType = "application/json";
         redirectLocation = null;
         REDIRECTED_REQUEST_COUNT.set(0);
@@ -642,7 +642,7 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     private OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured) {
-        return provider(audienceValidationEnabled, audienceConfigured, tenant -> { });
+        return provider(audienceValidationEnabled, audienceConfigured, _ -> { });
     }
 
     private OidcProvider provider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
@@ -731,7 +731,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
+        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"helidon\", error=\"invalid_token\", "
                               + "error_description=\"Bearer Token is invalid\""));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));

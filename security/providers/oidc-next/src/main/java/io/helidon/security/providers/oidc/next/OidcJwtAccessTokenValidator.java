@@ -88,7 +88,8 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
 
         Errors claimErrors = claimValidator(tokenValidation,
                                             expectedIssuer.orElseThrow(),
-                                            expectedAudience).validate(jwt);
+                                            expectedAudience,
+                                            request.validationTime()).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
         }
@@ -139,12 +140,16 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
 
     private JwtValidator claimValidator(OidcTokenValidationConfig tokenValidation,
                                         String expectedIssuer,
-                                        Optional<String> expectedAudience) {
-        Instant now = Instant.now();
+                                        Optional<String> expectedAudience,
+                                        Instant validationTime) {
         JwtValidator.Builder builder = JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()).mandatory(true))
-                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
+                .addExpirationValidator(it -> it.now(validationTime)
+                        .allowedTimeSkew(tokenValidation.clockSkew())
+                        .mandatory(true))
+                .addIssueTimeValidator(it -> it.now(validationTime)
+                        .allowedTimeSkew(tokenValidation.clockSkew())
+                        .mandatory(true))
+                .addNotBeforeValidator(it -> it.now(validationTime).allowedTimeSkew(tokenValidation.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addValidator((jwt, collector) -> {
                     if (jwt.subject().filter(subject -> !subject.isBlank()).isEmpty()) {

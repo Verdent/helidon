@@ -17,9 +17,9 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.security.ProviderRequest;
 
@@ -27,7 +27,7 @@ final class OidcTenantRuntimeRegistry {
     private final OidcProviderConfig config;
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantContextFactory tenantContextFactory;
-    private final ConcurrentMap<String, OidcTenantContext> contexts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CompletableFuture<OidcTenantContext>> contexts = new ConcurrentHashMap<>();
 
     private OidcTenantRuntimeRegistry(OidcProviderConfig config,
                                       OidcTenantResolver tenantResolver,
@@ -62,26 +62,13 @@ final class OidcTenantRuntimeRegistry {
     }
 
     Optional<OidcTenantContext> tenantContext(String tenantId) {
-        OidcTenantContext existing = contexts.get(tenantId);
+        CompletableFuture<OidcTenantContext> existing = contexts.get(tenantId);
         if (existing != null) {
-            return Optional.of(existing);
+            return Optional.of(existing.join());
         }
 
         return tenantConfig(tenantId)
-                .map(tenantConfig -> {
-                    AtomicReference<OidcTenantContext> resolvedContext = new AtomicReference<>();
-                    contexts.compute(tenantId, (id, cached) -> {
-                        if (cached != null) {
-                            resolvedContext.set(cached);
-                            return cached;
-                        }
-
-                        OidcTenantContext created = tenantContextFactory.create(id, tenantConfig);
-                        resolvedContext.set(created);
-                        return created.cacheable() ? created : null;
-                    });
-                    return resolvedContext.get();
-                });
+                .map(tenantConfig -> initialize(tenantId, tenantConfig));
     }
 
     int cachedTenantCount() {
@@ -90,5 +77,34 @@ final class OidcTenantRuntimeRegistry {
 
     private Optional<OidcTenantConfig> tenantConfig(String tenantId) {
         return Optional.ofNullable(config.tenants().get(tenantId));
+    }
+
+    private OidcTenantContext initialize(String tenantId, OidcTenantConfig tenantConfig) {
+        /*
+         * Tenant creation may perform discovery and other remote I/O. Keep it outside ConcurrentMap update callbacks:
+         * a slow callback holds map-internal update coordination and can block a different tenant whose key happens to
+         * occupy the same bin. The future map performs only atomic leader election here. Callers for the same tenant
+         * join the elected leader without holding a map lock, while different tenants initialize independently.
+         *
+         * Initialization is deliberately synchronous: the elected caller performs the work and returns only after the
+         * tenant has reached a definitive READY, DISABLED, or FAILED state. The incomplete future is merely a wait point
+         * for concurrent callers. Once completed, the same map entry becomes the permanent context cache.
+         */
+        CompletableFuture<OidcTenantContext> loading = new CompletableFuture<>();
+        CompletableFuture<OidcTenantContext> existing = contexts.putIfAbsent(tenantId, loading);
+        if (existing != null) {
+            return existing.join();
+        }
+
+        try {
+            OidcTenantContext created = tenantContextFactory.create(tenantId, tenantConfig);
+            loading.complete(created);
+            return created;
+        } catch (RuntimeException | Error e) {
+            loading.completeExceptionally(e);
+            // Factory contract violations are not tenant outcomes and must not poison all later requests permanently.
+            contexts.remove(tenantId, loading);
+            throw e;
+        }
     }
 }

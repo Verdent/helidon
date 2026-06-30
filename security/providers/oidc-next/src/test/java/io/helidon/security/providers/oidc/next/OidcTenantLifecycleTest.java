@@ -74,25 +74,6 @@ class OidcTenantLifecycleTest {
     }
 
     @Test
-    void lazyInitializationRetriesNotReadyTenantContext() {
-        AtomicInteger attempts = new AtomicInteger();
-        OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, tenantConfig) -> {
-            if (attempts.incrementAndGet() == 1) {
-                return OidcTenantContext.notReady(tenantId, tenantConfig);
-            }
-            return OidcTenantContext.ready(tenantId, tenantConfig);
-        });
-
-        OidcTenantContext first = registry.tenantContext("tenant").orElseThrow();
-        OidcTenantContext second = registry.tenantContext("tenant").orElseThrow();
-
-        assertThat(first.state(), is(OidcTenantState.NOT_READY));
-        assertThat(second.state(), is(OidcTenantState.READY));
-        assertThat(attempts.get(), is(2));
-        assertThat(registry.cachedTenantCount(), is(1));
-    }
-
-    @Test
     void failedTenantContextIsCached() {
         AtomicInteger attempts = new AtomicInteger();
         RuntimeException failureCause = new IllegalStateException("tenant failed");
@@ -112,7 +93,27 @@ class OidcTenantLifecycleTest {
     }
 
     @Test
-    void cacheableTenantInitializationIsSingleFlight() throws Exception {
+    void thrownInitializationFailureDoesNotPoisonRegistry() {
+        AtomicInteger attempts = new AtomicInteger();
+        RuntimeException failure = new IllegalStateException("initializer contract violation");
+        OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, tenantConfig) -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw failure;
+            }
+            return OidcTenantContext.ready(tenantId, tenantConfig);
+        });
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> registry.tenantContext("tenant"));
+        OidcTenantContext context = registry.tenantContext("tenant").orElseThrow();
+
+        assertThat(thrown, sameInstance(failure));
+        assertThat(context.state(), is(OidcTenantState.READY));
+        assertThat(attempts.get(), is(2));
+        assertThat(registry.cachedTenantCount(), is(1));
+    }
+
+    @Test
+    void tenantInitializationIsSingleFlight() throws Exception {
         int taskCount = 8;
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
@@ -152,6 +153,52 @@ class OidcTenantLifecycleTest {
     }
 
     @Test
+    void collidingTenantIdsInitializeIndependently() throws Exception {
+        String firstTenantId = "Aa";
+        String secondTenantId = "BB";
+        assertThat(firstTenantId.hashCode(), is(secondTenantId.hashCode()));
+
+        CountDownLatch enteredFirstInitializer = new CountDownLatch(1);
+        CountDownLatch finishFirstInitializer = new CountDownLatch(1);
+        CountDownLatch enteredSecondInitializer = new CountDownLatch(1);
+        OidcTenantConfig tenantConfig = OidcTenantConfig.create();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant(firstTenantId, tenantConfig)
+                .putTenant(secondTenantId, tenantConfig)
+                .buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                config,
+                OidcTenantContextFactory.create((tenantId, resolvedConfig) -> {
+                    if (firstTenantId.equals(tenantId)) {
+                        enteredFirstInitializer.countDown();
+                        await(finishFirstInitializer);
+                    } else {
+                        enteredSecondInitializer.countDown();
+                    }
+                    return OidcTenantContext.ready(tenantId, resolvedConfig);
+                }));
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+        try {
+            Future<OidcTenantContext> first = executor.submit(
+                    () -> registry.tenantContext(firstTenantId).orElseThrow());
+            assertThat(enteredFirstInitializer.await(5, TimeUnit.SECONDS), is(true));
+
+            Future<OidcTenantContext> second = executor.submit(
+                    () -> registry.tenantContext(secondTenantId).orElseThrow());
+            assertThat(enteredSecondInitializer.await(5, TimeUnit.SECONDS), is(true));
+
+            finishFirstInitializer.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS).tenantId(), is(firstTenantId));
+            assertThat(second.get(5, TimeUnit.SECONDS).tenantId(), is(secondTenantId));
+            assertThat(registry.cachedTenantCount(), is(2));
+        } finally {
+            finishFirstInitializer.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void tenantInitializationIsLazyByDefault() {
         AtomicInteger attempts = new AtomicInteger();
         OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, tenantConfig) -> {
@@ -167,7 +214,7 @@ class OidcTenantLifecycleTest {
     }
 
     @Test
-    void notReadyTenantFailsPredictablyAndRetries() {
+    void outboundSupportCheckDoesNotInitializeTenant() {
         AtomicInteger attempts = new AtomicInteger();
         OidcProviderConfig config = providerConfig(OidcTenantConfig.builder()
                                                    .clientId("client-id")
@@ -175,32 +222,10 @@ class OidcTenantLifecycleTest {
                                                    .buildPrototype());
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 config,
-                OidcTenantContextFactory.create(retryOnceInitializer(attempts)));
-        OidcAuthenticationOrchestrator authentication = OidcAuthenticationOrchestrator.create(config, registry);
-        ProviderRequest request = OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
-                                                           SecurityEnvironment.create());
-
-        AuthenticationResponse first = authentication.authenticate(request);
-        AuthenticationResponse second = authentication.authenticate(request);
-
-        assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(first.statusCode().orElse(-1), is(503));
-        assertThat(first.description().orElse(""), is("OIDC tenant is unavailable"));
-        assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(second.description().orElse(""), is("Bearer Token is required"));
-        assertThat(attempts.get(), is(2));
-    }
-
-    @Test
-    void outboundSupportCheckDoesNotConsumeNotReadyRetry() {
-        AtomicInteger attempts = new AtomicInteger();
-        OidcProviderConfig config = providerConfig(OidcTenantConfig.builder()
-                                                   .clientId("client-id")
-                                                   .clientSecret("client-secret")
-                                                   .buildPrototype());
-        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
-                config,
-                OidcTenantContextFactory.create(retryOnceInitializer(attempts)));
+                OidcTenantContextFactory.create((tenantId, tenantConfig) -> {
+                    attempts.incrementAndGet();
+                    return OidcTenantContext.failed(tenantId, tenantConfig);
+                }));
         OidcOutboundOrchestrator outbound = new OidcOutboundOrchestrator(config, registry);
         ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
@@ -209,15 +234,15 @@ class OidcTenantLifecycleTest {
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         boolean supported = outbound.isSupported(request, outboundEnv, outboundConfig);
-        OutboundSecurityResponse first = outbound.secure(request, outboundEnv, outboundConfig);
-        OutboundSecurityResponse second = outbound.secure(request, outboundEnv, outboundConfig);
 
         assertThat(supported, is(true));
-        assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(first.description().orElse(""), is("OIDC tenant is unavailable"));
-        assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(second.description().orElse(""), is("Client Credentials Grant failed"));
-        assertThat(attempts.get(), is(2));
+        assertThat(attempts.get(), is(0));
+
+        OutboundSecurityResponse response = outbound.secure(request, outboundEnv, outboundConfig);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("OIDC tenant is unavailable"));
+        assertThat(attempts.get(), is(1));
     }
 
     @Test
@@ -257,7 +282,6 @@ class OidcTenantLifecycleTest {
     void runtimeResourcesAreAvailableOnlyForReadyTenant() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.create();
         OidcTenantContext ready = OidcTenantContext.ready("tenant", tenantConfig);
-        OidcTenantContext notReady = OidcTenantContext.notReady("tenant", tenantConfig);
         OidcTenantContext disabled = OidcTenantContext.disabled("tenant", tenantConfig);
         OidcTenantContext failed = OidcTenantContext.failed("tenant", tenantConfig);
 
@@ -267,10 +291,9 @@ class OidcTenantLifecycleTest {
         ready.tokenValidation();
         ready.cookieStateHandler();
 
-        assertThrows(IllegalStateException.class, notReady::metadata);
         assertThrows(IllegalStateException.class, disabled::endpointClient);
         assertThrows(IllegalStateException.class, failed::jwkSetManager);
-        assertThrows(IllegalStateException.class, notReady::tokenValidation);
+        assertThrows(IllegalStateException.class, disabled::tokenValidation);
         assertThrows(IllegalStateException.class, failed::cookieStateHandler);
         assertThat(failed.failureCause().isEmpty(), is(true));
     }
@@ -279,15 +302,6 @@ class OidcTenantLifecycleTest {
             OidcTenantContextFactory.TenantInitializer initializer) {
         return OidcTenantRuntimeRegistry.create(providerConfig(OidcTenantConfig.create()),
                                                 OidcTenantContextFactory.create(initializer));
-    }
-
-    private static OidcTenantContextFactory.TenantInitializer retryOnceInitializer(AtomicInteger attempts) {
-        return (tenantId, tenantConfig) -> {
-            if (attempts.incrementAndGet() == 1) {
-                return OidcTenantContext.notReady(tenantId, tenantConfig);
-            }
-            return OidcTenantContext.ready(tenantId, tenantConfig);
-        };
     }
 
     private static OidcProviderConfig providerConfig(OidcTenantConfig tenantConfig) {

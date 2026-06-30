@@ -1529,6 +1529,23 @@ Client Credentials Grant obtains an access token from the Token Endpoint with `g
 the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
 cached until it is close to expiration, then reacquired.
 
+Each `OidcProvider` instance maintains separate process-local Client Credentials and Token Exchange caches. Each cache
+uses Helidon's thread-safe least-recently-used cache with a strict 10,000-entry capacity; the least recently used entry is
+evicted when a new value exceeds that capacity. These caches are performance optimizations, not shared token stores.
+Different service nodes may acquire and cache their own tokens, and neither request affinity nor distributed storage is
+required. The caches start no background threads and need no external lifecycle management.
+
+Concurrent misses for the same complete cache key are coalesced within one provider instance. One caller performs the
+Token Endpoint request while the other callers wait for that same result. Requests for different keys remain concurrent.
+A successful token is retained only when it has a positive `expires_in` and remains valid beyond the configured tenant
+clock skew. OAuth failures, responses without a reusable lifetime, and already-expired responses are shared only with
+callers waiting for that request and are not cached. Expired entries are never returned; they are replaced by a later
+successful load or removed by normal bounded LRU eviction.
+
+The coordination path is designed for virtual-thread callers. Token Endpoint I/O runs outside the LRU cache locks and
+outside `ConcurrentHashMap` update callbacks. Callers waiting for the same key hold no cache or map lock, so a slow Token
+Endpoint request neither serializes unrelated keys nor occupies a cache critical section.
+
 Configure Client Credentials Grant scopes on the matching outbound target. OAuth scopes describe the access requested for
 the token, and for outbound calls that access is normally tied to the downstream resource API selected by the target.
 Keeping scopes on the target allows least-privilege tokens for different downstream services while still using the same
@@ -1618,7 +1635,8 @@ and first-class `act` or `may_act` handling are not implemented by this outbound
 Exchanged tokens are cached only when the response includes a positive `expires_in`. The cache key includes the tenant id,
 a SHA-256 hash of the subject token, configured scopes, resource, and audience. Raw subject tokens are not stored in cache
 keys. The cache uses the tenant token-validation clock skew and does not assume that input-token revocation automatically
-revokes already exchanged tokens.
+revokes already exchanged tokens. The shared process-local cache and concurrent-miss behavior described for Client
+Credentials Grant above also applies to Token Exchange.
 
 ```yaml
 security:

@@ -25,6 +25,12 @@ final class OidcRequestObjectConfigSupport {
     private OidcRequestObjectConfigSupport() {
     }
 
+    /**
+     * Configures the private JWK Set resource used to sign Request Objects.
+     *
+     * @param builder builder to update
+     * @param consumer private JWK Set resource builder consumer
+     */
     @Prototype.BuilderMethod
     static void signingJwk(OidcRequestObjectConfig.BuilderBase<?, ?> builder,
                            Consumer<ResourceConfig.Builder> consumer) {

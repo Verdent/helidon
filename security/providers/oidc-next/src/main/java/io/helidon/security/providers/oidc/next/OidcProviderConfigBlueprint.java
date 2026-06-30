@@ -96,6 +96,10 @@ interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, 
 
     /**
      * Configured tenants keyed by tenant id.
+     * <p>
+     * Authorization Code Flow encodes the tenant id into the externally visible {@code state} parameter so an
+     * Authorization Response can route to one tenant before runtime initialization. Tenant ids must not contain
+     * confidential information.
      *
      * @return tenants
      */

@@ -560,7 +560,7 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
-    void staleUnknownKeyIdRefreshDoesNotRateLimitDifferentKeyId() throws Exception {
+    void unknownKeyIdRefreshRateLimitsDifferentKeyIds() throws Exception {
         MutableClock clock = MutableClock.create(TEST_INSTANT);
         Path jwkSet = tempDir.resolve("jwks.json");
         Files.writeString(jwkSet, emptyJwkSet());
@@ -571,6 +571,26 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
 
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
+    }
+
+    @Test
+    void failedUnknownKeyIdRefreshRateLimitsDifferentKeyIds() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path jwkSet = tempDir.resolve("jwks.json");
+        Files.writeString(jwkSet, emptyJwkSet());
+        OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
+
+        manager.jwkKeys();
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
+        Files.delete(jwkSet);
+        assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
+        Files.writeString(jwkSet, verifyJwkSet);
+
+        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
     }
 

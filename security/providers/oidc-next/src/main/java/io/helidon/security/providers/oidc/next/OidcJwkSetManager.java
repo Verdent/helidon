@@ -20,8 +20,6 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -29,8 +27,6 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetManager {
-    private static final int UNKNOWN_KEY_ID_REFRESH_ATTEMPT_LIMIT = 64;
-
     private final String tenantId;
     private final OidcProviderMetadata metadata;
     private final OidcJwkSetConfig config;
@@ -41,13 +37,7 @@ final class OidcJwkSetManager {
     private volatile Instant lastJwkSetLoad;
     private volatile Instant lastJwkSetRefreshAttempt;
     private volatile RuntimeException lastJwkSetRefreshFailure;
-    private final Map<String, Instant> unknownKeyIdRefreshAttempts =
-            new LinkedHashMap<>() {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, Instant> eldest) {
-                    return size() > UNKNOWN_KEY_ID_REFRESH_ATTEMPT_LIMIT;
-                }
-            };
+    private Instant lastUnknownKeyIdRefreshAttempt;
 
     private OidcJwkSetManager(String tenantId,
                               OidcProviderMetadata metadata,
@@ -126,7 +116,7 @@ final class OidcJwkSetManager {
             if (current != null) {
                 return current;
             }
-            return refreshJwkKeys(true);
+            return refreshJwkKeys();
         } finally {
             refreshLock.unlock();
         }
@@ -144,13 +134,13 @@ final class OidcJwkSetManager {
         try {
             JwkKeys current = cachedJwkKeys;
             if (current == null) {
-                return refreshJwkKeys(true);
+                return refreshJwkKeys();
             }
             if (!refreshIntervalElapsed()) {
                 return current;
             }
             try {
-                return refreshJwkKeys(true);
+                return refreshJwkKeys();
             } catch (RuntimeException e) {
                 lastJwkSetRefreshAttempt = clock.instant();
                 if (config.staleOnError()) {
@@ -172,17 +162,17 @@ final class OidcJwkSetManager {
         try {
             JwkKeys current = cachedJwkKeys;
             if (current == null) {
-                current = refreshJwkKeys(true);
+                current = refreshJwkKeys();
             }
             if (current.forKeyId(keyId).isPresent()) {
                 return current;
             }
-            if (!unknownKeyIdRefreshAllowed(keyId)) {
+            if (!unknownKeyIdRefreshAllowed()) {
                 return current;
             }
             try {
                 JwkKeys loaded = loadJwkKeys();
-                cacheJwkKeys(loaded, loaded.forKeyId(keyId).isPresent());
+                cacheJwkKeys(loaded);
                 return loaded;
             } catch (RuntimeException e) {
                 if (config.staleOnError()) {
@@ -195,34 +185,32 @@ final class OidcJwkSetManager {
         }
     }
 
-    private JwkKeys refreshJwkKeys(boolean updateLoadTime) {
+    private JwkKeys refreshJwkKeys() {
         JwkKeys loaded = loadJwkKeys();
-        cacheJwkKeys(loaded, updateLoadTime);
+        cacheJwkKeys(loaded);
         return loaded;
     }
 
-    private void cacheJwkKeys(JwkKeys loaded, boolean updateLoadTime) {
+    private void cacheJwkKeys(JwkKeys loaded) {
         cachedJwkKeys = loaded;
-        if (updateLoadTime) {
-            Instant now = clock.instant();
-            lastJwkSetLoad = now;
-            lastJwkSetRefreshAttempt = now;
-            lastJwkSetRefreshFailure = null;
-        }
+        Instant now = clock.instant();
+        lastJwkSetLoad = now;
+        lastJwkSetRefreshAttempt = now;
+        lastJwkSetRefreshFailure = null;
     }
 
-    private boolean unknownKeyIdRefreshAllowed(String keyId) {
+    private boolean unknownKeyIdRefreshAllowed() {
         Instant lastLoad = lastJwkSetLoad;
         Instant now = clock.instant();
         Duration refreshInterval = config.unknownKeyIdRefreshInterval();
         if (lastLoad == null || now.isBefore(lastLoad.plus(refreshInterval))) {
             return false;
         }
-        Instant lastAttempt = unknownKeyIdRefreshAttempts.get(keyId);
+        Instant lastAttempt = lastUnknownKeyIdRefreshAttempt;
         if (lastAttempt != null && now.isBefore(lastAttempt.plus(refreshInterval))) {
             return false;
         }
-        unknownKeyIdRefreshAttempts.put(keyId, now);
+        lastUnknownKeyIdRefreshAttempt = now;
         return true;
     }
 

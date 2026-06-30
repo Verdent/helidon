@@ -38,7 +38,7 @@ interface OidcJwkSetConfigBlueprint {
     boolean unknownKeyIdRefreshEnabled();
 
     /**
-     * Minimum interval between unknown-key-id JWK Set reload attempts.
+     * Global minimum interval between JWK Set reload attempts triggered by any unknown key id.
      *
      * @return unknown key id refresh interval
      */

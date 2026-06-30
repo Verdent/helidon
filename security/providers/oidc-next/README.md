@@ -558,8 +558,8 @@ security:
 ```
 
 `unknown-key-id-refresh-enabled` reloads the JWK Set when a token uses a `kid` that is not present in the cached keys.
-This supports Authorization Server key rotation. `unknown-key-id-refresh-interval` rate-limits those reload attempts;
-the default is `PT5M`.
+This supports Authorization Server key rotation. `unknown-key-id-refresh-interval` globally rate-limits those reload
+attempts across all unknown `kid` values, including failed reload attempts; the default is `PT5M`.
 
 `refresh-interval` enables lazy periodic refresh. No background thread is started. The provider checks the cache age
 during token validation and refreshes only when a request needs keys after the interval has elapsed.
@@ -2206,7 +2206,7 @@ JWK Set options:
 | Key | Description |
 | --- | --- |
 | `unknown-key-id-refresh-enabled` | Whether an unknown JWT `kid` triggers a JWK Set reload attempt. Defaults to `true`. |
-| `unknown-key-id-refresh-interval` | Minimum interval between unknown-`kid` reload attempts. Defaults to `PT5M`. |
+| `unknown-key-id-refresh-interval` | Global minimum interval between reload attempts triggered by any unknown `kid`. Defaults to `PT5M`. |
 | `refresh-interval` | Optional lazy JWK Set refresh interval. If configured, cached keys older than this interval are refreshed during token validation. No background thread is started. |
 | `stale-on-error` | Whether cached keys may still be used when a reload fails. Defaults to `true`; initial loading still fails when no cached keys exist. |
 

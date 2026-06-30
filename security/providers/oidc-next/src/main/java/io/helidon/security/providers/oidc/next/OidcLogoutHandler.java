@@ -72,16 +72,20 @@ final class OidcLogoutHandler {
         Instant now = Instant.now();
         List<LogoutTenant> logoutTenants = tenants.stream()
                 .map(entry -> {
-                    OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(entry.getValue());
+                    OidcTenantConfig tenantConfig = entry.getValue();
+                    OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenantConfig.cookies());
+                    OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
                     Optional<OidcLocalAuthenticationResult> localAuthenticationResult = cookies
                             .getOrDefault(cookieStateHandler.cookieConfig().localAuthenticationCookieName(), List.of())
                             .stream()
-                            .flatMap(cookieValue -> cookieStateHandler.readLocalAuthenticationResult(cookieValue, now)
+                            .flatMap(cookieValue -> cookieStateHandler.readLocalAuthenticationResult(cookieValue,
+                                                                                                    now,
+                                                                                                    idTokenDecryptor)
                                     .stream())
                             .filter(result -> entry.getKey().equals(result.tenantId()))
                             .findFirst();
                     return new LogoutTenant(entry.getKey(),
-                                            entry.getValue(),
+                                            tenantConfig,
                                             cookieStateHandler,
                                             localAuthenticationResult);
                 })

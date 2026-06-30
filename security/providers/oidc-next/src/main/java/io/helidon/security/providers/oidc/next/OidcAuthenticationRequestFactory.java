@@ -68,7 +68,7 @@ final class OidcAuthenticationRequestFactory {
                             + redirectionEndpointUri);
         }
 
-        String state = randomValue();
+        String state = OidcAuthorizationState.create(tenantContext.tenantId(), randomValue()).value();
         String nonce = randomValue();
         String pkceVerifier = authorizationCode.pkceRequired() ? randomValue() : null;
         SecurityEnvironment environment = context.environment();

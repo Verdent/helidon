@@ -188,7 +188,7 @@ final class OidcTenantContext {
                                         jwkSetManager,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
-                                        OidcCookieStateHandler.create(tenantConfig, idTokenDecryptor),
+                                        OidcCookieStateHandler.create(tenantConfig.cookies()),
                                         webClient);
         }
     }

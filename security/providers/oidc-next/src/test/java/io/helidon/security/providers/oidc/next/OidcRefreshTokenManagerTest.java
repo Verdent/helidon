@@ -860,7 +860,7 @@ class OidcRefreshTokenManagerTest {
                                                        Consumer<Jwt.Builder> idTokenCustomizer) {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
-        return OidcCookieStateHandler.create(tenant)
+        return OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         OidcLocalAuthenticationState.builder()
                                 .tenantId("default")
@@ -1015,8 +1015,10 @@ class OidcRefreshTokenManagerTest {
         assertThat(setCookies.size(), is(1));
         SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
         assertThat(refreshedCookie.name(), is(localAuthenticationCookieName));
-        return OidcCookieStateHandler.create(tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(), Instant.now())
+        return OidcCookieStateHandler.create(tenant.cookies())
+                .readLocalAuthenticationResult(refreshedCookie.value(),
+                                               Instant.now(),
+                                               OidcIdTokenDecryptor.create(tenant))
                 .orElseThrow();
     }
 

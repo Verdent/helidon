@@ -2110,6 +2110,10 @@ Tenant resolution order is:
 4. Host template.
 5. Default tenant.
 
+When `header-name` is configured and that header is present, the request must contain exactly one nonblank value. A
+blank or repeated tenant header does not resolve a tenant and does not fall through to another resolution strategy or
+the default tenant.
+
 ## TLS Requirements
 
 Endpoint URIs are required to use HTTPS by default. The same switch also prevents OIDC outbound support from attaching

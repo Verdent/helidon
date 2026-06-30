@@ -90,6 +90,7 @@ class OidcClientCredentialsGrantTest {
             "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
 
+    private static final AtomicInteger METADATA_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
@@ -126,9 +127,11 @@ class OidcClientCredentialsGrantTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> response
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(providerMetadata));
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            METADATA_REQUEST_COUNT.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(providerMetadata);
+        });
         routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/redirected-token", OidcClientCredentialsGrantTest::handleRedirectedTokenEndpoint);
@@ -136,9 +139,11 @@ class OidcClientCredentialsGrantTest {
 
     @SetUpRoute("mtls")
     static void mutualTlsRouting(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> response
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(providerMetadata));
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            METADATA_REQUEST_COUNT.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(providerMetadata);
+        });
         routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
     }
@@ -167,6 +172,7 @@ class OidcClientCredentialsGrantTest {
         redirectLocation = null;
         dynamicTokenResponse = false;
         dynamicExpiresIn = 600;
+        METADATA_REQUEST_COUNT.set(0);
         REQUEST_COUNT.set(0);
         REDIRECTED_REQUEST_COUNT.set(0);
         RECORDED_REQUEST.set(null);
@@ -422,18 +428,28 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
-    void endpointClientCredentialsGrantCanUseWellKnownMetadataTokenEndpoint() {
+    void providerAndSupportCheckDeferMetadataUntilClientCredentialsRequest() {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                 .putTenant("default", confidentialTenantFromWellKnown())
                 .buildPrototype());
+        ProviderRequest providerRequest = providerRequest();
+        SecurityEnvironment outboundEnvironment = outboundEnvironment();
+        EndpointConfig endpointConfig = clientCredentialsEndpointConfig();
 
-        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
-                                                                      outboundEnvironment(),
-                                                                      clientCredentialsEndpointConfig());
+        assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+        assertThat(REQUEST_COUNT.get(), is(0));
+        assertThat(provider.isOutboundSupported(providerRequest, outboundEnvironment, endpointConfig), is(true));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+        assertThat(REQUEST_COUNT.get(), is(0));
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
+                                                                      outboundEnvironment,
+                                                                      endpointConfig);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer access-token")));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 

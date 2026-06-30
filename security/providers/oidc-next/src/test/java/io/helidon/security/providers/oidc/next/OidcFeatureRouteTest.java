@@ -24,6 +24,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -1552,8 +1553,9 @@ class OidcFeatureRouteTest {
     }
 
     @Test
-    void logoutEndpointRouteRedirectsToDiscoveredEndSessionEndpoint() {
-        WebServer opServer = wellKnownEndSessionServer();
+    void featureStartupDefersDiscoveredMetadataUntilLogoutRequest() {
+        AtomicInteger metadataRequestCount = new AtomicInteger();
+        WebServer opServer = wellKnownEndSessionServer(metadataRequestCount);
         try {
             URI issuer = issuerUri(opServer);
             OidcTenantConfig tenant = tenantConfigWithDiscoveredEndSessionLogout(issuer, endSession -> endSession
@@ -1561,6 +1563,8 @@ class OidcFeatureRouteTest {
                     .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI));
             WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
             try {
+                assertThat(metadataRequestCount.get(), is(0));
+
                 try (HttpClientResponse response = WebClient.builder()
                         .baseUri(rpBaseUri(rpServer))
                         .build()
@@ -1579,6 +1583,7 @@ class OidcFeatureRouteTest {
                     assertThat(query.first("post_logout_redirect_uri").orElse(""),
                                is(POST_LOGOUT_REDIRECT_URI.toString()));
                 }
+                assertThat(metadataRequestCount.get(), is(1));
             } finally {
                 rpServer.stop();
             }
@@ -2000,16 +2005,18 @@ class OidcFeatureRouteTest {
                 .start();
     }
 
-    private static WebServer wellKnownEndSessionServer() {
+    private static WebServer wellKnownEndSessionServer(AtomicInteger metadataRequestCount) {
         AtomicReference<URI> issuer = new AtomicReference<>();
         HttpRouting.Builder routing = HttpRouting.builder();
-        routing.get("/.well-known/openid-configuration", (request, response) -> response
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(JsonObject.builder()
-                              .set("issuer", issuer.get().toString())
-                              .set("end_session_endpoint", issuer.get().resolve("/logout").toString())
-                              .build()
-                              .toString()));
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            metadataRequestCount.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(JsonObject.builder()
+                                  .set("issuer", issuer.get().toString())
+                                  .set("end_session_endpoint", issuer.get().resolve("/logout").toString())
+                                  .build()
+                                  .toString());
+        });
         WebServer server = WebServer.builder()
                 .addRouting(routing)
                 .port(0)

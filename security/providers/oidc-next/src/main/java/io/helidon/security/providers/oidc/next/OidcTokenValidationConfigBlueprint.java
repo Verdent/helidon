@@ -43,6 +43,7 @@ interface OidcTokenValidationConfigBlueprint {
      * <p>
      * For JWT access-token validation, this should identify the current resource server. RFC 9068 requires JWT access
      * tokens to contain {@code aud}, and requires the resource server to validate that {@code aud} identifies itself.
+     * The configured value must not be blank or padded.
      *
      * @return expected audience
      */
@@ -90,6 +91,8 @@ interface OidcTokenValidationConfigBlueprint {
 
     /**
      * Allowed JWS algorithms for JWT access tokens.
+     * <p>
+     * The list must not be empty and must not contain blank, padded, or {@code none} values.
      *
      * @return allowed algorithms
      */
@@ -100,6 +103,8 @@ interface OidcTokenValidationConfigBlueprint {
 
     /**
      * Token time validation clock skew.
+     * <p>
+     * Must not be negative.
      *
      * @return clock skew
      */

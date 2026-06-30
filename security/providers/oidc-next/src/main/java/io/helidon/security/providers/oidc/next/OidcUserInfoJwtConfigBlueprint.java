@@ -32,6 +32,9 @@ import io.helidon.common.configurable.Resource;
 @Prototype.Blueprint
 @Prototype.Configured
 interface OidcUserInfoJwtConfigBlueprint {
+    /**
+     * Default JWE content encryption algorithm defined by OpenID Connect client registration.
+     */
     String DEFAULT_CONTENT_ENCRYPTION_ALGORITHM = "A128CBC-HS256";
 
     /**

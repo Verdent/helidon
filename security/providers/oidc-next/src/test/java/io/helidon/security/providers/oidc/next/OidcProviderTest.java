@@ -160,7 +160,7 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0)
+        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst()
                            .startsWith("Bearer realm=\"helidon\", "), is(true));
     }
 
@@ -333,13 +333,13 @@ class OidcProviderTest {
     @Test
     void bearerChallengeDescriptionsFallBackWhenUnsafe() {
         AuthenticationResponse invalidToken = OidcResponseFactory.invalidBearerToken("unsafe\nvalue", "orders-api");
-        assertThat(invalidToken.responseHeaders().get("WWW-Authenticate").get(0),
+        assertThat(invalidToken.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"orders-api\", error=\"invalid_token\", "
                               + "error_description=\"Bearer Token is invalid\""));
 
         AuthenticationResponse invalidRequest = OidcResponseFactory.invalidBearerTokenRequest("unsafe\rvalue",
                                                                                               "orders-api");
-        assertThat(invalidRequest.responseHeaders().get("WWW-Authenticate").get(0),
+        assertThat(invalidRequest.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"orders-api\", error=\"invalid_request\", "
                               + "error_description=\"Bearer Token request is invalid\""));
     }
@@ -361,7 +361,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
         assertThat(response.statusCode().orElse(-1), is(303));
-        assertThat(URI.create(response.responseHeaders().get("Location").get(0)).getPath(), is("/authorize"));
+        assertThat(URI.create(response.responseHeaders().get("Location").getFirst()).getPath(), is("/authorize"));
     }
 
     @Test
@@ -397,7 +397,7 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
         assertThat(response.statusCode().orElse(-1), is(303));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         assertThat(location.getScheme(), is("https"));
         assertThat(location.getHost(), is("issuer.example"));
         assertThat(location.getPath(), is("/authorize"));
@@ -436,7 +436,7 @@ class OidcProviderTest {
         AuthenticationResponse response = provider.authenticate(
                 request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("redirect_uri"), is(REDIRECTION_ENDPOINT_URI.toString()));
 
@@ -457,7 +457,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("prompt"), is("login consent"));
     }
@@ -475,7 +475,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.all("resource"), is(List.of("https://api.example.com", "urn:example:contacts")));
     }
@@ -497,7 +497,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("response_type"), is("code"));
         assertThat(query.get("client_id"), is("client-id"));
@@ -555,7 +555,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("scope"), is("openid offline_access"));
         assertThat(query.get("prompt"), is("consent"));
@@ -575,7 +575,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("prompt"), is("login consent"));
     }
@@ -594,7 +594,7 @@ class OidcProviderTest {
 
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("prompt"), is("consent"));
     }
@@ -614,7 +614,7 @@ class OidcProviderTest {
                 request(null, environment));
 
         URI resolvedRedirectionEndpointUri = URI.create("https://rp.example/oidc/callback");
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
         assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
@@ -637,7 +637,7 @@ class OidcProviderTest {
                 request(null, environment));
 
         URI resolvedRedirectionEndpointUri = URI.create("https://rp.example/oidc/callback");
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
@@ -694,7 +694,7 @@ class OidcProviderTest {
                 request(null, environment));
 
         URI resolvedRedirectionEndpointUri = URI.create("https://rp.example:8443/oidc/callback");
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("redirect_uri"), is(resolvedRedirectionEndpointUri.toString()));
         assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
@@ -746,7 +746,7 @@ class OidcProviderTest {
                         .transport("https")
                         .build()));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
         assertThat(query.get("code_challenge_method"), is("plain"));
@@ -764,7 +764,7 @@ class OidcProviderTest {
                         .targetUri(ORIGINAL_URI)
                         .build()));
 
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.contains("code_challenge"), is(false));
         assertThat(query.contains("code_challenge_method"), is(false));
@@ -781,7 +781,7 @@ class OidcProviderTest {
                         .targetUri(ORIGINAL_URI)
                         .build()));
 
-        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").get(0));
+        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
         assertThat(cookie.name(), is("__Host-helidon-oidc-state"));
         assertThat(cookie.value().startsWith("v1."), is(true));
         assertThat(cookie.path().orElse(""), is("/"));
@@ -872,7 +872,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultCookieAuthenticatesSubjectFromEncryptedIdToken() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { },
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { },
                                                             builder -> builder.idToken(idToken -> idToken
                                                                     .decryptionJwk(Resource.create(
                                                                             "oidc-next-encrypt-jwk.json"))));
@@ -908,7 +908,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultCookieCanUseRawSubjectPrincipalId() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping.principalIdMode(OidcPrincipalIdMode.SUBJECT)));
         OidcProvider provider = provider(tenant);
         Instant now = Instant.now();
@@ -926,7 +926,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultCookieUsesCustomSubjectMapping() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
                         .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
@@ -967,7 +967,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultUserInfoDoesNotOverridePrincipalIdMapping() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
                         .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
@@ -1013,7 +1013,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultUserInfoSupportsCustomClaimAbacMapping() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
                         .principalIdClaimPaths(List.of("sub"))
                         .principalNameClaimPaths(List.of("preferred_username", "email"))
@@ -1054,7 +1054,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultCookieRequiresConfiguredPrincipalIdClaim() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
                         .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))));
@@ -1073,7 +1073,7 @@ class OidcProviderTest {
 
     @Test
     void localAuthenticationResultCookieUsesTokenResponseScopesOnly() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> { }, builder -> builder
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping.scopeClaimPaths(List.of("id_scopes"))));
         OidcProvider provider = provider(tenant);
         String idToken = signedIdToken(it -> it
@@ -1300,11 +1300,11 @@ class OidcProviderTest {
     }
 
     private static OidcTenantConfig authorizationCodeTenant() {
-        return authorizationCodeTenant(it -> { });
+        return authorizationCodeTenant(_ -> { });
     }
 
     private static OidcTenantConfig authorizationCodeTenant(Consumer<OidcAuthorizationCodeConfig.Builder> customizer) {
-        return authorizationCodeTenant(customizer, builder -> { });
+        return authorizationCodeTenant(customizer, _ -> { });
     }
 
     private static OidcTenantConfig authorizationCodeTenant(
@@ -1381,7 +1381,7 @@ class OidcProviderTest {
 
     private static OidcAuthenticationRequestState authenticationRequestState(AuthenticationResponse response,
                                                                              OidcTenantConfig tenant) {
-        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").get(0));
+        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
         return OidcCookieStateHandler.create(tenant)
                 .readAuthenticationRequestState(cookie.value(), Instant.now())
                 .orElseThrow();
@@ -1465,7 +1465,7 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(400));
         assertThat(response.description().orElse(""), is("Bearer Token request is invalid"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
+        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"helidon\", error=\"invalid_request\", error_description=\""
                               + "Bearer Token request is invalid\""));
     }

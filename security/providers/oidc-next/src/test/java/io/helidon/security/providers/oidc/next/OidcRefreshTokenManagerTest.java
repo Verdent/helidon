@@ -311,7 +311,7 @@ class OidcRefreshTokenManagerTest {
 
     @Test
     void refreshedJwtAccessTokenIsValidatedBeforeCookieIsStored(URI serverUri) {
-        String refreshedAccessToken = signedAccessToken(it -> { });
+        String refreshedAccessToken = signedAccessToken(_ -> { });
         responseBody = refreshResponse(refreshedAccessToken, ROTATED_REFRESH_TOKEN).toString();
         OidcTenantConfig tenant = tenantWithJwtAccessTokenValidation(serverUri);
         Instant now = Instant.now();
@@ -432,7 +432,7 @@ class OidcRefreshTokenManagerTest {
                                                                                 .set("preferred_username",
                                                                                      "old-userinfo-user")
                                                                                 .build(),
-                                                                        it -> { });
+                                                                        _ -> { });
 
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
@@ -467,7 +467,7 @@ class OidcRefreshTokenManagerTest {
                                                                         JsonObject.builder()
                                                                                 .set("sub", SUBJECT)
                                                                                 .build(),
-                                                                        it -> { });
+                                                                        _ -> { });
 
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
@@ -489,7 +489,7 @@ class OidcRefreshTokenManagerTest {
                                                                         JsonObject.builder()
                                                                                 .set("sub", SUBJECT)
                                                                                 .build(),
-                                                                        it -> { });
+                                                                        _ -> { });
 
         AuthenticationResponse response = authenticate(tenant, localAuthenticationCookie);
 
@@ -784,7 +784,7 @@ class OidcRefreshTokenManagerTest {
     }
 
     private static OidcTenantConfig tenantWithUserInfo(URI serverUri) {
-        return tenantWithUserInfo(serverUri, userInfo -> { });
+        return tenantWithUserInfo(serverUri, _ -> { });
     }
 
     private static OidcTenantConfig tenantWithUserInfo(URI serverUri,
@@ -833,7 +833,7 @@ class OidcRefreshTokenManagerTest {
                                          expiresAt,
                                          accessTokenExpiresAt,
                                          refreshToken,
-                                         it -> { });
+                                         _ -> { });
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,

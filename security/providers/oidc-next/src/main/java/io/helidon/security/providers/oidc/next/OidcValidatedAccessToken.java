@@ -16,6 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-interface OidcValidatedAccessToken {
+sealed interface OidcValidatedAccessToken permits OidcValidatedIntrospection, OidcValidatedJwt {
     String rawToken();
 }

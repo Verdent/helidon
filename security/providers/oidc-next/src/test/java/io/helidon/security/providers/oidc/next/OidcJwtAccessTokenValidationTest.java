@@ -357,7 +357,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void unboundJwtAccessTokenAuthenticatesWhenCertificateBindingIsIfPresent() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.IF_PRESENT),
                                                        token);
@@ -367,7 +367,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void unboundJwtAccessTokenIsRejectedWhenCertificateBindingIsRequired() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED),
                                                        token);
@@ -409,7 +409,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void customPrincipalIdClaimIsRequiredForJwtAccessToken() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, jwksUri, tenant -> tenant
                 .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("tenant_user")))), token);
@@ -444,7 +444,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void remoteJwksEndpointAuthenticatesSubject() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
 
@@ -454,7 +454,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void wellKnownMetadataJwksEndpointAuthenticatesSubject() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(
                 wellKnownProvider(tenant -> tenant.webClient(tenantWebClient())),
@@ -472,9 +472,9 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
                 {"keys":[{"kty":"oct","kid":"verify-oct","k":"FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ"}]}
                 """)));
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
-        AuthenticationResponse response = authenticate(wellKnownProvider(tenant -> { }), token);
+        AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
         assertInvalidToken(response, "Bearer Token signature keys are unavailable");
         assertThat(remoteJwkSetRequests.get(), is(1));
@@ -485,9 +485,9 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
                 {"keys":[{"kty":"RSA","kid":"verify-rsa","d":"private"}]}
                 """)));
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
-        AuthenticationResponse response = authenticate(wellKnownProvider(tenant -> { }), token);
+        AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
         assertInvalidToken(response, "Bearer Token signature keys are unavailable");
         assertThat(remoteJwkSetRequests.get(), is(1));
@@ -664,7 +664,7 @@ class OidcJwtAccessTokenValidationTest {
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
-                    .mapToObj(ignored -> executor.submit(() -> {
+                    .mapToObj(_ -> executor.submit(() -> {
                         assertTrue(start.await(5, TimeUnit.SECONDS));
                         return manager.jwkKeys();
                     }))
@@ -702,7 +702,7 @@ class OidcJwtAccessTokenValidationTest {
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
-                    .mapToObj(ignored -> executor.submit(() -> {
+                    .mapToObj(_ -> executor.submit(() -> {
                         assertTrue(start.await(5, TimeUnit.SECONDS));
                         return manager.jwkKeys();
                     }))
@@ -738,7 +738,7 @@ class OidcJwtAccessTokenValidationTest {
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
-                    .mapToObj(ignored -> executor.submit(() -> {
+                    .mapToObj(_ -> executor.submit(() -> {
                         assertTrue(start.await(5, TimeUnit.SECONDS));
                         return manager.jwkKeys(Optional.of("verify-rsa"));
                     }))
@@ -758,7 +758,7 @@ class OidcJwtAccessTokenValidationTest {
     @Test
     void coldUnknownKeyIdDoesNotFetchRemoteJwkSetTwice() {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of(emptyJwkSet(), verifyJwkSet)));
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, remoteJwksUri), token);
 
@@ -897,7 +897,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
-        String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", it -> { });
+        String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, MISSING_JWKS_URI), token);
 
@@ -906,7 +906,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
-        String token = unsignedToken(it -> { });
+        String token = unsignedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, MISSING_JWKS_URI), token);
 
@@ -915,7 +915,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void missingAccessTokenTypeIsRejected() {
-        String token = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", it -> { });
+        String token = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", _ -> { });
 
         AuthenticationResponse response = authenticate(provider(), token);
 
@@ -933,7 +933,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void invalidSignatureIsRejected() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
         int signatureStart = token.lastIndexOf('.') + 1;
         char replacement = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
         String tampered = token.substring(0, signatureStart) + replacement + token.substring(signatureStart + 1);
@@ -945,7 +945,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void knownKeyIdWithInvalidSignatureDoesNotRefreshRemoteJwkSet() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
         int signatureStart = token.lastIndexOf('.') + 1;
         char replacement = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
         String tampered = token.substring(0, signatureStart) + replacement + token.substring(signatureStart + 1);
@@ -976,7 +976,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void unavailableJwkSetIsRejectedAsInvalidToken() {
-        String token = signedToken(it -> { });
+        String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, MISSING_JWKS_URI), token);
 
@@ -1040,7 +1040,7 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled, boolean audienceConfigured, URI jwksUri) {
-        return provider(audienceValidationEnabled, audienceConfigured, jwksUri, tenant -> { });
+        return provider(audienceValidationEnabled, audienceConfigured, jwksUri, _ -> { });
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled,
@@ -1138,7 +1138,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(response.statusCode().orElse(-1), is(401));
         assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").get(0),
+        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"helidon\", error=\"invalid_token\", "
                               + "error_description=\"Bearer Token is invalid\""));
     }

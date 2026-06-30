@@ -146,7 +146,7 @@ final class OidcRequestContext {
                 continue;
             }
             String value = token.substring(valueStart + 1).trim();
-            result.computeIfAbsent(name, ignored -> new ArrayList<>(1))
+            result.computeIfAbsent(name, _ -> new ArrayList<>(1))
                     .add(value);
         }
     }

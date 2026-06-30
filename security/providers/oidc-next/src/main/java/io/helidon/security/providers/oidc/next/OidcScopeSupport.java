@@ -151,7 +151,7 @@ final class OidcScopeSupport {
         scope.codePoints()
                 .filter(codePoint -> !validScopeTokenCodePoint(codePoint))
                 .findFirst()
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(source + " contains invalid scope: " + scope);
                 });
     }

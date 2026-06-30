@@ -113,7 +113,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenWithoutDecryptionKeyIsRejected() {
-        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+        String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
 
         var result = validate(encryptedIdToken);
 
@@ -122,7 +122,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenWithoutNestedJwtContentTypeIsRejected() {
-        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })), "cty", "JWT");
+        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })), "cty", "JWT");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
                 .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
@@ -132,7 +132,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenWithDisallowedEncryptionAlgorithmIsRejected() {
-        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+        String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
                 .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
@@ -143,7 +143,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenWithDisallowedContentEncryptionAlgorithmIsRejected() {
-        String encryptedIdToken = encryptedIdToken(signedIdToken(it -> { }));
+        String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
                 .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
@@ -154,7 +154,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenRequiresKidWhenMultipleDecryptionKeysExist() {
-        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+        String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
                                                         "kid",
                                                         "encrypt-rsa");
 
@@ -166,7 +166,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenRejectsUnknownDecryptionKid() {
-        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
                                                         "kid",
                                                         "encrypt-rsa",
                                                         "unknown-rsa");
@@ -179,7 +179,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenRejectsDecryptionKeyWithSigningUse() {
-        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
                                                         "kid",
                                                         "encrypt-rsa",
                                                         "sign-rsa");
@@ -192,7 +192,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void encryptedIdTokenRejectsDecryptionKeyWithoutDecryptOperation() {
-        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(it -> { })),
+        String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
                                                         "kid",
                                                         "encrypt-rsa",
                                                         "sign-oct");
@@ -232,7 +232,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void missingAudienceIsRejected() {
-        String idToken = signedIdToken(false, it -> { });
+        String idToken = signedIdToken(false, _ -> { });
 
         var result = validate(idToken);
 
@@ -327,7 +327,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
-        String idToken = signedIdToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", it -> { });
+        String idToken = signedIdToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
 
         var result = validate(idToken);
 
@@ -336,7 +336,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
-        String idToken = unsignedIdToken(it -> { });
+        String idToken = unsignedIdToken(_ -> { });
 
         var result = validate(idToken);
 
@@ -345,7 +345,7 @@ class OidcIdTokenValidatorTest {
 
     @Test
     void invalidSignatureIsRejected() {
-        String idToken = signedIdToken(it -> { });
+        String idToken = signedIdToken(_ -> { });
         int signatureStart = idToken.lastIndexOf('.') + 1;
         char replacement = idToken.charAt(signatureStart) == 'A' ? 'B' : 'A';
         String tampered = idToken.substring(0, signatureStart)
@@ -422,7 +422,7 @@ class OidcIdTokenValidatorTest {
     }
 
     private static OidcTenantConfig tenantConfig() {
-        return tenantConfig(it -> { });
+        return tenantConfig(_ -> { });
     }
 
     private static OidcTenantConfig tenantConfig(Consumer<OidcTenantConfig.Builder> customizer) {

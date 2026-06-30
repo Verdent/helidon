@@ -341,7 +341,7 @@ final class OidcClientAuthenticationSupport {
         }
         List<Jwk> jwks = keys.keys();
         if (jwks.size() == 1) {
-            return validatePrivateKeyJwk(assertion, endpointName, jwks.get(0));
+            return validatePrivateKeyJwk(assertion, endpointName, jwks.getFirst());
         }
         throw new IllegalArgumentException(
                 "client-assertion.key-id must be configured when client-assertion.jwk contains multiple keys");

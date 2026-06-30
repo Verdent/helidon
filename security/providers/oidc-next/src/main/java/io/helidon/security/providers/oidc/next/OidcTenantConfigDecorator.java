@@ -68,7 +68,7 @@ final class OidcTenantConfigDecorator
         }
         jwkSet.refreshInterval()
                 .filter(interval -> interval.isZero() || interval.isNegative())
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
                 });
     }
@@ -296,7 +296,7 @@ final class OidcTenantConfigDecorator
                 .filter(algorithm -> algorithm.isBlank()
                         || !algorithm.equals(algorithm.strip())
                         || "none".equalsIgnoreCase(algorithm))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     /*
                      * Spec: RFC 9101, 10.5 Downgrade Attack
                      * https://www.rfc-editor.org/rfc/rfc9101.html#section-10.5
@@ -314,13 +314,13 @@ final class OidcTenantConfigDecorator
                 });
         requestObject.signingKeyId()
                 .filter(keyId -> keyId.isBlank() || !keyId.equals(keyId.strip()))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "authorization-code.request-object.signing-key-id must not be blank or padded");
                 });
         requestObject.signingJwk()
                 .filter(jwk -> jwk.uri().isPresent())
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "authorization-code.request-object.signing-jwk must be local private key material, not a URI");
                 });
@@ -558,7 +558,7 @@ final class OidcTenantConfigDecorator
                 .map(OidcEndpointUris::redirectionEndpointUri)
                 .map(OidcUri::path)
                 .filter(logout.localEndpointUri().getPath()::equals)
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "local-endpoint-uri must not use the same path as redirection-endpoint-uri");
                 });

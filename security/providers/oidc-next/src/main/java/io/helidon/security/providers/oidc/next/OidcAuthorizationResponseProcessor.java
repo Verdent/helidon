@@ -18,7 +18,6 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -61,21 +60,19 @@ final class OidcAuthorizationResponseProcessor {
                                                            List.of());
         }
 
-        List<StoredAuthenticationRequestState> storedStates = authenticationRequestStates(responseCookies);
-        if (storedStates.isEmpty()) {
+        String returnedState = stateValue.orElseThrow().value();
+        Optional<ResolvedAuthenticationRequest> resolvedRequest = resolveAuthenticationRequest(returnedState,
+                                                                                                responseCookies);
+        if (resolvedRequest.isEmpty()) {
             return OidcAuthorizationResponseResult.invalid("Authentication Request state cookie is missing or invalid",
                                                            List.of());
         }
-        if (storedStates.size() > 1) {
-            return OidcAuthorizationResponseResult.invalid("Authentication Request state is ambiguous",
-                                                           stateRemovalCookies(storedStates));
-        }
 
-        StoredAuthenticationRequestState storedState = storedStates.getFirst();
-        OidcAuthenticationRequestState state = storedState.state();
-        List<SetCookie> stateRemovalCookie = List.of(storedState.tenantContext()
-                                                             .cookieStateHandler()
-                                                             .removeAuthenticationRequestCookie());
+        ResolvedAuthenticationRequest request = resolvedRequest.orElseThrow();
+        String tenantId = request.tenantId();
+        OidcAuthenticationRequestState state = request.state();
+        OidcCookieStateHandler cookieStateHandler = request.cookieStateHandler();
+        List<SetCookie> stateRemovalCookie = List.of(cookieStateHandler.removeAuthenticationRequestCookie());
 
         /*
          * Spec: RFC 6749, 4.1.2 Authorization Response
@@ -83,7 +80,7 @@ final class OidcAuthorizationResponseProcessor {
          * Quote: "`state` REQUIRED if the `state` parameter was present in the client authorization request. The exact
          * value received from the client."
          */
-        if (!state.state().equals(stateValue.orElseThrow().value())) {
+        if (!state.state().equals(returnedState)) {
             return OidcAuthorizationResponseResult.invalid(
                     "Authorization Response state does not match Authentication Request state",
                     stateRemovalCookie);
@@ -96,9 +93,16 @@ final class OidcAuthorizationResponseProcessor {
                     "Authorization Response Redirection Endpoint does not match Authentication Request state",
                     stateRemovalCookie);
         }
+        Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(tenantId)
+                .filter(OidcTenantContext::ready);
+        if (tenantContext.isEmpty()) {
+            return OidcAuthorizationResponseResult.invalid("Authentication Request tenant is unavailable",
+                                                           stateRemovalCookie);
+        }
+        OidcTenantContext readyTenant = tenantContext.orElseThrow();
         Optional<OidcAuthorizationResponseResult> issuerFailure = validateIssuer(parameters,
                                                                                 state,
-                                                                                storedState.tenantContext(),
+                                                                                readyTenant,
                                                                                 stateRemovalCookie);
         if (issuerFailure.isPresent()) {
             return issuerFailure.orElseThrow();
@@ -162,7 +166,7 @@ final class OidcAuthorizationResponseProcessor {
             }
             return OidcAuthorizationResponseResult.authorizationError(errorValue,
                                                                       errorDescriptionValue.orElse(null),
-                                                                      storedState.tenantContext(),
+                                                                      readyTenant,
                                                                       state,
                                                                       stateRemovalCookie);
         }
@@ -177,9 +181,34 @@ final class OidcAuthorizationResponseProcessor {
          * value received from the client."
          */
         return OidcAuthorizationResponseResult.validated(code.orElseThrow().value(),
-                                                         storedState.tenantContext(),
+                                                         readyTenant,
                                                          state,
                                                          stateRemovalCookie);
+    }
+
+    private Optional<ResolvedAuthenticationRequest> resolveAuthenticationRequest(String returnedState,
+                                                                                  Map<String, List<String>> cookies) {
+        Optional<OidcAuthorizationState> authorizationState = OidcAuthorizationState.parse(returnedState);
+        if (authorizationState.isEmpty()) {
+            return Optional.empty();
+        }
+        String tenantId = authorizationState.orElseThrow().routedTenantId();
+        OidcTenantConfig tenantConfig = config.tenants().get(tenantId);
+        if (tenantConfig == null
+                || !tenantConfig.enabled()
+                || tenantConfig.authorizationCode().filter(OidcAuthorizationCodeConfig::enabled).isEmpty()) {
+            return Optional.empty();
+        }
+
+        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenantConfig.cookies());
+        String cookieName = cookieStateHandler.cookieConfig().authenticationRequestCookieName();
+        List<String> stateCookies = cookies.getOrDefault(cookieName, List.of());
+        if (stateCookies.size() != 1) {
+            return Optional.empty();
+        }
+        return cookieStateHandler.decodeAuthenticationRequestState(stateCookies.getFirst())
+                .filter(state -> tenantId.equals(state.tenantId()))
+                .map(state -> new ResolvedAuthenticationRequest(tenantId, cookieStateHandler, state));
     }
 
     private Optional<OidcAuthorizationResponseResult> validateIssuer(UriQuery parameters,
@@ -217,36 +246,6 @@ final class OidcAuthorizationResponseProcessor {
         return Optional.empty();
     }
 
-    private List<StoredAuthenticationRequestState> authenticationRequestStates(Map<String, List<String>> cookies) {
-        List<StoredAuthenticationRequestState> states = new ArrayList<>();
-        for (String tenantId : config.tenants().keySet()) {
-            Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(tenantId)
-                    .filter(OidcTenantContext::ready);
-            if (tenantContext.isEmpty()) {
-                continue;
-            }
-
-            OidcTenantContext readyTenant = tenantContext.orElseThrow();
-            OidcCookieStateHandler cookieStateHandler = readyTenant.cookieStateHandler();
-            String cookieName = cookieStateHandler.cookieConfig().authenticationRequestCookieName();
-            for (String cookieValue : cookies.getOrDefault(cookieName, List.of())) {
-                cookieStateHandler.decodeAuthenticationRequestState(cookieValue)
-                        .filter(state -> readyTenant.tenantId().equals(state.tenantId()))
-                        .map(state -> new StoredAuthenticationRequestState(readyTenant, state))
-                        .ifPresent(states::add);
-            }
-        }
-        return states;
-    }
-
-    private List<SetCookie> stateRemovalCookies(List<StoredAuthenticationRequestState> states) {
-        return states.stream()
-                .map(StoredAuthenticationRequestState::tenantContext)
-                .map(OidcTenantContext::cookieStateHandler)
-                .map(OidcCookieStateHandler::removeAuthenticationRequestCookie)
-                .toList();
-    }
-
     private Optional<ParameterValue> singleParameter(UriQuery parameters, String name) {
         List<String> values = parameters.all(name, List::of);
         if (values.isEmpty()) {
@@ -274,8 +273,9 @@ final class OidcAuthorizationResponseProcessor {
         return true;
     }
 
-    private record StoredAuthenticationRequestState(OidcTenantContext tenantContext,
-                                                    OidcAuthenticationRequestState state) {
+    private record ResolvedAuthenticationRequest(String tenantId,
+                                                 OidcCookieStateHandler cookieStateHandler,
+                                                 OidcAuthenticationRequestState state) {
     }
 
     private record ParameterValue(Optional<String> text) {

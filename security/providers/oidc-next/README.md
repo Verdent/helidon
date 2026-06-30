@@ -781,6 +781,13 @@ When `authorization-code` is configured and not explicitly disabled:
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - An issuer or well-known URI is required.
 
+Authorization Request `state` uses the versioned form
+`s1.<base64url-encoded-tenant-id>.<256-bit-random-request-id>`. This lets an Authorization Response select one tenant
+from local configuration before any tenant runtime is initialized. The tenant segment is an untrusted routing hint: the
+provider still requires the protected Authentication Request cookie to contain the same tenant id and complete `state`
+value before initializing that tenant or exchanging the authorization code. Base64URL encoding is not encryption, so
+tenant ids used with Authorization Code Flow must not contain confidential information.
+
 Authorization Response `iss` validation is automatic. If the callback contains `iss`, the provider requires an exact
 string match with the issuer stored in the protected Authentication Request state. If well-known metadata advertises
 `authorization_response_iss_parameter_supported: true`, callbacks without `iss` are rejected.

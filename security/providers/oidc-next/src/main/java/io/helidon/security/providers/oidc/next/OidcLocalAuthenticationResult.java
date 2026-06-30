@@ -25,37 +25,10 @@ import java.util.Optional;
 import io.helidon.json.JsonObject;
 
 final class OidcLocalAuthenticationResult {
-    private final String tenantId;
-    private final OidcValidatedIdToken idToken;
-    private final String accessToken;
-    private final String tokenType;
-    private final Optional<String> refreshToken;
-    private final Optional<String> scope;
-    private final Optional<JsonObject> userInfo;
-    private final Instant createdAt;
-    private final Instant expiresAt;
-    private final Optional<Instant> accessTokenExpiresAt;
+    private final OidcLocalAuthenticationState state;
 
-    private OidcLocalAuthenticationResult(String tenantId,
-                                          OidcValidatedIdToken idToken,
-                                          String accessToken,
-                                          String tokenType,
-                                          Optional<String> refreshToken,
-                                          Optional<String> scope,
-                                          Optional<JsonObject> userInfo,
-                                          Instant createdAt,
-                                          Instant expiresAt,
-                                          Optional<Instant> accessTokenExpiresAt) {
-        this.tenantId = tenantId;
-        this.idToken = idToken;
-        this.accessToken = accessToken;
-        this.tokenType = tokenType;
-        this.refreshToken = Objects.requireNonNull(refreshToken);
-        this.scope = Objects.requireNonNull(scope);
-        this.userInfo = Objects.requireNonNull(userInfo);
-        this.createdAt = createdAt;
-        this.expiresAt = expiresAt;
-        this.accessTokenExpiresAt = Objects.requireNonNull(accessTokenExpiresAt);
+    private OidcLocalAuthenticationResult(OidcLocalAuthenticationState state) {
+        this.state = Objects.requireNonNull(state);
     }
 
     static OidcLocalAuthenticationResult fromTokenResponse(String tenantId,
@@ -68,78 +41,63 @@ final class OidcLocalAuthenticationResult {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
         Instant maxExpiresAt = createdAt.plus(maxLifetime);
         Instant expiresAt = idTokenExpiresAt.isBefore(maxExpiresAt) ? idTokenExpiresAt : maxExpiresAt;
-        return new OidcLocalAuthenticationResult(tenantId,
-                                                 idToken,
-                                                 tokenResponse.accessToken(),
-                                                 tokenResponse.tokenType(),
-                                                 tokenResponse.refreshToken(),
-                                                 tokenResponse.scope().or(() -> requestedScope(requestedScopes)),
-                                                 userInfo,
-                                                 createdAt,
-                                                 expiresAt,
-                                                 tokenResponse.expiresIn().map(createdAt::plusSeconds));
+        OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
+                .tenantId(tenantId)
+                .idToken(idToken)
+                .accessToken(tokenResponse.accessToken())
+                .tokenType(tokenResponse.tokenType())
+                .refreshToken(tokenResponse.refreshToken())
+                .scope(tokenResponse.scope().or(() -> requestedScope(requestedScopes)))
+                .userInfo(userInfo)
+                .createdAt(createdAt)
+                .expiresAt(expiresAt)
+                .accessTokenExpiresAt(tokenResponse.expiresIn().map(createdAt::plusSeconds))
+                .buildPrototype();
+        return fromStoredValues(state);
     }
 
-    static OidcLocalAuthenticationResult fromStoredValues(String tenantId,
-                                                          OidcValidatedIdToken idToken,
-                                                          String accessToken,
-                                                          String tokenType,
-                                                          Optional<String> refreshToken,
-                                                          Optional<String> scope,
-                                                          Optional<JsonObject> userInfo,
-                                                          Instant createdAt,
-                                                          Instant expiresAt,
-                                                          Optional<Instant> accessTokenExpiresAt) {
-        return new OidcLocalAuthenticationResult(tenantId,
-                                                 idToken,
-                                                 accessToken,
-                                                 tokenType,
-                                                 refreshToken,
-                                                 scope,
-                                                 userInfo,
-                                                 createdAt,
-                                                 expiresAt,
-                                                 accessTokenExpiresAt);
+    static OidcLocalAuthenticationResult fromStoredValues(OidcLocalAuthenticationState state) {
+        return new OidcLocalAuthenticationResult(state);
     }
 
     String tenantId() {
-        return tenantId;
+        return state.tenantId();
     }
 
     OidcValidatedIdToken idToken() {
-        return idToken;
+        return state.idToken();
     }
 
     String accessToken() {
-        return accessToken;
+        return state.accessToken();
     }
 
     String tokenType() {
-        return tokenType;
+        return state.tokenType();
     }
 
     Optional<String> refreshToken() {
-        return refreshToken;
+        return state.refreshToken();
     }
 
     Optional<String> scope() {
-        return scope;
+        return state.scope();
     }
 
     Optional<JsonObject> userInfo() {
-        return userInfo;
+        return state.userInfo();
     }
 
     Instant createdAt() {
-        return createdAt;
+        return state.createdAt();
     }
 
     Instant expiresAt() {
-        return expiresAt;
+        return state.expiresAt();
     }
 
     Optional<Instant> accessTokenExpiresAt() {
-        return accessTokenExpiresAt;
+        return state.accessTokenExpiresAt();
     }
 
     private static Optional<String> requestedScope(List<String> requestedScopes) {

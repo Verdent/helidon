@@ -168,23 +168,25 @@ final class OidcRefreshTokenManager {
          * Quote: "The authorization server MAY issue a new refresh token, in which case the client MUST discard the
          * old refresh token and replace it with the new refresh token."
          */
-        return OidcLocalAuthenticationResult.fromStoredValues(
-                current.tenantId(),
-                idToken,
-                tokenResponse.accessToken(),
-                tokenResponse.tokenType(),
-                tokenResponse.refreshToken()
-                        .or(() -> current.refreshToken()),
-                tokenResponse.scope()
-                        .or(() -> current.scope()),
-                userInfo,
-                refreshedAt,
-                idToken.jwt()
-                        .expirationTime()
-                        .filter(expirationTime -> expirationTime.isBefore(current.expiresAt()))
-                        .orElse(current.expiresAt()),
-                tokenResponse.expiresIn()
-                        .map(refreshedAt::plusSeconds));
+        Instant expiresAt = idToken.jwt()
+                .expirationTime()
+                .filter(expirationTime -> expirationTime.isBefore(current.expiresAt()))
+                .orElse(current.expiresAt());
+        Optional<Instant> accessTokenExpiresAt = tokenResponse.expiresIn()
+                .map(refreshedAt::plusSeconds);
+        OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
+                .tenantId(current.tenantId())
+                .idToken(idToken)
+                .accessToken(tokenResponse.accessToken())
+                .tokenType(tokenResponse.tokenType())
+                .refreshToken(tokenResponse.refreshToken().or(current::refreshToken))
+                .scope(tokenResponse.scope().or(current::scope))
+                .userInfo(userInfo)
+                .createdAt(refreshedAt)
+                .expiresAt(expiresAt)
+                .accessTokenExpiresAt(accessTokenExpiresAt)
+                .buildPrototype();
+        return OidcLocalAuthenticationResult.fromStoredValues(state);
     }
 
     private boolean refreshNeeded(Instant expiresAt, Duration skew, Instant now) {

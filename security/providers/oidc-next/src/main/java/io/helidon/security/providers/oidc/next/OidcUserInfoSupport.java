@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,7 +36,11 @@ final class OidcUserInfoSupport {
                 .isPresent();
     }
 
-    static Result userInfo(OidcTenantContext tenantContext, String accessToken, OidcValidatedIdToken idToken) {
+    static Result userInfo(OidcTenantContext tenantContext,
+                           String accessToken,
+                           OidcValidatedIdToken idToken,
+                           Instant validationTime) {
+        Objects.requireNonNull(validationTime);
         if (!enabled(tenantContext.tenantConfig())) {
             return Result.success(Optional.empty());
         }
@@ -60,7 +65,7 @@ final class OidcUserInfoSupport {
                                       null);
             }
             OidcValidationResult<JsonObject> validationResult = jwtProcessor.orElseThrow()
-                    .validate(endpointResult.jwt().orElseThrow(), tenantContext, idToken);
+                    .validate(endpointResult.jwt().orElseThrow(), tenantContext, idToken, validationTime);
             if (!validationResult.succeeded()) {
                 return Result.failure("UserInfo response is invalid",
                                       validationResult.errorDescription().orElse("UserInfo JWT validation failed"),

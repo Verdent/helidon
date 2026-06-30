@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -39,14 +40,19 @@ final class OidcIdTokenValidator {
 
     OidcValidationResult<OidcValidatedIdToken> validate(String token,
                                                         OidcTenantContext tenantContext,
-                                                        OidcAuthenticationRequestState authenticationRequestState) {
-        return validate(token, tenantContext, Optional.of(authenticationRequestState.nonce()));
+                                                        OidcAuthenticationRequestState authenticationRequestState,
+                                                        Instant validationTime) {
+        return validate(token, tenantContext, Optional.of(authenticationRequestState.nonce()), validationTime);
     }
 
     OidcValidationResult<OidcValidatedIdToken> validateRefresh(String token,
                                                                OidcTenantContext tenantContext,
-                                                               OidcValidatedIdToken currentIdToken) {
-        OidcValidationResult<OidcValidatedIdToken> validationResult = validate(token, tenantContext, Optional.empty());
+                                                               OidcValidatedIdToken currentIdToken,
+                                                               Instant validationTime) {
+        OidcValidationResult<OidcValidatedIdToken> validationResult = validate(token,
+                                                                               tenantContext,
+                                                                               Optional.empty(),
+                                                                               validationTime);
         if (!validationResult.succeeded()) {
             return validationResult;
         }
@@ -109,7 +115,9 @@ final class OidcIdTokenValidator {
 
     private OidcValidationResult<OidcValidatedIdToken> validate(String token,
                                                                OidcTenantContext tenantContext,
-                                                               Optional<String> expectedNonce) {
+                                                               Optional<String> expectedNonce,
+                                                               Instant validationTime) {
+        Objects.requireNonNull(validationTime);
         OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken;
         try {
             resolvedIdToken = tenantContext.idTokenDecryptor().resolve(token);
@@ -159,7 +167,8 @@ final class OidcIdTokenValidator {
         Errors claimErrors = claimValidator(idToken,
                                             expectedIssuer.orElseThrow(),
                                             clientId.orElseThrow(),
-                                            expectedNonce).validate(jwt);
+                                            expectedNonce,
+                                            validationTime).validate(jwt);
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("ID Token claims are invalid");
         }
@@ -196,7 +205,8 @@ final class OidcIdTokenValidator {
     private JwtValidator claimValidator(OidcIdTokenConfig idToken,
                                         String expectedIssuer,
                                         String clientId,
-                                        Optional<String> expectedNonce) {
+                                        Optional<String> expectedNonce,
+                                        Instant validationTime) {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
          * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
@@ -210,11 +220,14 @@ final class OidcIdTokenValidator {
          * Quote: "If a nonce value was sent in the Authentication Request, a `nonce` Claim MUST be present and its
          * value checked to verify that it is the same value as the one that was sent in the Authentication Request."
          */
-        Instant now = Instant.now();
         return JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(idToken.clockSkew()).mandatory(true))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(idToken.clockSkew()).mandatory(true))
-                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(idToken.clockSkew()))
+                .addExpirationValidator(it -> it.now(validationTime)
+                        .allowedTimeSkew(idToken.clockSkew())
+                        .mandatory(true))
+                .addIssueTimeValidator(it -> it.now(validationTime)
+                        .allowedTimeSkew(idToken.clockSkew())
+                        .mandatory(true))
+                .addNotBeforeValidator(it -> it.now(validationTime).allowedTimeSkew(idToken.clockSkew()))
                 .addIssuerValidator(expectedIssuer)
                 .addAudienceValidator(clientId)
                 .addValidator((jwt, collector) -> validateSubject(jwt, collector), "sub")

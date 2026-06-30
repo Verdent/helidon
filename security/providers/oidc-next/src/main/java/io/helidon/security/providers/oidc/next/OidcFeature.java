@@ -182,10 +182,12 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         }
 
         OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
+        Instant validationTime = Instant.now();
         OidcValidationResult<OidcValidatedIdToken> idTokenResult = idTokenValidator.validate(
                 tokenResponse.idToken().orElseThrow(),
                 tenantContext,
-                state);
+                state,
+                validationTime);
         if (!idTokenResult.succeeded()) {
             response.status(Status.BAD_GATEWAY_502)
                     .send("ID Token is invalid");
@@ -195,7 +197,8 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         OidcValidatedIdToken validatedIdToken = idTokenResult.validatedToken().orElseThrow();
         OidcUserInfoSupport.Result userInfoResult = OidcUserInfoSupport.userInfo(tenantContext,
                                                                                   tokenResponse.accessToken(),
-                                                                                  validatedIdToken);
+                                                                                  validatedIdToken,
+                                                                                  validationTime);
         if (!userInfoResult.succeeded()) {
             debugUserInfoFailure(tenantContext, userInfoResult);
             response.status(Status.BAD_GATEWAY_502)

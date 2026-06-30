@@ -30,6 +30,8 @@ import io.helidon.builder.api.Prototype;
 interface OidcCookieConfigBlueprint {
     /**
      * Authentication Request state cookie name.
+     * <p>
+     * Must be a valid HTTP cookie token and must differ from {@link #localAuthenticationCookieName()}.
      *
      * @return cookie name
      */
@@ -39,6 +41,8 @@ interface OidcCookieConfigBlueprint {
 
     /**
      * Local authentication result cookie name.
+     * <p>
+     * Must be a valid HTTP cookie token and must differ from {@link #authenticationRequestCookieName()}.
      *
      * @return local authentication result cookie name
      */
@@ -48,6 +52,8 @@ interface OidcCookieConfigBlueprint {
 
     /**
      * Authentication Request state lifetime.
+     * <p>
+     * Must be positive.
      *
      * @return Authentication Request state lifetime
      */
@@ -57,6 +63,8 @@ interface OidcCookieConfigBlueprint {
 
     /**
      * Maximum local authentication result lifetime.
+     * <p>
+     * Must be positive.
      *
      * @return maximum local authentication result lifetime
      */
@@ -66,6 +74,8 @@ interface OidcCookieConfigBlueprint {
 
     /**
      * Cookie encryption secret.
+     * <p>
+     * When configured, the value must not be blank. Authorization Code Flow requires this option.
      *
      * @return cookie encryption secret
      */

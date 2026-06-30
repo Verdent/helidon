@@ -1770,6 +1770,10 @@ cookies:
   encryption-secret: "${OIDC_COOKIE_SECRET}"
 ```
 
+Cookie lifetimes must be positive. Both names must be distinct valid HTTP cookie names, and a configured encryption
+secret must not be blank. Use the same high-entropy encryption secret on every service node that must accept the same
+browser session; no request affinity is required when nodes share that secret.
+
 The local authentication result lifetime is capped by the configured `local-authentication-lifetime` and by token
 expiration. The provider uses the ID Token as the authentication source and exposes the access token through
 `TokenCredential`.

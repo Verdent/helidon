@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.security.jwt.EncryptedJwt;
@@ -32,6 +33,7 @@ final class OidcTenantConfigDecorator
     private static final String OFFLINE_ACCESS_SCOPE = "offline_access";
     private static final String PROMPT_NONE = "none";
     private static final Set<String> REQUEST_OBJECT_ENCRYPTION_ALGORITHMS = Set.of("RSA-OAEP-256", "RSA-OAEP");
+    private static final Pattern COOKIE_NAME = Pattern.compile("[!#$%&'*+\\-.^_`|~0-9A-Za-z]+");
     private static final System.Logger LOGGER = System.getLogger(OidcTenantConfigDecorator.class.getName());
 
     @Override
@@ -39,6 +41,7 @@ final class OidcTenantConfigDecorator
         if (!target.enabled()) {
             return;
         }
+        validateCookies(target.cookies());
         OidcSubjectMappingConfig subjectMapping = target.subjectMapping();
         validateClaimPaths(subjectMapping.principalIdClaimPaths(),
                            "subject-mapping.principal-id-claim-paths",
@@ -174,6 +177,17 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        if (tokenValidation.allowedAlgorithms().isEmpty()) {
+            throw new IllegalArgumentException("token-validation.allowed-algorithms must not be empty");
+        }
+        if (tokenValidation.clockSkew().isNegative()) {
+            throw new IllegalArgumentException("token-validation.clock-skew must not be negative");
+        }
+        tokenValidation.audience()
+                .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
+                .ifPresent(_ -> {
+                    throw new IllegalArgumentException("token-validation.audience must not be blank or padded");
+                });
         tokenValidation.introspection()
                 .clientAssertion()
                 .ifPresent(OidcClientAuthenticationConfigValidator::validateClientAssertion);
@@ -181,7 +195,7 @@ final class OidcTenantConfigDecorator
                 .stream()
                 .filter(algorithm -> algorithm != null && "none".equalsIgnoreCase(algorithm.strip()))
                 .findFirst()
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     /*
                      * Spec: RFC 9068, 2.1 Header and 4 Validation
                      * https://www.rfc-editor.org/rfc/rfc9068.html#section-2.1
@@ -191,6 +205,45 @@ final class OidcTenantConfigDecorator
                      */
                     throw new IllegalArgumentException("token-validation.allowed-algorithms must not contain none");
                 });
+        tokenValidation.allowedAlgorithms()
+                .stream()
+                .filter(algorithm -> algorithm == null
+                        || algorithm.isBlank()
+                        || !algorithm.equals(algorithm.strip()))
+                .findFirst()
+                .ifPresent(_ -> {
+                    throw new IllegalArgumentException(
+                            "token-validation.allowed-algorithms must not contain blank or padded values");
+                });
+    }
+
+    private static void validateCookies(OidcCookieConfig cookies) {
+        validateCookieName(cookies.authenticationRequestCookieName(),
+                           "cookies.authentication-request-cookie-name");
+        validateCookieName(cookies.localAuthenticationCookieName(),
+                           "cookies.local-authentication-cookie-name");
+        if (cookies.authenticationRequestCookieName().equals(cookies.localAuthenticationCookieName())) {
+            throw new IllegalArgumentException("OIDC authentication request and local authentication cookie names "
+                                                       + "must be different");
+        }
+        if (cookies.authenticationRequestLifetime().isZero()
+                || cookies.authenticationRequestLifetime().isNegative()) {
+            throw new IllegalArgumentException("cookies.authentication-request-lifetime must be positive");
+        }
+        if (cookies.localAuthenticationLifetime().isZero() || cookies.localAuthenticationLifetime().isNegative()) {
+            throw new IllegalArgumentException("cookies.local-authentication-lifetime must be positive");
+        }
+        cookies.encryptionSecret()
+                .filter(String::isBlank)
+                .ifPresent(_ -> {
+                    throw new IllegalArgumentException("cookies.encryption-secret must not be blank");
+                });
+    }
+
+    private static void validateCookieName(String cookieName, String configKey) {
+        if (!COOKIE_NAME.matcher(cookieName).matches()) {
+            throw new IllegalArgumentException(configKey + " must be a valid HTTP cookie name");
+        }
     }
 
     private static void validateClaimPaths(List<String> paths, String configKey, boolean required) {

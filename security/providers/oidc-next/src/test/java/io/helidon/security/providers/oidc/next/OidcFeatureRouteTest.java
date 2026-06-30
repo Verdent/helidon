@@ -2067,16 +2067,16 @@ class OidcFeatureRouteTest {
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
         OidcValidatedIdToken idToken = new OidcValidatedIdToken(rawIdToken, encrypted, signedJwt, signedJwt.getJwt());
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromStoredValues(
-                tenantId,
-                idToken,
-                "access-token",
-                "Bearer",
-                Optional.empty(),
-                Optional.of("openid profile"),
-                Optional.empty(),
-                now.minusSeconds(1),
-                now.plusSeconds(60),
-                Optional.of(now.plusSeconds(600)));
+                OidcLocalAuthenticationState.builder()
+                        .tenantId(tenantId)
+                        .idToken(idToken)
+                        .accessToken("access-token")
+                        .tokenType("Bearer")
+                        .scope("openid profile")
+                        .createdAt(now.minusSeconds(1))
+                        .expiresAt(now.plusSeconds(60))
+                        .accessTokenExpiresAt(now.plusSeconds(600))
+                        .buildPrototype());
         return OidcCookieStateHandler.create(tenant)
                 .createLocalAuthenticationResultCookie(result);
     }

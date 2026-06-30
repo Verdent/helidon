@@ -45,28 +45,20 @@ final class OidcCookieStateHandler {
     private static final int AES_GCM_IV_BYTES = 12;
 
     private final OidcCookieConfig cookieConfig;
-    private final OidcIdTokenDecryptor idTokenDecryptor;
     private final byte[] encryptionKey;
     private final SecureRandom secureRandom;
 
     private OidcCookieStateHandler(OidcCookieConfig cookieConfig,
-                                   OidcIdTokenDecryptor idTokenDecryptor,
                                    byte[] encryptionKey,
                                    SecureRandom secureRandom) {
         this.cookieConfig = cookieConfig;
-        this.idTokenDecryptor = idTokenDecryptor;
         this.encryptionKey = encryptionKey;
         this.secureRandom = secureRandom;
     }
 
-    static OidcCookieStateHandler create(OidcTenantConfig tenantConfig) {
-        return create(tenantConfig, OidcIdTokenDecryptor.create(tenantConfig));
-    }
-
-    static OidcCookieStateHandler create(OidcTenantConfig tenantConfig, OidcIdTokenDecryptor idTokenDecryptor) {
-        return new OidcCookieStateHandler(tenantConfig.cookies(),
-                                          idTokenDecryptor,
-                                          encryptionKey(tenantConfig.cookies()),
+    static OidcCookieStateHandler create(OidcCookieConfig cookieConfig) {
+        return new OidcCookieStateHandler(cookieConfig,
+                                          encryptionKey(cookieConfig),
                                           new SecureRandom());
     }
 
@@ -118,8 +110,10 @@ final class OidcCookieStateHandler {
                 .filter(state -> !now.isAfter(state.expiresAt()));
     }
 
-    Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(String cookieValue, Instant now) {
-        return decodeLocalAuthenticationResult(cookieValue)
+    Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(String cookieValue,
+                                                                          Instant now,
+                                                                          OidcIdTokenDecryptor idTokenDecryptor) {
+        return decodeLocalAuthenticationResult(cookieValue, idTokenDecryptor)
                 .filter(result -> !now.isAfter(result.expiresAt()));
     }
 
@@ -127,16 +121,17 @@ final class OidcCookieStateHandler {
         try {
             JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
             return Optional.of(authenticationRequestStateFromJson(json));
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             return Optional.empty();
         }
     }
 
-    Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue) {
+    Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue,
+                                                                            OidcIdTokenDecryptor idTokenDecryptor) {
         try {
             JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
-            return Optional.of(localAuthenticationResultFromJson(json));
-        } catch (RuntimeException e) {
+            return Optional.of(localAuthenticationResultFromJson(json, idTokenDecryptor));
+        } catch (RuntimeException _) {
             return Optional.empty();
         }
     }
@@ -185,7 +180,8 @@ final class OidcCookieStateHandler {
                 Instant.parse(json.stringValue("expires_at").orElseThrow()));
     }
 
-    private OidcLocalAuthenticationResult localAuthenticationResultFromJson(JsonObject json) {
+    private OidcLocalAuthenticationResult localAuthenticationResultFromJson(JsonObject json,
+                                                                            OidcIdTokenDecryptor idTokenDecryptor) {
         String rawIdToken = json.stringValue("id_token").orElseThrow();
         OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken = idTokenDecryptor.resolve(rawIdToken);
         SignedJwt signedJwt = resolvedIdToken.signedJwt();

@@ -414,6 +414,7 @@ class OidcProviderTest {
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
         assertThat(state.tenantId(), is("default"));
         assertThat(state.state(), is(query.get("state")));
+        assertThat(OidcAuthorizationState.parse(state.state()).orElseThrow().routedTenantId(), is("default"));
         assertThat(state.nonce(), is(query.get("nonce")));
         assertThat(state.originalUri(), is(URI.create("/resource?name=value")));
         assertThat(state.redirectionEndpointUri(), is(REDIRECTION_ENDPOINT_URI));
@@ -794,7 +795,7 @@ class OidcProviderTest {
         assertThat(cookie.value(), not(containsString(state.state())));
         assertThat(cookie.value(), not(containsString(state.nonce())));
         assertThat(cookie.value(), not(containsString(state.pkceVerifier().orElseThrow())));
-        assertThat(OidcCookieStateHandler.create(tenant)
+        assertThat(OidcCookieStateHandler.create(tenant.cookies())
                            .readAuthenticationRequestState(tamperCookieValue(cookie.value()), Instant.now())
                            .isEmpty(),
                    is(true));
@@ -808,7 +809,7 @@ class OidcProviderTest {
                 .preferredUsername(USERNAME));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -824,8 +825,10 @@ class OidcProviderTest {
         assertThat(cookie.secure(), is(true));
         assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
         assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(3600L));
-        assertThat(OidcCookieStateHandler.create(tenant)
-                           .readLocalAuthenticationResult(tamperCookieValue(cookie.value()), now)
+        assertThat(OidcCookieStateHandler.create(tenant.cookies())
+                           .readLocalAuthenticationResult(tamperCookieValue(cookie.value()),
+                                                          now,
+                                                          OidcIdTokenDecryptor.create(tenant))
                            .isEmpty(),
                    is(true));
 
@@ -881,7 +884,7 @@ class OidcProviderTest {
         String encryptedIdToken = encryptedIdToken(signedIdToken);
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
         Instant now = Instant.now();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(encryptedIdToken,
@@ -941,7 +944,7 @@ class OidcProviderTest {
                         .build()));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -985,7 +988,7 @@ class OidcProviderTest {
                 .set("display_name", "UserInfo User")
                 .setStrings("groups", List.of("userinfo-admin"))
                 .build();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -1028,7 +1031,7 @@ class OidcProviderTest {
                         .setStrings("groups", List.of("mcp_admin"))
                         .build())
                 .build();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -1080,7 +1083,7 @@ class OidcProviderTest {
                 .addPayloadClaim("id_scopes", List.of("app.read", "app.write")));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
-        SetCookie cookie = OidcCookieStateHandler.create(tenant)
+        SetCookie cookie = OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -1169,7 +1172,7 @@ class OidcProviderTest {
                 Duration.ofSeconds(3600));
 
         assertThat(result.expiresAt(), is(now.plusSeconds(120)));
-        assertThat(OidcCookieStateHandler.create(tenant)
+        assertThat(OidcCookieStateHandler.create(tenant.cookies())
                            .createLocalAuthenticationResultCookie(result)
                            .maxAge()
                            .orElseThrow()
@@ -1346,7 +1349,7 @@ class OidcProviderTest {
         String idToken = signedIdToken(it -> it.email("user1@example.org")
                 .preferredUsername(USERNAME));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
-        return OidcCookieStateHandler.create(tenant)
+        return OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState(tenantId,
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
@@ -1381,7 +1384,7 @@ class OidcProviderTest {
     private static OidcAuthenticationRequestState authenticationRequestState(AuthenticationResponse response,
                                                                              OidcTenantConfig tenant) {
         SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
-        return OidcCookieStateHandler.create(tenant)
+        return OidcCookieStateHandler.create(tenant.cookies())
                 .readAuthenticationRequestState(cookie.value(), Instant.now())
                 .orElseThrow();
     }

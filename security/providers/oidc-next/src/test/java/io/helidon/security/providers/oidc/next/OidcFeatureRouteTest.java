@@ -81,7 +81,9 @@ class OidcFeatureRouteTest {
     private static final String SUBJECT = "user1-id";
     private static final String USERNAME = "user1";
     private static final String EMAIL = "user1@example.org";
-    private static final String STATE = "stored-state";
+    private static final String STATE = OidcAuthorizationState.create(
+            "default",
+            Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
     private static final String NONCE = "nonce";
     private static final String PKCE_VERIFIER = "pkce-verifier";
 
@@ -232,9 +234,9 @@ class OidcFeatureRouteTest {
     void redirectionEndpointRouteHandlesAuthorizationErrorBeforeTokenExchange(WebClient client, URI serverUri) {
         Instant now = Instant.now();
         URI callbackUri = serverUri.resolve("oidc/callback");
-        SetCookie stateCookie = OidcCookieStateHandler.create(tenantConfig())
+        SetCookie stateCookie = OidcCookieStateHandler.create(tenantConfig().cookies())
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
-                                                                                         "stored-state",
+                                                                                         STATE,
                                                                                          "nonce",
                                                                                          "pkce-verifier",
                                                                                          ISSUER.toString(),
@@ -245,7 +247,7 @@ class OidcFeatureRouteTest {
 
         try (HttpClientResponse response = client.get("/oidc/callback")
                 .queryParam("error", "access_denied")
-                .queryParam("state", "stored-state")
+                .queryParam("state", STATE)
                 .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
                 .request()) {
             assertThat(response.status(), is(Status.BAD_REQUEST_400));
@@ -413,8 +415,9 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
-                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                         OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
                         .userInfo()
                         .orElseThrow();
@@ -472,8 +475,9 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
 
                 SetCookie localAuthenticationCookie = localAuthenticationCookie(response, tenant);
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
-                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                         OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
                         .userInfo()
                         .orElseThrow();
@@ -515,8 +519,9 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
 
                 SetCookie localAuthenticationCookie = localAuthenticationCookie(response, tenant);
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
-                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                         OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
                         .userInfo()
                         .orElseThrow();
@@ -563,8 +568,9 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
-                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                         OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
                         .userInfo()
                         .orElseThrow();
@@ -790,8 +796,9 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant)
-                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                        .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                         OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
                         .userInfo()
                         .orElseThrow();
@@ -851,8 +858,9 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                assertThat(OidcCookieStateHandler.create(tenant)
-                                   .decodeLocalAuthenticationResult(localAuthenticationCookie.value())
+                assertThat(OidcCookieStateHandler.create(tenant.cookies())
+                                   .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
+                                                                    OidcIdTokenDecryptor.create(tenant))
                                    .orElseThrow()
                                    .userInfo()
                                    .isEmpty(),
@@ -2034,7 +2042,7 @@ class OidcFeatureRouteTest {
                                                         OidcTenantConfig tenant,
                                                         URI originalUri) {
         Instant now = Instant.now();
-        return OidcCookieStateHandler.create(tenant)
+        return OidcCookieStateHandler.create(tenant.cookies())
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
                                                                                          STATE,
                                                                                          NONCE,
@@ -2084,7 +2092,7 @@ class OidcFeatureRouteTest {
                         .expiresAt(now.plusSeconds(60))
                         .accessTokenExpiresAt(now.plusSeconds(600))
                         .buildPrototype());
-        return OidcCookieStateHandler.create(tenant)
+        return OidcCookieStateHandler.create(tenant.cookies())
                 .createLocalAuthenticationResultCookie(result);
     }
 

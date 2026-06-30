@@ -72,6 +72,36 @@ class OidcTenantRuntimeTest {
     }
 
     @Test
+    void malformedTenantHeaderDoesNotFallThroughToAnotherTenant() {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
+                .defaultTenant("default")
+                .tenantResolution(it -> it.headerName("X-Tenant")
+                        .pathSegment(1))
+                .putTenant("default", protectedResourceTenant())
+                .putTenant("path", protectedResourceTenant())
+                .buildPrototype());
+
+        assertThat(registry.tenantContext(request(SecurityEnvironment.builder()
+                                                         .header("X-Tenant", " ")
+                                                         .path("/tenants/path/resource")
+                                                         .build()))
+                           .isEmpty(),
+                   is(true));
+        assertThat(registry.tenantContext(request(SecurityEnvironment.builder()
+                                                         .header("X-Tenant", List.of("default", "default"))
+                                                         .path("/tenants/path/resource")
+                                                         .build()))
+                           .isEmpty(),
+                   is(true));
+        assertThat(registry.tenantContext(request(SecurityEnvironment.builder()
+                                                         .header("X-Tenant", List.of("default", "path"))
+                                                         .path("/tenants/path/resource")
+                                                         .build()))
+                           .isEmpty(),
+                   is(true));
+    }
+
+    @Test
     void pathTenantResolutionSelectsConfiguredTenant() {
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
                 .tenantResolution(it -> it.pathSegment(1))

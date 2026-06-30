@@ -126,6 +126,13 @@ final class OidcTenantContextFactory {
             if (needsPushedAuthorizationRequestMetadata(authorizationCode.orElseThrow(), staticMetadata)) {
                 return true;
             }
+            if (authorizationCode.orElseThrow()
+                    .requestObject()
+                    .encryptionAlgorithm()
+                    .isPresent()
+                    && staticMetadata.jwkSetUri().isEmpty()) {
+                return true;
+            }
         }
         if (tenantConfig.userInfo().filter(OidcUserInfoConfig::enabled).isPresent()
                 && staticMetadata.userInfoEndpointUri().isEmpty()) {
@@ -343,12 +350,13 @@ final class OidcTenantContextFactory {
                     "well-known metadata require_signed_request_object cannot be true when "
                             + "authorization-code.request-object.mode is DISABLED");
         }
-        if (!OidcRequestObjectSigner.shouldUse(authorizationCode, metadata)) {
+        if (!OidcRequestObjectProcessor.shouldUse(authorizationCode, metadata)) {
             return;
         }
-        if (requestObject.jwk().isEmpty()) {
+        if (requestObject.signingJwk().isEmpty()) {
             throw new IllegalStateException(
-                    "authorization-code.request-object.jwk must be configured when signed Request Objects are required");
+                    "authorization-code.request-object.signing-jwk must be configured when signed Request Objects are "
+                            + "required");
         }
         if (wellKnownMetadataLoaded
                 && !pushedAuthorizationRequestsEnabled(tenantConfig, authorizationCode, metadata)
@@ -374,9 +382,9 @@ final class OidcTenantContextFactory {
                      * Quote: "These algorithms are used both when the Request Object is passed by value (using the
                      * `request` parameter) and when it is passed by reference (using the `request_uri` parameter)."
                      */
-                    String algorithm = OidcRequestObjectSigner.signingAlgorithm(requestObject)
+                    String algorithm = OidcRequestObjectProcessor.signingAlgorithm(requestObject)
                             .orElseThrow(() -> new IllegalStateException(
-                                    "authorization-code.request-object.jwk must be configured when signed Request "
+                                    "authorization-code.request-object.signing-jwk must be configured when signed Request "
                                             + "Objects are enabled"));
                     if (!supportedAlgorithms.contains(algorithm)) {
                         throw new IllegalStateException(
@@ -384,6 +392,37 @@ final class OidcTenantContextFactory {
                                         + algorithm);
                     }
                 });
+        requestObject.encryptionAlgorithm().ifPresent(algorithm -> {
+            /*
+             * Spec: RFC 9101, 4 Request Object
+             * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
+             * Quote: "The algorithms chosen need to be supported by both the client and the authorization server."
+             *
+             * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
+             * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+             * Quote: "JSON array containing a list of the JWE encryption algorithms (`alg` values) supported by the OP
+             * for Request Objects."
+             */
+            metadata.jwkSetUri()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "well-known metadata jwks_uri must be present when Request Object encryption is enabled"));
+            metadata.requestObjectEncryptionAlgorithmsSupported()
+                    .filter(supportedAlgorithms -> !supportedAlgorithms.contains(algorithm))
+                    .ifPresent(ignored -> {
+                        throw new IllegalStateException(
+                                "well-known metadata request_object_encryption_alg_values_supported must include "
+                                        + algorithm);
+                    });
+            String contentEncryption = requestObject.contentEncryptionAlgorithm()
+                    .orElse(OidcRequestObjectConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+            metadata.requestObjectContentEncryptionAlgorithmsSupported()
+                    .filter(supportedAlgorithms -> !supportedAlgorithms.contains(contentEncryption))
+                    .ifPresent(ignored -> {
+                        throw new IllegalStateException(
+                                "well-known metadata request_object_encryption_enc_values_supported must include "
+                                        + contentEncryption);
+                    });
+        });
     }
 
     private static boolean pushedAuthorizationRequestsEnabled(OidcTenantConfig tenantConfig,

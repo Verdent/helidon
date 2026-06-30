@@ -26,9 +26,10 @@ final class OidcRequestObjectConfigSupport {
     }
 
     @Prototype.BuilderMethod
-    static void jwk(OidcRequestObjectConfig.BuilderBase<?, ?> builder, Consumer<ResourceConfig.Builder> consumer) {
+    static void signingJwk(OidcRequestObjectConfig.BuilderBase<?, ?> builder,
+                           Consumer<ResourceConfig.Builder> consumer) {
         ResourceConfig.Builder resource = ResourceConfig.builder();
         consumer.accept(resource);
-        builder.jwk(resource.buildPrototype());
+        builder.signingJwk(resource.buildPrototype());
     }
 }

@@ -967,6 +967,18 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void tokenValidationRejectsInvalidGeneralConfiguration() {
+        assertInvalidTokenValidation(validation -> validation.allowedAlgorithms(List.of()),
+                                     "token-validation.allowed-algorithms must not be empty");
+        assertInvalidTokenValidation(validation -> validation.allowedAlgorithms(List.of("RS256", " ")),
+                                     "token-validation.allowed-algorithms must not contain blank or padded values");
+        assertInvalidTokenValidation(validation -> validation.clockSkew(Duration.ofSeconds(-1)),
+                                     "token-validation.clock-skew must not be negative");
+        assertInvalidTokenValidation(validation -> validation.audience(" padded "),
+                                     "token-validation.audience must not be blank or padded");
+    }
+
+    @Test
     void idTokenAllowedAlgorithmsRejectsUnsafeValues() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -1573,6 +1585,23 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("cookies.encryption-secret"));
+    }
+
+    @Test
+    void cookieConfigurationRejectsInvalidValues() {
+        assertInvalidCookies(cookies -> cookies.authenticationRequestLifetime(Duration.ZERO),
+                             "cookies.authentication-request-lifetime must be positive");
+        assertInvalidCookies(cookies -> cookies.localAuthenticationLifetime(Duration.ofSeconds(-1)),
+                             "cookies.local-authentication-lifetime must be positive");
+        assertInvalidCookies(cookies -> cookies.authenticationRequestCookieName("invalid;name"),
+                             "cookies.authentication-request-cookie-name must be a valid HTTP cookie name");
+        assertInvalidCookies(cookies -> cookies.localAuthenticationCookieName(""),
+                             "cookies.local-authentication-cookie-name must be a valid HTTP cookie name");
+        assertInvalidCookies(cookies -> cookies.authenticationRequestCookieName("same")
+                        .localAuthenticationCookieName("same"),
+                             "cookie names must be different");
+        assertInvalidCookies(cookies -> cookies.encryptionSecret(" "),
+                             "cookies.encryption-secret must not be blank");
     }
 
     @Test
@@ -2679,6 +2708,22 @@ class OidcProviderConfigTest {
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
                 .buildPrototype();
+    }
+
+    private static void assertInvalidTokenValidation(Consumer<OidcTokenValidationConfig.Builder> customizer,
+                                                     String expectedMessage) {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .protectedResource(protectedResource -> protectedResource.enabled(false)
+                        .tokenValidation(customizer))
+                .buildPrototype());
+        assertThat(thrown.getMessage(), containsString(expectedMessage));
+    }
+
+    private static void assertInvalidCookies(Consumer<OidcCookieConfig.Builder> customizer, String expectedMessage) {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .cookies(customizer)
+                .buildPrototype());
+        assertThat(thrown.getMessage(), containsString(expectedMessage));
     }
 
     private static WebClientConfig mutualTlsWebClient() {

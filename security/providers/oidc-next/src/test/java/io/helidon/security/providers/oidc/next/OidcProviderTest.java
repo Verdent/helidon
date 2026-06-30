@@ -331,14 +331,13 @@ class OidcProviderTest {
     }
 
     @Test
-    void bearerChallengeDescriptionsFallBackWhenUnsafe() {
-        AuthenticationResponse invalidToken = OidcResponseFactory.invalidBearerToken("unsafe\nvalue", "orders-api");
+    void bearerChallengeDescriptionsAreFixed() {
+        AuthenticationResponse invalidToken = OidcResponseFactory.invalidBearerToken("orders-api");
         assertThat(invalidToken.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"orders-api\", error=\"invalid_token\", "
                               + "error_description=\"Bearer Token is invalid\""));
 
-        AuthenticationResponse invalidRequest = OidcResponseFactory.invalidBearerTokenRequest("unsafe\rvalue",
-                                                                                              "orders-api");
+        AuthenticationResponse invalidRequest = OidcResponseFactory.invalidBearerTokenRequest("orders-api");
         assertThat(invalidRequest.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"orders-api\", error=\"invalid_request\", "
                               + "error_description=\"Bearer Token request is invalid\""));

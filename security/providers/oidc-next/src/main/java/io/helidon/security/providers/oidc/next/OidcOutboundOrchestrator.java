@@ -126,7 +126,7 @@ final class OidcOutboundOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(unavailableTenant.tenantId())
                                    + ", reason=tenant-" + unavailableTenant.state().name().toLowerCase(Locale.ROOT));
             }
-            return OidcResponseFactory.tenantUnavailableForOutbound(unavailableTenant);
+            return OidcResponseFactory.tenantUnavailableForOutbound();
         }
 
         Optional<OidcTenantContext> tlsBlockedTenant = tenantContext.filter(OidcTenantContext::ready)
@@ -229,7 +229,7 @@ final class OidcOutboundOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
-            return OidcResponseFactory.clientCredentialsGrantFailed(OidcTokenEndpointResult.failure(e.getMessage(), e));
+            return OidcResponseFactory.clientCredentialsGrantFailed();
         }
 
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
@@ -246,7 +246,7 @@ final class OidcOutboundOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", reason=token-endpoint-failure");
             }
-            return OidcResponseFactory.clientCredentialsGrantFailed(tokenResult);
+            return OidcResponseFactory.clientCredentialsGrantFailed();
         }
 
         OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
@@ -281,7 +281,7 @@ final class OidcOutboundOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
-            return OidcResponseFactory.tokenExchangeFailed(OidcTokenExchangeResult.failure(e.getMessage(), e));
+            return OidcResponseFactory.tokenExchangeFailed();
         }
 
         Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
@@ -296,7 +296,7 @@ final class OidcOutboundOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", reason=token-endpoint-failure");
             }
-            return OidcResponseFactory.tokenExchangeFailed(tokenResult);
+            return OidcResponseFactory.tokenExchangeFailed();
         }
 
         OidcTokenExchangeResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();

@@ -80,7 +80,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse invalidBearerToken(String description, String realm) {
+    static AuthenticationResponse invalidBearerToken(String realm) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
@@ -123,7 +123,7 @@ final class OidcResponseFactory {
         return builder.build();
     }
 
-    static AuthenticationResponse invalidBearerTokenRequest(String description, String realm) {
+    static AuthenticationResponse invalidBearerTokenRequest(String realm) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(400)
@@ -139,7 +139,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse tenantUnavailable(OidcTenantContext tenantContext) {
+    static AuthenticationResponse tenantUnavailable() {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(503)
@@ -147,14 +147,14 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static OutboundSecurityResponse clientCredentialsGrantFailed(OidcTokenEndpointResult result) {
+    static OutboundSecurityResponse clientCredentialsGrantFailed() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description(CLIENT_CREDENTIALS_FAILURE_DESCRIPTION)
                 .build();
     }
 
-    static OutboundSecurityResponse tokenExchangeFailed(OidcTokenExchangeResult result) {
+    static OutboundSecurityResponse tokenExchangeFailed() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description(TOKEN_EXCHANGE_FAILURE_DESCRIPTION)
@@ -168,7 +168,7 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static OutboundSecurityResponse tenantUnavailableForOutbound(OidcTenantContext tenantContext) {
+    static OutboundSecurityResponse tenantUnavailableForOutbound() {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description(TENANT_UNAVAILABLE_DESCRIPTION)

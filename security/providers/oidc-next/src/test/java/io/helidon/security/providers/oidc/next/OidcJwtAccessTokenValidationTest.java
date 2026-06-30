@@ -50,6 +50,7 @@ import io.helidon.security.Grant;
 import io.helidon.security.Role;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.SecurityTime;
 import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
@@ -848,6 +849,20 @@ class OidcJwtAccessTokenValidationTest {
         AuthenticationResponse response = authenticate(provider(), token);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void requestSecurityTimeDeterminesTokenTimeValidation() {
+        String token = signedToken(_ -> { });
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .header("Authorization", "Bearer " + token)
+                .time(SecurityTime.builder().shiftBySeconds(Duration.ofHours(2).toSeconds()).build())
+                .build();
+
+        AuthenticationResponse response = provider().authenticate(OidcProviderTest.request(null, environment));
+
+        assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
     @Test

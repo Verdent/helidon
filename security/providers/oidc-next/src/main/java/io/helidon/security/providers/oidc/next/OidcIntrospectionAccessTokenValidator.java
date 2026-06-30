@@ -107,15 +107,15 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
         Optional<String> expectedIssuer = tenantContext.metadata().issuer();
         Optional<String> expectedAudience = tokenValidation.audience();
-        Instant now = Instant.now();
+        Instant validationTime = request.validationTime();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
 
         JwtValidator.Builder builder = JwtValidator.builder()
-                .addExpirationValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
-                .addIssueTimeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()))
-                .addNotBeforeValidator(it -> it.now(now).allowedTimeSkew(tokenValidation.clockSkew()));
+                .addExpirationValidator(it -> it.now(validationTime).allowedTimeSkew(tokenValidation.clockSkew()))
+                .addIssueTimeValidator(it -> it.now(validationTime).allowedTimeSkew(tokenValidation.clockSkew()))
+                .addNotBeforeValidator(it -> it.now(validationTime).allowedTimeSkew(tokenValidation.clockSkew()));
         expectedIssuer.ifPresent(issuer -> builder.addIssuerValidator(issuer, false));
         if (tokenValidation.audienceValidationEnabled()) {
             expectedAudience.ifPresent(builder::addAudienceValidator);

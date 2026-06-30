@@ -17,34 +17,40 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.security.cert.Certificate;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
 record OidcAccessTokenValidationRequest(String token,
                                         OidcTenantContext tenantContext,
                                         Use use,
-                                        Optional<Certificate> peerCertificate) {
+                                        Optional<Certificate> peerCertificate,
+                                        Instant validationTime) {
 
     OidcAccessTokenValidationRequest {
         Objects.requireNonNull(token);
         Objects.requireNonNull(tenantContext);
         Objects.requireNonNull(use);
         peerCertificate = Objects.requireNonNull(peerCertificate);
+        Objects.requireNonNull(validationTime);
     }
 
     static OidcAccessTokenValidationRequest protectedResource(String token, OidcRequestContext context) {
         return new OidcAccessTokenValidationRequest(token,
                                                     context.tenantContext().orElseThrow(),
                                                     Use.PROTECTED_RESOURCE,
-                                                    context.peerCertificate());
+                                                    context.peerCertificate(),
+                                                    context.environment().time().toInstant());
     }
 
     static OidcAccessTokenValidationRequest refreshedAuthorizationCodeAccessToken(String token,
-                                                                                  OidcTenantContext tenantContext) {
+                                                                                  OidcTenantContext tenantContext,
+                                                                                  Instant validationTime) {
         return new OidcAccessTokenValidationRequest(token,
                                                     tenantContext,
                                                     Use.REFRESHED_AUTHORIZATION_CODE_ACCESS_TOKEN,
-                                                    Optional.empty());
+                                                    Optional.empty(),
+                                                    validationTime);
     }
 
     boolean protectedResource() {

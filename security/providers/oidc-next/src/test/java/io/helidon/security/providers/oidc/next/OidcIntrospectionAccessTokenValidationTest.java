@@ -21,6 +21,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -41,6 +42,7 @@ import io.helidon.security.Grant;
 import io.helidon.security.Role;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.SecurityTime;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.webclient.api.WebClientConfig;
@@ -354,6 +356,19 @@ class OidcIntrospectionAccessTokenValidationTest {
                 .toString();
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void requestSecurityTimeDeterminesTokenTimeValidation() {
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .header("Authorization", "Bearer " + OPAQUE_TOKEN)
+                .time(SecurityTime.builder().shiftBySeconds(Duration.ofHours(2).toSeconds()).build())
+                .build();
+
+        AuthenticationResponse response = provider().authenticate(OidcProviderTest.request(null, environment));
 
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }

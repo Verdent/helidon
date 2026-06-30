@@ -109,9 +109,9 @@ class OidcParJarFlowIT {
                     authorizationCode -> authorizationCode
                             .requestObject(requestObject -> requestObject
                                     .mode(OidcRequestObjectMode.REQUIRED)
-                                    .jwk(jwk -> jwk.resourcePath("oidc-next-it-sign-jwk.json"))
-                                    .keyId("sign-rsa")
-                                    .algorithm("RS256")),
+                                    .signingJwk(jwk -> jwk.resourcePath("oidc-next-it-sign-jwk.json"))
+                                    .signingKeyId("sign-rsa")
+                                    .signingAlgorithm("RS256")),
                     tenant -> tenant.endpoints(endpoints -> {
                         OidcIntegrationSupport.authorizationCodeEndpoints(idp, endpoints);
                         endpoints.pushedAuthorizationRequestEndpointUri(idp.pushedAuthorizationRequestEndpointUri());

@@ -17,11 +17,17 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -56,6 +62,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
@@ -70,6 +77,8 @@ class OidcTokenExchangeGrantTest {
 
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static volatile CountDownLatch tokenRequestStarted;
+    private static volatile CountDownLatch releaseTokenResponse;
 
     private static volatile int responseStatus;
     private static volatile String responseBody;
@@ -105,6 +114,8 @@ class OidcTokenExchangeGrantTest {
         dynamicExpiresIn = 600;
         REQUEST_COUNT.set(0);
         RECORDED_REQUEST.set(null);
+        tokenRequestStarted = null;
+        releaseTokenResponse = null;
     }
 
     @Test
@@ -188,6 +199,41 @@ class OidcTokenExchangeGrantTest {
         assertThat(firstSubjectAgain.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer exchanged-access-token-1")));
         assertThat(REQUEST_COUNT.get(), is(2));
+    }
+
+    @Test
+    void concurrentTokenExchangeRequestsUseSingleTokenEndpointRequest() throws Exception {
+        int taskCount = 32;
+        dynamicTokenResponse = true;
+        dynamicExpiresIn = 600;
+        tokenRequestStarted = new CountDownLatch(1);
+        releaseTokenResponse = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+        OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                futures.add(executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                     outboundEnvironment(),
+                                                     EndpointConfig.create());
+                }));
+            }
+
+            start.countDown();
+            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            releaseTokenResponse.countDown();
+            for (Future<OutboundSecurityResponse> future : futures) {
+                assertThat(future.get().requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                           is(List.of("Bearer exchanged-access-token-1")));
+            }
+        } finally {
+            releaseTokenResponse.countDown();
+        }
+
+        assertThat(REQUEST_COUNT.get(), is(1));
     }
 
     @Test
@@ -368,6 +414,14 @@ class OidcTokenExchangeGrantTest {
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         int requestNumber = REQUEST_COUNT.incrementAndGet();
+        CountDownLatch requestStarted = tokenRequestStarted;
+        if (requestStarted != null) {
+            requestStarted.countDown();
+        }
+        CountDownLatch releaseResponse = releaseTokenResponse;
+        if (releaseResponse != null) {
+            await(releaseResponse);
+        }
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
@@ -380,6 +434,15 @@ class OidcTokenExchangeGrantTest {
                 .header(HeaderNames.CACHE_CONTROL, "no-store")
                 .header(HeaderNames.PRAGMA, "no-cache")
                 .send(body);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for Token Endpoint test response", e);
+        }
     }
 
     private OidcTenantConfig confidentialTenant() {

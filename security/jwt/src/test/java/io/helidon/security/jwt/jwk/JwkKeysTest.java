@@ -36,6 +36,7 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -145,6 +146,18 @@ public class JwkKeysTest {
     }
 
     @Test
+    void acceptsJwkWithoutOptionalKeyId() {
+        Jwk key = Jwk.create(JsonObject.builder()
+                                     .set("kty", "oct")
+                                     .set("k", "FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ")
+                                     .build());
+
+        assertThat(key.keyId(), is(nullValue()));
+        assertThat(key.algorithm(), is(JwkOctet.ALG_HS256));
+        assertThat(key.declaredAlgorithm(), is(Optional.empty()));
+    }
+
+    @Test
     public void testSignFailsForEncUse() {
         Jwk jwk = customKeys.forKeyId("1").get();
 
@@ -199,6 +212,31 @@ public class JwkKeysTest {
         testRsa("cc34c0a0-bd5a-4a3c-a50d-a2a7db7643df", JwkRSA.ALG_RS256);
         testRsa("RS_384", JwkRSA.ALG_RS384);
         testRsa("RS_512", JwkRSA.ALG_RS512);
+    }
+
+    @Test
+    void distinguishesDeclaredAlgorithmFromDefault() {
+        Jwk defaulted = customKeys.forKeyId("cc34c0a0-bd5a-4a3c-a50d-a2a7db7643df").orElseThrow();
+        Jwk declared = customKeys.forKeyId("RS_384").orElseThrow();
+
+        assertThat(defaulted.algorithm(), is(JwkRSA.ALG_RS256));
+        assertThat(defaulted.declaredAlgorithm(), is(Optional.empty()));
+        assertThat(declared.algorithm(), is(JwkRSA.ALG_RS384));
+        assertThat(declared.declaredAlgorithm(), is(Optional.of(JwkRSA.ALG_RS384)));
+    }
+
+    @Test
+    void preservesKeyInsertionOrder() {
+        Jwk first = customKeys.forKeyId("RS_512").orElseThrow();
+        Jwk second = customKeys.forKeyId("RS_384").orElseThrow();
+        Jwk third = customKeys.forKeyId("cc34c0a0-bd5a-4a3c-a50d-a2a7db7643df").orElseThrow();
+        JwkKeys keys = JwkKeys.builder()
+                .addKey(first)
+                .addKey(second)
+                .addKey(third)
+                .build();
+
+        assertThat(keys.keys(), is(List.of(first, second, third)));
     }
 
     @Test

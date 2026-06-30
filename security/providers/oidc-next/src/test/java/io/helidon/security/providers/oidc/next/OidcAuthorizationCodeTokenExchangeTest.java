@@ -18,6 +18,8 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,15 +36,18 @@ import io.helidon.common.tls.Tls;
 import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
+import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
+import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.WebServerConfig;
@@ -53,6 +58,10 @@ import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
 import io.helidon.webserver.testing.junit5.SetUpServer;
 
+import com.nimbusds.jose.JWEObject;
+import com.nimbusds.jose.crypto.RSADecrypter;
+import com.nimbusds.jose.crypto.RSASSAVerifier;
+import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,8 +94,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static volatile String responseCacheControl;
     private static volatile String responsePragma;
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static final AtomicReference<String> JWK_SET = new AtomicReference<>();
 
     private static JwkKeys signKeys;
+    private static JwkKeys encryptKeys;
 
     private final URI mutualTlsServerUri;
 
@@ -104,12 +115,16 @@ class OidcAuthorizationCodeTokenExchangeTest {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
                 .build();
+        encryptKeys = JwkKeys.builder()
+                .resource(Resource.create("oidc-next-encrypt-jwk.json"))
+                .build();
     }
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
         routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
+        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(JWK_SET.get()));
     }
 
     @SetUpRoute("mtls")
@@ -135,6 +150,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         responseCacheControl = "no-store";
         responsePragma = "no-cache";
         RECORDED_REQUEST.set(null);
+        JWK_SET.set(Resource.create("oidc-next-encrypt-public-jwk.json").string());
     }
 
     @Test
@@ -295,14 +311,14 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                                                                        .requestObject(requestObject -> requestObject
                                                                                .mode(OidcRequestObjectMode.REQUIRED)
-                                                                               .jwk(jwk -> jwk.resourcePath(
+                                                                               .signingJwk(jwk -> jwk.resourcePath(
                                                                                        "oidc-next-sign-public-jwk.json"))
-                                                                               .keyId("sign-rsa")
-                                                                               .algorithm("RS256")))
+                                                                               .signingKeyId("sign-rsa")
+                                                                               .signingAlgorithm("RS256")))
                                                                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                                                                .buildPrototype()));
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
     }
 
     @Test
@@ -373,9 +389,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .prompts(List.of("login"))
                         .resources(List.of("https://api.example.com", "urn:example:contacts"))
                         .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
-                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                                .keyId("sign-rsa")
-                                .algorithm("RS256")))
+                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .signingKeyId("sign-rsa")
+                                .signingAlgorithm("RS256")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
@@ -441,6 +457,79 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(List.of("https://api.example.com", "urn:example:contacts")));
         assertThat(requestObjectPayload.containsKey("request"), is(false));
         assertThat(requestObjectPayload.containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationCanUseEncryptedRequestObject(URI serverUri) throws Exception {
+        OidcTenantConfig tenant = encryptedRequestObjectTenant(serverUri, false, false, null);
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                            .putTenant("default", tenant)
+                                                            .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("response_type"), is("code"));
+        assertThat(query.get("client_id"), is(CLIENT_ID));
+        assertThat(query.get("scope"), is("openid profile"));
+        assertThat(query.contains("state"), is(false));
+        assertThat(query.contains("nonce"), is(false));
+        assertEncryptedRequestObject(query.get("request"), "A128CBC-HS256");
+    }
+
+    @Test
+    void authorizationCodeFlowInitiationCanUseEncryptedRequestObjectWithPar(URI serverUri) throws Exception {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantConfig tenant = encryptedRequestObjectTenant(serverUri, true, true, "A256GCM");
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                            .putTenant("default", tenant)
+                                                            .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("client_id"), is(CLIENT_ID));
+        assertThat(query.get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+        assertThat(query.contains("request"), is(false));
+        RecordedRequest request = RECORDED_REQUEST.get();
+        assertThat(request.formParameters().keySet(), is(Set.of("request")));
+        assertEncryptedRequestObject(request.formParameters().get("request").getFirst(), "A256GCM");
+    }
+
+    @Test
+    void encryptedRequestObjectRejectsIneligibleProviderKeys(URI serverUri) {
+        JWK_SET.set(Resource.create("oidc-next-sign-public-jwk.json").string());
+        OidcTenantConfig tenant = encryptedRequestObjectTenant(serverUri, false, false, null);
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                            .putTenant("default", tenant)
+                                                            .buildPrototype());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                () -> provider.authenticate(OidcProviderTest.request(null, environment)));
+
+        assertThat(thrown.getMessage(),
+                   is("Authorization Server JWK Set does not contain an eligible Request Object encryption key"));
     }
 
     @Test
@@ -1090,6 +1179,88 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .passphrase("password")
                         .keystore(Resource.create("server.p12")))
                 .build();
+    }
+
+    private OidcTenantConfig encryptedRequestObjectTenant(URI serverUri,
+                                                           boolean pushedAuthorizationRequest,
+                                                           boolean pinEncryptionKey,
+                                                           String contentEncryptionAlgorithm) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile"))
+                        .prompts(List.of("login"))
+                        .resources(List.of("https://api.example.com", "urn:example:contacts"))
+                        .pushedAuthorizationRequests(pushedAuthorizationRequest
+                                                             ? OidcPushedAuthorizationRequestMode.REQUIRED
+                                                             : OidcPushedAuthorizationRequestMode.DISABLED)
+                        .requestObject(requestObject -> {
+                            requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                    .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                    .signingKeyId("sign-rsa")
+                                    .signingAlgorithm("RS256")
+                                    .encryptionAlgorithm("RSA-OAEP-256");
+                            if (pinEncryptionKey) {
+                                requestObject.encryptionKeyId("encrypt-rsa");
+                            }
+                            if (contentEncryptionAlgorithm != null) {
+                                requestObject.contentEncryptionAlgorithm(contentEncryptionAlgorithm);
+                            }
+                        }))
+                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .buildPrototype();
+    }
+
+    private static void assertEncryptedRequestObject(String requestObject,
+                                                     String expectedContentEncryption) throws Exception {
+        assertThat(requestObject.split("\\.", -1).length, is(5));
+        EncryptedJwt encryptedJwt = EncryptedJwt.parseToken(requestObject);
+        assertThat(encryptedJwt.headers().algorithm().orElse(""), is("RSA-OAEP-256"));
+        assertThat(encryptedJwt.headers().encryption().orElse(""), is(expectedContentEncryption));
+        assertThat(encryptedJwt.headers().contentType().orElse(""), is("JWT"));
+        assertThat(encryptedJwt.headers().keyId().orElse(""), is("encrypt-rsa"));
+
+        JwkRSA encryptionKey = (JwkRSA) encryptKeys.forKeyId("encrypt-rsa").orElseThrow();
+        byte[] decryptedPayload = encryptedJwt.decryptPayload(encryptKeys, encryptionKey);
+        String signedRequestObject = new String(decryptedPayload, StandardCharsets.UTF_8);
+        String[] signedParts = signedRequestObject.split("\\.", -1);
+        assertThat(signedParts.length, is(3));
+        JsonObject signedHeader = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[0])).readJsonObject();
+        JsonObject signedClaims = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[1])).readJsonObject();
+        byte[] signedBytes = (signedParts[0] + "." + signedParts[1]).getBytes(StandardCharsets.US_ASCII);
+        byte[] signature = Base64.getUrlDecoder().decode(signedParts[2]);
+        assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
+        assertThat(signedHeader.stringValue("alg").orElse(""), is("RS256"));
+        assertThat(signedHeader.stringValue("kid").orElse(""), is("sign-rsa"));
+        assertThat(signedClaims.stringValue("iss").orElse(""), is(CLIENT_ID));
+        assertThat(signedClaims.value("aud").orElseThrow()
+                           .asArray()
+                           .values()
+                           .stream()
+                           .map(value -> value.asString().value())
+                           .toList(),
+                   is(List.of(ISSUER.toString())));
+        assertThat(signedClaims.stringValue("response_type").orElse(""), is("code"));
+        assertThat(signedClaims.stringValue("client_id").orElse(""), is(CLIENT_ID));
+        assertThat(signedClaims.containsKey("state"), is(true));
+        assertThat(signedClaims.containsKey("nonce"), is(true));
+        assertThat(signedClaims.containsKey("code_challenge"), is(true));
+        assertThat(signedClaims.containsKey("request"), is(false));
+        assertThat(signedClaims.containsKey("request_uri"), is(false));
+
+        JWEObject nimbusJwe = JWEObject.parse(requestObject);
+        nimbusJwe.decrypt(new RSADecrypter((RSAPrivateKey) encryptionKey.privateKey().orElseThrow()));
+        SignedJWT nimbusSignedJwt = SignedJWT.parse(nimbusJwe.getPayload().toString());
+        JwkRSA signingKey = (JwkRSA) signKeys.forKeyId("sign-rsa").orElseThrow();
+        assertThat(nimbusSignedJwt.verify(new RSASSAVerifier((RSAPublicKey) signingKey.publicKey())), is(true));
+        assertThat(nimbusSignedJwt.getJWTClaimsSet().getIssuer(), is(CLIENT_ID));
     }
 
     private static JsonObject validTokenResponse() {

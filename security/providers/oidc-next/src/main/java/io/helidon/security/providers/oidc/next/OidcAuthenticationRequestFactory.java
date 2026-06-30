@@ -179,16 +179,16 @@ final class OidcAuthenticationRequestFactory {
                                                String clientId,
                                                Parameters authorizationParameters,
                                                Instant createdAt) {
-        if (!OidcRequestObjectSigner.shouldUse(authorizationCode, tenantContext.metadata())) {
+        if (!OidcRequestObjectProcessor.shouldUse(authorizationCode, tenantContext.metadata())) {
             return authorizationParameters;
         }
-        String requestObject = tenantContext.requestObjectSigner()
+        String requestObject = tenantContext.requestObjectProcessor()
                 .orElseThrow(() -> new IllegalStateException(
                         "Request Object signing is enabled but no signing key is configured"))
-                .sign(clientId,
-                      tenantContext.metadata().issuer().orElseThrow(),
-                      authorizationParameters,
-                      createdAt);
+                .process(clientId,
+                         tenantContext.metadata().issuer().orElseThrow(),
+                         authorizationParameters,
+                         createdAt);
 
         /*
          * Spec: OpenID Connect Core 1.0, 6.1 Passing a Request Object by Value

@@ -486,9 +486,9 @@ class OidcProviderTest {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.prompts(List.of("login"))
                 .resources(List.of("https://api.example.com", "urn:example:contacts"))
                 .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
-                        .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                        .keyId("sign-rsa")
-                        .algorithm("RS256")));
+                        .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                        .signingKeyId("sign-rsa")
+                        .signingAlgorithm("RS256")));
         OidcProvider provider = provider(tenant);
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .targetUri(ORIGINAL_URI)

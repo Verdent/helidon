@@ -170,9 +170,11 @@ final class OidcTenantConfigDecorator
                      * Quote: "To mitigate the attacks described in RFC 3218, the recipient MUST NOT distinguish
                      * between format, padding, and length errors of encrypted keys."
                      */
-                    LOGGER.log(System.Logger.Level.WARNING,
-                               "id-token.allowed-encryption-algorithms contains RSA1_5. This should be used only for "
-                                       + "legacy OpenID Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
+                    if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                   "id-token.allowed-encryption-algorithms contains RSA1_5. This should be used only "
+                                           + "for legacy OpenID Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
+                    }
                 });
     }
 
@@ -717,9 +719,11 @@ final class OidcTenantConfigDecorator
                             "token-validation.audience must be configured when JWT access-token audience validation "
                                     + "is enabled"));
         } else {
-            LOGGER.log(System.Logger.Level.WARNING,
-                       "JWT access-token audience validation is disabled. This relaxes RFC 9068 validation and "
-                               + "should be used only for testing, local development, or legacy non-RFC9068 tokens.");
+            if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
+                LOGGER.log(System.Logger.Level.WARNING,
+                           "JWT access-token audience validation is disabled. This relaxes RFC 9068 validation and "
+                                   + "should be used only for testing, local development, or legacy non-RFC9068 tokens.");
+            }
         }
     }
 

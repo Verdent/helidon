@@ -150,9 +150,9 @@ final class OidcLogoutHandler {
         Optional<URI> postLogoutRedirectUri;
         try {
             postLogoutRedirectUri = postLogoutRedirectUri(request, endSession);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             response.status(Status.BAD_REQUEST_400)
-                    .send(e.getMessage());
+                    .send("Logout request is invalid");
             return;
         }
 

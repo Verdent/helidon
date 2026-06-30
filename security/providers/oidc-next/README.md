@@ -16,7 +16,7 @@ The current implementation supports:
 - RFC 8705 certificate-bound access-token validation for Protected Resource Bearer Token requests.
 - OpenID Connect Authorization Code Flow.
 - RFC 9126 Pushed Authorization Requests for Authorization Code Flow.
-- RFC 9101 signed by-value Request Objects for Authorization Code Flow.
+- RFC 9101 signed and signed-then-encrypted by-value Request Objects for Authorization Code Flow.
 - PKCE with `S256` by default and `plain` for compatibility.
 - Token Endpoint exchange using Helidon WebClient.
 - Token Endpoint client authentication with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`,
@@ -40,8 +40,7 @@ The current implementation supports:
 The current implementation does not yet support:
 
 - DPoP or token binding other than RFC 8705 certificate-bound access-token validation.
-- Encrypted JWT UserInfo responses.
-- Hosted Request Objects through client-hosted `request_uri`, unsigned Request Objects, or encrypted Request Objects.
+- Hosted Request Objects through client-hosted `request_uri` or unsigned Request Objects.
 
 ## Supported Standards Boundary
 
@@ -52,9 +51,8 @@ Dynamic Client Registration server, Device Flow client, CIBA client, or browser 
 The supported standards surface is intentionally scoped:
 
 - OpenID Connect Core 1.0: Authorization Code Flow, Authentication Request construction, ID Token validation, encrypted
-  ID Token decryption before validation, JSON and signed JWT UserInfo retrieval, offline access prompt handling, and JWT
-  client authentication. Implicit Flow, Hybrid Flow, OP behavior, and encrypted JWT UserInfo responses are not
-  implemented.
+  ID Token decryption before validation, JSON, signed, encrypted, and nested JWT UserInfo retrieval, offline access
+  prompt handling, and JWT client authentication. Implicit Flow, Hybrid Flow, and OP behavior are not implemented.
 - OpenID Connect Discovery 1.0 and OAuth 2.0 Authorization Server Metadata, RFC 8414: metadata loading and validation for
   issuer, endpoint, JWKS, client-authentication, PKCE, PAR, JAR, Token Exchange, mTLS aliases, logout, and UserInfo
   capabilities. The provider derives the OpenID Connect discovery URI from `issuer`; configure an OAuth authorization
@@ -75,8 +73,8 @@ The supported standards surface is intentionally scoped:
   Grant, and Token Exchange where configured.
 - JWT Access Token Profile, RFC 9068: signed JWT access-token validation. Disabling audience validation is a compatibility
   relaxation, not full RFC 9068 conformance.
-- JWT-Secured Authorization Request, RFC 9101: signed by-value Request Objects. Unsigned, encrypted, and hosted
-  `request_uri` Request Objects are not implemented.
+- JWT-Secured Authorization Request, RFC 9101: signed and signed-then-encrypted by-value Request Objects, including PAR
+  transport. Unsigned and client-hosted `request_uri` Request Objects are not implemented.
 - Pushed Authorization Requests, RFC 9126: PAR request and response handling, including metadata-driven enforcement.
 - Authorization Server Issuer Identification, RFC 9207: authorization response `iss` validation when present or when
   metadata advertises support.
@@ -95,7 +93,7 @@ negative cases, strict protocol variants, and features that real providers do no
 | Discovery and OAuth metadata | Yes: discovery metadata and endpoint loading. | Metadata parsing, endpoint override, and startup validation. | Cloud metadata quirks. |
 | Authorization Code Flow | Yes: browser login, callback, mixed browser/API use. | Callback state, issuer, nonce, PKCE, cookie, and error boundaries. | Cloud redirect and cookie policies. |
 | Pushed Authorization Requests | Yes: PAR endpoint discovered from Keycloak. | PAR request/response and metadata enforcement. | Providers that require PAR. |
-| Signed Request Objects | No Keycloak CI path. | Signed by-value JAR request construction and metadata checks. | FAPI-style providers requiring JAR. |
+| Secured Request Objects | No Keycloak CI path. | Signed and nested encrypted by-value/PAR JAR construction, metadata checks, and Nimbus interoperability. | FAPI-style providers requiring JAR. |
 | Refresh-token renewal | Yes: Keycloak refresh flow. | Refresh response parsing, token validation, rotation, and resource parameters. | Provider-specific refresh policies. |
 | JSON and JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWS, direct JWE, nested JWS-in-JWE, and claim storage. | Real provider emitting signed or encrypted JWT UserInfo. |
 | RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
@@ -270,7 +268,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 OidcProvider provider = OidcProvider.create(config);
 ```
 
-Configure signed Request Objects programmatically:
+Configure signed-then-encrypted Request Objects programmatically:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
@@ -281,9 +279,12 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .scopes(List.of("openid", "profile"))
                 .requestObject(requestObject -> requestObject
                         .mode(OidcRequestObjectMode.REQUIRED)
-                        .jwk(jwk -> jwk.resourcePath("private-request-object-jwks.json"))
-                        .keyId("request-object-signing-key")
-                        .algorithm("RS256")
+                        .signingJwk(jwk -> jwk.resourcePath("private-request-object-jwks.json"))
+                        .signingKeyId("request-object-signing-key")
+                        .signingAlgorithm("RS256")
+                        .encryptionAlgorithm("RSA-OAEP-256")
+                        .contentEncryptionAlgorithm("A128CBC-HS256")
+                        .encryptionKeyId("op-encryption-key")
                         .lifetime(Duration.ofMinutes(1))))
         .cookies(cookies -> cookies
                 .encryptionSecret(System.getenv("OIDC_COOKIE_SECRET")))
@@ -471,11 +472,13 @@ and include the configured PKCE method. The provider also validates the configur
 against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
 `client_secret_basic`. For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
 `token_endpoint_auth_signing_alg_values_supported` with the configured assertion signing algorithm.
-When signed Request Objects are enabled and well-known metadata is loaded, `request_parameter_supported` must be `true`
+When Request Objects are enabled and well-known metadata is loaded, `request_parameter_supported` must be `true`
 unless the Authentication Request is pushed through PAR. If
 `request_object_signing_alg_values_supported` is present, it must include the configured Request Object signing
-algorithm. If `require_signed_request_object` is `true`, the provider rejects `request-object.mode: DISABLED` and
-requires local Request Object signing key material.
+algorithm. For encrypted Request Objects, advertised `request_object_encryption_alg_values_supported` and
+`request_object_encryption_enc_values_supported` values must include the configured algorithms. If
+`require_signed_request_object` is `true`, the provider rejects `request-object.mode: DISABLED` and requires local
+Request Object signing key material.
 The metadata endpoint is loaded with a GET request, redirects are not followed, and the response must be `200 OK` with an
 `application/json` content type. Metadata member names are matched exactly as specified by OpenID Connect Discovery and
 RFC 8414; they are case-sensitive JSON names.
@@ -820,49 +823,68 @@ PAR uses the same Token Endpoint client authentication method configured by `tok
 `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`, RFC 9126 says the Authorization Server issuer identifier should be used as the
 client assertion audience; the provider uses the issuer when available and otherwise falls back to the PAR endpoint URI.
 
-Signed Request Objects use RFC 9101 JWT-Secured Authorization Requests (JAR). RFC 9101 says the Request Object contains
-the authorization request parameters as JWT claims, excludes `request` and `request_uri`, and signs the JWT claims set.
-OpenID Connect Core also requires `response_type`, `client_id`, and `scope` to remain in the outer OAuth request syntax
-when the by-value `request` parameter is used. `oidc-next` therefore sends only outer `response_type`, `client_id`,
-`scope`, and `request` for normal by-value JAR redirects; the full request, including `redirect_uri`, `state`, `nonce`,
-PKCE, prompts, and resource indicators, is inside the signed Request Object.
+Request Objects use RFC 9101 JWT-Secured Authorization Requests (JAR). RFC 9101 says the Request Object contains the
+authorization request parameters as JWT claims, excludes `request` and `request_uri`, and is signed or signed then
+encrypted. OpenID Connect Core also requires `response_type`, `client_id`, and `scope` to remain in the outer OAuth
+request syntax when the by-value `request` parameter is used. `oidc-next` therefore sends only outer `response_type`,
+`client_id`, `scope`, and `request` for normal by-value JAR redirects; the full request, including `redirect_uri`,
+`state`, `nonce`, PKCE, prompts, and resource indicators, is inside the secured Request Object.
 
-Configure Request Object signing under `authorization-code.request-object`.
+Configure signing and optional encryption under `authorization-code.request-object`.
 
 ```yaml
 authorization-code:
   scopes: [ "openid", "profile" ]
   request-object:
     mode: REQUIRED
-    jwk:
+    signing-jwk:
       resource-path: "private-request-object-jwks.json"
-    key-id: "request-object-signing-key"
-    algorithm: RS256
+    signing-key-id: "request-object-signing-key"
+    signing-algorithm: RS256
+    encryption-algorithm: RSA-OAEP-256
+    content-encryption-algorithm: A128CBC-HS256
+    encryption-key-id: "op-encryption-key"
     lifetime: "PT1M"
+
+jwk-set:
+  refresh-interval: "PT10M"
 ```
 
 Modes:
 
 - `DISABLED`: never sends Request Objects. If loaded metadata has `require_signed_request_object: true`, tenant
   initialization fails.
-- `AUTO`: default. Signs when `request-object.jwk` is configured, and requires signing when loaded metadata has
+- `AUTO`: default. Signs when `request-object.signing-jwk` is configured, and requires signing when loaded metadata has
   `require_signed_request_object: true`. Without local signing key material and without a metadata requirement, the
   normal Authorization Code request is unchanged.
-- `REQUIRED`: every Authentication Request uses a signed Request Object. `request-object.jwk` is required.
+- `REQUIRED`: every Authentication Request uses a signed Request Object. `request-object.signing-jwk` is required.
 
 The Request Object signing key is local client private key material. It must correspond to a public key registered at the
 Authorization Server for Request Object validation. It is separate from the provider `jwks-uri`, which is the OP public
 key set used to verify ID Tokens or access tokens, and separate from `client-assertion.jwk`, which is used for
 `private_key_jwt` endpoint authentication. Supported Request Object signing keys are RSA and EC private JWKs using the
-same JWS algorithms as `PRIVATE_KEY_JWT`, such as `RS256` or `ES256`. `alg=none`, unsigned Request Objects, encrypted
-Request Objects, and hosted client `request_uri` are not supported. URI-backed `request-object.jwk` resources are
-rejected before the resource is created; use classpath, file, or configured content resources for this local private key
-material.
+same JWS algorithms as `PRIVATE_KEY_JWT`, such as `RS256` or `ES256`. URI-backed `request-object.signing-jwk` resources
+are rejected before the resource is created; use classpath, file, or configured content resources for this local private
+key material.
 
-Request Objects can be combined with PAR. In that mode the PAR body contains the signed `request` parameter plus any
-client-authentication parameters required by the selected client authentication method; authorization request parameters
-remain inside the signed JWT claims. The browser redirect remains the PAR redirect with only `client_id` and the
-server-generated `request_uri`.
+Setting `encryption-algorithm` changes the result to a signed-then-encrypted Nested JWT with `cty=JWT`. Supported key
+management algorithms are `RSA-OAEP-256` and `RSA-OAEP`; `RSA1_5` is rejected. The OP encryption key is never configured
+as local key material. It is selected from the OP public JWK Set at `jwks_uri`, must be an RSA key of at least 2048 bits,
+and must permit encryption when `use` or `key_ops` is declared. `encryption-key-id` optionally pins an exact OP key;
+otherwise the first eligible key in JWK Set order is selected. Its `kid` is emitted when present and is required when the
+JWK Set contains multiple keys. Configure `jwk-set.refresh-interval` when outbound encryption keys must follow OP key
+rotation.
+
+`content-encryption-algorithm` selects the JWE `enc` value. When omitted with encryption enabled, it defaults to
+`A128CBC-HS256` as defined by OpenID Connect Dynamic Client Registration. Encryption is never enabled merely because OP
+metadata advertises it. With explicit Authorization and Token Endpoint configuration, also configure
+`endpoints.jwks-uri`; discovery normally supplies it.
+
+Request Objects can be combined with PAR. In that mode the PAR body contains the compact signed or encrypted `request`
+parameter plus any client-authentication parameters required by the selected client authentication method; authorization
+request parameters remain inside the secured JWT claims. The browser redirect remains the PAR redirect with only
+`client_id` and the server-generated `request_uri`. Unsigned Request Objects and client-hosted `request_uri` remain
+unsupported.
 
 PKCE is enabled by default and uses `S256`.
 When Authorization Code Flow loads well-known metadata, `code_challenge_methods_supported` must include the configured
@@ -2198,7 +2220,7 @@ Authorization Code Flow options:
 | `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
 | `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
 | `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
-| `request-object` | RFC 9101 signed Request Object configuration. Defaults to `AUTO` mode without signing key material, so no Request Object is sent unless `jwk` is configured or loaded metadata requires signed Request Objects. |
+| `request-object` | RFC 9101 signed or signed-then-encrypted Request Object configuration. Defaults to `AUTO` mode without signing key material, so no Request Object is sent unless `signing-jwk` is configured or loaded metadata requires signed Request Objects. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 
@@ -2206,10 +2228,13 @@ Request Object options:
 
 | Key | Description |
 | --- | --- |
-| `mode` | Signed Request Object mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` signs when `jwk` is configured and requires signing when loaded metadata has `require_signed_request_object: true`. |
-| `algorithm` | JWS `alg` header used to sign the Request Object. When omitted, the selected JWK algorithm is used. When configured, it must match the selected JWK and be one of the supported RSA or EC signing algorithms. |
-| `key-id` | JWS `kid` header and JWK selector. Required when `jwk` contains more than one key. |
-| `jwk` | Private JWK Set resource configuration used to sign Request Objects. This is local client key material registered with the Authorization Server; it is not the OP `jwks-uri`. URI resources are rejected before resource creation. |
+| `mode` | Request Object mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` signs when `signing-jwk` is configured and requires signing when loaded metadata has `require_signed_request_object: true`. |
+| `signing-algorithm` | JWS `alg` header used to sign the Request Object. When omitted, the selected JWK algorithm is used. When configured, it must match the selected JWK and be one of the supported RSA or EC signing algorithms. |
+| `signing-key-id` | JWS `kid` header and signing JWK selector. Required when `signing-jwk` contains more than one key. |
+| `signing-jwk` | Private JWK Set resource configuration used to sign Request Objects. This is local client key material registered with the Authorization Server; it is not the OP `jwks-uri`. URI resources are rejected before resource creation. |
+| `encryption-algorithm` | Optional JWE `alg` value enabling signed-then-encrypted Request Objects. Supported values are `RSA-OAEP-256` and `RSA-OAEP`. The public encryption key is loaded from the OP `jwks_uri`. |
+| `content-encryption-algorithm` | Optional JWE `enc` value. Requires `encryption-algorithm` and defaults to `A128CBC-HS256` when omitted. |
+| `encryption-key-id` | Optional exact OP encryption JWK selector. When omitted, the first eligible OP key is selected. Requires `encryption-algorithm`. |
 | `lifetime` | Request Object lifetime used to calculate `exp`. Defaults to `PT1M`. |
 
 Endpoint policy options:

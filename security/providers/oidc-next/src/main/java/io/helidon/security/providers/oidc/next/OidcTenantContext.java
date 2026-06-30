@@ -108,8 +108,8 @@ final class OidcTenantContext {
         return runtimeResources().endpointClient();
     }
 
-    Optional<OidcRequestObjectSigner> requestObjectSigner() {
-        return runtimeResources().requestObjectSigner();
+    Optional<OidcRequestObjectProcessor> requestObjectProcessor() {
+        return runtimeResources().requestObjectProcessor();
     }
 
     OidcClientAuthenticationSupport introspectionClientAuthentication() {
@@ -172,7 +172,7 @@ final class OidcTenantContext {
     private record RuntimeResources(Optional<OidcEndpointPolicy> endpointPolicy,
                                     OidcProviderMetadata metadata,
                                     OidcEndpointClient endpointClient,
-                                    Optional<OidcRequestObjectSigner> requestObjectSigner,
+                                    Optional<OidcRequestObjectProcessor> requestObjectProcessor,
                                     OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
@@ -184,12 +184,16 @@ final class OidcTenantContext {
                                                OidcProviderMetadata metadata,
                                                WebClient webClient) {
             OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
+            OidcJwkSetManager jwkSetManager = OidcJwkSetManager.create(tenantId,
+                                                                      metadata,
+                                                                      webClient,
+                                                                      tenantConfig.jwkSet());
             return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
-                                        OidcRequestObjectSigner.create(tenantConfig),
+                                        OidcRequestObjectProcessor.create(tenantConfig, jwkSetManager),
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
-                                        OidcJwkSetManager.create(tenantId, metadata, webClient, tenantConfig.jwkSet()),
+                                        jwkSetManager,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
                                         OidcCookieStateHandler.create(tenantConfig, idTokenDecryptor),

@@ -19,7 +19,7 @@ package io.helidon.security.jwt.jwk;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.System.Logger.Level;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +49,7 @@ import io.helidon.security.jwt.JwtException;
 public final class JwkKeys {
     private static final System.Logger LOGGER = System.getLogger(JwkKeys.class.getName());
 
-    private final Map<String, Jwk> keyMap = new HashMap<>();
+    private final Map<String, Jwk> keyMap = new LinkedHashMap<>();
     private final List<Jwk> noKeyIdKeys = new LinkedList<>();
 
     private JwkKeys(Builder builder) {
@@ -103,7 +103,7 @@ public final class JwkKeys {
      */
     public static final class Builder implements io.helidon.common.Builder<Builder, JwkKeys> {
         private final List<Jwk> noKeyIdKeys = new LinkedList<>();
-        private final Map<String, Jwk> keyMap = new HashMap<>();
+        private final Map<String, Jwk> keyMap = new LinkedHashMap<>();
 
         private Builder() {
         }

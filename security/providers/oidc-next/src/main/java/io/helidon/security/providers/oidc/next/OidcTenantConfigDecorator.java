@@ -31,6 +31,7 @@ final class OidcTenantConfigDecorator
         implements Prototype.BuilderDecorator<OidcTenantConfig.BuilderBase<?, ?>> {
     private static final String OFFLINE_ACCESS_SCOPE = "offline_access";
     private static final String PROMPT_NONE = "none";
+    private static final Set<String> REQUEST_OBJECT_ENCRYPTION_ALGORITHMS = Set.of("RSA-OAEP-256", "RSA-OAEP");
     private static final System.Logger LOGGER = System.getLogger(OidcTenantConfigDecorator.class.getName());
 
     @Override
@@ -291,7 +292,7 @@ final class OidcTenantConfigDecorator
         if (requestObject.lifetime().isZero() || requestObject.lifetime().isNegative()) {
             throw new IllegalArgumentException("authorization-code.request-object.lifetime must be positive");
         }
-        requestObject.algorithm()
+        requestObject.signingAlgorithm()
                 .filter(algorithm -> algorithm.isBlank()
                         || !algorithm.equals(algorithm.strip())
                         || "none".equalsIgnoreCase(algorithm))
@@ -300,34 +301,89 @@ final class OidcTenantConfigDecorator
                      * Spec: RFC 9101, 10.5 Downgrade Attack
                      * https://www.rfc-editor.org/rfc/rfc9101.html#section-10.5
                      * Quote: "It MUST also reject the request if the Request Object uses an `alg` value of `none`."
-                     */
+                    */
                     throw new IllegalArgumentException(
-                            "authorization-code.request-object.algorithm must not be blank, padded, or none");
+                            "authorization-code.request-object.signing-algorithm must not be blank, padded, or none");
                 });
-        requestObject.algorithm()
+        requestObject.signingAlgorithm()
                 .filter(algorithm -> !OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm))
                 .ifPresent(algorithm -> {
-                    throw new IllegalArgumentException("authorization-code.request-object.algorithm must be one of "
-                                                               + OidcClientAuthenticationSupport
-                                                                       .privateKeyJwtAlgorithms());
+                    throw new IllegalArgumentException(
+                            "authorization-code.request-object.signing-algorithm must be one of "
+                                    + OidcClientAuthenticationSupport.privateKeyJwtAlgorithms());
                 });
-        requestObject.keyId()
+        requestObject.signingKeyId()
                 .filter(keyId -> keyId.isBlank() || !keyId.equals(keyId.strip()))
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException(
-                            "authorization-code.request-object.key-id must not be blank or padded");
+                            "authorization-code.request-object.signing-key-id must not be blank or padded");
                 });
-        requestObject.jwk()
+        requestObject.signingJwk()
                 .filter(jwk -> jwk.uri().isPresent())
                 .ifPresent(ignored -> {
                     throw new IllegalArgumentException(
-                            "authorization-code.request-object.jwk must be local private key material, not a URI");
+                            "authorization-code.request-object.signing-jwk must be local private key material, not a URI");
                 });
-        if (requestObject.mode() == OidcRequestObjectMode.REQUIRED && requestObject.jwk().isEmpty()) {
+        if ((requestObject.signingAlgorithm().isPresent() || requestObject.signingKeyId().isPresent())
+                && requestObject.signingJwk().isEmpty()) {
             throw new IllegalArgumentException(
-                    "authorization-code.request-object.jwk must be configured when "
+                    "authorization-code.request-object signing options require signing-jwk");
+        }
+        if (requestObject.mode() == OidcRequestObjectMode.REQUIRED && requestObject.signingJwk().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "authorization-code.request-object.signing-jwk must be configured when "
                             + "authorization-code.request-object.mode is REQUIRED");
         }
+        if (requestObject.mode() == OidcRequestObjectMode.DISABLED
+                && (requestObject.signingJwk().isPresent()
+                || requestObject.signingAlgorithm().isPresent()
+                || requestObject.signingKeyId().isPresent()
+                || requestObject.encryptionAlgorithm().isPresent()
+                || requestObject.contentEncryptionAlgorithm().isPresent()
+                || requestObject.encryptionKeyId().isPresent())) {
+            throw new IllegalArgumentException(
+                    "authorization-code.request-object security options cannot be configured when mode is DISABLED");
+        }
+        requestObject.encryptionAlgorithm().ifPresent(algorithm -> {
+            if (algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.encryption-algorithm must not be blank or padded");
+            }
+            if (!REQUEST_OBJECT_ENCRYPTION_ALGORITHMS.contains(algorithm)) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.encryption-algorithm is not supported: " + algorithm);
+            }
+            if (requestObject.signingJwk().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.encryption-algorithm requires signing-jwk");
+            }
+        });
+        requestObject.contentEncryptionAlgorithm().ifPresent(algorithm -> {
+            if (requestObject.encryptionAlgorithm().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.content-encryption-algorithm requires encryption-algorithm");
+            }
+            if (algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.content-encryption-algorithm must not be blank or padded");
+            }
+            if (Arrays.stream(EncryptedJwt.SupportedEncryption.values())
+                    .map(Object::toString)
+                    .noneMatch(algorithm::equals)) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.content-encryption-algorithm is not supported: " + algorithm);
+            }
+        });
+        requestObject.encryptionKeyId().ifPresent(keyId -> {
+            if (requestObject.encryptionAlgorithm().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.encryption-key-id requires encryption-algorithm");
+            }
+            if (keyId.isBlank() || !keyId.equals(keyId.strip())) {
+                throw new IllegalArgumentException(
+                        "authorization-code.request-object.encryption-key-id must not be blank or padded");
+            }
+        });
     }
 
     private static void validateAuthorizationCodePrompts(List<String> scopes, List<String> prompts) {

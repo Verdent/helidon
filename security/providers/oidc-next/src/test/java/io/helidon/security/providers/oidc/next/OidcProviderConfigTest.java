@@ -136,9 +136,12 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.pushedAuthorizationRequests(), is(OidcPushedAuthorizationRequestMode.AUTO));
         assertThat(authorizationCode.requestObject(), is(requestObject));
         assertThat(requestObject.mode(), is(OidcRequestObjectMode.AUTO));
-        assertThat(requestObject.algorithm().isEmpty(), is(true));
-        assertThat(requestObject.keyId().isEmpty(), is(true));
-        assertThat(requestObject.jwk().isEmpty(), is(true));
+        assertThat(requestObject.signingAlgorithm().isEmpty(), is(true));
+        assertThat(requestObject.signingKeyId().isEmpty(), is(true));
+        assertThat(requestObject.signingJwk().isEmpty(), is(true));
+        assertThat(requestObject.encryptionAlgorithm().isEmpty(), is(true));
+        assertThat(requestObject.contentEncryptionAlgorithm().isEmpty(), is(true));
+        assertThat(requestObject.encryptionKeyId().isEmpty(), is(true));
         assertThat(requestObject.lifetime(), is(Duration.ofMinutes(1)));
         assertThat(authorizationCode.pkceRequired(), is(true));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
@@ -349,10 +352,15 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.authorization-code.resources.1", "urn:example:contacts"),
                         Map.entry("tenants.default.authorization-code.pushed-authorization-requests", "REQUIRED"),
                         Map.entry("tenants.default.authorization-code.request-object.mode", "REQUIRED"),
-                        Map.entry("tenants.default.authorization-code.request-object.algorithm", "RS256"),
-                        Map.entry("tenants.default.authorization-code.request-object.key-id", "sign-rsa"),
-                        Map.entry("tenants.default.authorization-code.request-object.jwk.resource-path",
+                        Map.entry("tenants.default.authorization-code.request-object.signing-algorithm", "RS256"),
+                        Map.entry("tenants.default.authorization-code.request-object.signing-key-id", "sign-rsa"),
+                        Map.entry("tenants.default.authorization-code.request-object.signing-jwk.resource-path",
                                   "oidc-next-sign-jwk.json"),
+                        Map.entry("tenants.default.authorization-code.request-object.encryption-algorithm",
+                                  "RSA-OAEP-256"),
+                        Map.entry("tenants.default.authorization-code.request-object.content-encryption-algorithm",
+                                  "A256GCM"),
+                        Map.entry("tenants.default.authorization-code.request-object.encryption-key-id", "encrypt-rsa"),
                         Map.entry("tenants.default.authorization-code.request-object.lifetime", "PT2M"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.encryption-secret",
@@ -439,9 +447,13 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.pushedAuthorizationRequests(), is(OidcPushedAuthorizationRequestMode.REQUIRED));
         OidcRequestObjectConfig requestObject = authorizationCode.requestObject();
         assertThat(requestObject.mode(), is(OidcRequestObjectMode.REQUIRED));
-        assertThat(requestObject.algorithm().orElse(""), is("RS256"));
-        assertThat(requestObject.keyId().orElse(""), is("sign-rsa"));
-        assertThat(requestObject.jwk().orElseThrow().resourcePath().orElse(""), is("oidc-next-sign-jwk.json"));
+        assertThat(requestObject.signingAlgorithm().orElse(""), is("RS256"));
+        assertThat(requestObject.signingKeyId().orElse(""), is("sign-rsa"));
+        assertThat(requestObject.signingJwk().orElseThrow().resourcePath().orElse(""),
+                   is("oidc-next-sign-jwk.json"));
+        assertThat(requestObject.encryptionAlgorithm().orElse(""), is("RSA-OAEP-256"));
+        assertThat(requestObject.contentEncryptionAlgorithm().orElse(""), is("A256GCM"));
+        assertThat(requestObject.encryptionKeyId().orElse(""), is("encrypt-rsa"));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(requestObject.lifetime(), is(Duration.ofMinutes(2)));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
@@ -2191,7 +2203,7 @@ class OidcProviderConfigTest {
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -2212,13 +2224,13 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject
-                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                                .keyId("sign-rsa")
-                                .algorithm("none")))
+                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .signingKeyId("sign-rsa")
+                                .signingAlgorithm("none")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.algorithm"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-algorithm"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -2227,13 +2239,13 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject
-                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                                .keyId("sign-rsa")
-                                .algorithm("HS256")))
+                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .signingKeyId("sign-rsa")
+                                .signingAlgorithm("HS256")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.algorithm"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-algorithm"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -2242,13 +2254,13 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject
-                                .jwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                                .keyId(" sign-rsa")
-                                .algorithm("RS256")))
+                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .signingKeyId(" sign-rsa")
+                                .signingAlgorithm("RS256")))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.key-id"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-key-id"));
 
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -2257,12 +2269,50 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject
-                                .jwk(jwk -> jwk.uri(URI.create("https://issuer.example/request-object-jwk")))))
+                                .signingJwk(jwk -> jwk.uri(URI.create("https://issuer.example/request-object-jwk")))))
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.jwk"));
+        assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
         assertThat(thrown.getMessage(), containsString("not a URI"));
+    }
+
+    @Test
+    void requestObjectEncryptionRequiresValidConfiguration() {
+        assertInvalidRequestObject(requestObject -> requestObject.signingAlgorithm("RS256"), "require signing-jwk");
+        assertInvalidRequestObject(requestObject -> requestObject.signingKeyId("sign-rsa"), "require signing-jwk");
+        assertInvalidRequestObject(requestObject -> requestObject.encryptionAlgorithm("RSA-OAEP-256"),
+                                   "requires signing-jwk");
+        assertInvalidRequestObject(requestObject -> requestObject
+                                           .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                           .encryptionAlgorithm("RSA1_5"),
+                                   "encryption-algorithm is not supported");
+        assertInvalidRequestObject(requestObject -> requestObject.contentEncryptionAlgorithm("A256GCM"),
+                                   "requires encryption-algorithm");
+        assertInvalidRequestObject(requestObject -> requestObject.encryptionKeyId("encrypt-rsa"),
+                                   "requires encryption-algorithm");
+        assertInvalidRequestObject(requestObject -> requestObject
+                                           .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                           .encryptionAlgorithm("RSA-OAEP-256")
+                                           .contentEncryptionAlgorithm("unsupported"),
+                                   "content-encryption-algorithm is not supported");
+        assertInvalidRequestObject(requestObject -> requestObject
+                                           .mode(OidcRequestObjectMode.DISABLED)
+                                           .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json")),
+                                   "cannot be configured when mode is DISABLED");
+    }
+
+    @Test
+    void requestObjectEncryptionUsesRegistrationContentEncryptionDefault() {
+        OidcTenantConfig tenant = requestObjectTenantBuilder(requestObject -> requestObject
+                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                .signingKeyId("sign-rsa")
+                .encryptionAlgorithm("RSA-OAEP-256"))
+                .buildPrototype();
+        OidcRequestObjectConfig requestObject = tenant.authorizationCode().orElseThrow().requestObject();
+
+        assertThat(requestObject.encryptionAlgorithm(), is(Optional.of("RSA-OAEP-256")));
+        assertThat(requestObject.contentEncryptionAlgorithm(), is(Optional.empty()));
     }
 
     @Test
@@ -2597,8 +2647,11 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("allowed-post-logout-redirect-uris"));
         assertThat(metadata, containsString("user-info"));
         assertThat(metadata, containsString("signing-algorithm"));
+        assertThat(metadata, containsString("signing-key-id"));
+        assertThat(metadata, containsString("signing-jwk"));
         assertThat(metadata, containsString("encryption-algorithm"));
         assertThat(metadata, containsString("content-encryption-algorithm"));
+        assertThat(metadata, containsString("encryption-key-id"));
         assertThat(metadata, containsString("decryption-jwk"));
         assertThat(metadata, containsString("storage-policy"));
         assertThat(metadata, containsString("attribute-claim-paths"));
@@ -2683,6 +2736,26 @@ class OidcProviderConfigTest {
                         .userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.encryptionSecret("this-secret-is-long-enough-for-config-test"));
+    }
+
+    private static OidcTenantConfig.Builder requestObjectTenantBuilder(
+            Consumer<OidcRequestObjectConfig.Builder> customizer) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(customizer))
+                .cookies(it -> it.encryptionSecret("this-secret-is-long-enough-for-config-test"));
+    }
+
+    private static void assertInvalidRequestObject(Consumer<OidcRequestObjectConfig.Builder> customizer,
+                                                   String expectedMessage) {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> requestObjectTenantBuilder(customizer).buildPrototype());
+        assertThat(thrown.getMessage(), containsString(expectedMessage));
     }
 
     private static void assertInvalidUserInfoJwt(Consumer<OidcUserInfoJwtConfig.Builder> customizer,

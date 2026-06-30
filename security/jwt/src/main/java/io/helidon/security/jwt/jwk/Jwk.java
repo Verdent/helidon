@@ -171,12 +171,14 @@ public abstract class Jwk {
     private final String keyType;
     private final String keyId;
     private final String algorithm;
+    private final Optional<String> declaredAlgorithm;
     private final Optional<String> usage;
     private final Optional<List<String>> operations;
 
     Jwk(Builder<?> builder, String defaultAlgorithm) {
         this.keyId = builder.keyId;
-        this.algorithm = Optional.ofNullable(builder.algorithm).orElse(defaultAlgorithm);
+        this.declaredAlgorithm = Optional.ofNullable(builder.algorithm);
+        this.algorithm = declaredAlgorithm.orElse(defaultAlgorithm);
         this.keyType = builder.keyType;
         this.usage = Optional.ofNullable(builder.usage);
         this.operations = Optional.ofNullable(builder.operations);
@@ -241,6 +243,18 @@ public abstract class Jwk {
      */
     public String algorithm() {
         return algorithm;
+    }
+
+    /**
+     * Algorithm explicitly declared by the JWK {@code alg} parameter.
+     * <p>
+     * Unlike {@link #algorithm()}, this method does not return a key-type default when the JWK omitted {@code alg}.
+     *
+     * @return declared algorithm, or empty if the JWK omitted {@code alg}
+     * @see #PARAM_ALGORITHM
+     */
+    public Optional<String> declaredAlgorithm() {
+        return declaredAlgorithm;
     }
 
     /**
@@ -431,7 +445,7 @@ public abstract class Jwk {
         T fromJson(JsonObject json) {
             // key type agnostic values
             keyType(asString(json, PARAM_KEY_TYPE, "JWK Key type"));
-            keyId(asString(json, PARAM_KEY_ID, "JWK Key id"));
+            getString(json, PARAM_KEY_ID).ifPresent(this::keyId);
             getString(json, PARAM_ALGORITHM).ifPresent(this::algorithm);
             /*
              sig - signatures or MAC

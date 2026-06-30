@@ -256,7 +256,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(request.formParameters().containsKey("client_secret"), is(false));
         assertThat(request.formParameters().containsKey("client_id"), is(false));
 
-        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").get(0));
+        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").getFirst());
         signedJwt.verifySignature(null, clientSecretJwk()).checkValid();
         assertClientAssertionClaims(signedJwt);
         assertThat(signedJwt.getJwt().algorithm().orElse(""), is("HS256"));
@@ -278,7 +278,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(request.formParameters().containsKey("client_secret"), is(false));
         assertThat(request.formParameters().containsKey("client_id"), is(false));
 
-        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").get(0));
+        SignedJwt signedJwt = SignedJwt.parseToken(request.formParameters().get("client_assertion").getFirst());
         signedJwt.verifySignature(signKeys).checkValid();
         assertClientAssertionClaims(signedJwt);
         assertThat(signedJwt.getJwt().algorithm().orElse(""), is("RS256"));
@@ -1248,7 +1248,7 @@ class OidcClientCredentialsGrantTest {
     }
 
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method) {
-        return confidentialTenant(method, tenant -> { });
+        return confidentialTenant(method, _ -> { });
     }
 
     private OidcTenantConfig confidentialTenant(OidcClientAuthenticationMethod method,
@@ -1314,7 +1314,7 @@ class OidcClientCredentialsGrantTest {
                         .tokenEndpointUri(secureTokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
     }

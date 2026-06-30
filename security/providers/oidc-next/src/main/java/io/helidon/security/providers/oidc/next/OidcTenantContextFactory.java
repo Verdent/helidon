@@ -408,7 +408,7 @@ final class OidcTenantContextFactory {
                             "well-known metadata jwks_uri must be present when Request Object encryption is enabled"));
             metadata.requestObjectEncryptionAlgorithmsSupported()
                     .filter(supportedAlgorithms -> !supportedAlgorithms.contains(algorithm))
-                    .ifPresent(ignored -> {
+                    .ifPresent(_ -> {
                         throw new IllegalStateException(
                                 "well-known metadata request_object_encryption_alg_values_supported must include "
                                         + algorithm);
@@ -417,7 +417,7 @@ final class OidcTenantContextFactory {
                     .orElse(OidcRequestObjectConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
             metadata.requestObjectContentEncryptionAlgorithmsSupported()
                     .filter(supportedAlgorithms -> !supportedAlgorithms.contains(contentEncryption))
-                    .ifPresent(ignored -> {
+                    .ifPresent(_ -> {
                         throw new IllegalStateException(
                                 "well-known metadata request_object_encryption_enc_values_supported must include "
                                         + contentEncryption);

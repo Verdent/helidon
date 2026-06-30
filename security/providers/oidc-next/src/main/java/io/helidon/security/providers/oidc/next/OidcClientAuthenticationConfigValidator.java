@@ -135,13 +135,13 @@ final class OidcClientAuthenticationConfigValidator {
                 .filter(algorithm -> algorithm.isBlank()
                         || !algorithm.equals(algorithm.strip())
                         || "none".equalsIgnoreCase(algorithm))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "client-assertion.algorithm must not be blank, padded, or none");
                 });
         clientAssertion.keyId()
                 .filter(keyId -> keyId.isBlank() || !keyId.equals(keyId.strip()))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("client-assertion.key-id must not be blank or padded");
                 });
     }

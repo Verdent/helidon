@@ -58,12 +58,12 @@ class OidcSingleFlightCacheTest {
         AtomicInteger loads = new AtomicInteger();
 
         String first = cache.resolve("key",
-                                     ignored -> true,
+                                     _ -> true,
                                      CachedValue::result,
                                      () -> OidcSingleFlightCache.Resolution.doNotCache(
                                              "failure-" + loads.incrementAndGet()));
         String second = cache.resolve("key",
-                                      ignored -> true,
+                                      _ -> true,
                                       CachedValue::result,
                                       () -> OidcSingleFlightCache.Resolution.doNotCache(
                                               "failure-" + loads.incrementAndGet()));
@@ -107,7 +107,7 @@ class OidcSingleFlightCacheTest {
                 futures.add(executor.submit(() -> {
                     assertTrue(start.await(5, TimeUnit.SECONDS));
                     return cache.resolve("key",
-                                         ignored -> true,
+                                         _ -> true,
                                          CachedValue::result,
                                          () -> {
                                              loads.incrementAndGet();
@@ -176,7 +176,7 @@ class OidcSingleFlightCacheTest {
                                          CountDownLatch bothLoadersStarted,
                                          CountDownLatch releaseLoaders) {
         return cache.resolve(key,
-                             ignored -> true,
+                             _ -> true,
                              CachedValue::result,
                              () -> {
                                  bothLoadersStarted.countDown();
@@ -194,7 +194,7 @@ class OidcSingleFlightCacheTest {
                              value -> value.generation() == generation.get(),
                              CachedValue::result,
                              () -> {
-                                 int load = loads.computeIfAbsent(key, ignored -> new AtomicInteger()).incrementAndGet();
+                                 int load = loads.computeIfAbsent(key, _ -> new AtomicInteger()).incrementAndGet();
                                  CachedValue value = new CachedValue(key + "-" + load, generation.get());
                                  return OidcSingleFlightCache.Resolution.cache(value, value.result());
                              });

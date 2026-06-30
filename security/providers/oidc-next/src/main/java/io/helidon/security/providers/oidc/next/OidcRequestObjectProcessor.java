@@ -64,7 +64,7 @@ final class OidcRequestObjectProcessor {
 
     static Optional<String> signingAlgorithm(OidcRequestObjectConfig requestObject) {
         return requestObject.signingJwk()
-                .map(ignored -> signingJwk(requestObject).algorithm());
+                .map(_ -> signingJwk(requestObject).algorithm());
     }
 
     static boolean shouldUse(OidcAuthorizationCodeConfig authorizationCode, OidcProviderMetadata metadata) {

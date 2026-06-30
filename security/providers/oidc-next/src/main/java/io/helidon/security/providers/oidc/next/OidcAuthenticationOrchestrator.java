@@ -213,7 +213,7 @@ final class OidcAuthenticationOrchestrator {
             return Optional.empty();
         }
         return readyTenant.cookieStateHandler()
-                .readLocalAuthenticationResult(cookieValues.get(0), context.environment().time().toInstant())
+                .readLocalAuthenticationResult(cookieValues.getFirst(), context.environment().time().toInstant())
                 .filter(result -> readyTenant.tenantId().equals(result.tenantId()));
     }
 

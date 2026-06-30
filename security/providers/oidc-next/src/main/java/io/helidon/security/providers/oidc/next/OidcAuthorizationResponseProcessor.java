@@ -71,7 +71,7 @@ final class OidcAuthorizationResponseProcessor {
                                                            stateRemovalCookies(storedStates));
         }
 
-        StoredAuthenticationRequestState storedState = storedStates.get(0);
+        StoredAuthenticationRequestState storedState = storedStates.getFirst();
         OidcAuthenticationRequestState state = storedState.state();
         List<SetCookie> stateRemovalCookie = List.of(storedState.tenantContext()
                                                              .cookieStateHandler()
@@ -252,10 +252,10 @@ final class OidcAuthorizationResponseProcessor {
         if (values.isEmpty()) {
             return Optional.empty();
         }
-        if (values.size() > 1 || values.get(0).isEmpty()) {
+        if (values.size() > 1 || values.getFirst().isEmpty()) {
             return Optional.of(ParameterValue.invalidParameter());
         }
-        return Optional.of(ParameterValue.present(values.get(0)));
+        return Optional.of(ParameterValue.present(values.getFirst()));
     }
 
     private boolean redirectionEndpointMatches(URI callbackUri, URI expectedUri) {

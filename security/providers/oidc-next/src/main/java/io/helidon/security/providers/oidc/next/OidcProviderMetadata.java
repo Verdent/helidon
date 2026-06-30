@@ -474,7 +474,7 @@ final class OidcProviderMetadata {
         String wellKnownMetadataIssuer = wellKnown.issuer()
                 .orElseThrow(() -> new IllegalArgumentException("well-known metadata issuer must be present"));
         issuer.filter(configuredIssuer -> !configuredIssuer.equals(wellKnownMetadataIssuer))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("well-known metadata issuer must match configured issuer");
                 });
     }

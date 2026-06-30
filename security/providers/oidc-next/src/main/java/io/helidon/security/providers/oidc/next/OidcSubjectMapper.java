@@ -60,13 +60,11 @@ final class OidcSubjectMapper {
     }
 
     static Subject map(OidcValidatedAccessToken validatedToken, OidcSubjectMappingConfig subjectMapping) {
-        if (validatedToken instanceof OidcValidatedJwt validatedJwt) {
-            return mapJwt(validatedJwt, subjectMapping);
-        }
-        if (validatedToken instanceof OidcValidatedIntrospection validatedIntrospection) {
-            return mapIntrospection(validatedIntrospection, subjectMapping);
-        }
-        throw new IllegalArgumentException("Unsupported validated access token type: " + validatedToken.getClass());
+        return switch (validatedToken) {
+        case OidcValidatedJwt validatedJwt -> mapJwt(validatedJwt, subjectMapping);
+        case OidcValidatedIntrospection validatedIntrospection -> mapIntrospection(validatedIntrospection,
+                                                                                    subjectMapping);
+        };
     }
 
     static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {

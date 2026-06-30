@@ -132,7 +132,7 @@ final class OidcBearerTokenExtractor {
         if (tokens.isEmpty()) {
             return OidcBearerTokenExtractionResult.invalidRequest("Malformed Bearer Token in query parameter");
         }
-        String token = tokens.get(0);
+        String token = tokens.getFirst();
         if (malformedToken(token)) {
             return OidcBearerTokenExtractionResult.invalidRequest("Malformed Bearer Token in query parameter");
         }

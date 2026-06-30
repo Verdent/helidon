@@ -512,7 +512,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
-    void encryptedRequestObjectRejectsIneligibleProviderKeys(URI serverUri) {
+    void encryptedRequestObjectFailureDoesNotEscapeAuthenticationBoundary(URI serverUri) {
         JWK_SET.set(Resource.create("oidc-next-sign-public-jwk.json").string());
         OidcTenantConfig tenant = encryptedRequestObjectTenant(serverUri, false, false, null);
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
@@ -524,12 +524,12 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .transport("https")
                 .build();
 
-        IllegalStateException thrown = assertThrows(
-                IllegalStateException.class,
-                () -> provider.authenticate(OidcProviderTest.request(null, environment)));
+        AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
 
-        assertThat(thrown.getMessage(),
-                   is("Authorization Server JWK Set does not contain an eligible Request Object encryption key"));
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(503));
+        assertThat(response.description().orElse(""), is("OIDC authentication is unavailable"));
+        assertThat(response.throwable().isEmpty(), is(true));
     }
 
     @Test

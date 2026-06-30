@@ -105,10 +105,28 @@ final class OidcAuthenticationOrchestrator {
                                                         Optional<String> localAuthenticationRemovalCookie) {
         return switch (policy.authenticationFailureResponse()) {
         case UNAUTHORIZED -> unauthorizedFailure(context, policy, localAuthenticationRemovalCookie);
-        case AUTHORIZATION_CODE_REDIRECT -> OidcResponseFactory.authorizationCodeFlowInitiated(
-                authenticationRequestFactory.create(context),
-                localAuthenticationRemovalCookie);
+        case AUTHORIZATION_CODE_REDIRECT -> authorizationCodeFlow(context, localAuthenticationRemovalCookie);
         };
+    }
+
+    private AuthenticationResponse authorizationCodeFlow(OidcRequestContext context,
+                                                          Optional<String> localAuthenticationRemovalCookie) {
+        try {
+            return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
+                                                                      localAuthenticationRemovalCookie);
+        } catch (RuntimeException e) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                String tenantId = context.tenantContext()
+                        .map(OidcTenantContext::tenantId)
+                        .map(OidcDiagnostics::sanitizeLogValue)
+                        .orElse("<none>");
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC authorization request failed: tenant=" + tenantId
+                                   + ", reason=request-construction-failed"
+                                   + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            }
+            return OidcResponseFactory.authorizationCodeFlowUnavailable(localAuthenticationRemovalCookie);
+        }
     }
 
     private AuthenticationResponse unauthorizedFailure(OidcRequestContext context,

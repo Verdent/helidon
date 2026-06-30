@@ -58,7 +58,6 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcProviderTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -703,7 +702,7 @@ class OidcProviderTest {
     }
 
     @Test
-    void authorizationCodeFlowRequiresRequestOriginForLocalRedirectionEndpoint() {
+    void authorizationCodeFlowFailsSafelyWithoutRequestOriginForLocalRedirectionEndpoint() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code
                 .redirectionEndpointUri(URI.create("/oidc/callback")));
         OidcProvider provider = provider(tenant);
@@ -712,15 +711,13 @@ class OidcProviderTest {
                 .transport("https")
                 .build();
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                                                    () -> provider.authenticate(request(null, environment)));
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        assertThat(thrown.getMessage(),
-                   containsString("Host header or target URI is required when redirection-endpoint-uri"));
+        assertAuthorizationCodeFlowUnavailable(response);
     }
 
     @Test
-    void authorizationCodeFlowRequiresHttpsForResolvedLocalRedirectionEndpoint() {
+    void authorizationCodeFlowFailsSafelyForInsecureResolvedLocalRedirectionEndpoint() {
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code
                 .redirectionEndpointUri(URI.create("/oidc/callback")));
         OidcProvider provider = provider(tenant);
@@ -731,11 +728,9 @@ class OidcProviderTest {
                 .header("Host", "rp.example")
                 .build();
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                                                    () -> provider.authenticate(request(null, environment)));
+        AuthenticationResponse response = provider.authenticate(request(null, environment));
 
-        assertThat(thrown.getMessage(),
-                   containsString("redirection-endpoint-uri must use https unless endpoints.tls-required is disabled"));
+        assertAuthorizationCodeFlowUnavailable(response);
     }
 
     @Test
@@ -1451,6 +1446,13 @@ class OidcProviderTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
         assertThat(response.statusCode().orElse(-1), is(303));
         assertThat(response.responseHeaders().get("Location").getFirst(), containsString("/authorize"));
+    }
+
+    private static void assertAuthorizationCodeFlowUnavailable(AuthenticationResponse response) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(503));
+        assertThat(response.description().orElse(""), is("OIDC authentication is unavailable"));
+        assertThat(response.throwable().isEmpty(), is(true));
     }
 
     private static void assertInvalidBearerTokenRequest(AuthenticationResponse response, String description) {

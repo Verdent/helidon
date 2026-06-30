@@ -215,7 +215,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().get("client_assertion_type"), is(List.of(CLIENT_ASSERTION_TYPE)));
         assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
 
-        String assertion = request.formParameters().get("client_assertion").get(0);
+        String assertion = request.formParameters().get("client_assertion").getFirst();
         SignedJwt signedJwt = SignedJwt.parseToken(assertion);
         signedJwt.verifySignature(signKeys).checkValid();
         assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
@@ -352,7 +352,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
         assertThat(response.statusCode().orElse(-1), is(303));
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         assertThat(location.getPath(), is("/authorize"));
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("client_id"), is(CLIENT_ID));
@@ -406,7 +406,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null, environment));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
-        URI location = URI.create(response.responseHeaders().get("Location").get(0));
+        URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         assertThat(query.get("client_id"), is(CLIENT_ID));
         assertThat(query.get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
@@ -419,7 +419,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
         assertThat(request.formParameters().keySet(), is(Set.of("request")));
 
-        String requestObject = request.formParameters().get("request").get(0);
+        String requestObject = request.formParameters().get("request").getFirst();
         String[] requestObjectParts = requestObject.split("\\.", -1);
         assertThat(requestObjectParts.length, is(3));
         JsonObject requestObjectHeader = JsonParser.create(Base64.getUrlDecoder().decode(requestObjectParts[0]))
@@ -725,7 +725,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().containsKey("client_secret"), is(false));
         assertThat(request.formParameters().containsKey("client_id"), is(false));
 
-        String assertion = request.formParameters().get("client_assertion").get(0);
+        String assertion = request.formParameters().get("client_assertion").getFirst();
         SignedJwt signedJwt = SignedJwt.parseToken(assertion);
         signedJwt.verifySignature(null, clientSecretJwk()).checkValid();
         assertClientAssertionClaims(signedJwt);
@@ -743,7 +743,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().containsKey("client_secret"), is(false));
         assertThat(request.formParameters().containsKey("client_id"), is(false));
 
-        String assertion = request.formParameters().get("client_assertion").get(0);
+        String assertion = request.formParameters().get("client_assertion").getFirst();
         SignedJwt signedJwt = SignedJwt.parseToken(assertion);
         signedJwt.verifySignature(signKeys).checkValid();
         assertClientAssertionClaims(signedJwt);
@@ -1264,7 +1264,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private static JsonObject validTokenResponse() {
-        return validTokenResponse(it -> { });
+        return validTokenResponse(_ -> { });
     }
 
     private static JsonObject validTokenResponse(Consumer<JsonObject.Builder> customizer) {

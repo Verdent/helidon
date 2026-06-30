@@ -29,12 +29,12 @@ final class OidcTenantResolutionConfigDecorator
     public void decorate(OidcTenantResolutionConfig.BuilderBase<?, ?> target) {
         target.headerName()
                 .filter(headerName -> headerName.isBlank() || !headerName.equals(headerName.strip()))
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("tenant-resolution.header-name must not be blank or padded");
                 });
         target.pathSegment()
                 .filter(pathSegment -> pathSegment < 0)
-                .ifPresent(ignored -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException("tenant-resolution.path-segment must not be negative");
                 });
         target.pathTemplate().ifPresent(pathTemplate -> {

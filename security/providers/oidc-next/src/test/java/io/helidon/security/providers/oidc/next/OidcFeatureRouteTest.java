@@ -695,7 +695,7 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointRouteRejectsUnexpectedJwtUserInfo(URI serverUri) {
         userInfoEndpointContentType = "application/jwt";
-        userInfoEndpointResponseBody = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, jwt -> { });
+        userInfoEndpointResponseBody = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, _ -> { });
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
@@ -722,7 +722,7 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointRouteRejectsInvalidNestedUserInfo(URI serverUri) {
         userInfoEndpointContentType = "application/jwt";
-        String signed = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, jwt -> { });
+        String signed = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, _ -> { });
         userInfoEndpointResponseBody = encryptedSignedPayload(tamperedSignature(signed),
                                                               EncryptedJwt.SupportedAlgorithm.RSA_OAEP_256,
                                                               EncryptedJwt.SupportedEncryption.A256GCM);
@@ -944,20 +944,20 @@ class OidcFeatureRouteTest {
             for (String invalidResponse : List.of(tamperedSignature(signedUserInfo(SUBJECT,
                                                                                    ISSUER.toString(),
                                                                                    CLIENT_ID,
-                                                                                   jwt -> { })),
+                                                                                   _ -> { })),
                                                   unsignedUserInfo(),
                                                   signedUserInfo("other-subject",
                                                                  ISSUER.toString(),
                                                                  CLIENT_ID,
-                                                                 jwt -> { }),
+                                                                 _ -> { }),
                                                   signedUserInfo(SUBJECT,
                                                                  "https://other-issuer.example",
                                                                  CLIENT_ID,
-                                                                 jwt -> { }),
+                                                                 _ -> { }),
                                                   signedUserInfo(SUBJECT,
                                                                  ISSUER.toString(),
                                                                  "other-client",
-                                                                 jwt -> { }))) {
+                                                                 _ -> { }))) {
                 userInfoEndpointResponseBody = invalidResponse;
                 URI callbackUri = callbackUri(rpServer);
                 SetCookie stateCookie = authenticationRequestCookie(callbackUri, tenant);
@@ -1503,7 +1503,7 @@ class OidcFeatureRouteTest {
 
     @Test
     void logoutEndpointRouteRejectsMissingIdTokenHintWhenRequired() {
-        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> { });
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(_ -> { });
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             try (HttpClientResponse response = WebClient.builder()
@@ -1682,12 +1682,12 @@ class OidcFeatureRouteTest {
                                                                     "auth",
                                                                     "shared-cookie-secret",
                                                                     tenantAEndSessionEndpoint,
-                                                                    endSession -> { });
+                                                                    _ -> { });
         OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
                                                                     "auth",
                                                                     "shared-cookie-secret",
                                                                     tenantBEndSessionEndpoint,
-                                                                    endSession -> { });
+                                                                    _ -> { });
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
                 .putTenant("tenant-b", tenantB)
@@ -1725,12 +1725,12 @@ class OidcFeatureRouteTest {
                                                                     "auth-a",
                                                                     "tenant-a-secret",
                                                                     URI.create("https://issuer.example/logout-a"),
-                                                                    endSession -> { });
+                                                                    _ -> { });
         OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
                                                                     "auth-b",
                                                                     "tenant-b-secret",
                                                                     URI.create("https://issuer.example/logout-b"),
-                                                                    endSession -> { });
+                                                                    _ -> { });
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
                 .putTenant("tenant-b", tenantB)
@@ -1788,7 +1788,7 @@ class OidcFeatureRouteTest {
     }
 
     private static OidcTenantConfig tenantConfigWithLogout() {
-        return tenantConfigWithLogout(logout -> { });
+        return tenantConfigWithLogout(_ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithLogout(Consumer<OidcLogoutConfig.Builder> logout) {
@@ -1800,7 +1800,7 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(
             Consumer<OidcEndSessionConfig.Builder> endSession) {
-        return tenantConfigWithEndSessionLogout(endSession, builder -> { });
+        return tenantConfigWithEndSessionLogout(endSession, _ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(
@@ -1824,7 +1824,7 @@ class OidcFeatureRouteTest {
                                                cookieSecret,
                                                endSessionEndpointUri,
                                                endSession,
-                                               builder -> { });
+                                               _ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
@@ -1868,7 +1868,7 @@ class OidcFeatureRouteTest {
         return tenantConfigWithLogout(authenticationRequestCookieName,
                                       localAuthenticationCookieName,
                                       cookieSecret,
-                                      logout -> { });
+                                      _ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithLogout(String authenticationRequestCookieName,
@@ -1891,7 +1891,7 @@ class OidcFeatureRouteTest {
     }
 
     private static OidcTenantConfig tenantConfig(URI openIdProviderUri) {
-        return tenantConfig(openIdProviderUri, authorizationCode -> { });
+        return tenantConfig(openIdProviderUri, _ -> { });
     }
 
     private static OidcTenantConfig tenantConfig(URI openIdProviderUri,
@@ -1914,7 +1914,7 @@ class OidcFeatureRouteTest {
     }
 
     private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri) {
-        return tenantConfigWithUserInfo(openIdProviderUri, userInfo -> { });
+        return tenantConfigWithUserInfo(openIdProviderUri, _ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri,

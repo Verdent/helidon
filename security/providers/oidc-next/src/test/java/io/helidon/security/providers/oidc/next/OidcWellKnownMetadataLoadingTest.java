@@ -1037,7 +1037,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -1060,7 +1060,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 
@@ -1082,7 +1082,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(it -> { })
+                .userInfo(_ -> { })
                 .cookies(it -> it.encryptionSecret("test-cookie-secret"))
                 .buildPrototype();
 

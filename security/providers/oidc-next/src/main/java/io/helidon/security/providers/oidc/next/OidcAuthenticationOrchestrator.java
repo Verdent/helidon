@@ -61,7 +61,7 @@ final class OidcAuthenticationOrchestrator {
 
         OidcRequestContext context = new OidcRequestContext(providerRequest, tenantRuntimeRegistry);
         if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
-            return OidcResponseFactory.tenantUnavailable(context.tenantContext().orElseThrow());
+            return OidcResponseFactory.tenantUnavailable();
         }
 
         if (context.bearerTokenInvalidRequest()) {
@@ -70,8 +70,7 @@ final class OidcAuthenticationOrchestrator {
                            "OIDC Bearer token request rejected: reason="
                                    + OidcDiagnostics.sanitizeLogValue(context.bearerTokenErrorDescription()));
             }
-            return OidcResponseFactory.invalidBearerTokenRequest(context.bearerTokenErrorDescription(),
-                                                                 context.bearerChallengeRealm());
+            return OidcResponseFactory.invalidBearerTokenRequest(context.bearerChallengeRealm());
         }
         if (context.bearerTokenPresent()) {
             return authenticateBearerToken(context);
@@ -268,8 +267,7 @@ final class OidcAuthenticationOrchestrator {
                                           tenantContext.subjectMapping()));
         }
         debugBearerTokenValidationFailure(tenantContext, validationResult);
-        String errorDescription = validationResult.errorDescription().orElse("Bearer Token is invalid");
-        return OidcResponseFactory.invalidBearerToken(errorDescription, tenantContext.bearerChallengeRealm());
+        return OidcResponseFactory.invalidBearerToken(tenantContext.bearerChallengeRealm());
     }
 
     private static void debugBearerTokenValidationFailure(OidcTenantContext tenantContext,

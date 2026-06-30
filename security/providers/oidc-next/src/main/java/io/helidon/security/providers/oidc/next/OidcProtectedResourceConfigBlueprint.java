@@ -25,6 +25,9 @@ import io.helidon.builder.api.Prototype;
 @Prototype.Blueprint
 @Prototype.Configured
 interface OidcProtectedResourceConfigBlueprint {
+    /**
+     * Default realm for Bearer {@code WWW-Authenticate} challenges.
+     */
     String DEFAULT_CHALLENGE_REALM = "helidon";
 
     /**

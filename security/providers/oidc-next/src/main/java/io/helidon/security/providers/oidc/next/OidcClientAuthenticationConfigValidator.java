@@ -37,14 +37,7 @@ final class OidcClientAuthenticationConfigValidator {
          * RFC 6749 section 4.4 quote: "The client credentials grant type MUST only be used by confidential clients."
          * RFC 6749 section 4.4.2 quote: "The authorization server MUST authenticate the client."
          */
-        validateConfidentialTokenEndpointGrant(tenant.clientId(),
-                                               tenant.clientSecret(),
-                                               tenant.tokenEndpointAuthenticationMethod(),
-                                               tenant.clientAssertion(),
-                                               tenant.webClient(),
-                                               tenant.issuer(),
-                                               endpoints,
-                                               operation);
+        validateConfidentialTokenEndpointGrant(tenant, endpoints, operation);
     }
 
     static void validateTokenExchange(OidcTenantConfig tenant, OidcEndpointConfig endpoints) {
@@ -56,14 +49,7 @@ final class OidcClientAuthenticationConfigValidator {
          * Quote: "omitting client authentication allows for a compromised token to be leveraged via an STS into other
          * tokens"
          */
-        validateConfidentialTokenEndpointGrant(tenant.clientId(),
-                                               tenant.clientSecret(),
-                                               tenant.tokenEndpointAuthenticationMethod(),
-                                               tenant.clientAssertion(),
-                                               tenant.webClient(),
-                                               tenant.issuer(),
-                                               endpoints,
-                                               "Token Exchange");
+        validateConfidentialTokenEndpointGrant(tenant, endpoints, "Token Exchange");
     }
 
     static boolean tokenEndpointTlsRequired(OidcTenantConfig tenant) {
@@ -160,26 +146,21 @@ final class OidcClientAuthenticationConfigValidator {
                 });
     }
 
-    private static void validateConfidentialTokenEndpointGrant(
-            Optional<String> clientId,
-            Optional<String> clientSecret,
-            Optional<OidcClientAuthenticationMethod> authenticationMethod,
-            OidcClientAssertionConfig clientAssertion,
-            WebClientConfig webClient,
-            Optional<String> issuer,
-            OidcEndpointConfig endpoints,
-            String operation) {
-        clientId.orElseThrow(() -> new IllegalArgumentException(
+    private static void validateConfidentialTokenEndpointGrant(OidcTenantConfig tenant,
+                                                               OidcEndpointConfig endpoints,
+                                                               String operation) {
+        tenant.clientId().orElseThrow(() -> new IllegalArgumentException(
                 "client-id must be configured when " + operation + " is enabled"));
-        validateTokenEndpointAuthentication(clientSecret,
-                                            authenticationMethod,
-                                            clientAssertion,
-                                            webClient,
+        validateTokenEndpointAuthentication(tenant.clientSecret(),
+                                            tenant.tokenEndpointAuthenticationMethod(),
+                                            tenant.clientAssertion(),
+                                            tenant.webClient(),
                                             true,
                                             operation);
         boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
-                || mutualTlsTokenEndpointAuthentication(clientSecret, authenticationMethod);
-        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(issuer, endpoints);
+                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
+                                                        tenant.tokenEndpointAuthenticationMethod());
+        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
         OidcEndpointUris.requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
                                                     wellKnownUri,
                                                     "token-endpoint-uri",

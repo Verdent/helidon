@@ -23,11 +23,18 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Acquires and reuses outbound RFC 8693 Token Exchange access tokens.
+ * <p>
+ * The cache key covers the tenant, subject token identity, scope, resource, and audience. Only a SHA-256 digest of the
+ * subject token is retained in the key; the raw credential is passed to the elected loader but is not retained by the
+ * cache. The underlying cache is bounded and process-local, and concurrent requests for the same complete key share one
+ * Token Endpoint operation while requests for different keys remain independent.
+ */
 final class OidcTokenExchangeTokenManager {
-    private final ConcurrentMap<CacheKey, CachedToken> tokens = new ConcurrentHashMap<>();
+    private final OidcSingleFlightCache<CacheKey, CachedToken, OidcTokenExchangeResult> tokens =
+            new OidcSingleFlightCache<>();
 
     OidcTokenExchangeResult token(OidcTenantContext tenantContext,
                                   OidcOutboundPolicy policy,
@@ -39,35 +46,39 @@ final class OidcTokenExchangeTokenManager {
                                          policy.tokenExchangeResource().orElse(""),
                                          policy.tokenExchangeAudience().orElse(""));
         Duration clockSkew = tenantContext.tokenValidation().clockSkew();
-        CachedToken cachedToken = tokens.get(cacheKey);
-        if (cachedToken != null && cachedToken.activeAt(now, clockSkew)) {
-            return OidcTokenExchangeResult.success(cachedToken.tokenResponse());
-        }
+        return tokens.resolve(cacheKey,
+                              cachedToken -> cachedToken.activeAt(now, clockSkew),
+                              cachedToken -> OidcTokenExchangeResult.success(cachedToken.tokenResponse()),
+                              () -> loadToken(tenantContext, policy, subjectToken, now, clockSkew));
+    }
 
+    private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenExchangeResult> loadToken(
+            OidcTenantContext tenantContext,
+            OidcOutboundPolicy policy,
+            String subjectToken,
+            Instant now,
+            Duration clockSkew) {
         OidcTokenExchangeResult result = tenantContext.endpointClient()
                 .tokenExchange(subjectToken,
                                policy.tokenExchangeScope(),
                                policy.tokenExchangeResource(),
                                policy.tokenExchangeAudience());
         if (!result.succeeded()) {
-            return result;
+            // Share this endpoint result with current waiters, but allow a later request to retry.
+            return OidcSingleFlightCache.Resolution.doNotCache(result);
         }
 
         OidcTokenExchangeResponse tokenResponse = result.tokenResponse().orElseThrow();
-        Optional<Long> expiresIn = tokenResponse.expiresIn()
-                .filter(value -> value > 0);
+        Optional<Long> expiresIn = tokenResponse.expiresIn().filter(value -> value > 0);
         if (expiresIn.isEmpty()) {
-            tokens.remove(cacheKey);
-            return result;
+            // Without a positive lifetime, there is no defensible interval in which this token can be reused.
+            return OidcSingleFlightCache.Resolution.doNotCache(result);
         }
 
-        CachedToken newCachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
-        if (newCachedToken.activeAt(now, clockSkew)) {
-            tokens.put(cacheKey, newCachedToken);
-        } else {
-            tokens.remove(cacheKey);
-        }
-        return result;
+        CachedToken cachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
+        return cachedToken.activeAt(now, clockSkew)
+                ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
+                : OidcSingleFlightCache.Resolution.doNotCache(result);
     }
 
     private static String tokenHash(String token) {

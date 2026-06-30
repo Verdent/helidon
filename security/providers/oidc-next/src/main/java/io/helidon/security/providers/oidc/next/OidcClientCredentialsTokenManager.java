@@ -20,11 +20,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Acquires and reuses outbound Client Credentials access tokens.
+ * <p>
+ * The cache key includes every input that can change the authority or requested access: tenant, scope, and ordered
+ * resource indicators. The underlying cache is bounded and process-local, and concurrent requests for the same key
+ * share one Token Endpoint operation. Requests for different keys remain independent.
+ */
 final class OidcClientCredentialsTokenManager {
-    private final ConcurrentMap<CacheKey, CachedToken> tokens = new ConcurrentHashMap<>();
+    private final OidcSingleFlightCache<CacheKey, CachedToken, OidcTokenEndpointResult> tokens =
+            new OidcSingleFlightCache<>();
 
     OidcTokenEndpointResult token(OidcTenantContext tenantContext,
                                   Optional<String> scope,
@@ -33,31 +39,35 @@ final class OidcClientCredentialsTokenManager {
         List<String> resourceList = List.copyOf(resources);
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""), resourceList);
         Duration clockSkew = tenantContext.tokenValidation().clockSkew();
-        CachedToken cachedToken = tokens.get(cacheKey);
-        if (cachedToken != null && cachedToken.activeAt(now, clockSkew)) {
-            return OidcTokenEndpointResult.success(cachedToken.tokenResponse());
-        }
+        return tokens.resolve(cacheKey,
+                              cachedToken -> cachedToken.activeAt(now, clockSkew),
+                              cachedToken -> OidcTokenEndpointResult.success(cachedToken.tokenResponse()),
+                              () -> loadToken(tenantContext, scope, resourceList, now, clockSkew));
+    }
 
-        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope, resourceList);
+    private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenEndpointResult> loadToken(
+            OidcTenantContext tenantContext,
+            Optional<String> scope,
+            List<String> resources,
+            Instant now,
+            Duration clockSkew) {
+        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope, resources);
         if (!result.succeeded()) {
-            return result;
+            // Share this endpoint result with current waiters, but allow a later request to retry.
+            return OidcSingleFlightCache.Resolution.doNotCache(result);
         }
 
         OidcTokenResponse tokenResponse = result.tokenResponse().orElseThrow();
-        Optional<Long> expiresIn = tokenResponse.expiresIn()
-                .filter(value -> value > 0);
+        Optional<Long> expiresIn = tokenResponse.expiresIn().filter(value -> value > 0);
         if (expiresIn.isEmpty()) {
-            tokens.remove(cacheKey);
-            return result;
+            // Without a positive lifetime, there is no defensible interval in which this token can be reused.
+            return OidcSingleFlightCache.Resolution.doNotCache(result);
         }
 
-        CachedToken newCachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
-        if (newCachedToken.activeAt(now, clockSkew)) {
-            tokens.put(cacheKey, newCachedToken);
-        } else {
-            tokens.remove(cacheKey);
-        }
-        return result;
+        CachedToken cachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
+        return cachedToken.activeAt(now, clockSkew)
+                ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
+                : OidcSingleFlightCache.Resolution.doNotCache(result);
     }
 
     private record CacheKey(String tenantId, String scope, List<String> resources) {

@@ -18,11 +18,17 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -69,6 +75,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
@@ -86,6 +93,8 @@ class OidcClientCredentialsGrantTest {
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static volatile CountDownLatch tokenRequestStarted;
+    private static volatile CountDownLatch releaseTokenResponse;
 
     private static volatile int responseStatus;
     private static volatile String responseBody;
@@ -161,6 +170,8 @@ class OidcClientCredentialsGrantTest {
         REQUEST_COUNT.set(0);
         REDIRECTED_REQUEST_COUNT.set(0);
         RECORDED_REQUEST.set(null);
+        tokenRequestStarted = null;
+        releaseTokenResponse = null;
     }
 
     @Test
@@ -920,6 +931,41 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void concurrentClientCredentialsRequestsUseSingleTokenEndpointRequest() throws Exception {
+        int taskCount = 32;
+        dynamicTokenResponse = true;
+        dynamicExpiresIn = 600;
+        tokenRequestStarted = new CountDownLatch(1);
+        releaseTokenResponse = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+        OidcProvider provider = provider(confidentialTenant());
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                futures.add(executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return provider.outboundSecurity(providerRequest(),
+                                                     outboundEnvironment(),
+                                                     EndpointConfig.create());
+                }));
+            }
+
+            start.countDown();
+            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            releaseTokenResponse.countDown();
+            for (Future<OutboundSecurityResponse> future : futures) {
+                assertThat(future.get().requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                           is(List.of("Bearer access-token-1")));
+            }
+        } finally {
+            releaseTokenResponse.countDown();
+        }
+
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
     void expiredClientCredentialsTokenIsReacquired() {
         dynamicTokenResponse = true;
         dynamicExpiresIn = 120;
@@ -1137,6 +1183,14 @@ class OidcClientCredentialsGrantTest {
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         int requestNumber = REQUEST_COUNT.incrementAndGet();
+        CountDownLatch requestStarted = tokenRequestStarted;
+        if (requestStarted != null) {
+            requestStarted.countDown();
+        }
+        CountDownLatch releaseResponse = releaseTokenResponse;
+        if (releaseResponse != null) {
+            await(releaseResponse);
+        }
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
                                                 request.requestedUri().path().path(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
@@ -1154,6 +1208,15 @@ class OidcClientCredentialsGrantTest {
             response.header(HeaderNames.LOCATION, redirectLocation);
         }
         response.send(body);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for Token Endpoint test response", e);
+        }
     }
 
     private static void handleRedirectedTokenEndpoint(ServerRequest request, ServerResponse response) {

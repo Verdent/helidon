@@ -23,6 +23,7 @@ import io.helidon.webclient.api.WebClient;
 final class OidcTenantContext {
     private final String tenantId;
     private final OidcTenantConfig tenantConfig;
+    private final OidcCookieStateHandler cookieStateHandler;
     private final OidcTenantState state;
     private final Optional<RuntimeResources> runtimeResources;
     private final Throwable failureCause;
@@ -35,10 +36,25 @@ final class OidcTenantContext {
                               Throwable failureCause) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
+        this.cookieStateHandler = OidcCookieStateHandler.create(tenantId, tenantConfig);
         this.state = state;
         this.runtimeResources = state == OidcTenantState.READY
                 ? Optional.of(RuntimeResources.create(tenantId, tenantConfig, readyMetadata, readyWebClient))
                 : Optional.empty();
+        this.failureCause = failureCause;
+    }
+
+    private OidcTenantContext(String tenantId,
+                              OidcTenantConfig tenantConfig,
+                              OidcCookieStateHandler cookieStateHandler,
+                              OidcTenantState state,
+                              Optional<RuntimeResources> runtimeResources,
+                              Throwable failureCause) {
+        this.tenantId = tenantId;
+        this.tenantConfig = tenantConfig;
+        this.cookieStateHandler = cookieStateHandler;
+        this.state = state;
+        this.runtimeResources = runtimeResources;
         this.failureCause = failureCause;
     }
 
@@ -88,6 +104,15 @@ final class OidcTenantContext {
         return Optional.ofNullable(failureCause);
     }
 
+    OidcTenantContext withCookieStateHandler(OidcCookieStateHandler cookieStateHandler) {
+        return new OidcTenantContext(tenantId,
+                                     tenantConfig,
+                                     cookieStateHandler,
+                                     state,
+                                     runtimeResources,
+                                     failureCause);
+    }
+
     boolean ready() {
         return state == OidcTenantState.READY;
     }
@@ -124,7 +149,8 @@ final class OidcTenantContext {
     }
 
     OidcCookieStateHandler cookieStateHandler() {
-        return runtimeResources().cookieStateHandler();
+        runtimeResources();
+        return cookieStateHandler;
     }
 
     OidcIdTokenDecryptor idTokenDecryptor() {
@@ -169,7 +195,6 @@ final class OidcTenantContext {
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
-                                    OidcCookieStateHandler cookieStateHandler,
                                     WebClient webClient) {
         private static RuntimeResources create(String tenantId,
                                                OidcTenantConfig tenantConfig,
@@ -188,7 +213,6 @@ final class OidcTenantContext {
                                         jwkSetManager,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
-                                        OidcCookieStateHandler.create(tenantConfig.cookies()),
                                         webClient);
         }
     }

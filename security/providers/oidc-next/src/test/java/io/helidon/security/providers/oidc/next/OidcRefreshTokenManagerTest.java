@@ -73,7 +73,7 @@ class OidcRefreshTokenManagerTest {
     private static final String CLIENT_SECRET = "client-secret";
     private static final String SUBJECT = "user1-id";
     private static final String USERNAME = "user1";
-    private static final String COOKIE_SECRET = "test-cookie-secret";
+    private static final String COOKIE_PASSWORD = "test-cookie-password";
     private static final String OLD_ACCESS_TOKEN = "old-access-token";
     private static final String OLD_REFRESH_TOKEN = "old-refresh-token";
     private static final String REFRESHED_ACCESS_TOKEN = "refreshed-access-token";
@@ -741,7 +741,7 @@ class OidcRefreshTokenManagerTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile"))
                         .resources(authorizationCodeResources))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -760,7 +760,7 @@ class OidcRefreshTokenManagerTest {
                         .tokenValidation(validation -> validation
                                 .method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -779,7 +779,7 @@ class OidcRefreshTokenManagerTest {
                         .tokenValidation(validation -> validation
                                 .method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience(AUDIENCE)))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -801,7 +801,7 @@ class OidcRefreshTokenManagerTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .userInfo(userInfo)
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -860,7 +860,7 @@ class OidcRefreshTokenManagerTest {
                                                        Consumer<Jwt.Builder> idTokenCustomizer) {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
-        return OidcCookieStateHandler.create(tenant.cookies())
+        return OidcCookieStateHandler.create("default", tenant)
                 .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
                         OidcLocalAuthenticationState.builder()
                                 .tenantId("default")
@@ -1015,7 +1015,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(setCookies.size(), is(1));
         SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
         assertThat(refreshedCookie.name(), is(localAuthenticationCookieName));
-        return OidcCookieStateHandler.create(tenant.cookies())
+        return OidcCookieStateHandler.create("default", tenant)
                 .readLocalAuthenticationResult(refreshedCookie.value(),
                                                Instant.now(),
                                                OidcIdTokenDecryptor.create(tenant))

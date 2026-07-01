@@ -200,7 +200,7 @@ final class OidcAuthorizationResponseProcessor {
             return Optional.empty();
         }
 
-        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenantConfig.cookies());
+        OidcCookieStateHandler cookieStateHandler = tenantRuntimeRegistry.cookieStateHandler(tenantId).orElseThrow();
         String cookieName = cookieStateHandler.cookieConfig().authenticationRequestCookieName();
         List<String> stateCookies = cookies.getOrDefault(cookieName, List.of());
         if (stateCookies.size() != 1) {

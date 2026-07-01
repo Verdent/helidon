@@ -71,7 +71,7 @@ final class KeycloakOidcIntegrationSupport {
     static final String USERNAME = "alice";
     static final String PASSWORD = "secret";
 
-    private static final String COOKIE_SECRET = "keycloak-integration-test-cookie-secret";
+    private static final String COOKIE_PASSWORD = "keycloak-integration-test-cookie-password";
     private static final Pattern LOGIN_FORM_ACTION = Pattern.compile(
             "<form[^>]+action=\"([^\"]+/login-actions/authenticate[^\"]*)\"");
 
@@ -139,7 +139,7 @@ final class KeycloakOidcIntegrationSupport {
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .logout(logout -> logout.endSession(endSession -> {
                 }))
-                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET));
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())

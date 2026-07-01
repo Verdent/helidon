@@ -49,7 +49,7 @@ class OidcIdTokenValidatorTest {
     private static final String CLIENT_ID = "client-id";
     private static final String SUBJECT = "user1-id";
     private static final String NONCE = "nonce-value";
-    private static final String COOKIE_SECRET = "test-cookie-secret";
+    private static final String COOKIE_PASSWORD = "test-cookie-password";
     private static final Instant VALIDATION_TIME = Instant.parse("2026-06-30T12:00:00Z");
 
     private static JwkKeys signKeys;
@@ -449,7 +449,7 @@ class OidcIdTokenValidatorTest {
                         .jwksUri(jwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET));
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)));
         customizer.accept(builder);
         return builder.buildPrototype();
     }

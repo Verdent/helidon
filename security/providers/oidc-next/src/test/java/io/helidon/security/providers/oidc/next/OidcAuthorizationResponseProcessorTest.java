@@ -48,7 +48,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void validAuthorizationResponseValidatesStateAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -75,7 +75,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationResponseIssuerParameterMatchesExpectedIssuer() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -96,7 +96,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void mismatchedAuthorizationResponseIssuerFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -118,7 +118,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void duplicateAuthorizationResponseIssuerFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -141,7 +141,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void blankAuthorizationResponseIssuerFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -163,7 +163,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void missingAuthorizationResponseIssuerFailsWhenMetadataAdvertisesSupport() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -184,7 +184,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationErrorResponseValidatesIssuerBeforeError() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -206,7 +206,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void missingAuthorizationResponseStateFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
 
         OidcAuthorizationResponseResult result = process(config,
@@ -222,7 +222,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void duplicateAuthorizationResponseStateFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
 
         OidcAuthorizationResponseResult result = process(config,
@@ -240,7 +240,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void blankAuthorizationResponseStateFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
 
         OidcAuthorizationResponseResult result = process(config,
@@ -256,7 +256,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void reusedAuthorizationResponseStateWithoutCookieFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
 
         OidcAuthorizationResponseResult result = process(config,
@@ -272,7 +272,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void malformedAuthenticationRequestStateCookieFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
 
         OidcAuthorizationResponseResult result = process(config,
@@ -288,7 +288,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authenticationRequestStateCookieWithWrongTenantIdFails() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("second",
                                                                           STATE,
@@ -308,8 +308,8 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void unknownRoutedTenantFailsWithoutInitializingAnyTenant() {
-        OidcTenantConfig defaultTenant = authorizationCodeTenant("shared-secret", REDIRECTION_ENDPOINT_URI);
-        OidcTenantConfig secondTenant = authorizationCodeTenant("shared-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("shared-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("shared-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
                 .putTenant("second", secondTenant)
@@ -333,9 +333,9 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     @Test
-    void spoofedRouteFailsCookieBindingEvenWhenTenantsShareEncryptionSecret() {
-        OidcTenantConfig defaultTenant = authorizationCodeTenant("shared-secret", REDIRECTION_ENDPOINT_URI);
-        OidcTenantConfig secondTenant = authorizationCodeTenant("shared-secret", REDIRECTION_ENDPOINT_URI);
+    void spoofedRouteFailsCookieBindingEvenWhenTenantsSharePassword() {
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("shared-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("shared-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
                 .putTenant("second", secondTenant)
@@ -365,8 +365,8 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void validCallbackInitializesOnlyRoutedTenant() {
-        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-secret", REDIRECTION_ENDPOINT_URI);
-        OidcTenantConfig secondTenant = authorizationCodeTenant("second-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
                 .putTenant("second", secondTenant)
@@ -401,8 +401,8 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void duplicateAuthenticationRequestStateCookiesFailWithoutClearingUnverifiedCookies() {
-        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-secret", REDIRECTION_ENDPOINT_URI);
-        OidcTenantConfig secondTenant = authorizationCodeTenant("second-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
                 .putTenant("second", secondTenant)
@@ -432,7 +432,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void mismatchedAuthorizationResponseStateFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -452,7 +452,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void expiredAuthenticationRequestStateFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -472,8 +472,8 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationResponseTenantComesFromCookieBackedState() {
-        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-secret", REDIRECTION_ENDPOINT_URI);
-        OidcTenantConfig secondTenant = authorizationCodeTenant("second-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig defaultTenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig secondTenant = authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
                 .putTenant("second", secondTenant)
@@ -495,7 +495,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationErrorResponseIsHandledBeforeTokenExchange() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -519,7 +519,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationErrorResponseRejectsInvalidErrorCharacters() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -538,7 +538,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationErrorResponseRejectsInvalidErrorDescriptionCharacters() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -559,7 +559,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void authorizationErrorResponseRejectsInvalidErrorUri() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -581,7 +581,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     @Test
     void redirectionEndpointMismatchFailsAndClearsCookie() {
-        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-secret", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
                                                                           STATE,
@@ -603,8 +603,8 @@ class OidcAuthorizationResponseProcessorTest {
     @Test
     void featureRegistersConfiguredRedirectionEndpointPaths() {
         OidcProviderConfig config = OidcProviderConfig.builder()
-                .putTenant("default", authorizationCodeTenant("default-secret", REDIRECTION_ENDPOINT_URI))
-                .putTenant("second", authorizationCodeTenant("second-secret", OTHER_REDIRECTION_ENDPOINT_URI))
+                .putTenant("default", authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .putTenant("second", authorizationCodeTenant("second-cookie-password", OTHER_REDIRECTION_ENDPOINT_URI))
                 .putTenant("disabled", OidcTenantConfig.builder()
                         .enabled(false)
                         .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/disabled/callback")))
@@ -659,7 +659,7 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     private static SetCookie stateCookie(OidcTenantConfig tenantConfig, OidcAuthenticationRequestState state) {
-        return OidcCookieStateHandler.create(tenantConfig.cookies())
+        return OidcCookieStateHandler.create(state.tenantId(), tenantConfig)
                 .createAuthenticationRequestCookie(state);
     }
 
@@ -684,14 +684,14 @@ class OidcAuthorizationResponseProcessorTest {
                 .buildPrototype();
     }
 
-    private static OidcTenantConfig authorizationCodeTenant(String cookieSecret, URI redirectionEndpointUri) {
+    private static OidcTenantConfig authorizationCodeTenant(String cookiePassword, URI redirectionEndpointUri) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
-                .cookies(it -> it.encryptionSecret(cookieSecret))
+                .cookies(it -> it.protection(protection -> protection.password(cookiePassword)))
                 .buildPrototype();
     }
 

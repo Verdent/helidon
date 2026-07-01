@@ -73,7 +73,8 @@ final class OidcLogoutHandler {
         List<LogoutTenant> logoutTenants = tenants.stream()
                 .map(entry -> {
                     OidcTenantConfig tenantConfig = entry.getValue();
-                    OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenantConfig.cookies());
+                    OidcCookieStateHandler cookieStateHandler = tenantRuntimeRegistry.cookieStateHandler(entry.getKey())
+                            .orElseThrow();
                     OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
                     Optional<OidcLocalAuthenticationResult> localAuthenticationResult = cookies
                             .getOrDefault(cookieStateHandler.cookieConfig().localAuthenticationCookieName(), List.of())

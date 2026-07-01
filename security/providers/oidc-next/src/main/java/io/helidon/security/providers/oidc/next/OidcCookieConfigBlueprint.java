@@ -73,13 +73,13 @@ interface OidcCookieConfigBlueprint {
     Duration localAuthenticationLifetime();
 
     /**
-     * Cookie encryption secret.
+     * Password-based cookie protection.
      * <p>
-     * When configured, the value must not be blank. Authorization Code Flow requires this option.
+     * Authorization Code Flow requires this option because its Authentication Request and local authentication
+     * cookies contain security-sensitive state.
      *
-     * @return cookie encryption secret
+     * @return cookie protection configuration
      */
     @Option.Configured
-    @Option.Confidential
-    Optional<String> encryptionSecret();
+    Optional<OidcCookieProtectionConfig> protection();
 }

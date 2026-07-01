@@ -75,7 +75,7 @@ class OidcFeatureRouteTest {
     private static final URI CONFIGURED_REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/logged-out");
     private static final URI OTHER_POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/other-logged-out");
-    private static final String COOKIE_SECRET = "test-cookie-secret";
+    private static final String COOKIE_PASSWORD = "test-cookie-password";
     private static final String CLIENT_ID = "client-id";
     private static final String CLIENT_SECRET = "client-secret";
     private static final String SUBJECT = "user1-id";
@@ -234,7 +234,7 @@ class OidcFeatureRouteTest {
     void redirectionEndpointRouteHandlesAuthorizationErrorBeforeTokenExchange(WebClient client, URI serverUri) {
         Instant now = Instant.now();
         URI callbackUri = serverUri.resolve("oidc/callback");
-        SetCookie stateCookie = OidcCookieStateHandler.create(tenantConfig().cookies())
+        SetCookie stateCookie = OidcCookieStateHandler.create("default", tenantConfig())
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
                                                                                          STATE,
                                                                                          "nonce",
@@ -415,7 +415,7 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create("default", tenant)
                         .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                          OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
@@ -475,7 +475,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
 
                 SetCookie localAuthenticationCookie = localAuthenticationCookie(response, tenant);
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create("default", tenant)
                         .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                          OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
@@ -519,7 +519,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
 
                 SetCookie localAuthenticationCookie = localAuthenticationCookie(response, tenant);
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create("default", tenant)
                         .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                          OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
@@ -568,7 +568,7 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create("default", tenant)
                         .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                          OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
@@ -796,7 +796,7 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                JsonObject storedUserInfo = OidcCookieStateHandler.create(tenant.cookies())
+                JsonObject storedUserInfo = OidcCookieStateHandler.create("default", tenant)
                         .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                          OidcIdTokenDecryptor.create(tenant))
                         .orElseThrow()
@@ -858,7 +858,7 @@ class OidcFeatureRouteTest {
                         .filter(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName() + "="))
                         .findFirst()
                         .orElseThrow());
-                assertThat(OidcCookieStateHandler.create(tenant.cookies())
+                assertThat(OidcCookieStateHandler.create("default", tenant)
                                    .decodeLocalAuthenticationResult(localAuthenticationCookie.value(),
                                                                     OidcIdTokenDecryptor.create(tenant))
                                    .orElseThrow()
@@ -1165,8 +1165,8 @@ class OidcFeatureRouteTest {
 
     @Test
     void logoutEndpointRouteUsesLocalAuthenticationCookieTenant() {
-        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth", "shared-cookie-secret");
-        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth", "shared-cookie-secret");
+        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth", "shared-cookie-password");
+        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth", "shared-cookie-password");
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
                 .putTenant("tenant-b", tenantB)
@@ -1198,8 +1198,8 @@ class OidcFeatureRouteTest {
 
     @Test
     void logoutEndpointRouteClearsAllPathTenantsWhenLocalAuthenticationCookieTenantIsAmbiguous() {
-        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth-a", "tenant-a-secret");
-        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth-b", "tenant-b-secret");
+        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth-a", "tenant-a-cookie-password");
+        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth-b", "tenant-b-cookie-password");
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
                 .putTenant("tenant-b", tenantB)
@@ -1232,8 +1232,8 @@ class OidcFeatureRouteTest {
 
     @Test
     void logoutEndpointRouteClearsAllLogoutTenantCookiesWhenTenantIsUnresolved() {
-        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth-a", "tenant-a-secret");
-        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth-b", "tenant-b-secret");
+        OidcTenantConfig tenantA = tenantConfigWithLogout("state-a", "auth-a", "tenant-a-cookie-password");
+        OidcTenantConfig tenantB = tenantConfigWithLogout("state-b", "auth-b", "tenant-b-cookie-password");
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
                 .putTenant("tenant-b", tenantB)
@@ -1264,11 +1264,11 @@ class OidcFeatureRouteTest {
     void logoutEndpointRouteFallbackUsesOnlyRequestedPathTenants() {
         OidcTenantConfig tenantA = tenantConfigWithLogout("state-a",
                                                           "auth-a",
-                                                          "tenant-a-secret",
+                                                          "tenant-a-cookie-password",
                                                           logout -> logout.localEndpointUri(URI.create("/oidc/logout-a")));
         OidcTenantConfig tenantB = tenantConfigWithLogout("state-b",
                                                           "auth-b",
-                                                          "tenant-b-secret",
+                                                          "tenant-b-cookie-password",
                                                           logout -> logout.localEndpointUri(URI.create("/oidc/logout-b")));
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("tenant-a", tenantA)
@@ -1688,12 +1688,12 @@ class OidcFeatureRouteTest {
         URI tenantBEndSessionEndpoint = URI.create("https://issuer.example/logout-b");
         OidcTenantConfig tenantA = tenantConfigWithEndSessionLogout("state-a",
                                                                     "auth",
-                                                                    "shared-cookie-secret",
+                                                                    "shared-cookie-password",
                                                                     tenantAEndSessionEndpoint,
                                                                     _ -> { });
         OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
                                                                     "auth",
-                                                                    "shared-cookie-secret",
+                                                                    "shared-cookie-password",
                                                                     tenantBEndSessionEndpoint,
                                                                     _ -> { });
         OidcProviderConfig config = OidcProviderConfig.builder()
@@ -1731,12 +1731,12 @@ class OidcFeatureRouteTest {
     void logoutEndpointRouteDoesNotRedirectWhenEndSessionTenantIsAmbiguous() {
         OidcTenantConfig tenantA = tenantConfigWithEndSessionLogout("state-a",
                                                                     "auth-a",
-                                                                    "tenant-a-secret",
+                                                                    "tenant-a-cookie-password",
                                                                     URI.create("https://issuer.example/logout-a"),
                                                                     _ -> { });
         OidcTenantConfig tenantB = tenantConfigWithEndSessionLogout("state-b",
                                                                     "auth-b",
-                                                                    "tenant-b-secret",
+                                                                    "tenant-b-cookie-password",
                                                                     URI.create("https://issuer.example/logout-b"),
                                                                     _ -> { });
         OidcProviderConfig config = OidcProviderConfig.builder()
@@ -1791,7 +1791,7 @@ class OidcFeatureRouteTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -1802,7 +1802,7 @@ class OidcFeatureRouteTest {
     private static OidcTenantConfig tenantConfigWithLogout(Consumer<OidcLogoutConfig.Builder> logout) {
         return tenantConfigWithLogout("__Host-helidon-oidc-state",
                                       "__Host-helidon-oidc-auth",
-                                      COOKIE_SECRET,
+                                      COOKIE_PASSWORD,
                                       logout);
     }
 
@@ -1816,7 +1816,7 @@ class OidcFeatureRouteTest {
             Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         return tenantConfigWithEndSessionLogout("__Host-helidon-oidc-state",
                                                 "__Host-helidon-oidc-auth",
-                                                COOKIE_SECRET,
+                                                COOKIE_PASSWORD,
                                                 END_SESSION_ENDPOINT_URI,
                                                 endSession,
                                                 tenantCustomizer);
@@ -1824,12 +1824,12 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
                                                                     String localAuthenticationCookieName,
-                                                                    String cookieSecret,
+                                                                    String cookiePassword,
                                                                     URI endSessionEndpointUri,
                                                                     Consumer<OidcEndSessionConfig.Builder> endSession) {
         return tenantConfigWithEndSessionLogout(authenticationRequestCookieName,
                                                localAuthenticationCookieName,
-                                               cookieSecret,
+                                               cookiePassword,
                                                endSessionEndpointUri,
                                                endSession,
                                                _ -> { });
@@ -1837,7 +1837,7 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithEndSessionLogout(String authenticationRequestCookieName,
                                                                     String localAuthenticationCookieName,
-                                                                    String cookieSecret,
+                                                                    String cookiePassword,
                                                                     URI endSessionEndpointUri,
                                                                     Consumer<OidcEndSessionConfig.Builder> endSession,
                                                                     Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
@@ -1853,7 +1853,7 @@ class OidcFeatureRouteTest {
                 .logout(logout -> logout.endSession(endSession))
                 .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
                         .localAuthenticationCookieName(localAuthenticationCookieName)
-                        .encryptionSecret(cookieSecret));
+                        .protection(protection -> protection.password(cookiePassword)));
         tenantCustomizer.accept(builder);
         return builder.buildPrototype();
     }
@@ -1866,22 +1866,22 @@ class OidcFeatureRouteTest {
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.tlsRequired(false))
                 .logout(logout -> logout.endSession(endSession))
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
     private static OidcTenantConfig tenantConfigWithLogout(String authenticationRequestCookieName,
                                                           String localAuthenticationCookieName,
-                                                          String cookieSecret) {
+                                                          String cookiePassword) {
         return tenantConfigWithLogout(authenticationRequestCookieName,
                                       localAuthenticationCookieName,
-                                      cookieSecret,
+                                      cookiePassword,
                                       _ -> { });
     }
 
     private static OidcTenantConfig tenantConfigWithLogout(String authenticationRequestCookieName,
                                                           String localAuthenticationCookieName,
-                                                          String cookieSecret,
+                                                          String cookiePassword,
                                                           Consumer<OidcLogoutConfig.Builder> logout) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -1894,7 +1894,7 @@ class OidcFeatureRouteTest {
                 .logout(logout)
                 .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
                         .localAuthenticationCookieName(localAuthenticationCookieName)
-                        .encryptionSecret(cookieSecret))
+                        .protection(protection -> protection.password(cookiePassword)))
                 .buildPrototype();
     }
 
@@ -1917,7 +1917,7 @@ class OidcFeatureRouteTest {
                             .scopes(List.of("openid", "profile"));
                     authorizationCode.accept(it);
                 })
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -1939,7 +1939,7 @@ class OidcFeatureRouteTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .userInfo(userInfo)
-                .cookies(it -> it.encryptionSecret(COOKIE_SECRET))
+                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
 
@@ -2042,7 +2042,7 @@ class OidcFeatureRouteTest {
                                                         OidcTenantConfig tenant,
                                                         URI originalUri) {
         Instant now = Instant.now();
-        return OidcCookieStateHandler.create(tenant.cookies())
+        return OidcCookieStateHandler.create("default", tenant)
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
                                                                                          STATE,
                                                                                          NONCE,
@@ -2092,7 +2092,7 @@ class OidcFeatureRouteTest {
                         .expiresAt(now.plusSeconds(60))
                         .accessTokenExpiresAt(now.plusSeconds(600))
                         .buildPrototype());
-        return OidcCookieStateHandler.create(tenant.cookies())
+        return OidcCookieStateHandler.create(tenantId, tenant)
                 .createLocalAuthenticationResultCookie(result);
     }
 

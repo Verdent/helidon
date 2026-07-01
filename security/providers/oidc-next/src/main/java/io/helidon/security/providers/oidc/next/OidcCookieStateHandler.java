@@ -19,19 +19,16 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 
+import io.helidon.common.LazyValue;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
@@ -40,25 +37,25 @@ import io.helidon.security.jwt.SignedJwt;
 
 final class OidcCookieStateHandler {
     private static final String PROTECTED_COOKIE_VERSION = "v1";
-    private static final int AES_GCM_KEY_BYTES = 32;
     private static final int AES_GCM_TAG_BITS = 128;
+    private static final int AES_GCM_TAG_BYTES = AES_GCM_TAG_BITS / Byte.SIZE;
     private static final int AES_GCM_IV_BYTES = 12;
 
     private final OidcCookieConfig cookieConfig;
-    private final byte[] encryptionKey;
+    private final LazyValue<Optional<OidcCookieKeys>> keys;
     private final SecureRandom secureRandom;
 
     private OidcCookieStateHandler(OidcCookieConfig cookieConfig,
-                                   byte[] encryptionKey,
+                                   LazyValue<Optional<OidcCookieKeys>> keys,
                                    SecureRandom secureRandom) {
         this.cookieConfig = cookieConfig;
-        this.encryptionKey = encryptionKey;
+        this.keys = keys;
         this.secureRandom = secureRandom;
     }
 
-    static OidcCookieStateHandler create(OidcCookieConfig cookieConfig) {
-        return new OidcCookieStateHandler(cookieConfig,
-                                          encryptionKey(cookieConfig),
+    static OidcCookieStateHandler create(String tenantId, OidcTenantConfig tenantConfig) {
+        return new OidcCookieStateHandler(tenantConfig.cookies(),
+                                          LazyValue.create(() -> OidcCookieKeys.create(tenantId, tenantConfig)),
                                           new SecureRandom());
     }
 
@@ -67,7 +64,8 @@ final class OidcCookieStateHandler {
     }
 
     SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
-        return cookieBuilder(cookieConfig.authenticationRequestCookieName(), protect(toJson(state).toString()))
+        return cookieBuilder(cookieConfig.authenticationRequestCookieName(),
+                             protect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, toJson(state).toString()))
                 .maxAge(cookieConfig.authenticationRequestLifetime())
                 .build();
     }
@@ -77,7 +75,8 @@ final class OidcCookieStateHandler {
         if (maxAge.isNegative()) {
             maxAge = Duration.ZERO;
         }
-        return cookieBuilder(cookieConfig.localAuthenticationCookieName(), protect(toJson(result).toString()))
+        return cookieBuilder(cookieConfig.localAuthenticationCookieName(),
+                             protect(OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION, toJson(result).toString()))
                 .maxAge(maxAge)
                 .build();
     }
@@ -119,7 +118,8 @@ final class OidcCookieStateHandler {
 
     Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
-            JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
+            JsonObject json = JsonParser.create(unprotect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, cookieValue))
+                    .readJsonObject();
             return Optional.of(authenticationRequestStateFromJson(json));
         } catch (RuntimeException _) {
             return Optional.empty();
@@ -129,7 +129,8 @@ final class OidcCookieStateHandler {
     Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue,
                                                                             OidcIdTokenDecryptor idTokenDecryptor) {
         try {
-            JsonObject json = JsonParser.create(unprotect(cookieValue)).readJsonObject();
+            JsonObject json = JsonParser.create(unprotect(OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION, cookieValue))
+                    .readJsonObject();
             return Optional.of(localAuthenticationResultFromJson(json, idTokenDecryptor));
         } catch (RuntimeException _) {
             return Optional.empty();
@@ -211,11 +212,12 @@ final class OidcCookieStateHandler {
         return OidcLocalAuthenticationResult.fromStoredValues(state);
     }
 
-    private String protect(String value) {
+    private String protect(OidcCookieKeys.Purpose purpose, String value) {
         byte[] iv = new byte[AES_GCM_IV_BYTES];
         secureRandom.nextBytes(iv);
         try {
-            byte[] ciphertext = cipher(Cipher.ENCRYPT_MODE, iv).doFinal(value.getBytes(StandardCharsets.UTF_8));
+            byte[] ciphertext = cipher(Cipher.ENCRYPT_MODE, iv, purpose)
+                    .doFinal(value.getBytes(StandardCharsets.UTF_8));
             return PROTECTED_COOKIE_VERSION + "."
                     + encode(iv) + "."
                     + encode(ciphertext);
@@ -224,48 +226,35 @@ final class OidcCookieStateHandler {
         }
     }
 
-    private String unprotect(String value) {
-        String[] parts = value.split("\\.");
+    private String unprotect(OidcCookieKeys.Purpose purpose, String value) {
+        String[] parts = value.split("\\.", -1);
         if (parts.length != 3 || !PROTECTED_COOKIE_VERSION.equals(parts[0])) {
             throw new IllegalArgumentException("Unsupported OIDC cookie format");
         }
         byte[] iv = decode(parts[1]);
         byte[] ciphertext = decode(parts[2]);
+        if (iv.length != AES_GCM_IV_BYTES || ciphertext.length < AES_GCM_TAG_BYTES) {
+            throw new IllegalArgumentException("Invalid OIDC cookie format");
+        }
         try {
-            byte[] plaintext = cipher(Cipher.DECRYPT_MODE, iv).doFinal(ciphertext);
+            byte[] plaintext = cipher(Cipher.DECRYPT_MODE, iv, purpose).doFinal(ciphertext);
             return new String(plaintext, StandardCharsets.UTF_8);
         } catch (GeneralSecurityException e) {
             throw new IllegalArgumentException("Failed to read OIDC cookie state", e);
         }
     }
 
-    private Cipher cipher(int mode, byte[] iv) {
+    private Cipher cipher(int mode, byte[] iv, OidcCookieKeys.Purpose purpose) {
         try {
+            OidcCookieKeys.KeyMaterial keyMaterial = keys.get().orElseThrow(
+                    () -> new IllegalStateException("OIDC cookie protection is not configured"))
+                    .keyMaterial(purpose);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(mode, new SecretKeySpec(encryptionKey, "AES"), new GCMParameterSpec(AES_GCM_TAG_BITS, iv));
+            cipher.init(mode, keyMaterial.key(), new GCMParameterSpec(AES_GCM_TAG_BITS, iv));
+            cipher.updateAAD(keyMaterial.additionalAuthenticatedData());
             return cipher;
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Failed to initialize OIDC cookie state protection", e);
-        }
-    }
-
-    private static byte[] encryptionKey(OidcCookieConfig cookieConfig) {
-        return cookieConfig.encryptionSecret()
-                .map(secret -> sha256(secret.getBytes(StandardCharsets.UTF_8)))
-                .orElseGet(OidcCookieStateHandler::randomKey);
-    }
-
-    private static byte[] randomKey() {
-        byte[] bytes = new byte[AES_GCM_KEY_BYTES];
-        new SecureRandom().nextBytes(bytes);
-        return bytes;
-    }
-
-    private static byte[] sha256(byte[] value) {
-        try {
-            return Arrays.copyOf(MessageDigest.getInstance("SHA-256").digest(value), AES_GCM_KEY_BYTES);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
         }
     }
 
@@ -276,6 +265,10 @@ final class OidcCookieStateHandler {
     }
 
     private static byte[] decode(String value) {
-        return Base64.getUrlDecoder().decode(value);
+        byte[] decoded = Base64.getUrlDecoder().decode(value);
+        if (!encode(decoded).equals(value)) {
+            throw new IllegalArgumentException("Invalid OIDC cookie encoding");
+        }
+        return decoded;
     }
 }

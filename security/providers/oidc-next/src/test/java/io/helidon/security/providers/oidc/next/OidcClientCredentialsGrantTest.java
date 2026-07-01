@@ -1315,7 +1315,7 @@ class OidcClientCredentialsGrantTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
                 .userInfo(_ -> { })
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 

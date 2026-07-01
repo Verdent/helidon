@@ -28,6 +28,7 @@ final class OidcTenantRuntimeRegistry {
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantContextFactory tenantContextFactory;
     private final ConcurrentMap<String, LazyValue<OidcTenantContext>> contexts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, OidcCookieStateHandler> cookieStateHandlers = new ConcurrentHashMap<>();
 
     private OidcTenantRuntimeRegistry(OidcProviderConfig config,
                                       OidcTenantResolver tenantResolver,
@@ -64,6 +65,7 @@ final class OidcTenantRuntimeRegistry {
     Optional<OidcTenantContext> tenantContext(String tenantId) {
         return tenantConfig(tenantId)
                 .map(tenantConfig -> {
+                    OidcCookieStateHandler cookieStateHandler = cookieStateHandler(tenantId, tenantConfig);
                     /*
                      * The map callback installs only a lightweight lazy holder; it never performs discovery or other
                      * remote tenant initialization. LazyValue.get() runs after computeIfAbsent returns. Its first
@@ -76,9 +78,14 @@ final class OidcTenantRuntimeRegistry {
                      */
                     LazyValue<OidcTenantContext> context = contexts.computeIfAbsent(
                             tenantId,
-                            _ -> LazyValue.create(() -> tenantContextFactory.create(tenantId, tenantConfig)));
+                            _ -> LazyValue.create(() -> tenantContextFactory.create(tenantId, tenantConfig)
+                                    .withCookieStateHandler(cookieStateHandler)));
                     return context.get();
                 });
+    }
+
+    Optional<OidcCookieStateHandler> cookieStateHandler(String tenantId) {
+        return tenantConfig(tenantId).map(tenantConfig -> cookieStateHandler(tenantId, tenantConfig));
     }
 
     int cachedTenantCount() {
@@ -87,5 +94,16 @@ final class OidcTenantRuntimeRegistry {
 
     private Optional<OidcTenantConfig> tenantConfig(String tenantId) {
         return Optional.ofNullable(config.tenants().get(tenantId));
+    }
+
+    private OidcCookieStateHandler cookieStateHandler(String tenantId, OidcTenantConfig tenantConfig) {
+        /*
+         * Handler construction is deliberately lightweight: PBKDF2 and HKDF remain behind the handler's LazyValue.
+         * computeIfAbsent therefore does not run expensive cryptography under a ConcurrentHashMap bin lock. The same
+         * retained handler serves callback routing, logout, and the initialized tenant context, so key derivation runs
+         * at most once for a tenant registry and only when a cookie is first protected or read.
+         */
+        return cookieStateHandlers.computeIfAbsent(tenantId,
+                                                   _ -> OidcCookieStateHandler.create(tenantId, tenantConfig));
     }
 }

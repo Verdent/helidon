@@ -41,7 +41,7 @@ final class OidcTenantConfigDecorator
         if (!target.enabled()) {
             return;
         }
-        validateCookies(target.cookies());
+        validateCookies(target.cookies(), target.clientId());
         OidcSubjectMappingConfig subjectMapping = target.subjectMapping();
         validateClaimPaths(subjectMapping.principalIdClaimPaths(),
                            "subject-mapping.principal-id-claim-paths",
@@ -219,7 +219,7 @@ final class OidcTenantConfigDecorator
                 });
     }
 
-    private static void validateCookies(OidcCookieConfig cookies) {
+    private static void validateCookies(OidcCookieConfig cookies, Optional<String> clientId) {
         validateCookieName(cookies.authenticationRequestCookieName(),
                            "cookies.authentication-request-cookie-name");
         validateCookieName(cookies.localAuthenticationCookieName(),
@@ -235,11 +235,32 @@ final class OidcTenantConfigDecorator
         if (cookies.localAuthenticationLifetime().isZero() || cookies.localAuthenticationLifetime().isNegative()) {
             throw new IllegalArgumentException("cookies.local-authentication-lifetime must be positive");
         }
-        cookies.encryptionSecret()
-                .filter(String::isBlank)
-                .ifPresent(_ -> {
-                    throw new IllegalArgumentException("cookies.encryption-secret must not be blank");
-                });
+        cookies.protection().ifPresent(protection -> {
+            String password = protection.password();
+            if (password.isBlank()
+                    || password.length() < OidcCookieKeys.MIN_PASSWORD_LENGTH
+                    || password.length() > OidcCookieKeys.MAX_PASSWORD_LENGTH) {
+                throw new IllegalArgumentException("cookies.protection.password must contain between "
+                                                           + OidcCookieKeys.MIN_PASSWORD_LENGTH + " and "
+                                                           + OidcCookieKeys.MAX_PASSWORD_LENGTH + " characters");
+            }
+            protection.salt()
+                    .filter(salt -> !OidcCookieKeys.validSalt(salt))
+                    .ifPresent(_ -> {
+                        throw new IllegalArgumentException("cookies.protection.salt must be the canonical, unpadded "
+                                                                   + "Base64URL encoding of exactly 16 bytes");
+                    });
+            if (protection.iterations() < OidcCookieKeys.MIN_ITERATIONS
+                    || protection.iterations() > OidcCookieKeys.MAX_ITERATIONS) {
+                throw new IllegalArgumentException("cookies.protection.iterations must be between "
+                                                           + OidcCookieKeys.MIN_ITERATIONS + " and "
+                                                           + OidcCookieKeys.MAX_ITERATIONS);
+            }
+            if (clientId.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "client-id must be configured when cookies.protection is configured");
+            }
+        });
     }
 
     private static void validateCookieName(String cookieName, String configKey) {
@@ -323,9 +344,9 @@ final class OidcTenantConfigDecorator
         validateAuthorizationCodePrompts(authorizationCode.scopes(), authorizationCode.prompts());
         OidcResourceIndicators.validate(authorizationCode.resources(), "authorization-code.resources");
         tenant.cookies()
-                .encryptionSecret()
+                .protection()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "cookies.encryption-secret must be configured when Authorization Code Flow is enabled"));
+                        "cookies.protection must be configured when Authorization Code Flow is enabled"));
     }
 
     private static void validatePushedAuthorizationRequests(OidcAuthorizationCodeConfig authorizationCode,

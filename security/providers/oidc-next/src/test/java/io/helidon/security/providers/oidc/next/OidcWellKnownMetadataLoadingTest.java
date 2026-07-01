@@ -121,7 +121,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .webClient(tenantWebClient())
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -148,7 +148,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -204,7 +204,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -228,7 +228,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.DISABLED))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -266,7 +266,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.DISABLED)))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -307,7 +307,7 @@ class OidcWellKnownMetadataLoadingTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("RS256")))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -333,7 +333,7 @@ class OidcWellKnownMetadataLoadingTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("RS256")))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -359,7 +359,7 @@ class OidcWellKnownMetadataLoadingTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("RS256")))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -567,7 +567,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceRequired(false))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -614,7 +614,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientSecret("client-secret")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -687,7 +687,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -706,7 +706,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -725,7 +725,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -744,7 +744,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -782,7 +782,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -804,7 +804,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -832,7 +832,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -853,7 +853,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -874,7 +874,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -894,7 +894,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -915,7 +915,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -936,7 +936,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -1038,7 +1038,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -1061,7 +1061,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -1083,7 +1083,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
@@ -1431,7 +1431,7 @@ class OidcWellKnownMetadataLoadingTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(userInfo -> userInfo.jwt(customizer))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 
@@ -1548,7 +1548,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 
@@ -1563,7 +1563,7 @@ class OidcWellKnownMetadataLoadingTest {
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("RS256")
                                 .encryptionAlgorithm("RSA-OAEP-256")))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 
@@ -1575,7 +1575,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.encryptionSecret("test-cookie-secret"))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 

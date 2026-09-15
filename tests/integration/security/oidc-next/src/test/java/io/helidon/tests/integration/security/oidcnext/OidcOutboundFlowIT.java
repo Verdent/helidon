@@ -18,11 +18,15 @@ package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Status;
+import io.helidon.security.Security;
+import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -32,10 +36,13 @@ import io.helidon.tests.integration.security.oidcnext.idp.TestOidcRequest;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webclient.security.WebClientSecurity;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.security.SecurityFeature;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
@@ -112,6 +119,53 @@ class OidcOutboundFlowIT {
     }
 
     @Test
+    @Timeout(10)
+    void providerOwnedTrafficBypassesConfiguredWebClientSecurity() {
+        AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
+        AtomicInteger internalRequests = new AtomicInteger();
+        AtomicInteger outboundSecurityInvocations = new AtomicInteger();
+        WebServer downstream = downstream(downstreamAuthorization);
+        try (TestOidcServer idp = idp(INBOUND_AUDIENCE)
+                .allowedScopes("orders.read")
+                .build()) {
+            String inboundToken = OidcIntegrationSupport.clientCredentialsToken(idp, CLIENT_ID, CLIENT_SECRET);
+            Security rejectingOutboundSecurity = Security.builder()
+                    .addOutboundSecurityProvider((_, _, _) -> {
+                        outboundSecurityInvocations.incrementAndGet();
+                        throw new AssertionError("provider-owned traffic entered outbound security");
+                    })
+                    .build();
+            WebClientConfig internalWebClient = WebClientConfig.builder()
+                    .servicesDiscoverServices(false)
+                    .addService((chain, request) -> {
+                        internalRequests.incrementAndGet();
+                        assertThat(request.properties().get(OutboundConfig.PROPERTY_DISABLE_OUTBOUND),
+                                   is(Boolean.TRUE.toString()));
+                        return chain.proceed(request);
+                    })
+                    .addService(WebClientSecurity.create(rejectingOutboundSecurity))
+                    .buildPrototype();
+            OidcProviderConfig providerConfig = wellKnownProtectedResourceProviderConfig(
+                    idp,
+                    clientCredentialsTarget(),
+                    internalWebClient);
+            WebServer rpServer = proxyServer(providerConfig, downstream);
+            try {
+                callProxy(rpServer, inboundToken);
+
+                assertThat(internalRequests.get(), is(3));
+                assertThat(outboundSecurityInvocations.get(), is(0));
+                assertThat(idp.tokenRequests().get(1).formParam("grant_type").orElse(""),
+                           is("client_credentials"));
+            } finally {
+                rpServer.stop();
+            }
+        } finally {
+            downstream.stop();
+        }
+    }
+
+    @Test
     void outboundTargetExchangesCurrentBearerTokenThroughWebClient() {
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
         WebServer downstream = downstream(downstreamAuthorization);
@@ -163,6 +217,35 @@ class OidcOutboundFlowIT {
     }
 
     private static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp, OutboundTarget outboundTarget) {
+        return protectedResourceProviderConfig(idp, outboundTarget, _ -> { });
+    }
+
+    private static OidcProviderConfig wellKnownProtectedResourceProviderConfig(TestOidcServer idp,
+                                                                               OutboundTarget outboundTarget,
+                                                                               WebClientConfig webClient) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(idp.issuer().toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints
+                        .wellKnownUri(idp.metadataUri())
+                        .tlsRequired(false))
+                .webClient(webClient)
+                .tokenTransport(transport -> transport.secureTransportRequired(false))
+                .protectedResource(resource -> resource
+                        .tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.JWT)
+                                .audience(INBOUND_AUDIENCE)))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .addOutboundTarget(outboundTarget)
+                .buildPrototype();
+    }
+
+    private static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp,
+                                                                      OutboundTarget outboundTarget,
+                                                                      Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(idp.issuer().toString())
                 .clientId(CLIENT_ID)
@@ -176,6 +259,7 @@ class OidcOutboundFlowIT {
                         .tokenValidation(validation -> validation
                                 .method(OidcTokenValidationMethod.JWT)
                                 .audience(INBOUND_AUDIENCE)))
+                .update(tenantCustomizer)
                 .buildPrototype();
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant)

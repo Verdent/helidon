@@ -58,7 +58,7 @@ import io.helidon.webserver.security.SecurityHandler;
 final class OidcIntegrationSupport {
     static final String CLIENT_ID = "client-id";
     static final String CLIENT_SECRET = "client-secret";
-    static final String COOKIE_SECRET = "integration-test-cookie-secret";
+    static final String COOKIE_PASSWORD = "integration-test-cookie-secret";
 
     private OidcIntegrationSupport() {
     }
@@ -85,7 +85,7 @@ final class OidcIntegrationSupport {
                 })
                 .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET));
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())
@@ -108,7 +108,7 @@ final class OidcIntegrationSupport {
                 })
                 .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .cookies(cookies -> cookies.encryptionSecret(COOKIE_SECRET))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant)

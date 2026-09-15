@@ -239,6 +239,7 @@ class OidcFeatureRouteTest {
                                                                                          STATE,
                                                                                          "nonce",
                                                                                          "pkce-verifier",
+                                                                                         null,
                                                                                          ISSUER.toString(),
                                                                                          serverUri.resolve("resource"),
                                                                                          callbackUri,
@@ -1098,20 +1099,30 @@ class OidcFeatureRouteTest {
         try {
             SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant, "default");
             SetCookie authenticationRequestCookie = authenticationRequestCookie(CONFIGURED_REDIRECTION_ENDPOINT_URI, tenant);
+            OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create("default", tenant);
+            OidcCookieStateHandler.BrowserSessionGeneration previousGeneration =
+                    cookieStateHandler.createBrowserSessionGeneration();
 
             try (HttpClientResponse response = WebClient.builder()
                     .baseUri(rpBaseUri(rpServer))
                     .build()
                     .post("/oidc/logout")
                     .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
-                    .header(HeaderNames.COOKIE, cookieHeader(localAuthenticationCookie, authenticationRequestCookie))
+                    .header(HeaderNames.COOKIE,
+                            cookieHeader(localAuthenticationCookie, authenticationRequestCookie) + "; "
+                                    + previousGeneration.cookie().name() + "=" + previousGeneration.cookie().value())
                     .request()) {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                SetCookie generationCookie = assertBrowserSessionGenerationCookie(cookies, tenant, "default");
+                assertThat(cookieStateHandler.readBrowserSessionGeneration(generationCookie.value())
+                                   .orElseThrow()
+                                   .equals(previousGeneration.value()),
+                           is(false));
             }
         } finally {
             rpServer.stop();
@@ -1186,9 +1197,10 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, "auth");
                 assertRemovalCookie(cookies, "state-b");
+                assertBrowserSessionGenerationCookie(cookies, tenantB, "tenant-b");
                 assertThat(cookies.stream().noneMatch(cookie -> cookie.startsWith("state-a=")), is(true));
             }
         } finally {
@@ -1219,11 +1231,13 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(4));
+                assertThat(cookies.size(), is(6));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
                 assertRemovalCookie(cookies, "auth-b");
                 assertRemovalCookie(cookies, "state-b");
+                assertBrowserSessionGenerationCookie(cookies, tenantA, "tenant-a");
+                assertBrowserSessionGenerationCookie(cookies, tenantB, "tenant-b");
             }
         } finally {
             rpServer.stop();
@@ -1249,11 +1263,13 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(4));
+                assertThat(cookies.size(), is(6));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
                 assertRemovalCookie(cookies, "auth-b");
                 assertRemovalCookie(cookies, "state-b");
+                assertBrowserSessionGenerationCookie(cookies, tenantA, "tenant-a");
+                assertBrowserSessionGenerationCookie(cookies, tenantB, "tenant-b");
             }
         } finally {
             rpServer.stop();
@@ -1285,9 +1301,10 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
+                assertBrowserSessionGenerationCookie(cookies, tenantA, "tenant-a");
                 assertThat(cookies.stream().noneMatch(cookie -> cookie.startsWith("auth-b=")), is(true));
                 assertThat(cookies.stream().noneMatch(cookie -> cookie.startsWith("state-b=")), is(true));
             }
@@ -1348,9 +1365,10 @@ class OidcFeatureRouteTest {
                 assertThat(query.first("state").orElse(""), is("logout-state"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                assertBrowserSessionGenerationCookie(cookies, tenant, "default");
             }
         } finally {
             rpServer.stop();
@@ -1418,9 +1436,10 @@ class OidcFeatureRouteTest {
                     assertThat(response.as(String.class), is("Logout request is invalid"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                assertBrowserSessionGenerationCookie(cookies, tenant, "default");
             }
         } finally {
             rpServer.stop();
@@ -1524,9 +1543,10 @@ class OidcFeatureRouteTest {
                 assertThat(response.as(String.class), is("id_token_hint is required for RP-Initiated Logout"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(2));
+                assertThat(cookies.size(), is(3));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                assertBrowserSessionGenerationCookie(cookies, tenant, "default");
             }
         } finally {
             rpServer.stop();
@@ -1720,6 +1740,7 @@ class OidcFeatureRouteTest {
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
                 assertRemovalCookie(cookies, "auth");
                 assertRemovalCookie(cookies, "state-b");
+                assertBrowserSessionGenerationCookie(cookies, tenantB, "tenant-b");
                 assertThat(cookies.stream().noneMatch(cookie -> cookie.startsWith("state-a=")), is(true));
             }
         } finally {
@@ -2047,6 +2068,7 @@ class OidcFeatureRouteTest {
                                                                                          STATE,
                                                                                          NONCE,
                                                                                          PKCE_VERIFIER,
+                                                                                         null,
                                                                                          ISSUER.toString(),
                                                                                          originalUri,
                                                                                          callbackUri,
@@ -2113,6 +2135,23 @@ class OidcFeatureRouteTest {
         assertThat(cookie.secure(), is(true));
         assertThat(cookie.httpOnly(), is(true));
         assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
+    }
+
+    private static SetCookie assertBrowserSessionGenerationCookie(List<String> cookies,
+                                                                  OidcTenantConfig tenant,
+                                                                  String tenantId) {
+        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create(tenantId, tenant);
+        SetCookie cookie = cookies.stream()
+                .filter(it -> it.startsWith(cookieStateHandler.browserSessionGenerationCookieName() + "="))
+                .map(SetCookie::parse)
+                .findFirst()
+                .orElseThrow();
+        assertThat(cookieStateHandler.readBrowserSessionGeneration(cookie.value()).isPresent(), is(true));
+        assertThat(cookie.path().orElse(""), is("/"));
+        assertThat(cookie.secure(), is(true));
+        assertThat(cookie.httpOnly(), is(true));
+        assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
+        return cookie;
     }
 
     private static URI rpBaseUri(WebServer server) {

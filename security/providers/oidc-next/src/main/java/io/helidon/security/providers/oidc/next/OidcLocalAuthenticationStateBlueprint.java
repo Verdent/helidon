@@ -67,6 +67,14 @@ interface OidcLocalAuthenticationStateBlueprint {
     Optional<String> refreshToken();
 
     /**
+     * Browser-session generation that must accompany this authentication state.
+     *
+     * @return browser-session generation, empty for legacy state
+     */
+    @Option.Confidential
+    Optional<String> browserSessionGeneration();
+
+    /**
      * Granted OAuth scope.
      *
      * @return granted scope

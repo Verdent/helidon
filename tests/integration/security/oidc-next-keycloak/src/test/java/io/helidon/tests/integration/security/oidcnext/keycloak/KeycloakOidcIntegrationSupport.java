@@ -19,6 +19,7 @@ package io.helidon.tests.integration.security.oidcnext.keycloak;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -484,6 +485,26 @@ final class KeycloakOidcIntegrationSupport {
             client.closeResource();
         }
 
+        Optional<String> cookieValue(String name) {
+            return Optional.ofNullable(cookies.get(name));
+        }
+
+        void applySetCookieHeaders(List<String> setCookieHeaders) {
+            for (String setCookieHeader : setCookieHeaders) {
+                SetCookie cookie = SetCookie.parse(setCookieHeader);
+                boolean removed = cookie.maxAge()
+                        .map(maxAge -> maxAge.isZero() || maxAge.isNegative())
+                        .orElseGet(() -> cookie.expires()
+                                .filter(expires -> !expires.toInstant().isAfter(Instant.now()))
+                                .isPresent());
+                if (removed) {
+                    cookies.remove(cookie.name());
+                } else {
+                    cookies.put(cookie.name(), cookie.value());
+                }
+            }
+        }
+
         private Optional<String> cookieHeader() {
             if (cookies.isEmpty()) {
                 return Optional.empty();
@@ -499,12 +520,7 @@ final class KeycloakOidcIntegrationSupport {
             if (!response.headers().contains(HeaderNames.SET_COOKIE)) {
                 return;
             }
-            response.headers()
-                    .get(HeaderNames.SET_COOKIE)
-                    .allValues()
-                    .stream()
-                    .map(SetCookie::parse)
-                    .forEach(cookie -> cookies.put(cookie.name(), cookie.value()));
+            applySetCookieHeaders(response.headers().get(HeaderNames.SET_COOKIE).allValues());
         }
     }
 }

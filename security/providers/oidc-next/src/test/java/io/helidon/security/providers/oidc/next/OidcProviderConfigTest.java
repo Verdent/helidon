@@ -1617,6 +1617,9 @@ class OidcProviderConfigTest {
         assertInvalidCookies(cookies -> cookies.authenticationRequestCookieName("same")
                         .localAuthenticationCookieName("same"),
                              "cookie names must be different");
+        assertInvalidCookies(cookies -> cookies.authenticationRequestCookieName("auth-generation")
+                        .localAuthenticationCookieName("auth"),
+                             "derived browser-session-generation cookie names must be different");
         assertInvalidCookies(cookies -> cookies.protection(protection -> protection.password(" ")),
                              "cookies.protection.password must contain between 16 and 1024 characters");
         assertInvalidCookies(cookies -> cookies.protection(protection -> protection.password("too-short")),

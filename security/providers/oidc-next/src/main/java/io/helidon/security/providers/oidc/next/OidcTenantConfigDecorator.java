@@ -224,9 +224,16 @@ final class OidcTenantConfigDecorator
                            "cookies.authentication-request-cookie-name");
         validateCookieName(cookies.localAuthenticationCookieName(),
                            "cookies.local-authentication-cookie-name");
+        String browserSessionGenerationCookieName = OidcCookieStateHandler.browserSessionGenerationCookieName(cookies);
+        validateCookieName(browserSessionGenerationCookieName,
+                           "derived browser-session-generation cookie name");
         if (cookies.authenticationRequestCookieName().equals(cookies.localAuthenticationCookieName())) {
             throw new IllegalArgumentException("OIDC authentication request and local authentication cookie names "
                                                        + "must be different");
+        }
+        if (cookies.authenticationRequestCookieName().equals(browserSessionGenerationCookieName)) {
+            throw new IllegalArgumentException("OIDC authentication request and derived browser-session-generation "
+                                                       + "cookie names must be different");
         }
         if (cookies.authenticationRequestLifetime().isZero()
                 || cookies.authenticationRequestLifetime().isNegative()) {

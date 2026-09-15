@@ -98,19 +98,24 @@ final class OidcLogoutHandler {
                 ? localAuthenticationTenants
                 : logoutTenants;
 
-        Set<String> removedCookieNames = new HashSet<>();
+        Set<String> changedCookieNames = new HashSet<>();
         tenantsToClear.stream()
                 .map(LogoutTenant::cookieStateHandler)
                 .forEach(cookieStateHandler -> {
                     String localAuthenticationCookieName = cookieStateHandler.cookieConfig()
                             .localAuthenticationCookieName();
-                    if (removedCookieNames.add(localAuthenticationCookieName)) {
+                    if (changedCookieNames.add(localAuthenticationCookieName)) {
                         response.headers().addCookie(cookieStateHandler.removeLocalAuthenticationResultCookie());
                     }
                     String authenticationRequestCookieName = cookieStateHandler.cookieConfig()
                             .authenticationRequestCookieName();
-                    if (removedCookieNames.add(authenticationRequestCookieName)) {
+                    if (changedCookieNames.add(authenticationRequestCookieName)) {
                         response.headers().addCookie(cookieStateHandler.removeAuthenticationRequestCookie());
+                    }
+                    String browserSessionGenerationCookieName =
+                            cookieStateHandler.browserSessionGenerationCookieName();
+                    if (changedCookieNames.add(browserSessionGenerationCookieName)) {
+                        response.headers().addCookie(cookieStateHandler.createBrowserSessionGeneration().cookie());
                     }
                 });
 

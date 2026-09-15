@@ -671,6 +671,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                      state,
                                                      "nonce",
                                                      "pkce-verifier",
+                                                     null,
                                                      ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      redirectionEndpointUri,

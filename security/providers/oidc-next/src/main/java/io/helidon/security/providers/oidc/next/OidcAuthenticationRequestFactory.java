@@ -71,6 +71,9 @@ final class OidcAuthenticationRequestFactory {
         String state = OidcAuthorizationState.create(tenantContext.tenantId(), randomValue()).value();
         String nonce = randomValue();
         String pkceVerifier = authorizationCode.pkceRequired() ? randomValue() : null;
+        OidcCookieStateHandler cookieStateHandler = tenantContext.cookieStateHandler();
+        OidcCookieStateHandler.BrowserSessionGeneration browserSessionGeneration =
+                cookieStateHandler.createBrowserSessionGeneration();
         SecurityEnvironment environment = context.environment();
         Instant createdAt = environment.time().toInstant();
 
@@ -79,13 +82,13 @@ final class OidcAuthenticationRequestFactory {
                 state,
                 nonce,
                 pkceVerifier,
+                browserSessionGeneration.value(),
                 expectedIssuer,
                 originalUri(environment),
                 redirectionEndpointUri,
                 createdAt,
-                createdAt.plus(tenantContext.cookieStateHandler().cookieConfig().authenticationRequestLifetime()));
-        SetCookie stateCookie = tenantContext.cookieStateHandler()
-                .createAuthenticationRequestCookie(requestState);
+                createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()));
+        SetCookie stateCookie = cookieStateHandler.createAuthenticationRequestCookie(requestState);
         String clientId = tenantConfig.clientId().orElseThrow();
         Parameters authorizationParameters = authorizationParameters(clientId,
                                                                     redirectionEndpointUri,
@@ -105,7 +108,9 @@ final class OidcAuthenticationRequestFactory {
                                                                     pushedAuthorizationRequestParameters(requestParameters)))
                 : authorizationUri(authorizationEndpointUri, requestParameters);
 
-        return new OidcAuthenticationRequest(authorizationUri, stateCookie.toString());
+        return new OidcAuthenticationRequest(authorizationUri,
+                                             List.of(stateCookie.toString(),
+                                                     browserSessionGeneration.cookie().toString()));
     }
 
     static String codeChallenge(String verifier, OidcPkceMethod method) {

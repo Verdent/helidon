@@ -17,6 +17,11 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
 
-record OidcAuthenticationRequest(URI authorizationUri, String stateCookie) {
+record OidcAuthenticationRequest(URI authorizationUri, List<String> cookies) {
+
+    OidcAuthenticationRequest {
+        cookies = List.copyOf(cookies);
+    }
 }

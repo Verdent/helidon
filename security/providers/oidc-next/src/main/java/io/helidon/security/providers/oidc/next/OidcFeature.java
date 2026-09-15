@@ -207,13 +207,14 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         }
 
         OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.fromTokenResponse(
-                tenantContext.tenantId(),
-                tokenResponse,
-                validatedIdToken,
-                tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
-                userInfoResult.userInfo(),
-                Instant.now(),
-                tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
+                        tenantContext.tenantId(),
+                        tokenResponse,
+                        validatedIdToken,
+                        tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
+                        userInfoResult.userInfo(),
+                        Instant.now(),
+                        tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime())
+                .withBrowserSessionGeneration(state.browserSessionGeneration());
         response.headers()
                 .addCookie(tenantContext.cookieStateHandler()
                                    .createLocalAuthenticationResultCookie(localAuthenticationResult));

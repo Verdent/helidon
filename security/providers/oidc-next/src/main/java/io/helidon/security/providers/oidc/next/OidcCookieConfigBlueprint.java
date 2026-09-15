@@ -42,7 +42,8 @@ interface OidcCookieConfigBlueprint {
     /**
      * Local authentication result cookie name.
      * <p>
-     * Must be a valid HTTP cookie token and must differ from {@link #authenticationRequestCookieName()}.
+     * Must be a valid HTTP cookie token. The provider derives a browser-session generation cookie name by appending
+     * {@code -generation}; both names must differ from {@link #authenticationRequestCookieName()}.
      *
      * @return local authentication result cookie name
      */

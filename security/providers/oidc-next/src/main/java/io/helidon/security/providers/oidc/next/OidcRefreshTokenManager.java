@@ -183,6 +183,7 @@ final class OidcRefreshTokenManager {
                 .accessToken(tokenResponse.accessToken())
                 .tokenType(tokenResponse.tokenType())
                 .refreshToken(tokenResponse.refreshToken().or(current::refreshToken))
+                .browserSessionGeneration(current.browserSessionGeneration())
                 .scope(tokenResponse.scope().or(current::scope))
                 .userInfo(userInfo)
                 .createdAt(refreshedAt)

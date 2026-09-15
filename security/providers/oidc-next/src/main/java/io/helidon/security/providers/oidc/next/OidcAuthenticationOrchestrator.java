@@ -158,8 +158,19 @@ final class OidcAuthenticationOrchestrator {
         if (localAuthenticationResult.isEmpty()) {
             return LocalAuthenticationOutcome.empty();
         }
+        OidcLocalAuthenticationResult currentAuthenticationResult = localAuthenticationResult.orElseThrow();
+        if (!browserSessionGenerationMatches(context, cookieStateHandler, currentAuthenticationResult)) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC local authentication result rejected: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + ", reason=browser-session-generation-mismatch");
+            }
+            return LocalAuthenticationOutcome.empty(
+                    Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie().toString()));
+        }
         OidcRefreshTokenManager.RefreshResult refreshResult = refreshTokenManager.refreshIfNeeded(
-                localAuthenticationResult.orElseThrow(),
+                currentAuthenticationResult,
                 readyTenant,
                 context.environment().time().toInstant());
         Optional<String> removalCookie = refreshResult.removeCookie()
@@ -216,6 +227,22 @@ final class OidcAuthenticationOrchestrator {
                                                context.environment().time().toInstant(),
                                                readyTenant.idTokenDecryptor())
                 .filter(result -> readyTenant.tenantId().equals(result.tenantId()));
+    }
+
+    private boolean browserSessionGenerationMatches(OidcRequestContext context,
+                                                    OidcCookieStateHandler cookieStateHandler,
+                                                    OidcLocalAuthenticationResult authenticationResult) {
+        List<String> generationCookies = context.cookieValues(cookieStateHandler.browserSessionGenerationCookieName());
+        Optional<String> expectedGeneration = authenticationResult.browserSessionGeneration();
+        if (generationCookies.isEmpty()) {
+            return expectedGeneration.isEmpty();
+        }
+        if (generationCookies.size() != 1 || expectedGeneration.isEmpty()) {
+            return false;
+        }
+        return cookieStateHandler.readBrowserSessionGeneration(generationCookies.getFirst())
+                .filter(expectedGeneration.orElseThrow()::equals)
+                .isPresent();
     }
 
     private record LocalAuthenticationOutcome(Optional<AuthenticationResponse> response, Optional<String> removalCookie) {

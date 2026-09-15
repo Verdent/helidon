@@ -24,6 +24,7 @@ record OidcAuthenticationRequestState(String tenantId,
                                       String state,
                                       String nonce,
                                       String pkceVerifierValue,
+                                      String browserSessionGenerationValue,
                                       String expectedIssuer,
                                       URI originalUri,
                                       URI redirectionEndpointUri,
@@ -32,5 +33,9 @@ record OidcAuthenticationRequestState(String tenantId,
 
     Optional<String> pkceVerifier() {
         return Optional.ofNullable(pkceVerifierValue);
+    }
+
+    Optional<String> browserSessionGeneration() {
+        return Optional.ofNullable(browserSessionGenerationValue);
     }
 }

@@ -781,7 +781,9 @@ class OidcProviderTest {
                         .targetUri(ORIGINAL_URI)
                         .build()));
 
-        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
+        List<String> responseCookies = response.responseHeaders().get("Set-Cookie");
+        assertThat(responseCookies.size(), is(2));
+        SetCookie cookie = SetCookie.parse(responseCookies.getFirst());
         assertThat(cookie.name(), is("__Host-helidon-oidc-state"));
         assertThat(cookie.value().startsWith("v1."), is(true));
         assertThat(cookie.path().orElse(""), is("/"));
@@ -791,6 +793,15 @@ class OidcProviderTest {
         assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(300L));
 
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+        SetCookie generationCookie = responseCookies.stream()
+                .map(SetCookie::parse)
+                .filter(it -> it.name().equals("__Host-helidon-oidc-auth-generation"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(OidcCookieStateHandler.create("default", tenant)
+                           .readBrowserSessionGeneration(generationCookie.value())
+                           .orElseThrow(),
+                   is(state.browserSessionGeneration().orElseThrow()));
         assertThat(state.expiresAt().isAfter(Instant.now()), is(true));
         assertThat(cookie.value(), not(containsString(state.state())));
         assertThat(cookie.value(), not(containsString(state.nonce())));
@@ -850,6 +861,55 @@ class OidcProviderTest {
         assertThat(credential.token(), is("access-token"));
         assertThat(credential.getIssuer().orElse(""), is(ISSUER.toString()));
         assertThat(credential.getExpTime().orElseThrow(), is(now.plusSeconds(600)));
+    }
+
+    @Test
+    void localAuthenticationResultRequiresMatchingBrowserSessionGeneration() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = provider(tenant);
+        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create("default", tenant);
+        OidcCookieStateHandler.BrowserSessionGeneration currentGeneration =
+                cookieStateHandler.createBrowserSessionGeneration();
+        OidcCookieStateHandler.BrowserSessionGeneration otherGeneration =
+                cookieStateHandler.createBrowserSessionGeneration();
+        Instant now = Instant.now();
+        String idToken = signedIdToken(it -> it.preferredUsername(USERNAME));
+        SignedJwt signedJwt = SignedJwt.parseToken(idToken);
+        SetCookie authenticationCookie = cookieStateHandler.createLocalAuthenticationResultCookie(
+                OidcLocalAuthenticationResult.fromStoredValues(
+                        localAuthenticationState("default",
+                                                 new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
+                                                 now,
+                                                 now.plusSeconds(3600))
+                                .browserSessionGeneration(currentGeneration.value())
+                                .buildPrototype()));
+
+        AuthenticationResponse matching = provider.authenticate(request(null, environmentWithCookie(
+                authenticationCookie.name() + "=" + authenticationCookie.value() + "; "
+                        + currentGeneration.cookie().name() + "=" + currentGeneration.cookie().value())));
+        assertThat(matching.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                authenticationCookie.name() + "=" + authenticationCookie.value()))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                authenticationCookie.name() + "=" + authenticationCookie.value() + "; "
+                        + otherGeneration.cookie().name() + "=" + otherGeneration.cookie().value()))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                authenticationCookie.name() + "=" + authenticationCookie.value() + "; "
+                        + currentGeneration.cookie().name() + "="
+                        + tamperCookieValue(currentGeneration.cookie().value())))));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                authenticationCookie.name() + "=" + authenticationCookie.value() + "; "
+                        + currentGeneration.cookie().name() + "=" + currentGeneration.cookie().value() + "; "
+                        + currentGeneration.cookie().name() + "=" + currentGeneration.cookie().value()))));
+
+        SetCookie legacyAuthenticationCookie = localAuthenticationCookie(tenant,
+                                                                         "default",
+                                                                         now,
+                                                                         now.plusSeconds(3600));
+        assertAuthenticationRequestStarted(provider.authenticate(request(null, environmentWithCookie(
+                legacyAuthenticationCookie.name() + "=" + legacyAuthenticationCookie.value() + "; "
+                        + currentGeneration.cookie().name() + "=" + currentGeneration.cookie().value()))));
     }
 
     @Test

@@ -35,9 +35,9 @@ import javax.crypto.spec.PBEKeySpec;
  * Derives tenant-bound, purpose-specific cookie keys from the configured password.
  * <p>
  * PBKDF2 provides the intentionally expensive password-hardening stage. HKDF then provides cryptographic domain
- * separation: the Authentication Request cookie and local authentication cookie never use the same AES key. This
- * object is created behind {@link io.helidon.common.LazyValue}; derivation therefore happens on first cookie use, not
- * during server startup, and a retained handler performs it only once.
+ * separation: Authentication Request, local authentication, and browser-session generation cookies never use the same
+ * AES key. This object is created behind {@link io.helidon.common.LazyValue}; derivation therefore happens on first
+ * cookie use, not during server startup, and a retained handler performs it only once.
  */
 final class OidcCookieKeys {
     static final int MIN_PASSWORD_LENGTH = 16;
@@ -54,13 +54,19 @@ final class OidcCookieKeys {
             "io.helidon.security.providers.oidc.next/cookie/aes-256-gcm/authentication-request/v1";
     private static final String LOCAL_AUTHENTICATION_CONTEXT =
             "io.helidon.security.providers.oidc.next/cookie/aes-256-gcm/local-authentication/v1";
+    private static final String BROWSER_SESSION_GENERATION_CONTEXT =
+            "io.helidon.security.providers.oidc.next/cookie/aes-256-gcm/browser-session-generation/v1";
 
     private final KeyMaterial authenticationRequest;
     private final KeyMaterial localAuthentication;
+    private final KeyMaterial browserSessionGeneration;
 
-    private OidcCookieKeys(KeyMaterial authenticationRequest, KeyMaterial localAuthentication) {
+    private OidcCookieKeys(KeyMaterial authenticationRequest,
+                           KeyMaterial localAuthentication,
+                           KeyMaterial browserSessionGeneration) {
         this.authenticationRequest = authenticationRequest;
         this.localAuthentication = localAuthentication;
+        this.browserSessionGeneration = browserSessionGeneration;
     }
 
     static Optional<OidcCookieKeys> create(String tenantId, OidcTenantConfig tenantConfig) {
@@ -88,6 +94,7 @@ final class OidcCookieKeys {
         return switch (purpose) {
         case AUTHENTICATION_REQUEST -> authenticationRequest;
         case LOCAL_AUTHENTICATION -> localAuthentication;
+        case BROWSER_SESSION_GENERATION -> browserSessionGeneration;
         };
     }
 
@@ -113,16 +120,18 @@ final class OidcCookieKeys {
             KDF hkdf = KDF.getInstance("HKDF-SHA256");
             byte[] authenticationRequestContext = context(AUTHENTICATION_REQUEST_CONTEXT, tenantId, clientId);
             byte[] localAuthenticationContext = context(LOCAL_AUTHENTICATION_CONTEXT, tenantId, clientId);
+            byte[] browserSessionGenerationContext = context(BROWSER_SESSION_GENERATION_CONTEXT, tenantId, clientId);
             /*
-             * The two full extract-and-expand operations deliberately use distinct context values. Reusing one AES
-             * key for both cookie types would allow a value valid in one protocol role to reach the parser for the
-             * other role.
+             * Each full extract-and-expand operation deliberately uses a distinct context value. Reusing an AES key
+             * across cookie types would allow a value valid in one protocol role to reach another role's parser.
              */
             return new OidcCookieKeys(
                     new KeyMaterial(deriveKey(hkdf, masterKey, authenticationRequestContext),
                                     authenticationRequestContext),
                     new KeyMaterial(deriveKey(hkdf, masterKey, localAuthenticationContext),
-                                    localAuthenticationContext));
+                                    localAuthenticationContext),
+                    new KeyMaterial(deriveKey(hkdf, masterKey, browserSessionGenerationContext),
+                                    browserSessionGenerationContext));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Failed to derive OIDC cookie protection keys", e);
         } finally {
@@ -177,7 +186,8 @@ final class OidcCookieKeys {
 
     enum Purpose {
         AUTHENTICATION_REQUEST,
-        LOCAL_AUTHENTICATION
+        LOCAL_AUTHENTICATION,
+        BROWSER_SESSION_GENERATION
     }
 
     record KeyMaterial(SecretKey key, byte[] additionalAuthenticatedData) {

@@ -60,18 +60,56 @@ class OidcCookieStateHandlerTest {
     }
 
     @Test
-    void hkdfSeparatesAuthenticationRequestAndLocalAuthenticationKeys() {
+    void hkdfSeparatesEveryCookiePurpose() {
         OidcCookieKeys keys = OidcCookieKeys.create(TENANT_ID, tenant(CLIENT_ID, PASSWORD)).orElseThrow();
         OidcCookieKeys.KeyMaterial authenticationRequest =
                 keys.keyMaterial(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST);
         OidcCookieKeys.KeyMaterial localAuthentication =
                 keys.keyMaterial(OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION);
+        OidcCookieKeys.KeyMaterial browserSessionGeneration =
+                keys.keyMaterial(OidcCookieKeys.Purpose.BROWSER_SESSION_GENERATION);
 
         assertThat(Arrays.equals(authenticationRequest.key().getEncoded(), localAuthentication.key().getEncoded()),
+                   is(false));
+        assertThat(Arrays.equals(authenticationRequest.key().getEncoded(), browserSessionGeneration.key().getEncoded()),
+                   is(false));
+        assertThat(Arrays.equals(localAuthentication.key().getEncoded(), browserSessionGeneration.key().getEncoded()),
                    is(false));
         assertThat(Arrays.equals(authenticationRequest.additionalAuthenticatedData(),
                                  localAuthentication.additionalAuthenticatedData()),
                    is(false));
+        assertThat(Arrays.equals(authenticationRequest.additionalAuthenticatedData(),
+                                 browserSessionGeneration.additionalAuthenticatedData()),
+                   is(false));
+        assertThat(Arrays.equals(localAuthentication.additionalAuthenticatedData(),
+                                 browserSessionGeneration.additionalAuthenticatedData()),
+                   is(false));
+    }
+
+    @Test
+    void browserSessionGenerationCookieIsProtectedScopedAndReplicaReadable() {
+        OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT_ID, tenant);
+        OidcCookieStateHandler.BrowserSessionGeneration generation = handler.createBrowserSessionGeneration();
+        SetCookie cookie = generation.cookie();
+
+        assertThat(cookie.name(), is("__Host-helidon-oidc-auth-generation"));
+        assertThat(cookie.value().contains(generation.value()), is(false));
+        assertThat(cookie.path().orElse(""), is("/"));
+        assertThat(cookie.httpOnly(), is(true));
+        assertThat(cookie.secure(), is(true));
+        assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
+        assertThat(cookie.maxAge().orElseThrow(),
+                   is(tenant.cookies().authenticationRequestLifetime().plus(tenant.cookies().localAuthenticationLifetime())));
+        assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
+                           .readBrowserSessionGeneration(cookie.value())
+                           .orElseThrow(),
+                   is(generation.value()));
+        assertThat(OidcCookieStateHandler.create("tenant-b", tenant)
+                           .readBrowserSessionGeneration(cookie.value())
+                           .isEmpty(),
+                   is(true));
+        assertThat(handler.readBrowserSessionGeneration(tamper(cookie.value())).isEmpty(), is(true));
     }
 
     @Test
@@ -128,10 +166,19 @@ class OidcCookieStateHandlerTest {
                                                   "state",
                                                   "nonce",
                                                   "pkce-verifier",
+                                                  null,
                                                   "https://issuer.example",
                                                   URI.create("https://rp.example/original"),
                                                   URI.create("https://rp.example/oidc/callback"),
                                                   NOW.minusSeconds(1),
                                                   NOW.plusSeconds(60));
+    }
+
+    private static String tamper(String value) {
+        int ciphertextStart = value.indexOf('.', value.indexOf('.') + 1) + 1;
+        char firstCiphertextChar = value.charAt(ciphertextStart);
+        return value.substring(0, ciphertextStart)
+                + (firstCiphertextChar == 'A' ? 'B' : 'A')
+                + value.substring(ciphertextStart + 1);
     }
 }

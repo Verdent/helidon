@@ -40,6 +40,8 @@ final class OidcCookieStateHandler {
     private static final int AES_GCM_TAG_BITS = 128;
     private static final int AES_GCM_TAG_BYTES = AES_GCM_TAG_BITS / Byte.SIZE;
     private static final int AES_GCM_IV_BYTES = 12;
+    private static final int BROWSER_SESSION_GENERATION_BYTES = 32;
+    private static final String BROWSER_SESSION_GENERATION_COOKIE_SUFFIX = "-generation";
 
     private final OidcCookieConfig cookieConfig;
     private final LazyValue<Optional<OidcCookieKeys>> keys;
@@ -79,6 +81,35 @@ final class OidcCookieStateHandler {
                              protect(OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION, toJson(result).toString()))
                 .maxAge(maxAge)
                 .build();
+    }
+
+    BrowserSessionGeneration createBrowserSessionGeneration() {
+        byte[] randomValue = new byte[BROWSER_SESSION_GENERATION_BYTES];
+        secureRandom.nextBytes(randomValue);
+        String value = encode(randomValue);
+        SetCookie cookie = cookieBuilder(browserSessionGenerationCookieName(),
+                                         protect(OidcCookieKeys.Purpose.BROWSER_SESSION_GENERATION, value))
+                .maxAge(cookieConfig.authenticationRequestLifetime().plus(cookieConfig.localAuthenticationLifetime()))
+                .build();
+        return new BrowserSessionGeneration(value, cookie);
+    }
+
+    String browserSessionGenerationCookieName() {
+        return browserSessionGenerationCookieName(cookieConfig);
+    }
+
+    static String browserSessionGenerationCookieName(OidcCookieConfig cookieConfig) {
+        return cookieConfig.localAuthenticationCookieName() + BROWSER_SESSION_GENERATION_COOKIE_SUFFIX;
+    }
+
+    Optional<String> readBrowserSessionGeneration(String cookieValue) {
+        try {
+            String value = unprotect(OidcCookieKeys.Purpose.BROWSER_SESSION_GENERATION, cookieValue);
+            byte[] decoded = decode(value);
+            return decoded.length == BROWSER_SESSION_GENERATION_BYTES ? Optional.of(value) : Optional.empty();
+        } catch (RuntimeException _) {
+            return Optional.empty();
+        }
     }
 
     SetCookie removeLocalAuthenticationResultCookie() {
@@ -148,6 +179,8 @@ final class OidcCookieStateHandler {
                 .set("created_at", state.createdAt().toString())
                 .set("expires_at", state.expiresAt().toString());
         state.pkceVerifier().ifPresent(pkceVerifier -> builder.set("pkce_verifier", pkceVerifier));
+        state.browserSessionGeneration()
+                .ifPresent(generation -> builder.set("browser_session_generation", generation));
         return builder.build();
     }
 
@@ -160,6 +193,8 @@ final class OidcCookieStateHandler {
                 .set("created_at", result.createdAt().toString())
                 .set("expires_at", result.expiresAt().toString());
         result.refreshToken().ifPresent(refreshToken -> builder.set("refresh_token", refreshToken));
+        result.browserSessionGeneration()
+                .ifPresent(generation -> builder.set("browser_session_generation", generation));
         result.scope().ifPresent(scope -> builder.set("scope", scope));
         result.userInfo().ifPresent(userInfo -> builder.set("userinfo", userInfo));
         result.accessTokenExpiresAt()
@@ -174,6 +209,7 @@ final class OidcCookieStateHandler {
                 json.stringValue("state").orElseThrow(),
                 json.stringValue("nonce").orElseThrow(),
                 json.stringValue("pkce_verifier").orElse(null),
+                json.stringValue("browser_session_generation").orElse(null),
                 json.stringValue("expected_issuer").orElseThrow(),
                 URI.create(json.stringValue("original_uri").orElseThrow()),
                 URI.create(json.stringValue("redirection_endpoint_uri").orElseThrow()),
@@ -203,6 +239,7 @@ final class OidcCookieStateHandler {
                 .accessToken(accessToken)
                 .tokenType(tokenType)
                 .refreshToken(json.stringValue("refresh_token"))
+                .browserSessionGeneration(json.stringValue("browser_session_generation"))
                 .scope(json.stringValue("scope"))
                 .userInfo(json.objectValue("userinfo"))
                 .createdAt(createdAt)
@@ -270,5 +307,8 @@ final class OidcCookieStateHandler {
             throw new IllegalArgumentException("Invalid OIDC cookie encoding");
         }
         return decoded;
+    }
+
+    record BrowserSessionGeneration(String value, SetCookie cookie) {
     }
 }

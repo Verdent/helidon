@@ -497,6 +497,7 @@ class OidcIdTokenValidatorTest {
                                                      "state-value",
                                                      NONCE,
                                                      "pkce-verifier",
+                                                     null,
                                                      ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      REDIRECTION_ENDPOINT_URI,

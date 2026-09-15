@@ -91,9 +91,9 @@ final class OidcResponseFactory {
 
     static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request,
                                                                  Optional<String> localAuthenticationRemovalCookie) {
-        List<String> cookies = new ArrayList<>(2);
+        List<String> cookies = new ArrayList<>(3);
         localAuthenticationRemovalCookie.ifPresent(cookies::add);
-        cookies.add(request.stateCookie());
+        cookies.addAll(request.cookies());
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
                 .statusCode(Status.SEE_OTHER_303.code())

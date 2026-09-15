@@ -60,6 +60,15 @@ final class OidcLocalAuthenticationResult {
         return new OidcLocalAuthenticationResult(state);
     }
 
+    OidcLocalAuthenticationResult withBrowserSessionGeneration(Optional<String> browserSessionGeneration) {
+        if (browserSessionGeneration.isEmpty()) {
+            return this;
+        }
+        return fromStoredValues(OidcLocalAuthenticationState.builder(state)
+                                        .browserSessionGeneration(browserSessionGeneration)
+                                        .buildPrototype());
+    }
+
     String tenantId() {
         return state.tenantId();
     }
@@ -78,6 +87,10 @@ final class OidcLocalAuthenticationResult {
 
     Optional<String> refreshToken() {
         return state.refreshToken();
+    }
+
+    Optional<String> browserSessionGeneration() {
+        return state.browserSessionGeneration();
     }
 
     Optional<String> scope() {

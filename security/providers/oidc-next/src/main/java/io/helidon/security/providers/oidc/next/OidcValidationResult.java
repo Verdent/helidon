@@ -20,18 +20,26 @@ import java.util.Objects;
 import java.util.Optional;
 
 final class OidcValidationResult<T> {
+    private final OidcValidationStatus status;
     private final Optional<T> validatedToken;
     private final Optional<String> errorDescription;
     private final Optional<Throwable> cause;
 
-    private OidcValidationResult(Optional<T> validatedToken, Optional<String> errorDescription, Optional<Throwable> cause) {
+    private OidcValidationResult(OidcValidationStatus status,
+                                 Optional<T> validatedToken,
+                                 Optional<String> errorDescription,
+                                 Optional<Throwable> cause) {
+        this.status = Objects.requireNonNull(status);
         this.validatedToken = Objects.requireNonNull(validatedToken);
         this.errorDescription = Objects.requireNonNull(errorDescription);
         this.cause = Objects.requireNonNull(cause);
     }
 
     static <T> OidcValidationResult<T> success(T validatedToken) {
-        return new OidcValidationResult<>(Optional.of(validatedToken), Optional.empty(), Optional.empty());
+        return new OidcValidationResult<>(OidcValidationStatus.SUCCESS,
+                                          Optional.of(validatedToken),
+                                          Optional.empty(),
+                                          Optional.empty());
     }
 
     static <T> OidcValidationResult<T> failure(String errorDescription) {
@@ -39,13 +47,25 @@ final class OidcValidationResult<T> {
     }
 
     static <T> OidcValidationResult<T> failure(String errorDescription, Throwable cause) {
-        return new OidcValidationResult<>(Optional.empty(),
+        return new OidcValidationResult<>(OidcValidationStatus.FAILURE,
+                                          Optional.empty(),
                                           Optional.of(errorDescription),
                                           Optional.ofNullable(cause));
     }
 
+    static <T> OidcValidationResult<T> unavailable(String errorDescription) {
+        return new OidcValidationResult<>(OidcValidationStatus.UNAVAILABLE,
+                                          Optional.empty(),
+                                          Optional.of(errorDescription),
+                                          Optional.empty());
+    }
+
     boolean succeeded() {
-        return validatedToken.isPresent();
+        return status == OidcValidationStatus.SUCCESS;
+    }
+
+    boolean unavailable() {
+        return status == OidcValidationStatus.UNAVAILABLE;
     }
 
     Optional<T> validatedToken() {
@@ -58,5 +78,11 @@ final class OidcValidationResult<T> {
 
     Optional<Throwable> cause() {
         return cause;
+    }
+
+    private enum OidcValidationStatus {
+        SUCCESS,
+        FAILURE,
+        UNAVAILABLE
     }
 }

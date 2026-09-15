@@ -178,6 +178,14 @@ final class OidcTenantContext {
         return runtimeResources().jwkSetManager();
     }
 
+    OidcRemoteWorkLimiter introspectionRemoteWorkLimiter() {
+        return runtimeResources().remoteWorkLimiters().introspection();
+    }
+
+    OidcRemoteWorkLimiter tokenExchangeRemoteWorkLimiter() {
+        return runtimeResources().remoteWorkLimiters().tokenExchange();
+    }
+
     WebClient webClient() {
         return runtimeResources().webClient();
     }
@@ -236,6 +244,7 @@ final class OidcTenantContext {
                                     OidcJwkSetManager jwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
+                                    RemoteWorkLimiters remoteWorkLimiters,
                                     WebClient webClient) {
         private static RuntimeResources create(String tenantId,
                                                OidcTenantConfig tenantConfig,
@@ -254,7 +263,21 @@ final class OidcTenantContext {
                                         jwkSetManager,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
+                                        RemoteWorkLimiters.create(tenantConfig),
                                         webClient);
+        }
+    }
+
+    private record RemoteWorkLimiters(OidcRemoteWorkLimiter introspection,
+                                      OidcRemoteWorkLimiter tokenExchange) {
+        private static RemoteWorkLimiters create(OidcTenantConfig tenantConfig) {
+            OidcRemoteWorkConfig introspectionConfig = tenantConfig.protectedResource()
+                    .map(OidcProtectedResourceConfig::tokenValidation)
+                    .map(OidcTokenValidationConfig::introspection)
+                    .map(OidcIntrospectionConfig::remoteWork)
+                    .orElseGet(OidcRemoteWorkConfig::create);
+            return new RemoteWorkLimiters(new OidcRemoteWorkLimiter(introspectionConfig),
+                                          new OidcRemoteWorkLimiter(tenantConfig.tokenExchangeRemoteWork()));
         }
     }
 }

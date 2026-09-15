@@ -90,6 +90,7 @@ class OidcProviderConfigTest {
         OidcRequestObjectConfig requestObject = OidcRequestObjectConfig.create();
         OidcJwkSetConfig jwkSet = OidcJwkSetConfig.create();
         OidcIdTokenConfig idToken = OidcIdTokenConfig.create();
+        OidcRemoteWorkConfig remoteWork = OidcRemoteWorkConfig.create();
 
         assertThat(providerConfig.providerName(), is("oidc-next"));
         assertThat(providerConfig.optional(), is(false));
@@ -199,6 +200,11 @@ class OidcProviderConfigTest {
         assertThat(jwkSet.refreshInterval().isEmpty(), is(true));
         assertThat(jwkSet.failureRetryInterval(), is(Duration.ofSeconds(10)));
         assertThat(jwkSet.staleOnError(), is(true));
+        assertThat(remoteWork.maxConcurrent(), is(32));
+        assertThat(remoteWork.maxQueued(), is(128));
+        assertThat(remoteWork.admissionTimeout(), is(Duration.ofSeconds(1)));
+        assertThat(tokenValidation.introspection().remoteWork(), is(remoteWork));
+        assertThat(tenantConfig.tokenExchangeRemoteWork(), is(remoteWork));
         assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
                    is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -342,6 +348,9 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.jwk-set.refresh-interval", "PT10M"),
                         Map.entry("tenants.default.jwk-set.failure-retry-interval", "PT20S"),
                         Map.entry("tenants.default.jwk-set.stale-on-error", "false"),
+                        Map.entry("tenants.default.token-exchange-remote-work.max-concurrent", "8"),
+                        Map.entry("tenants.default.token-exchange-remote-work.max-queued", "16"),
+                        Map.entry("tenants.default.token-exchange-remote-work.admission-timeout", "PT0.25S"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("tenants.default.endpoints.pushed-authorization-request-endpoint-uri",
                                   PUSHED_AUTHORIZATION_REQUEST_ENDPOINT_URI.toString()),
@@ -374,6 +383,15 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.cookies.protection.iterations", "700000"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.remote-work."
+                                          + "max-concurrent",
+                                  "4"),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.remote-work."
+                                          + "max-queued",
+                                  "12"),
+                        Map.entry("tenants.default.protected-resource.token-validation.introspection.remote-work."
+                                          + "admission-timeout",
+                                  "PT0.5S"),
                         Map.entry("tenants.default.protected-resource.token-validation"
                                           + ".certificate-bound-access-tokens.mode", "if-present"),
                         Map.entry("tenants.default.endpoint-policy.accepted-credentials.0", "bearer-token"),
@@ -442,6 +460,9 @@ class OidcProviderConfigTest {
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(10)));
         assertThat(tenant.jwkSet().failureRetryInterval(), is(Duration.ofSeconds(20)));
         assertThat(tenant.jwkSet().staleOnError(), is(false));
+        assertThat(tenant.tokenExchangeRemoteWork().maxConcurrent(), is(8));
+        assertThat(tenant.tokenExchangeRemoteWork().maxQueued(), is(16));
+        assertThat(tenant.tokenExchangeRemoteWork().admissionTimeout(), is(Duration.ofMillis(250)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.endpoints().pushedAuthorizationRequestEndpointUri().orElseThrow(),
                    is(PUSHED_AUTHORIZATION_REQUEST_ENDPOINT_URI));
@@ -476,6 +497,10 @@ class OidcProviderConfigTest {
         assertThat(protectedResource.tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
         assertThat(protectedResource.tokenValidation().audience().orElse(""), is(AUDIENCE));
+        assertThat(protectedResource.tokenValidation().introspection().remoteWork().maxConcurrent(), is(4));
+        assertThat(protectedResource.tokenValidation().introspection().remoteWork().maxQueued(), is(12));
+        assertThat(protectedResource.tokenValidation().introspection().remoteWork().admissionTimeout(),
+                   is(Duration.ofMillis(500)));
         assertThat(protectedResource.tokenValidation().certificateBoundAccessTokens().mode(),
                    is(OidcCertificateBoundAccessTokenMode.IF_PRESENT));
         assertThat(tenant.endpointPolicy().acceptedCredentials(),
@@ -701,6 +726,26 @@ class OidcProviderConfigTest {
 
         assertThat(zero.getMessage(), containsString("initialization-retry-interval"));
         assertThat(negative.getMessage(), containsString("initialization-retry-interval"));
+    }
+
+    @Test
+    void remoteWorkRejectsInvalidLimits() {
+        IllegalArgumentException concurrent = assertThrows(IllegalArgumentException.class,
+                                                           () -> OidcRemoteWorkConfig.builder()
+                                                                   .maxConcurrent(0)
+                                                                   .buildPrototype());
+        IllegalArgumentException queued = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcRemoteWorkConfig.builder()
+                                                               .maxQueued(-1)
+                                                               .buildPrototype());
+        IllegalArgumentException timeout = assertThrows(IllegalArgumentException.class,
+                                                        () -> OidcRemoteWorkConfig.builder()
+                                                                .admissionTimeout(Duration.ofNanos(-1))
+                                                                .buildPrototype());
+
+        assertThat(concurrent.getMessage(), containsString("max-concurrent"));
+        assertThat(queued.getMessage(), containsString("max-queued"));
+        assertThat(timeout.getMessage(), containsString("admission-timeout"));
     }
 
     @Test

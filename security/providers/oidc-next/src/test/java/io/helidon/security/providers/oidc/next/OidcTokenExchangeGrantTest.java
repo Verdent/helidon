@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -76,6 +77,8 @@ class OidcTokenExchangeGrantTest {
     private static final String EXISTING_HEADER_VALUE = "existing-value";
 
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger ACTIVE_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger MAX_ACTIVE_REQUESTS = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static volatile CountDownLatch tokenRequestStarted;
     private static volatile CountDownLatch releaseTokenResponse;
@@ -113,6 +116,8 @@ class OidcTokenExchangeGrantTest {
         dynamicTokenResponse = false;
         dynamicExpiresIn = 600;
         REQUEST_COUNT.set(0);
+        ACTIVE_REQUESTS.set(0);
+        MAX_ACTIVE_REQUESTS.set(0);
         RECORDED_REQUEST.set(null);
         tokenRequestStarted = null;
         releaseTokenResponse = null;
@@ -234,6 +239,72 @@ class OidcTokenExchangeGrantTest {
         }
 
         assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void highCardinalityTokenExchangeFloodIsBoundedAndRecovers() throws Exception {
+        int taskCount = 1_000;
+        int maxConcurrent = 4;
+        int maxQueued = 8;
+        dynamicTokenResponse = true;
+        dynamicExpiresIn = 600;
+        tokenRequestStarted = new CountDownLatch(maxConcurrent);
+        releaseTokenResponse = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch overloadObserved = new CountDownLatch(1);
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenant())
+                .tokenExchangeRemoteWork(remoteWork -> remoteWork
+                        .maxConcurrent(maxConcurrent)
+                        .maxQueued(maxQueued)
+                        .admissionTimeout(Duration.ofMillis(100)))
+                .buildPrototype();
+        OidcProvider provider = provider(tenant, tokenExchangeTarget());
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                String token = "subject-token-" + i;
+                futures.add(executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(token),
+                                                                                  outboundEnvironment(),
+                                                                                  EndpointConfig.create());
+                    if (response.status() == SecurityResponse.SecurityStatus.FAILURE) {
+                        overloadObserved.countDown();
+                    }
+                    return response;
+                }));
+            }
+
+            start.countDown();
+            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            assertTrue(overloadObserved.await(5, TimeUnit.SECONDS));
+            releaseTokenResponse.countDown();
+
+            int succeeded = 0;
+            int overloaded = 0;
+            for (Future<OutboundSecurityResponse> future : futures) {
+                OutboundSecurityResponse response = future.get(10, TimeUnit.SECONDS);
+                if (response.status() == SecurityResponse.SecurityStatus.SUCCESS) {
+                    succeeded++;
+                } else if (response.status() == SecurityResponse.SecurityStatus.FAILURE) {
+                    overloaded++;
+                    assertThat(response.description().orElse(""), is("Token Exchange failed"));
+                }
+            }
+            assertThat(succeeded + overloaded, is(taskCount));
+            assertThat(overloaded > 0, is(true));
+            assertThat(MAX_ACTIVE_REQUESTS.get() <= maxConcurrent, is(true));
+            assertThat(REQUEST_COUNT.get(), is(succeeded));
+        } finally {
+            releaseTokenResponse.countDown();
+        }
+
+        OutboundSecurityResponse recovered = provider.outboundSecurity(providerRequest("recovery-token"),
+                                                                       outboundEnvironment(),
+                                                                       EndpointConfig.create());
+        assertThat(recovered.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(ACTIVE_REQUESTS.get(), is(0));
     }
 
     @Test
@@ -414,26 +485,32 @@ class OidcTokenExchangeGrantTest {
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         int requestNumber = REQUEST_COUNT.incrementAndGet();
-        CountDownLatch requestStarted = tokenRequestStarted;
-        if (requestStarted != null) {
-            requestStarted.countDown();
+        int active = ACTIVE_REQUESTS.incrementAndGet();
+        MAX_ACTIVE_REQUESTS.accumulateAndGet(active, Math::max);
+        try {
+            CountDownLatch requestStarted = tokenRequestStarted;
+            if (requestStarted != null) {
+                requestStarted.countDown();
+            }
+            CountDownLatch releaseResponse = releaseTokenResponse;
+            if (releaseResponse != null) {
+                await(releaseResponse);
+            }
+            RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
+                                                    request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
+                                                    request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
+                                                    formParameters(request.content().as(Parameters.class))));
+            String body = dynamicTokenResponse
+                    ? tokenExchangeResponse("exchanged-access-token-" + requestNumber, dynamicExpiresIn).toString()
+                    : responseBody;
+            response.status(responseStatus)
+                    .header(HeaderValues.CONTENT_TYPE_JSON)
+                    .header(HeaderNames.CACHE_CONTROL, "no-store")
+                    .header(HeaderNames.PRAGMA, "no-cache")
+                    .send(body);
+        } finally {
+            ACTIVE_REQUESTS.decrementAndGet();
         }
-        CountDownLatch releaseResponse = releaseTokenResponse;
-        if (releaseResponse != null) {
-            await(releaseResponse);
-        }
-        RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
-                                                request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
-                                                request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
-                                                formParameters(request.content().as(Parameters.class))));
-        String body = dynamicTokenResponse
-                ? tokenExchangeResponse("exchanged-access-token-" + requestNumber, dynamicExpiresIn).toString()
-                : responseBody;
-        response.status(responseStatus)
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .header(HeaderNames.CACHE_CONTROL, "no-store")
-                .header(HeaderNames.PRAGMA, "no-cache")
-                .send(body);
     }
 
     private static void await(CountDownLatch latch) {

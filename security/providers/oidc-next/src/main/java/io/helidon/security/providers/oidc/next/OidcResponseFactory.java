@@ -33,6 +33,7 @@ final class OidcResponseFactory {
     private static final String INVALID_TOKEN = "invalid_token";
     private static final String INVALID_REQUEST_DESCRIPTION = "Bearer Token request is invalid";
     private static final String INVALID_TOKEN_DESCRIPTION = "Bearer Token is invalid";
+    private static final String TOKEN_VALIDATION_UNAVAILABLE_DESCRIPTION = "Bearer Token validation is unavailable";
     private static final String AUTHORIZATION_CODE_FLOW_UNAVAILABLE_DESCRIPTION = "OIDC authentication is unavailable";
     private static final String TENANT_UNAVAILABLE_DESCRIPTION = "OIDC tenant is unavailable";
     private static final String CLIENT_CREDENTIALS_FAILURE_DESCRIPTION = "Client Credentials Grant failed";
@@ -86,6 +87,14 @@ final class OidcResponseFactory {
                 .statusCode(401)
                 .description(INVALID_TOKEN_DESCRIPTION)
                 .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm, INVALID_TOKEN, INVALID_TOKEN_DESCRIPTION))
+                .build();
+    }
+
+    static AuthenticationResponse bearerTokenValidationUnavailable() {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(Status.SERVICE_UNAVAILABLE_503.code())
+                .description(TOKEN_VALIDATION_UNAVAILABLE_DESCRIPTION)
                 .build();
     }
 

@@ -27,13 +27,15 @@ final class OidcTenantContext {
     private final OidcTenantState state;
     private final Optional<RuntimeResources> runtimeResources;
     private final Throwable failureCause;
+    private final boolean retryableFailure;
 
     private OidcTenantContext(String tenantId,
                               OidcTenantConfig tenantConfig,
                               OidcTenantState state,
                               OidcProviderMetadata readyMetadata,
                               WebClient readyWebClient,
-                              Throwable failureCause) {
+                              Throwable failureCause,
+                              boolean retryableFailure) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.cookieStateHandler = OidcCookieStateHandler.create(tenantId, tenantConfig);
@@ -42,6 +44,7 @@ final class OidcTenantContext {
                 ? Optional.of(RuntimeResources.create(tenantId, tenantConfig, readyMetadata, readyWebClient))
                 : Optional.empty();
         this.failureCause = failureCause;
+        this.retryableFailure = retryableFailure;
     }
 
     private OidcTenantContext(String tenantId,
@@ -49,13 +52,15 @@ final class OidcTenantContext {
                               OidcCookieStateHandler cookieStateHandler,
                               OidcTenantState state,
                               Optional<RuntimeResources> runtimeResources,
-                              Throwable failureCause) {
+                              Throwable failureCause,
+                              boolean retryableFailure) {
         this.tenantId = tenantId;
         this.tenantConfig = tenantConfig;
         this.cookieStateHandler = cookieStateHandler;
         this.state = state;
         this.runtimeResources = runtimeResources;
         this.failureCause = failureCause;
+        this.retryableFailure = retryableFailure;
     }
 
     static OidcTenantContext ready(String tenantId, OidcTenantConfig tenantConfig) {
@@ -73,11 +78,23 @@ final class OidcTenantContext {
                                    OidcTenantConfig tenantConfig,
                                    OidcProviderMetadata metadata,
                                    WebClient webClient) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.READY, metadata, webClient, null);
+        return new OidcTenantContext(tenantId,
+                                     tenantConfig,
+                                     OidcTenantState.READY,
+                                     metadata,
+                                     webClient,
+                                     null,
+                                     false);
     }
 
     static OidcTenantContext disabled(String tenantId, OidcTenantConfig tenantConfig) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.DISABLED, null, null, null);
+        return new OidcTenantContext(tenantId,
+                                     tenantConfig,
+                                     OidcTenantState.DISABLED,
+                                     null,
+                                     null,
+                                     null,
+                                     false);
     }
 
     static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig) {
@@ -85,7 +102,26 @@ final class OidcTenantContext {
     }
 
     static OidcTenantContext failed(String tenantId, OidcTenantConfig tenantConfig, Throwable failureCause) {
-        return new OidcTenantContext(tenantId, tenantConfig, OidcTenantState.FAILED, null, null, failureCause);
+        return failed(tenantId, tenantConfig, failureCause, false);
+    }
+
+    static OidcTenantContext retryableFailure(String tenantId,
+                                              OidcTenantConfig tenantConfig,
+                                              Throwable failureCause) {
+        return failed(tenantId, tenantConfig, failureCause, true);
+    }
+
+    private static OidcTenantContext failed(String tenantId,
+                                            OidcTenantConfig tenantConfig,
+                                            Throwable failureCause,
+                                            boolean retryableFailure) {
+        return new OidcTenantContext(tenantId,
+                                     tenantConfig,
+                                     OidcTenantState.FAILED,
+                                     null,
+                                     null,
+                                     failureCause,
+                                     retryableFailure);
     }
 
     String tenantId() {
@@ -104,13 +140,18 @@ final class OidcTenantContext {
         return Optional.ofNullable(failureCause);
     }
 
+    boolean retryableFailure() {
+        return retryableFailure;
+    }
+
     OidcTenantContext withCookieStateHandler(OidcCookieStateHandler cookieStateHandler) {
         return new OidcTenantContext(tenantId,
                                      tenantConfig,
                                      cookieStateHandler,
                                      state,
                                      runtimeResources,
-                                     failureCause);
+                                     failureCause,
+                                     retryableFailure);
     }
 
     boolean ready() {

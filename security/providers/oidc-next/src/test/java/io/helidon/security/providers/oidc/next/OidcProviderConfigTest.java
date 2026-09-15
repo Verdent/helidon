@@ -97,6 +97,7 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.socketRequired(), is(true));
         assertThat(providerConfig.tenants().isEmpty(), is(true));
         assertThat(tenantConfig.enabled(), is(true));
+        assertThat(tenantConfig.initializationRetryInterval(), is(Duration.ofSeconds(10)));
         assertThat(tenantConfig.idToken(), is(idToken));
         assertThat(idToken.allowedAlgorithms(), is(List.of("RS256")));
         assertThat(idToken.allowedEncryptionAlgorithms(), is(List.of("RSA-OAEP-256", "RSA-OAEP")));
@@ -196,6 +197,7 @@ class OidcProviderConfigTest {
         assertThat(jwkSet.unknownKeyIdRefreshEnabled(), is(true));
         assertThat(jwkSet.unknownKeyIdRefreshInterval(), is(Duration.ofMinutes(5)));
         assertThat(jwkSet.refreshInterval().isEmpty(), is(true));
+        assertThat(jwkSet.failureRetryInterval(), is(Duration.ofSeconds(10)));
         assertThat(jwkSet.staleOnError(), is(true));
         assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
@@ -321,6 +323,7 @@ class OidcProviderConfigTest {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
                         Map.entry("tenants.default.issuer", ISSUER.toString()),
+                        Map.entry("tenants.default.initialization-retry-interval", "PT20S"),
                         Map.entry("tenants.default.client-id", "client-id"),
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.token-endpoint-auth-method", "PRIVATE_KEY_JWT"),
@@ -337,6 +340,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.jwk-set.unknown-key-id-refresh-enabled", "false"),
                         Map.entry("tenants.default.jwk-set.unknown-key-id-refresh-interval", "PT30S"),
                         Map.entry("tenants.default.jwk-set.refresh-interval", "PT10M"),
+                        Map.entry("tenants.default.jwk-set.failure-retry-interval", "PT20S"),
                         Map.entry("tenants.default.jwk-set.stale-on-error", "false"),
                         Map.entry("tenants.default.endpoints.jwks-uri", JWKS_URI.toString()),
                         Map.entry("tenants.default.endpoints.pushed-authorization-request-endpoint-uri",
@@ -418,6 +422,7 @@ class OidcProviderConfigTest {
         assertThat(outboundTarget.name(), is("orders"));
         assertThat(outboundTarget.hosts(), is(Set.of("api.example.com")));
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
+        assertThat(tenant.initializationRetryInterval(), is(Duration.ofSeconds(20)));
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
@@ -435,6 +440,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.jwkSet().unknownKeyIdRefreshEnabled(), is(false));
         assertThat(tenant.jwkSet().unknownKeyIdRefreshInterval(), is(Duration.ofSeconds(30)));
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(10)));
+        assertThat(tenant.jwkSet().failureRetryInterval(), is(Duration.ofSeconds(20)));
         assertThat(tenant.jwkSet().staleOnError(), is(false));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         assertThat(tenant.endpoints().pushedAuthorizationRequestEndpointUri().orElseThrow(),
@@ -664,6 +670,37 @@ class OidcProviderConfigTest {
 
         assertThat(zero.getMessage(), containsString("jwk-set.refresh-interval"));
         assertThat(negative.getMessage(), containsString("jwk-set.refresh-interval"));
+    }
+
+    @Test
+    void jwkSetRejectsNonPositiveFailureRetryInterval() {
+        IllegalArgumentException zero = assertThrows(IllegalArgumentException.class,
+                                                     () -> OidcTenantConfig.builder()
+                                                             .jwkSet(it -> it.failureRetryInterval(Duration.ZERO))
+                                                             .buildPrototype());
+        IllegalArgumentException negative = assertThrows(IllegalArgumentException.class,
+                                                         () -> OidcTenantConfig.builder()
+                                                                 .jwkSet(it -> it.failureRetryInterval(
+                                                                         Duration.ofSeconds(-1)))
+                                                                 .buildPrototype());
+
+        assertThat(zero.getMessage(), containsString("jwk-set.failure-retry-interval"));
+        assertThat(negative.getMessage(), containsString("jwk-set.failure-retry-interval"));
+    }
+
+    @Test
+    void tenantRejectsNonPositiveInitializationRetryInterval() {
+        IllegalArgumentException zero = assertThrows(IllegalArgumentException.class,
+                                                     () -> OidcTenantConfig.builder()
+                                                             .initializationRetryInterval(Duration.ZERO)
+                                                             .buildPrototype());
+        IllegalArgumentException negative = assertThrows(IllegalArgumentException.class,
+                                                         () -> OidcTenantConfig.builder()
+                                                                 .initializationRetryInterval(Duration.ofSeconds(-1))
+                                                                 .buildPrototype());
+
+        assertThat(zero.getMessage(), containsString("initialization-retry-interval"));
+        assertThat(negative.getMessage(), containsString("initialization-retry-interval"));
     }
 
     @Test

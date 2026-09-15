@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import io.helidon.common.configurable.Resource;
@@ -70,6 +72,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -683,6 +686,126 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void concurrentColdJwkSetFailureIsCoalescedUntilRecoveryWindow() throws Exception {
+        int threads = 1_000;
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .failureRetryInterval(Duration.ofSeconds(10))
+                .buildPrototype();
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of("not-json")));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+
+            RuntimeException cohortFailure = failedJwkCall(futures.getFirst());
+            for (Future<JwkKeys> future : futures) {
+                assertThat(failedJwkCall(future), sameInstance(cohortFailure));
+            }
+            assertThat(assertThrows(IllegalStateException.class, manager::jwkKeys), sameInstance(cohortFailure));
+            assertThat(remoteJwkSetRequests.get(), is(1));
+            remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet)));
+            clock.advance(Duration.ofSeconds(9));
+            assertThat(assertThrows(IllegalStateException.class, manager::jwkKeys), sameInstance(cohortFailure));
+            assertThat(remoteJwkSetRequests.get(), is(1));
+            clock.advance(Duration.ofSeconds(1));
+
+            assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(remoteJwkSetRequests.get(), is(2));
+        } finally {
+            releaseResponse.countDown();
+        }
+    }
+
+    @Test
+    void concurrentFailClosedRefreshPublishesOneFailureThenRecovers() throws Exception {
+        int threads = 32;
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(1))
+                .failureRetryInterval(Duration.ofSeconds(10))
+                .staleOnError(false)
+                .buildPrototype();
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet, "not-json")));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
+        assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        clock.advance(Duration.ofSeconds(1));
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+
+            RuntimeException cohortFailure = failedJwkCall(futures.getFirst());
+            for (Future<JwkKeys> future : futures) {
+                assertThat(failedJwkCall(future), sameInstance(cohortFailure));
+            }
+            assertThat(remoteJwkSetRequests.get(), is(2));
+            remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet)));
+            clock.advance(Duration.ofSeconds(10));
+
+            assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(remoteJwkSetRequests.get(), is(3));
+        } finally {
+            releaseResponse.countDown();
+        }
+    }
+
+    @Test
+    void concurrentStaleOnErrorRefreshPublishesOneStaleOutcomeThenRecovers() throws Exception {
+        int threads = 32;
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .refreshInterval(Duration.ofSeconds(1))
+                .failureRetryInterval(Duration.ofSeconds(10))
+                .staleOnError(true)
+                .buildPrototype();
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet, "not-json")));
+        OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
+        JwkKeys staleKeys = manager.jwkKeys();
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        clock.advance(Duration.ofSeconds(1));
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
+            start.countDown();
+            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            releaseResponse.countDown();
+
+            for (Future<JwkKeys> future : futures) {
+                assertThat(future.get(5, TimeUnit.SECONDS), sameInstance(staleKeys));
+            }
+            assertThat(manager.jwkKeys(), sameInstance(staleKeys));
+            assertThat(remoteJwkSetRequests.get(), is(2));
+            remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet)));
+            clock.advance(Duration.ofSeconds(10));
+
+            assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(remoteJwkSetRequests.get(), is(3));
+        } finally {
+            releaseResponse.countDown();
+        }
+    }
+
+    @Test
     void concurrentRefreshIntervalReloadIsSingleFlight() throws Exception {
         int threads = 32;
         MutableClock clock = MutableClock.create(TEST_INSTANT);
@@ -1089,6 +1212,24 @@ class OidcJwtAccessTokenValidationTest {
                 .endpoints(it -> it.jwksUri(jwksUri))
                 .buildPrototype());
         return OidcJwkSetManager.create("default", metadata, clock, config);
+    }
+
+    private static List<Future<JwkKeys>> concurrentJwkCalls(ExecutorService executor,
+                                                           int threads,
+                                                           CountDownLatch start,
+                                                           Supplier<JwkKeys> operation) {
+        return IntStream.range(0, threads)
+                .mapToObj(_ -> executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return operation.get();
+                }))
+                .toList();
+    }
+
+    private static RuntimeException failedJwkCall(Future<JwkKeys> future) {
+        ExecutionException failure = assertThrows(ExecutionException.class,
+                                                  () -> future.get(5, TimeUnit.SECONDS));
+        return (RuntimeException) failure.getCause();
     }
 
     private static String signedToken(Consumer<Jwt.Builder> customizer) {

@@ -17,6 +17,10 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -110,6 +114,59 @@ class OidcTenantLifecycleTest {
         assertThat(context.state(), is(OidcTenantState.READY));
         assertThat(attempts.get(), is(2));
         assertThat(registry.cachedTenantCount(), is(1));
+    }
+
+    @Test
+    void retryableTenantFailureIsCachedThenRetriedAsOneCohort() throws Exception {
+        int taskCount = 8;
+        MutableClock clock = MutableClock.create(Instant.parse("2026-09-15T00:00:00Z"));
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch retryStarted = new CountDownLatch(1);
+        CountDownLatch finishRetry = new CountDownLatch(1);
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .initializationRetryInterval(Duration.ofSeconds(10))
+                .buildPrototype();
+        OidcProviderConfig config = providerConfig(tenantConfig);
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                config,
+                OidcTenantContextFactory.create((tenantId, resolvedConfig) -> {
+                    if (attempts.incrementAndGet() == 1) {
+                        return OidcTenantContext.retryableFailure(tenantId,
+                                                                 resolvedConfig,
+                                                                 new IllegalStateException("discovery failed"));
+                    }
+                    retryStarted.countDown();
+                    await(finishRetry);
+                    return OidcTenantContext.ready(tenantId, resolvedConfig);
+                }),
+                clock);
+
+        OidcTenantContext failed = registry.tenantContext("tenant").orElseThrow();
+        assertThat(registry.tenantContext("tenant").orElseThrow(), sameInstance(failed));
+        assertThat(attempts.get(), is(1));
+        clock.advance(Duration.ofSeconds(9));
+        assertThat(registry.tenantContext("tenant").orElseThrow(), sameInstance(failed));
+        assertThat(attempts.get(), is(1));
+        clock.advance(Duration.ofSeconds(1));
+
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            List<Future<OidcTenantContext>> futures = new ArrayList<>();
+            for (int i = 0; i < taskCount; i++) {
+                futures.add(executor.submit(() -> registry.tenantContext("tenant").orElseThrow()));
+            }
+            assertThat(retryStarted.await(5, TimeUnit.SECONDS), is(true));
+            finishRetry.countDown();
+            OidcTenantContext ready = futures.getFirst().get(5, TimeUnit.SECONDS);
+            for (Future<OidcTenantContext> future : futures) {
+                assertThat(future.get(5, TimeUnit.SECONDS), sameInstance(ready));
+            }
+            assertThat(ready.state(), is(OidcTenantState.READY));
+            assertThat(attempts.get(), is(2));
+        } finally {
+            finishRetry.countDown();
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -325,6 +382,39 @@ class OidcTenantLifecycleTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+        private volatile Instant instant;
+        private final ZoneId zone;
+
+        private MutableClock(Instant instant, ZoneId zone) {
+            this.instant = instant;
+            this.zone = zone;
+        }
+
+        private static MutableClock create(Instant instant) {
+            return new MutableClock(instant, ZoneId.of("UTC"));
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new MutableClock(instant, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
         }
     }
 }

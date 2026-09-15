@@ -288,13 +288,16 @@ final class OidcOutboundOrchestrator {
         OidcTokenExchangeResult tokenResult = tokenExchangeTokenManager.token(tokenExchangeContext,
                                                                               outboundPolicy,
                                                                               subjectToken.orElseThrow().token(),
-                                                                              now);
+                                                                              now,
+                                                                              tenantContext
+                                                                                      .tokenExchangeRemoteWorkLimiter());
         if (!tokenResult.succeeded()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
                            "OIDC Token Exchange failed: tenant="
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
-                                   + ", reason=token-endpoint-failure");
+                                   + ", reason="
+                                   + OidcDiagnostics.sanitizeLogValue(tokenResult.description()));
             }
             return OidcResponseFactory.tokenExchangeFailed();
         }

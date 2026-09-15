@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +26,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -157,6 +160,76 @@ class OidcSingleFlightCacheTest {
         }
     }
 
+    @Test
+    void limitedFollowersAreBoundedAndInterruptionDoesNotCancelLeader() throws Exception {
+        OidcSingleFlightCache<String, CachedValue, String> cache = new OidcSingleFlightCache<>(10);
+        OidcRemoteWorkLimiter limiter = new OidcRemoteWorkLimiter(OidcRemoteWorkConfig.builder()
+                                                                          .maxConcurrent(1)
+                                                                          .maxQueued(1)
+                                                                          .admissionTimeout(Duration.ZERO)
+                                                                          .buildPrototype());
+        CountDownLatch loaderStarted = new CountDownLatch(1);
+        CountDownLatch releaseLoader = new CountDownLatch(1);
+        AtomicInteger loads = new AtomicInteger();
+        AtomicReference<String> followerResult = new AtomicReference<>();
+        AtomicBoolean followerInterrupted = new AtomicBoolean();
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<String> leader = executor.submit(() -> cache.resolve(
+                    "key",
+                    _ -> true,
+                    CachedValue::result,
+                    () -> {
+                        loads.incrementAndGet();
+                        loaderStarted.countDown();
+                        await(releaseLoader);
+                        CachedValue value = new CachedValue("loaded", 1);
+                        return OidcSingleFlightCache.Resolution.cache(value, value.result());
+                    },
+                    limiter,
+                    () -> "rejected"));
+            assertTrue(loaderStarted.await(5, TimeUnit.SECONDS));
+
+            Thread follower = Thread.ofVirtual().start(() -> followerResult.set(cache.resolve(
+                    "key",
+                    _ -> true,
+                    CachedValue::result,
+                    () -> {
+                        throw new AssertionError("same-key follower must not load");
+                    },
+                    limiter,
+                    () -> {
+                        followerInterrupted.set(Thread.currentThread().isInterrupted());
+                        return "interrupted";
+                    })));
+            awaitQueued(limiter, 1);
+
+            assertThat(cache.resolve("key",
+                                     _ -> true,
+                                     CachedValue::result,
+                                     () -> {
+                                         throw new AssertionError("same-key follower must not load");
+                                     },
+                                     limiter,
+                                     () -> "rejected"),
+                       is("rejected"));
+            follower.interrupt();
+            follower.join(5_000);
+            assertThat(follower.isAlive(), is(false));
+            assertThat(followerResult.get(), is("interrupted"));
+            assertThat(followerInterrupted.get(), is(true));
+            assertThat(limiter.queuedCount(), is(0));
+            assertThat(leader.isDone(), is(false));
+
+            releaseLoader.countDown();
+            assertThat(leader.get(5, TimeUnit.SECONDS), is("loaded"));
+            assertThat(loads.get(), is(1));
+            assertThat(limiter.activeCount(), is(0));
+        } finally {
+            releaseLoader.countDown();
+        }
+    }
+
     private static String resolve(OidcSingleFlightCache<String, CachedValue, String> cache,
                                   String key,
                                   AtomicInteger generation,
@@ -207,6 +280,14 @@ class OidcSingleFlightCacheTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for test latch", e);
         }
+    }
+
+    private static void awaitQueued(OidcRemoteWorkLimiter limiter, int expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (limiter.queuedCount() != expected && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertThat(limiter.queuedCount(), is(expected));
     }
 
     private record CachedValue(String result, int generation) {

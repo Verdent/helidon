@@ -296,6 +296,9 @@ final class OidcAuthenticationOrchestrator {
                                           tenantContext.subjectMapping()));
         }
         debugBearerTokenValidationFailure(tenantContext, validationResult);
+        if (validationResult.unavailable()) {
+            return OidcResponseFactory.bearerTokenValidationUnavailable();
+        }
         return OidcResponseFactory.invalidBearerToken(tenantContext.bearerChallengeRealm());
     }
 

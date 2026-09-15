@@ -80,4 +80,13 @@ interface OidcIntrospectionConfigBlueprint {
      */
     @Option.Configured
     Optional<OidcClientAssertionConfig> clientAssertion();
+
+    /**
+     * Admission limits for Introspection Endpoint requests.
+     *
+     * @return introspection remote-work limits
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcRemoteWorkConfig remoteWork();
 }

@@ -45,11 +45,17 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
         URI uri = endpointUri.orElseThrow();
+        Optional<OidcRemoteWorkLimiter.Permit> admission = tenantContext.introspectionRemoteWorkLimiter()
+                .acquireActive();
+        if (admission.isEmpty()) {
+            return OidcValidationResult.unavailable("Bearer Token introspection capacity is exhausted");
+        }
 
-        try (HttpClientResponse response = request(tenantContext.webClient(),
-                                                   uri,
-                                                   token,
-                                                   tenantContext.introspectionClientAuthentication())) {
+        try (OidcRemoteWorkLimiter.Permit ignored = admission.orElseThrow();
+                HttpClientResponse response = request(tenantContext.webClient(),
+                                                      uri,
+                                                      token,
+                                                      tenantContext.introspectionClientAuthentication())) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
                 if (response.status().code() >= 500) {
                     return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable");

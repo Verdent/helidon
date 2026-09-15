@@ -223,6 +223,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .jwkSet(jwkSet -> jwkSet
                 .unknownKeyIdRefreshInterval(Duration.ofSeconds(30))
                 .refreshInterval(Duration.ofHours(1))
+                .failureRetryInterval(Duration.ofSeconds(10))
                 .staleOnError(true))
         .protectedResource(protectedResource -> protectedResource
                 .tokenValidation(tokenValidation -> tokenValidation
@@ -243,7 +244,12 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .protectedResource(protectedResource -> protectedResource
                 .tokenValidation(tokenValidation -> tokenValidation
                         .method(OidcTokenValidationMethod.INTROSPECTION)
-                        .audience("api://orders")))
+                        .audience("api://orders")
+                        .introspection(introspection -> introspection
+                                .remoteWork(remoteWork -> remoteWork
+                                        .maxConcurrent(16)
+                                        .maxQueued(64)
+                                        .admissionTimeout(Duration.ofMillis(250))))))
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
@@ -442,6 +448,29 @@ This is the OpenID Connect Discovery location. The provider does not automatical
 `/.well-known/oauth-authorization-server` location; configure `endpoints.well-known-uri` explicitly when an OAuth
 Authorization Server metadata endpoint must be used instead.
 
+Tenant initialization retries a failed well-known metadata load after `initialization-retry-interval`, which defaults to
+`PT10S`. Callers during that interval observe the same unavailable tenant, and one caller performs the next initialization
+attempt after the interval. This avoids a retry storm while allowing recovery from an Authorization Server outage or an
+invalid response that is later corrected. Deterministic local configuration and metadata compatibility failures are not
+retried; correct the configuration or provider metadata and recreate the provider.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        initialization-retry-interval: "PT10S"
+```
+
+Programmatic equivalent:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer("https://issuer.example")
+        .initializationRetryInterval(Duration.ofSeconds(10))
+        .buildPrototype();
+```
+
 Well-known metadata is used by Authorization Code Flow when the issuer, Authorization Endpoint, or Token Endpoint is
 missing, by Client Credentials Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT
 validation when `endpoints.jwks-uri` is not configured, and by Protected Resource introspection when
@@ -551,6 +580,7 @@ security:
           unknown-key-id-refresh-enabled: true
           unknown-key-id-refresh-interval: "PT30S"
           refresh-interval: "PT1H"
+          failure-retry-interval: "PT10S"
           stale-on-error: true
         protected-resource:
           token-validation:
@@ -565,11 +595,15 @@ attempts across all unknown `kid` values, including failed reload attempts; the 
 `refresh-interval` enables lazy periodic refresh. No background thread is started. The provider checks the cache age
 during token validation and refreshes only when a request needs keys after the interval has elapsed.
 
+`failure-retry-interval` is the minimum delay before retrying a failed JWK Set load and defaults to `PT10S`. Concurrent
+callers observe the same failed refresh outcome during that interval instead of each starting another HTTP request. When
+cached keys exist, `stale-on-error` decides whether they remain usable while the failure is held.
+
 Refreshes are coordinated as single-flight operations for concurrent requests. The cached-key fast path does not take
 the refresh lock. When many virtual threads hit a cold cache, expired cache, or unknown `kid` at the same time, only one
 thread loads the JWK Set from the remote endpoint for that refresh opportunity. With `stale-on-error: true`, requests
 may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
-requests to fail until the next configured refresh interval permits another reload attempt.
+requests to fail until `failure-retry-interval` permits another reload attempt.
 
 ## Protected Resource With Introspection
 
@@ -635,6 +669,36 @@ maps selected introspection claims to principal attributes and grants according 
 the full introspection response `JsonObject` through the subject's public `TokenCredential`. Configure the Authorization
 Server introspection policy to return only claims this resource needs. `oidc-next` does not cache introspection responses
 by default, so each Bearer Token validation uses the current Authorization Server response.
+
+### Limiting Introspection Remote Work
+
+Every distinct opaque token can cause an Introspection Endpoint request. Bound this work so a burst of invalid or unique
+tokens cannot create unbounded remote calls and waiting request tasks:
+
+```yaml
+protected-resource:
+  token-validation:
+    method: INTROSPECTION
+    introspection:
+      remote-work:
+        max-concurrent: 16
+        max-queued: 64
+        admission-timeout: "PT0.25S"
+```
+
+`max-concurrent` bounds Introspection Endpoint HTTP operations currently running for this tenant. `max-queued` bounds
+callers waiting for an active permit. `admission-timeout` is the total time a caller may spend joining that queue and
+obtaining an active permit; `PT0S` makes admission fail immediately. Setting `max-queued` to `0` also makes requests fail
+immediately whenever all active permits are occupied.
+
+The defaults are 32 concurrent operations, 128 queued callers, and a `PT1S` admission timeout. Limits are local to each
+tenant in each `OidcProvider` instance, so every service node enforces its own capacity. Cache behavior does not change:
+introspection responses are still not cached.
+
+When admission fails, the token is not mislabeled as invalid. Authentication fails with HTTP `503 Service Unavailable`
+and the controlled description `Bearer Token validation is unavailable`; no Introspection Endpoint request is started.
+Choose the concurrent limit from the Authorization Server's capacity and the service's connection budget. Keep the queue
+short enough to fit the inbound request latency budget; increasing it absorbs a brief burst but does not add throughput.
 
 ## RFC 8705 Certificate-Bound Access Tokens
 
@@ -1577,15 +1641,17 @@ Different service nodes may acquire and cache their own tokens, and neither requ
 required. The caches start no background threads and need no external lifecycle management.
 
 Concurrent misses for the same complete cache key are coalesced within one provider instance. One caller performs the
-Token Endpoint request while the other callers wait for that same result. Requests for different keys remain concurrent.
-A successful token is retained only when it has a positive `expires_in` and remains valid beyond the configured tenant
-clock skew. OAuth failures, responses without a reusable lifetime, and already-expired responses are shared only with
-callers waiting for that request and are not cached. Expired entries are never returned; they are replaced by a later
-successful load or removed by normal bounded LRU eviction.
+Token Endpoint request while the other callers wait for that same result. Different keys do not share a result and can
+run concurrently; Token Exchange concurrency is subject to the per-tenant admission limit described below. A successful
+token is retained only when it has a positive `expires_in` and remains valid beyond the configured tenant clock skew.
+OAuth failures, responses without a reusable lifetime, and already-expired responses are shared only with callers waiting
+for that request and are not cached. Expired entries are never returned; they are replaced by a later successful load or
+removed by normal bounded LRU eviction.
 
 The coordination path is designed for virtual-thread callers. Token Endpoint I/O runs outside the LRU cache locks and
 outside `ConcurrentHashMap` update callbacks. Callers waiting for the same key hold no cache or map lock, so a slow Token
-Endpoint request neither serializes unrelated keys nor occupies a cache critical section.
+Endpoint request does not serialize unrelated keys through a cache critical section. Token Exchange may deliberately
+queue unrelated keys at its configured admission limit.
 
 Configure Client Credentials Grant scopes on the matching outbound target. OAuth scopes describe the access requested for
 the token, and for outbound calls that access is normally tied to the downstream resource API selected by the target.
@@ -1679,6 +1745,12 @@ keys. The cache uses the tenant token-validation clock skew and does not assume 
 revokes already exchanged tokens. The shared process-local cache and concurrent-miss behavior described for Client
 Credentials Grant above also applies to Token Exchange.
 
+Token Exchange remote work is bounded per tenant because an attacker or large burst can supply a different subject token
+for every request and bypass same-key coalescing. Cache hits consume no permit. A cache miss uses one active permit, and
+both distinct-key callers waiting for an active permit and same-key callers waiting for the elected request count against
+the shared queue. Waiting for a same-key result is interruptible; interrupting a follower does not cancel the elected
+Token Endpoint request.
+
 ```yaml
 security:
   providers:
@@ -1686,6 +1758,10 @@ security:
         client-id: "${OIDC_CLIENT_ID}"
         client-secret: "${OIDC_CLIENT_SECRET}"
         token-endpoint-auth-method: CLIENT_SECRET_BASIC
+        token-exchange-remote-work:
+          max-concurrent: 16
+          max-queued: 64
+          admission-timeout: "PT0.25S"
         endpoints:
           token-endpoint-uri: "https://issuer.example/token"
         outbound:
@@ -1698,6 +1774,12 @@ security:
             token-exchange-resource: "https://orders.example.com"
             token-exchange-audience: "api://orders"
 ```
+
+`token-exchange-remote-work` uses the same defaults and option semantics as introspection remote work: 32 active, 128
+queued, and `PT1S` for admission. It is tenant configuration shared by all Token Exchange outbound targets for that tenant;
+it does not limit Token Propagation or Client Credentials Grant. On overload, outbound security returns `FAILURE` with the
+controlled description `Token Exchange failed` and does not add an exchanged Bearer token. `PT0S` or `max-queued: 0`
+provides fail-fast behavior when active capacity is exhausted.
 
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
 `OidcOutboundPolicy`.
@@ -1796,6 +1878,20 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .addPath("/orders/.*")
         .customObject(OidcOutboundTargetConfig.class, targetPolicy)
         .build();
+
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer("https://issuer.example")
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+        .endpoints(endpoints -> endpoints
+                .tokenEndpointUri(URI.create("https://issuer.example/token")))
+        .tokenExchangeRemoteWork(remoteWork -> remoteWork
+                .maxConcurrent(16)
+                .maxQueued(64)
+                .admissionTimeout(Duration.ofMillis(250)))
+        .outboundTargets(List.of(ordersApi))
+        .buildPrototype();
 ```
 
 ## Local Authentication Cookies
@@ -2205,12 +2301,13 @@ Common checks:
 | `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
 | `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
+| `Bearer Token validation is unavailable` with HTTP `503` | Introspection admission capacity is exhausted. Check Introspection Endpoint latency and health, inbound request rate, and `protected-resource.token-validation.introspection.remote-work`; increase limits only within the service and Authorization Server connection budgets. |
 | `Bearer Token request is invalid` | Check for multiple Bearer token sources, multiple Authorization Bearer values, malformed `access_token` query parameters, or non-HTTPS transport when secure transport is required. |
 | Browser login loops or callback failures | Check redirect URI registration, reverse proxy requested-URI discovery, `X-Forwarded-*` headers, cookie domain/path/SameSite settings, clock skew, PKCE metadata, PAR/JAR requirements, and cookie protection setting consistency. |
 | UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
 | Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
 | Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |
-| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. |
+| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
 | mTLS or certificate-bound token failures | Check WebServer client certificate configuration, tenant `webclient.tls`, mTLS endpoint aliases, HTTPS endpoint requirements, and the token/introspection `cnf.x5t#S256` thumbprint. |
 
 ## Configuration Reference
@@ -2234,6 +2331,7 @@ multi-tenant applications:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether this tenant is enabled. Defaults to `true`. |
+| `initialization-retry-interval` | Minimum interval before retrying tenant initialization after a failed well-known metadata load. Defaults to `PT10S`. Deterministic local configuration or metadata compatibility failures are not retried. |
 | `issuer` | Expected Issuer Identifier string. Issuer identity comparisons use this exact string value. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |
@@ -2242,6 +2340,7 @@ multi-tenant applications:
 | `id-token` | ID Token validation and decryption configuration. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
+| `token-exchange-remote-work` | Per-tenant admission limits shared by RFC 8693 Token Exchange operations for all outbound targets. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
 | `authorization-code` | Authorization Code Flow configuration. |
@@ -2280,6 +2379,7 @@ JWK Set options:
 | `unknown-key-id-refresh-enabled` | Whether an unknown JWT `kid` triggers a JWK Set reload attempt. Defaults to `true`. |
 | `unknown-key-id-refresh-interval` | Global minimum interval between reload attempts triggered by any unknown `kid`. Defaults to `PT5M`. |
 | `refresh-interval` | Optional lazy JWK Set refresh interval. If configured, cached keys older than this interval are refreshed during token validation. No background thread is started. |
+| `failure-retry-interval` | Minimum interval before retrying a failed JWK Set load. Defaults to `PT10S`; concurrent callers observe the same failure during the interval. |
 | `stale-on-error` | Whether cached keys may still be used when a reload fails. Defaults to `true`; initial loading still fails when no cached keys exist. |
 
 Authorization Code Flow options:
@@ -2418,3 +2518,13 @@ Introspection options:
 | `client-id` | Client identifier used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-id`. |
 | `client-secret` | Client secret used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-secret`. |
 | `client-assertion` | Client assertion signing configuration for Introspection Endpoint `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Defaults to the tenant `client-assertion`. |
+| `remote-work` | Per-tenant admission limits for Introspection Endpoint requests. |
+
+Remote work options are used by `protected-resource.token-validation.introspection.remote-work` and
+`token-exchange-remote-work`:
+
+| Key | Description |
+| --- | --- |
+| `max-concurrent` | Maximum remote HTTP operations running concurrently. Defaults to `32` and must be positive. |
+| `max-queued` | Maximum callers waiting for an active permit or an existing same-key operation. Defaults to `128`, must not be negative, and `0` provides fail-fast overload behavior. |
+| `admission-timeout` | Total admission time allowed. A new operation may join the bounded queue and obtain an active permit; a same-key follower may reserve a queue slot. Defaults to `PT1S`, must not be negative, and `PT0S` provides fail-fast admission. Once admitted as a same-key follower, the caller waits interruptibly for that operation to complete. |

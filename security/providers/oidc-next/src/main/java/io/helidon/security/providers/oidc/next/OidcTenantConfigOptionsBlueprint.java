@@ -147,6 +147,15 @@ interface OidcTenantConfigOptionsBlueprint {
     OidcJwkSetConfig jwkSet();
 
     /**
+     * Admission limits for RFC 8693 Token Exchange operations performed by this tenant.
+     *
+     * @return Token Exchange remote-work limits
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcRemoteWorkConfig tokenExchangeRemoteWork();
+
+    /**
      * OpenID Provider endpoint and well-known metadata settings.
      *
      * @return endpoint configuration

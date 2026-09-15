@@ -24,10 +24,16 @@ import java.security.cert.Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -54,12 +60,15 @@ import io.helidon.webserver.testing.junit5.SetUpRoute;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @ServerTest
+@Execution(ExecutionMode.SAME_THREAD)
 class OidcIntrospectionAccessTokenValidationTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final String AUDIENCE = "api://default";
@@ -77,7 +86,12 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static String responseContentType;
     private static String redirectLocation;
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger ACTIVE_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger MAX_ACTIVE_REQUESTS = new AtomicInteger();
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static volatile CountDownLatch introspectionRequestsStarted;
+    private static volatile CountDownLatch releaseIntrospectionResponses;
 
     private URI introspectionEndpointUri;
     private URI redirectedIntrospectionEndpointUri;
@@ -101,7 +115,12 @@ class OidcIntrospectionAccessTokenValidationTest {
         responseContentType = "application/json";
         redirectLocation = null;
         REDIRECTED_REQUEST_COUNT.set(0);
+        REQUEST_COUNT.set(0);
+        ACTIVE_REQUESTS.set(0);
+        MAX_ACTIVE_REQUESTS.set(0);
         RECORDED_REQUEST.set(null);
+        introspectionRequestsStarted = null;
+        releaseIntrospectionResponses = null;
     }
 
     @Test
@@ -596,6 +615,66 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void highCardinalityIntrospectionFloodIsBoundedAndRecovers() throws Exception {
+        int taskCount = 1_000;
+        int maxConcurrent = 4;
+        int maxQueued = 8;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch overloadObserved = new CountDownLatch(1);
+        introspectionRequestsStarted = new CountDownLatch(maxConcurrent);
+        releaseIntrospectionResponses = new CountDownLatch(1);
+        OidcProvider provider = provider(tenant -> tenant.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection.remoteWork(remoteWork -> remoteWork
+                                .maxConcurrent(maxConcurrent)
+                                .maxQueued(maxQueued)
+                                .admissionTimeout(Duration.ofMillis(100)))))));
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<AuthenticationResponse>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                String token = "opaque-token-" + i;
+                futures.add(executor.submit(() -> {
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
+                    AuthenticationResponse response = authenticate(provider, token);
+                    if (response.statusCode().orElse(-1) == 503) {
+                        overloadObserved.countDown();
+                    }
+                    return response;
+                }));
+            }
+
+            start.countDown();
+            assertThat(introspectionRequestsStarted.await(5, TimeUnit.SECONDS), is(true));
+            assertThat(overloadObserved.await(5, TimeUnit.SECONDS), is(true));
+            releaseIntrospectionResponses.countDown();
+
+            int succeeded = 0;
+            int overloaded = 0;
+            for (Future<AuthenticationResponse> future : futures) {
+                AuthenticationResponse response = future.get(10, TimeUnit.SECONDS);
+                if (response.status() == SecurityResponse.SecurityStatus.SUCCESS) {
+                    succeeded++;
+                } else if (response.statusCode().orElse(-1) == 503) {
+                    overloaded++;
+                }
+            }
+            assertThat(succeeded + overloaded, is(taskCount));
+            assertThat(overloaded > 0, is(true));
+            assertThat(MAX_ACTIVE_REQUESTS.get() <= maxConcurrent, is(true));
+            assertThat(REQUEST_COUNT.get(), is(succeeded));
+        } finally {
+            releaseIntrospectionResponses.countDown();
+        }
+
+        AuthenticationResponse recovered = authenticate(provider, "recovery-token");
+        assertThat(recovered.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(ACTIVE_REQUESTS.get(), is(0));
+    }
+
+    @Test
     void introspectionRedirectIsNotFollowedWhenTenantWebClientFollowsRedirects() {
         responseStatus = 307;
         redirectLocation = redirectedIntrospectionEndpointUri.toString();
@@ -614,19 +693,37 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     private static void handleIntrospection(ServerRequest request, ServerResponse response) {
-        RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
-                                                request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
-                                                request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
-                                                request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
-                                                formParameters(request.content().as(Parameters.class))));
-        response.status(responseStatus);
-        if (responseContentType != null) {
-            response.header(HeaderNames.CONTENT_TYPE, responseContentType);
+        REQUEST_COUNT.incrementAndGet();
+        int active = ACTIVE_REQUESTS.incrementAndGet();
+        MAX_ACTIVE_REQUESTS.accumulateAndGet(active, Math::max);
+        try {
+            CountDownLatch started = introspectionRequestsStarted;
+            if (started != null) {
+                started.countDown();
+            }
+            CountDownLatch release = releaseIntrospectionResponses;
+            if (release != null && !release.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to release Introspection Endpoint response");
+            }
+            RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
+                                                    request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
+                                                    request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
+                                                    request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
+                                                    formParameters(request.content().as(Parameters.class))));
+            response.status(responseStatus);
+            if (responseContentType != null) {
+                response.header(HeaderNames.CONTENT_TYPE, responseContentType);
+            }
+            if (redirectLocation != null) {
+                response.header(HeaderNames.LOCATION, redirectLocation);
+            }
+            response.send(responseBody);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting to release Introspection Endpoint response", e);
+        } finally {
+            ACTIVE_REQUESTS.decrementAndGet();
         }
-        if (redirectLocation != null) {
-            response.header(HeaderNames.LOCATION, redirectLocation);
-        }
-        response.send(responseBody);
     }
 
     private AuthenticationResponse authenticate(OidcProvider provider, String token) {

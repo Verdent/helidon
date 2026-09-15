@@ -30,7 +30,8 @@ import java.util.Optional;
  * The cache key covers the tenant, subject token identity, scope, resource, and audience. Only a SHA-256 digest of the
  * subject token is retained in the key; the raw credential is passed to the elected loader but is not retained by the
  * cache. The underlying cache is bounded and process-local, and concurrent requests for the same complete key share one
- * Token Endpoint operation while requests for different keys remain independent.
+ * Token Endpoint operation. Per-tenant admission control bounds remote operations for distinct keys and callers waiting
+ * for same-key results.
  */
 final class OidcTokenExchangeTokenManager {
     private final OidcSingleFlightCache<CacheKey, CachedToken, OidcTokenExchangeResult> tokens =
@@ -39,7 +40,8 @@ final class OidcTokenExchangeTokenManager {
     OidcTokenExchangeResult token(OidcTenantContext tenantContext,
                                   OidcOutboundPolicy policy,
                                   String subjectToken,
-                                  Instant now) {
+                                  Instant now,
+                                  OidcRemoteWorkLimiter remoteWorkLimiter) {
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(),
                                          tokenHash(subjectToken),
                                          policy.tokenExchangeScope().orElse(""),
@@ -49,7 +51,9 @@ final class OidcTokenExchangeTokenManager {
         return tokens.resolve(cacheKey,
                               cachedToken -> cachedToken.activeAt(now, clockSkew),
                               cachedToken -> OidcTokenExchangeResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(tenantContext, policy, subjectToken, now, clockSkew));
+                              () -> loadToken(tenantContext, policy, subjectToken, now, clockSkew),
+                              remoteWorkLimiter,
+                              () -> OidcTokenExchangeResult.failure("Token Exchange capacity is exhausted"));
     }
 
     private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenExchangeResult> loadToken(

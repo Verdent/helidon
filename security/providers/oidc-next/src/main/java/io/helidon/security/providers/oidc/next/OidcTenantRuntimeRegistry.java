@@ -16,26 +16,31 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
-import io.helidon.common.LazyValue;
 import io.helidon.security.ProviderRequest;
 
 final class OidcTenantRuntimeRegistry {
     private final OidcProviderConfig config;
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantContextFactory tenantContextFactory;
-    private final ConcurrentMap<String, LazyValue<OidcTenantContext>> contexts = new ConcurrentHashMap<>();
+    private final Clock clock;
+    private final ConcurrentMap<String, TenantContextSlot> contexts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, OidcCookieStateHandler> cookieStateHandlers = new ConcurrentHashMap<>();
 
     private OidcTenantRuntimeRegistry(OidcProviderConfig config,
                                       OidcTenantResolver tenantResolver,
-                                      OidcTenantContextFactory tenantContextFactory) {
+                                      OidcTenantContextFactory tenantContextFactory,
+                                      Clock clock) {
         this.config = config;
         this.tenantResolver = tenantResolver;
         this.tenantContextFactory = tenantContextFactory;
+        this.clock = clock;
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
@@ -49,7 +54,17 @@ final class OidcTenantRuntimeRegistry {
                                             OidcTenantContextFactory tenantContextFactory) {
         return new OidcTenantRuntimeRegistry(config,
                                              new OidcTenantResolver(config),
-                                             tenantContextFactory);
+                                             tenantContextFactory,
+                                             Clock.systemUTC());
+    }
+
+    static OidcTenantRuntimeRegistry create(OidcProviderConfig config,
+                                            OidcTenantContextFactory tenantContextFactory,
+                                            Clock clock) {
+        return new OidcTenantRuntimeRegistry(config,
+                                             new OidcTenantResolver(config),
+                                             tenantContextFactory,
+                                             clock);
     }
 
     Optional<OidcTenantContext> tenantContext(ProviderRequest request) {
@@ -67,19 +82,17 @@ final class OidcTenantRuntimeRegistry {
                 .map(tenantConfig -> {
                     OidcCookieStateHandler cookieStateHandler = cookieStateHandler(tenantId, tenantConfig);
                     /*
-                     * The map callback installs only a lightweight lazy holder; it never performs discovery or other
-                     * remote tenant initialization. LazyValue.get() runs after computeIfAbsent returns. Its first
-                     * caller performs initialization synchronously, same-tenant callers wait without holding a map
-                     * lock, and different tenant keys initialize independently.
-                     *
-                     * The default factory converts operational failures into a definitive FAILED context, which the
-                     * LazyValue caches like READY and DISABLED contexts. If the factory violates its contract and
-                     * throws instead, LazyValue remains unloaded so a later caller can retry.
+                     * The map callback installs only a lightweight per-tenant slot; remote initialization runs after
+                     * computeIfAbsent returns. Same-tenant callers share one attempt, while different tenants initialize
+                     * independently. Retryable discovery failures remain cached until the configured retry interval.
                      */
-                    LazyValue<OidcTenantContext> context = contexts.computeIfAbsent(
+                    TenantContextSlot context = contexts.computeIfAbsent(
                             tenantId,
-                            _ -> LazyValue.create(() -> tenantContextFactory.create(tenantId, tenantConfig)
-                                    .withCookieStateHandler(cookieStateHandler)));
+                            _ -> new TenantContextSlot(tenantId,
+                                                       tenantConfig,
+                                                       cookieStateHandler,
+                                                       tenantContextFactory,
+                                                       clock));
                     return context.get();
                 });
     }
@@ -105,5 +118,56 @@ final class OidcTenantRuntimeRegistry {
          */
         return cookieStateHandlers.computeIfAbsent(tenantId,
                                                    _ -> OidcCookieStateHandler.create(tenantId, tenantConfig));
+    }
+
+    private static final class TenantContextSlot {
+        private final String tenantId;
+        private final OidcTenantConfig tenantConfig;
+        private final OidcCookieStateHandler cookieStateHandler;
+        private final OidcTenantContextFactory tenantContextFactory;
+        private final Clock clock;
+        private final ReentrantLock initializationLock = new ReentrantLock();
+        private volatile OidcTenantContext context;
+        private volatile Instant retryAfter;
+
+        private TenantContextSlot(String tenantId,
+                                  OidcTenantConfig tenantConfig,
+                                  OidcCookieStateHandler cookieStateHandler,
+                                  OidcTenantContextFactory tenantContextFactory,
+                                  Clock clock) {
+            this.tenantId = tenantId;
+            this.tenantConfig = tenantConfig;
+            this.cookieStateHandler = cookieStateHandler;
+            this.tenantContextFactory = tenantContextFactory;
+            this.clock = clock;
+        }
+
+        private OidcTenantContext get() {
+            OidcTenantContext current = context;
+            if (current != null && reusable(current, clock.instant())) {
+                return current;
+            }
+            initializationLock.lock();
+            try {
+                current = context;
+                if (current != null && reusable(current, clock.instant())) {
+                    return current;
+                }
+                OidcTenantContext initialized = tenantContextFactory.create(tenantId, tenantConfig)
+                        .withCookieStateHandler(cookieStateHandler);
+                retryAfter = initialized.retryableFailure()
+                        ? clock.instant().plus(tenantConfig.initializationRetryInterval())
+                        : null;
+                context = initialized;
+                return initialized;
+            } finally {
+                initializationLock.unlock();
+            }
+        }
+
+        private boolean reusable(OidcTenantContext current, Instant now) {
+            Instant retryTime = retryAfter;
+            return !current.retryableFailure() || (retryTime != null && now.isBefore(retryTime));
+        }
     }
 }

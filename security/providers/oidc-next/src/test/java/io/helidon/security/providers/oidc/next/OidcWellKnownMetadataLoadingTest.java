@@ -17,6 +17,10 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,6 +45,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +58,7 @@ class OidcWellKnownMetadataLoadingTest {
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
     private static final AtomicReference<String> PROVIDER_METADATA = new AtomicReference<>();
     private static final AtomicReference<String> WELL_KNOWN_WEBCLIENT_HEADER = new AtomicReference<>();
+    private static final AtomicInteger WELL_KNOWN_REQUESTS = new AtomicInteger();
     private static final AtomicInteger REDIRECTED_WELL_KNOWN_REQUESTS = new AtomicInteger();
 
     private static volatile String redirectLocation;
@@ -71,6 +77,7 @@ class OidcWellKnownMetadataLoadingTest {
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
+            WELL_KNOWN_REQUESTS.incrementAndGet();
             WELL_KNOWN_WEBCLIENT_HEADER.set(request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""));
             if (redirectLocation != null) {
                 response.status(Status.TEMPORARY_REDIRECT_307)
@@ -107,6 +114,7 @@ class OidcWellKnownMetadataLoadingTest {
                                       .build()
                                       .toString());
         WELL_KNOWN_WEBCLIENT_HEADER.set("");
+        WELL_KNOWN_REQUESTS.set(0);
         REDIRECTED_WELL_KNOWN_REQUESTS.set(0);
         redirectLocation = null;
         wellKnownContentType = "application/json";
@@ -136,6 +144,75 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
         assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void tenantRecoversFromTransientWellKnownFailureAfterRetryInterval() {
+        MutableClock clock = MutableClock.create(Instant.parse("2026-09-15T00:00:00Z"));
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .initializationRetryInterval(Duration.ofSeconds(10))
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                providerConfig,
+                OidcTenantContextFactory.create(false, false),
+                clock);
+        wellKnownStatus = Status.SERVICE_UNAVAILABLE_503;
+
+        OidcTenantContext failed = registry.tenantContext("tenant").orElseThrow();
+        assertThat(failed.state(), is(OidcTenantState.FAILED));
+        assertThat(failed.retryableFailure(), is(true));
+        assertThat(registry.tenantContext("tenant").orElseThrow(), sameInstance(failed));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+        wellKnownStatus = null;
+        clock.advance(Duration.ofSeconds(9));
+        assertThat(registry.tenantContext("tenant").orElseThrow(), sameInstance(failed));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+        clock.advance(Duration.ofSeconds(1));
+
+        OidcTenantContext recovered = registry.tenantContext("tenant").orElseThrow();
+
+        assertThat(recovered.state(), is(OidcTenantState.READY));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(2));
+    }
+
+    @Test
+    void deterministicWellKnownIssuerMismatchRemainsFailed() {
+        MutableClock clock = MutableClock.create(Instant.parse("2026-09-15T00:00:00Z"));
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("issuer", "https://other.example")
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .initializationRetryInterval(Duration.ofSeconds(10))
+                .endpoints(it -> it.tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                providerConfig,
+                OidcTenantContextFactory.create(false, false),
+                clock);
+
+        OidcTenantContext failed = registry.tenantContext("tenant").orElseThrow();
+        assertThat(failed.state(), is(OidcTenantState.FAILED));
+        assertThat(failed.retryableFailure(), is(false));
+        clock.advance(Duration.ofHours(1));
+
+        assertThat(registry.tenantContext("tenant").orElseThrow(), sameInstance(failed));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
     @Test
@@ -1585,5 +1662,38 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype());
         return registry.tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
                 .orElseThrow();
+    }
+
+    private static final class MutableClock extends Clock {
+        private volatile Instant instant;
+        private final ZoneId zone;
+
+        private MutableClock(Instant instant, ZoneId zone) {
+            this.instant = instant;
+            this.zone = zone;
+        }
+
+        private static MutableClock create(Instant instant) {
+            return new MutableClock(instant, ZoneId.of("UTC"));
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new MutableClock(instant, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }

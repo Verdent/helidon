@@ -60,16 +60,28 @@ final class OidcTenantContextFactory {
     private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant,
                                                        boolean outboundTargetTokenExchange) {
         return (tenantId, tenantConfig) -> {
+            WebClient webClient;
             try {
-                WebClient webClient = OidcWebClientFactory.create(tenantConfig);
+                webClient = OidcWebClientFactory.create(tenantConfig);
+            } catch (RuntimeException e) {
+                return failed(tenantId, tenantConfig, null, e, false);
+            }
+            try {
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
                 boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig,
                                                                          staticMetadata,
                                                                          outboundTargetClientCredentialsGrant
                                                                                  || outboundTargetTokenExchange);
-                OidcProviderMetadata metadata = wellKnownMetadataLoaded
-                        ? new OidcProviderMetadataLoader(webClient).load(staticMetadata)
-                        : staticMetadata;
+                OidcProviderMetadata metadata;
+                if (wellKnownMetadataLoaded) {
+                    try {
+                        metadata = new OidcProviderMetadataLoader(webClient).load(staticMetadata);
+                    } catch (OidcProviderMetadataLoader.RetryableDiscoveryException e) {
+                        return failed(tenantId, tenantConfig, webClient, e, true);
+                    }
+                } else {
+                    metadata = staticMetadata;
+                }
                 validateIssuerMetadata(tenantConfig, metadata);
                 validateAuthorizationCodeMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 validateClientCredentialsGrantMetadata(tenantConfig,
@@ -88,15 +100,33 @@ final class OidcTenantContextFactory {
                 validateCertificateBoundAccessTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 return OidcTenantContext.ready(tenantId, tenantConfig, metadata, webClient);
             } catch (RuntimeException e) {
-                if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-                    LOGGER.log(System.Logger.Level.DEBUG,
-                               "OIDC tenant initialization failed: tenant="
-                                       + OidcDiagnostics.sanitizeLogValue(tenantId)
-                                       + ", cause=" + OidcDiagnostics.safeExceptionType(e));
-                }
-                return OidcTenantContext.failed(tenantId, tenantConfig, e);
+                return failed(tenantId, tenantConfig, webClient, e, false);
             }
         };
+    }
+
+    private static OidcTenantContext failed(String tenantId,
+                                            OidcTenantConfig tenantConfig,
+                                            WebClient webClient,
+                                            RuntimeException failure,
+                                            boolean retryable) {
+        if (webClient != null) {
+            try {
+                webClient.closeResource();
+            } catch (RuntimeException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+        }
+        if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            LOGGER.log(System.Logger.Level.DEBUG,
+                       "OIDC tenant initialization failed: tenant="
+                               + OidcDiagnostics.sanitizeLogValue(tenantId)
+                               + ", retryable=" + retryable
+                               + ", cause=" + OidcDiagnostics.safeExceptionType(failure));
+        }
+        return retryable
+                ? OidcTenantContext.retryableFailure(tenantId, tenantConfig, failure)
+                : OidcTenantContext.failed(tenantId, tenantConfig, failure);
     }
 
     private static boolean needsWellKnownMetadata(OidcTenantConfig tenantConfig,

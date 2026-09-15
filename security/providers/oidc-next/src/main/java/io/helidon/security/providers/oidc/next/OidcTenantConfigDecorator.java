@@ -51,6 +51,9 @@ final class OidcTenantConfigDecorator
                            false);
         validateClaimPaths(subjectMapping.roleClaimPaths(), "subject-mapping.role-claim-paths", false);
         validateClaimPaths(subjectMapping.scopeClaimPaths(), "subject-mapping.scope-claim-paths", false);
+        if (target.initializationRetryInterval().isZero() || target.initializationRetryInterval().isNegative()) {
+            throw new IllegalArgumentException("initialization-retry-interval must be positive");
+        }
         validateIdToken(target.idToken());
         OidcClientAuthenticationConfigValidator.validateClientAssertion(target.clientAssertion());
         validateJwkSet(target.jwkSet());
@@ -74,6 +77,9 @@ final class OidcTenantConfigDecorator
                 .ifPresent(_ -> {
                     throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
                 });
+        if (jwkSet.failureRetryInterval().isZero() || jwkSet.failureRetryInterval().isNegative()) {
+            throw new IllegalArgumentException("jwk-set.failure-retry-interval must be positive");
+        }
     }
 
     private static void validateIdToken(OidcIdTokenConfig idToken) {

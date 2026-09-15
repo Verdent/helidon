@@ -33,10 +33,7 @@ final class OidcJwkSetManager {
     private final OidcJwkSetLoader jwkSetLoader;
     private final Clock clock;
     private final ReentrantLock refreshLock = new ReentrantLock();
-    private volatile JwkKeys cachedJwkKeys;
-    private volatile Instant lastJwkSetLoad;
-    private volatile Instant lastJwkSetRefreshAttempt;
-    private volatile RuntimeException lastJwkSetRefreshFailure;
+    private volatile JwkSetState state = JwkSetState.empty();
     private Instant lastUnknownKeyIdRefreshAttempt;
 
     private OidcJwkSetManager(String tenantId,
@@ -70,19 +67,15 @@ final class OidcJwkSetManager {
     }
 
     JwkKeys jwkKeys() {
-        JwkKeys current = cachedJwkKeys;
-        if (current != null) {
-            if (refreshIntervalElapsed()) {
+        JwkSetState current = state;
+        if (current.keys() != null) {
+            if (refreshRequired(current)) {
                 return refreshExpiredJwkKeys(current);
             }
-            RuntimeException refreshFailure = lastJwkSetRefreshFailure;
-            if (refreshFailure != null) {
-                throw refreshFailure;
-            }
-            return current;
+            return currentAfterRefreshFailure(current);
         }
 
-        return initialJwkKeys();
+        return initialJwkKeys(current);
     }
 
     JwkKeys jwkKeys(Optional<String> keyId) {
@@ -92,7 +85,7 @@ final class OidcJwkSetManager {
         if (unknownKeyId.isEmpty()) {
             return current;
         }
-        return refreshUnknownKeyId(unknownKeyId.orElseThrow(), current);
+        return refreshUnknownKeyId(unknownKeyId.orElseThrow(), current, state);
     }
 
     private JwkKeys loadJwkKeys() {
@@ -109,44 +102,25 @@ final class OidcJwkSetManager {
         }
     }
 
-    private JwkKeys initialJwkKeys() {
+    private JwkKeys initialJwkKeys(JwkSetState observed) {
         refreshLock.lock();
         try {
-            JwkKeys current = cachedJwkKeys;
-            if (current != null) {
-                return current;
+            JwkSetState current = state;
+            if (current != observed) {
+                return publishedOutcome(current);
             }
-            return refreshJwkKeys();
-        } finally {
-            refreshLock.unlock();
-        }
-    }
-
-    private JwkKeys refreshExpiredJwkKeys(JwkKeys staleKeys) {
-        if (config.staleOnError()) {
-            if (!refreshLock.tryLock()) {
-                return staleKeys;
+            if (current.keys() != null) {
+                return refreshRequired(current)
+                        ? refreshJwkKeys(current.keys())
+                        : currentAfterRefreshFailure(current);
             }
-        } else {
-            refreshLock.lock();
-        }
-
-        try {
-            JwkKeys current = cachedJwkKeys;
-            if (current == null) {
-                return refreshJwkKeys();
-            }
-            if (!refreshIntervalElapsed()) {
-                return current;
+            if (current.refreshFailure() != null && !failureRetryIntervalElapsed(current)) {
+                throw current.refreshFailure();
             }
             try {
                 return refreshJwkKeys();
             } catch (RuntimeException e) {
-                lastJwkSetRefreshAttempt = clock.instant();
-                if (config.staleOnError()) {
-                    return current;
-                }
-                lastJwkSetRefreshFailure = e;
+                recordRefreshFailure(e);
                 throw e;
             }
         } finally {
@@ -154,18 +128,45 @@ final class OidcJwkSetManager {
         }
     }
 
-    private JwkKeys refreshUnknownKeyId(String keyId, JwkKeys staleKeys) {
+    private JwkKeys refreshExpiredJwkKeys(JwkSetState observed) {
+        refreshLock.lock();
+        try {
+            JwkSetState current = state;
+            if (current != observed) {
+                return publishedOutcome(current);
+            }
+            if (current.keys() == null) {
+                return initialJwkKeys(current);
+            }
+            if (!refreshRequired(current)) {
+                return currentAfterRefreshFailure(current);
+            }
+            return refreshJwkKeys(current.keys());
+        } finally {
+            refreshLock.unlock();
+        }
+    }
+
+    private JwkKeys refreshUnknownKeyId(String keyId, JwkKeys staleKeys, JwkSetState observed) {
         if (!config.unknownKeyIdRefreshEnabled()) {
             return staleKeys;
         }
         refreshLock.lock();
         try {
-            JwkKeys current = cachedJwkKeys;
+            JwkSetState currentState = state;
+            if (currentState != observed) {
+                return publishedOutcome(currentState);
+            }
+            JwkKeys current = currentState.keys();
             if (current == null) {
-                current = refreshJwkKeys();
+                current = initialJwkKeys(currentState);
+                currentState = state;
             }
             if (current.forKeyId(keyId).isPresent()) {
                 return current;
+            }
+            if (currentState.refreshFailure() != null && !failureRetryIntervalElapsed(currentState)) {
+                return currentAfterRefreshFailure(currentState);
             }
             if (!unknownKeyIdRefreshAllowed()) {
                 return current;
@@ -175,10 +176,8 @@ final class OidcJwkSetManager {
                 cacheJwkKeys(loaded);
                 return loaded;
             } catch (RuntimeException e) {
-                if (config.staleOnError()) {
-                    return current;
-                }
-                throw e;
+                recordRefreshFailure(e);
+                return staleOrThrow(current, e);
             }
         } finally {
             refreshLock.unlock();
@@ -191,16 +190,51 @@ final class OidcJwkSetManager {
         return loaded;
     }
 
+    private JwkKeys refreshJwkKeys(JwkKeys staleKeys) {
+        try {
+            return refreshJwkKeys();
+        } catch (RuntimeException e) {
+            recordRefreshFailure(e);
+            return staleOrThrow(staleKeys, e);
+        }
+    }
+
+    private JwkKeys staleOrThrow(JwkKeys staleKeys, RuntimeException refreshFailure) {
+        if (config.staleOnError()) {
+            return staleKeys;
+        }
+        throw refreshFailure;
+    }
+
+    private JwkKeys currentAfterRefreshFailure(JwkSetState current) {
+        return current.refreshFailure() == null
+                ? current.keys()
+                : staleOrThrow(current.keys(), current.refreshFailure());
+    }
+
+    private JwkKeys publishedOutcome(JwkSetState published) {
+        if (published.keys() != null) {
+            return currentAfterRefreshFailure(published);
+        }
+        RuntimeException refreshFailure = published.refreshFailure();
+        if (refreshFailure != null) {
+            throw refreshFailure;
+        }
+        throw new IllegalStateException("JWK Set load produced no outcome");
+    }
+
+    private void recordRefreshFailure(RuntimeException refreshFailure) {
+        JwkSetState current = state;
+        state = new JwkSetState(current.keys(), current.lastLoad(), clock.instant(), refreshFailure);
+    }
+
     private void cacheJwkKeys(JwkKeys loaded) {
-        cachedJwkKeys = loaded;
         Instant now = clock.instant();
-        lastJwkSetLoad = now;
-        lastJwkSetRefreshAttempt = now;
-        lastJwkSetRefreshFailure = null;
+        state = new JwkSetState(loaded, now, now, null);
     }
 
     private boolean unknownKeyIdRefreshAllowed() {
-        Instant lastLoad = lastJwkSetLoad;
+        Instant lastLoad = state.lastLoad();
         Instant now = clock.instant();
         Duration refreshInterval = config.unknownKeyIdRefreshInterval();
         if (lastLoad == null || now.isBefore(lastLoad.plus(refreshInterval))) {
@@ -214,13 +248,34 @@ final class OidcJwkSetManager {
         return true;
     }
 
-    private boolean refreshIntervalElapsed() {
-        Instant lastRefresh = lastJwkSetRefreshAttempt;
+    private boolean refreshIntervalElapsed(JwkSetState current) {
+        Instant lastRefresh = current.lastAttempt();
         if (lastRefresh == null) {
             return false;
         }
         return config.refreshInterval()
                 .map(interval -> !clock.instant().isBefore(lastRefresh.plus(interval)))
                 .orElse(false);
+    }
+
+    private boolean refreshRequired(JwkSetState current) {
+        return current.refreshFailure() == null
+                ? refreshIntervalElapsed(current)
+                : failureRetryIntervalElapsed(current);
+    }
+
+    private boolean failureRetryIntervalElapsed(JwkSetState current) {
+        Instant lastAttempt = current.lastAttempt();
+        return lastAttempt == null
+                || !clock.instant().isBefore(lastAttempt.plus(config.failureRetryInterval()));
+    }
+
+    private record JwkSetState(JwkKeys keys,
+                               Instant lastLoad,
+                               Instant lastAttempt,
+                               RuntimeException refreshFailure) {
+        private static JwkSetState empty() {
+            return new JwkSetState(null, null, null, null);
+        }
     }
 }

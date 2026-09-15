@@ -58,6 +58,18 @@ interface OidcJwkSetConfigBlueprint {
     Optional<Duration> refreshInterval();
 
     /**
+     * Minimum interval before retrying a failed JWK Set load.
+     * <p>
+     * All callers within this interval observe the same failed refresh outcome. When cached keys exist,
+     * {@link #staleOnError()} determines whether those keys may be returned during the interval.
+     *
+     * @return failed-load retry interval
+     */
+    @Option.Configured
+    @Option.Default("PT10S")
+    Duration failureRetryInterval();
+
+    /**
      * Whether cached keys may be used when a reload fails.
      * <p>
      * Initial JWK Set loading still fails when no cached keys exist.

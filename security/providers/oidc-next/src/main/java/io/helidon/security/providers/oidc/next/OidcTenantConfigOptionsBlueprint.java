@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 
 import io.helidon.builder.api.Option;
@@ -35,6 +36,15 @@ interface OidcTenantConfigOptionsBlueprint {
     @Option.Configured
     @Option.DefaultBoolean(true)
     boolean enabled();
+
+    /**
+     * Minimum interval before retrying tenant initialization after a transient well-known metadata failure.
+     *
+     * @return tenant initialization retry interval
+     */
+    @Option.Configured
+    @Option.Default("PT10S")
+    Duration initializationRetryInterval();
 
     /**
      * Issuer Identifier expected for this tenant.

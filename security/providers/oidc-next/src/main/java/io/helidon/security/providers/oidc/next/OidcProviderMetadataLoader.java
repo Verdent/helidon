@@ -34,6 +34,7 @@ final class OidcProviderMetadataLoader {
     OidcProviderMetadata load(OidcProviderMetadata staticMetadata) {
         URI wellKnownUri = staticMetadata.wellKnownUri()
                 .orElseThrow(() -> new IllegalArgumentException("well-known-uri is not configured"));
+        OidcProviderMetadata wellKnownMetadata;
         try (HttpClientResponse response = webClient.get()
                 .uri(wellKnownUri)
                 .followRedirects(false)
@@ -64,11 +65,20 @@ final class OidcProviderMetadataLoader {
                 throw new IllegalStateException("well-known metadata response must be application/json");
             }
             JsonObject json = response.as(JsonObject.class);
-            return staticMetadata.mergeWellKnownMetadata(OidcProviderMetadata.fromWellKnownMetadataJson(json));
+            wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(json);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to load well-known metadata from "
-                                                    + OidcDiagnostics.safeUri(wellKnownUri),
-                                            e);
+            throw new RetryableDiscoveryException("Failed to load well-known metadata from "
+                                                          + OidcDiagnostics.safeUri(wellKnownUri),
+                                                  e);
+        }
+        return staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
+    }
+
+    static final class RetryableDiscoveryException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private RetryableDiscoveryException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }

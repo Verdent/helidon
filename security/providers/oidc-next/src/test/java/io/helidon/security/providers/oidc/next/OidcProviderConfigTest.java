@@ -44,6 +44,7 @@ import io.helidon.config.spi.ConfigNode.ListNode;
 import io.helidon.config.spi.ConfigNode.ObjectNode;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClientConfig;
@@ -689,6 +690,27 @@ class OidcProviderConfigTest {
                    is(true));
         assertThat(OidcWebClientFactory.create(socketConfiguredTenant).prototype().socketOptions().readTimeout(),
                    is(Duration.ofSeconds(4)));
+    }
+
+    @Test
+    void tenantWebClientDisablesOutboundSecurityAndPreservesOtherProperties() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .webClient(WebClientConfig.builder()
+                        .putProperty(OutboundConfig.PROPERTY_DISABLE_OUTBOUND, Boolean.FALSE.toString())
+                        .putProperty("custom-property", "custom-value")
+                        .buildPrototype())
+                .buildPrototype();
+
+        assertThat(OidcWebClientFactory.create(tenant)
+                           .prototype()
+                           .properties()
+                           .get(OutboundConfig.PROPERTY_DISABLE_OUTBOUND),
+                   is(Boolean.TRUE.toString()));
+        assertThat(OidcWebClientFactory.create(tenant)
+                           .prototype()
+                           .properties()
+                           .get("custom-property"),
+                   is("custom-value"));
     }
 
     @Test

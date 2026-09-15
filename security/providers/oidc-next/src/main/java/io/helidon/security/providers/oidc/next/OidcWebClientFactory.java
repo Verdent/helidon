@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.time.Duration;
 import java.util.Optional;
 
+import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
@@ -34,14 +35,19 @@ final class OidcWebClientFactory {
 
     static WebClient create(OidcTenantConfig tenantConfig) {
         WebClientConfig configured = tenantConfig.webClient();
-        if (configured.readTimeout().isPresent()
-                || !WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT.equals(configured.socketOptions().readTimeout())) {
-            return WebClient.create(configured);
+        /*
+         * Provider-owned protocol traffic already applies its required endpoint authentication explicitly. Allowing
+         * WebClientSecurity to route these requests through OIDC outbound security can re-enter the same tenant
+         * initialization or token single-flight operation and make the leader wait on itself.
+         */
+        WebClientConfig.Builder builder = WebClientConfig.builder()
+                .from(configured)
+                .putProperty(OutboundConfig.PROPERTY_DISABLE_OUTBOUND, Boolean.TRUE.toString());
+        if (configured.readTimeout().isEmpty()
+                && WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT.equals(configured.socketOptions().readTimeout())) {
+            builder.readTimeout(DEFAULT_READ_TIMEOUT);
         }
-        return WebClient.create(WebClientConfig.builder()
-                                        .from(configured)
-                                        .readTimeout(DEFAULT_READ_TIMEOUT)
-                                        .buildPrototype());
+        return WebClient.create(builder.buildPrototype());
     }
 
     static boolean optionsChanged(WebClientConfig webClient) {

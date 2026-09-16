@@ -483,14 +483,36 @@ configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri
 `introspection_endpoint_auth_methods_supported`, `introspection_endpoint_auth_signing_alg_values_supported`,
 `id_token_signing_alg_values_supported`, `id_token_encryption_alg_values_supported`,
 `id_token_encryption_enc_values_supported`, `userinfo_endpoint`, `end_session_endpoint`,
-`mtls_endpoint_aliases.token_endpoint`, `pushed_authorization_request_endpoint`,
+`mtls_endpoint_aliases.token_endpoint`, `mtls_endpoint_aliases.pushed_authorization_request_endpoint`,
+`mtls_endpoint_aliases.introspection_endpoint`, `pushed_authorization_request_endpoint`,
 `require_pushed_authorization_requests`, `request_parameter_supported`,
 `request_object_signing_alg_values_supported`, `request_object_encryption_alg_values_supported`,
 `request_object_encryption_enc_values_supported`, `require_signed_request_object`, and
 `authorization_response_iss_parameter_supported`.
-For mutual TLS Token Endpoint client authentication, the provider uses `mtls_endpoint_aliases.token_endpoint` only when
-the Token Endpoint URI itself is loaded from well-known metadata. An explicit `endpoints.token-endpoint-uri` is treated
-as the configured Token Endpoint and is not replaced by the alias.
+When well-known metadata is loaded, OIDC Next retains mTLS aliases independently from conventional endpoint URIs.
+Requests authenticated with `TLS_CLIENT_AUTH` or `SELF_SIGNED_TLS_CLIENT_AUTH` prefer the corresponding Token, PAR, or
+Introspection Endpoint alias even when the conventional endpoint was configured explicitly. A non-mTLS request uses the
+conventional endpoint. If metadata contains no corresponding alias, the configured or discovered conventional endpoint
+is the fallback.
+
+For example, an Authorization Server can isolate mTLS traffic while the application retains conventional endpoint
+configuration:
+
+```json
+{
+  "token_endpoint": "https://issuer.example/token",
+  "introspection_endpoint": "https://issuer.example/introspect",
+  "pushed_authorization_request_endpoint": "https://issuer.example/par",
+  "mtls_endpoint_aliases": {
+    "token_endpoint": "https://mtls.issuer.example/token",
+    "introspection_endpoint": "https://mtls.issuer.example/introspect",
+    "pushed_authorization_request_endpoint": "https://mtls.issuer.example/par"
+  }
+}
+```
+
+If discovery is not loaded, no alias is known and OIDC Next uses the statically configured URI. A fully static
+deployment can therefore configure the intended mTLS listener directly as the conventional endpoint URI.
 When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
 When present in well-known metadata, `id_token_encryption_alg_values_supported` and
@@ -1664,10 +1686,11 @@ For `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH`, the OIDC provider sends
 and relies on enabled tenant `webclient.tls` for the mutual TLS client certificate proof. Configure private key plus
 certificate chain, an SSL context, or a custom TLS manager. The `private-key` TLS block supplies the client
 certificate/key used for mutual TLS. The `trust` TLS block validates the Authorization Server certificate. When
-well-known metadata supplies both `token_endpoint` and `mtls_endpoint_aliases.token_endpoint`, mTLS Token Endpoint
-requests use the alias unless `endpoints.token-endpoint-uri` is explicitly configured. RFC 8705 Token Endpoint client
-authentication always requires an HTTPS Token Endpoint. If the Token Endpoint is loaded from well-known metadata, the
-well-known URI must also use HTTPS. `endpoints.tls-required: false` does not relax these mTLS requirements.
+well-known metadata supplies an alias for the Token, PAR, or Introspection Endpoint, an mTLS-authenticated request uses
+that alias in preference to the conventional endpoint, including when the conventional URI is explicitly configured.
+Non-mTLS requests continue to use the conventional URI. RFC 8705 mTLS endpoints always require HTTPS. If the Token
+Endpoint is loaded from well-known metadata, the well-known URI must also use HTTPS. `endpoints.tls-required: false`
+does not relax these mTLS requirements.
 
 Programmatic `private_key_jwt` configuration:
 

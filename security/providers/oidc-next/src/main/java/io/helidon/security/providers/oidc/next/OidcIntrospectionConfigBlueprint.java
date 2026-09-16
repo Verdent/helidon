@@ -42,7 +42,9 @@ interface OidcIntrospectionConfigBlueprint {
      * When omitted, the provider uses {@link OidcClientAuthenticationMethod#CLIENT_SECRET_BASIC} if either this
      * configuration or the tenant has a {@code client-secret}; otherwise it resolves to
      * {@link OidcClientAuthenticationMethod#NONE}. Introspection rejects {@code NONE}, because RFC 7662 requires
-     * protected resources to authenticate to the introspection endpoint.
+     * protected resources to authenticate to the introspection endpoint. When either mutual TLS method is selected and
+     * well-known metadata supplies an Introspection Endpoint mTLS alias, the alias is preferred even if the conventional
+     * endpoint URI is configured explicitly.
      *
      * @return Introspection Endpoint authentication method
      */

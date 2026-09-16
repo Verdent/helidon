@@ -384,7 +384,7 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
-    void explicitMutualTlsTokenEndpointOverridesWellKnownTokenEndpointAlias() {
+    void staticTokenEndpointDoesNotOverrideWellKnownMutualTlsAlias() {
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
@@ -407,7 +407,7 @@ class OidcClientCredentialsGrantTest {
                                                                       EndpointConfig.create());
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(RECORDED_REQUEST.get().path(), is("/token"));
+        assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
     }
 
     @Test
@@ -415,14 +415,19 @@ class OidcClientCredentialsGrantTest {
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
-                .setStrings("grant_types_supported", List.of("client_credentials"))
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code", "client_credentials"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .set("jwks_uri", issuer.resolve("/jwks").toString())
+                .set("userinfo_endpoint", issuer.resolve("/userinfo").toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
                         .build())
                 .build()
                 .toString();
-        OidcProvider provider = provider(confidentialTenantFromWellKnown());
+        OidcProvider provider = provider(confidentialTenantWithExplicitTokenEndpointAndUserInfo());
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
                                                                       outboundEnvironment(),
@@ -1561,6 +1566,20 @@ class OidcClientCredentialsGrantTest {
                 .webClient(mutualTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(secureTokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
+                .userInfo(_ -> { })
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig confidentialTenantWithExplicitTokenEndpointAndUserInfo() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
+                        .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
                 .userInfo(_ -> { })

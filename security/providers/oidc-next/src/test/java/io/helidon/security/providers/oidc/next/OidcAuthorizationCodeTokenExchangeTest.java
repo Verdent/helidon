@@ -155,6 +155,86 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void authorizationRedirectFormEncodesParametersAndRetainsEndpointQuery(URI serverUri) {
+        String clientId = "client/id?mode=a&client_injected=true+literal%£";
+        URI redirectionEndpointUri = URI.create(
+                "https://rp.example/oidc/callback?channel=a&redirect_injected=b+plus&pct=%25&currency=£");
+        List<String> resources = List.of(
+                "https://api.example/items?type=a&resource_injected=b+plus&pct=%25&currency=£",
+                "urn:example:contacts?role=a=b&literal=+");
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(clientId)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize?existing=endpoint%26value"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri)
+                        .resources(resources))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        URI location = authenticationRequest(tenant, environment).authorizationUri();
+
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("existing"), is("endpoint&value"));
+        assertThat(query.get("client_id"), is(clientId));
+        assertThat(query.getRaw("client_id"),
+                   is("client%2Fid%3Fmode%3Da%26client_injected%3Dtrue%2Bliteral%25%C2%A3"));
+        assertThat(query.get("redirect_uri"), is(redirectionEndpointUri.toString()));
+        assertThat(query.all("resource"), is(resources));
+        assertThat(query.contains("client_injected"), is(false));
+        assertThat(query.contains("redirect_injected"), is(false));
+        assertThat(query.contains("resource_injected"), is(false));
+        assertThat(query.contains("pct"), is(false));
+        assertThat(query.contains("currency"), is(false));
+        assertThat(query.contains("literal"), is(false));
+    }
+
+    @Test
+    void pushedAuthorizationRedirectFormEncodesRequestUri(URI serverUri) {
+        String requestUri = "urn:ietf:params:oauth:request_uri:test?part=a&par_injected=b+plus&pct=%25";
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse(requestUri).toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize?existing=endpoint%26value"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        URI location = authenticationRequest(tenant, environment).authorizationUri();
+
+        UriQuery query = UriQuery.create(location);
+        assertThat(query.get("existing"), is("endpoint&value"));
+        assertThat(query.get("client_id"), is(CLIENT_ID));
+        assertThat(query.getRaw("client_id"), is("client%2Fid"));
+        assertThat(query.get("request_uri"), is(requestUri));
+        assertThat(query.getRaw("request_uri"),
+                   is("urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Atest%3Fpart%3Da"
+                              + "%26par_injected%3Db%2Bplus%26pct%3D%2525"));
+        assertThat(query.contains("par_injected"), is(false));
+        assertThat(query.contains("pct"), is(false));
+    }
+
+    @Test
     void pushedAuthorizationRequestPostsAuthorizationRequestParametersAndUsesClientSecretBasic() {
         responseStatus = 201;
         responseBody = validPushedAuthorizationResponse().toString();
@@ -1011,6 +1091,17 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .pushedAuthorizationRequest(parameters);
     }
 
+    private static OidcAuthenticationRequest authenticationRequest(OidcTenantConfig tenantConfig,
+                                                                   SecurityEnvironment environment) {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("default", tenantConfig)
+                .buildPrototype();
+        OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(providerConfig);
+        OidcRequestContext requestContext = new OidcRequestContext(OidcProviderTest.request(null, environment),
+                                                                   tenantRuntimeRegistry);
+        return new OidcAuthenticationRequestFactory().create(requestContext);
+    }
+
     private OidcTokenEndpointResult exchange(OidcTenantConfig tenantConfig, String pkceVerifier) {
         return OidcTenantContext.ready("default", tenantConfig)
                 .endpointClient()
@@ -1308,8 +1399,12 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private static JsonObject validPushedAuthorizationResponse() {
+        return validPushedAuthorizationResponse(PUSHED_AUTHORIZATION_REQUEST_URI);
+    }
+
+    private static JsonObject validPushedAuthorizationResponse(String requestUri) {
         return JsonObject.builder()
-                .set("request_uri", PUSHED_AUTHORIZATION_REQUEST_URI)
+                .set("request_uri", requestUri)
                 .set("expires_in", 90)
                 .build();
     }

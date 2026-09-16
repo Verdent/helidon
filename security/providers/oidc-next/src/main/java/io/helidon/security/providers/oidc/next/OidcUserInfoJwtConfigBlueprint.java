@@ -44,6 +44,8 @@ interface OidcUserInfoJwtConfigBlueprint {
      * algorithms are configured, the response must be signed and then encrypted as a Nested JWT. A selected RSA
      * verification key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg} member may be
      * used with this compatible registered algorithm; a declared JWK {@code alg} must match it.
+     * When the JWT omits {@code kid}, the referenced JWK Set must contain exactly one key and that key must satisfy all
+     * verification constraints.
      *
      * @return registered UserInfo signing algorithm
      */

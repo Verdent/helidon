@@ -41,6 +41,8 @@ interface OidcIdTokenConfigBlueprint {
      * Defaults to {@code RS256}, the OpenID Connect Core default ID Token signing algorithm. A selected RSA verification
      * key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg} member may be used with any
      * compatible allowed algorithm; a declared JWK {@code alg} must match the ID Token header.
+     * When the ID Token omits {@code kid}, the referenced JWK Set must contain exactly one key and that key must satisfy
+     * all verification constraints.
      *
      * @return allowed ID Token JWS algorithms
      */

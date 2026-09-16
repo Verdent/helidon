@@ -63,6 +63,7 @@ class OidcProviderTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI ORIGINAL_URI = URI.create("https://rp.example/resource?name=value");
     private static final String SUBJECT = "user1-id";
@@ -1376,7 +1377,8 @@ class OidcProviderTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
                 .authorizationCode(it -> {
                     it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                             .scopes(List.of("openid", "profile"));
@@ -1393,7 +1395,7 @@ class OidcProviderTest {
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
-                        .jwksUri(URI.create("https://issuer.example/jwks")))
+                        .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)

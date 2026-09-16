@@ -37,6 +37,7 @@ class OidcAuthorizationResponseProcessorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI OTHER_REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/other/callback");
     private static final URI ORIGINAL_URI = URI.create("https://rp.example/resource");
@@ -690,7 +691,8 @@ class OidcAuthorizationResponseProcessorTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
                 .cookies(it -> it.protection(protection -> protection.password(cookiePassword)))
                 .buildPrototype();

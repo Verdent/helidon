@@ -24,6 +24,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -88,7 +89,23 @@ final class OidcJoseKeyPolicy {
                         "JWS alg header is required for signature verification"));
         Optional<String> keyId = jwt.keyId();
         if (keyId.isEmpty()) {
-            return signedJwt.verifySignature(keys);
+            List<Jwk> eligible = keys.keys()
+                    .stream()
+                    .filter(jwk -> isEligibleVerificationKey(jwk, algorithm))
+                    .toList();
+            if (eligible.size() != 1) {
+                Errors.Collector collector = Errors.collector();
+                collector.fatal(keys,
+                                eligible.isEmpty()
+                                        ? "JWK Set contains no eligible key for JWS without kid"
+                                        : "JWK Set contains multiple eligible keys for JWS without kid");
+                return collector.collect();
+            }
+            Jwk selected = eligible.getFirst();
+            Jwk effectiveJwk = selected.algorithm().equals(algorithm)
+                    ? selected
+                    : withAlgorithm(selected, algorithm);
+            return signedJwt.verifySignature(JwkKeys.builder().build(), effectiveJwk);
         }
         Optional<Jwk> selected = keys.forKeyId(keyId.orElseThrow());
         if (selected.isEmpty()) {
@@ -101,6 +118,19 @@ final class OidcJoseKeyPolicy {
         validateVerificationKey(jwk, algorithm);
         Jwk effectiveJwk = jwk.algorithm().equals(algorithm) ? jwk : withAlgorithm(jwk, algorithm);
         return signedJwt.verifySignature(JwkKeys.builder().addKey(effectiveJwk).build());
+    }
+
+    static Errors verifyOidcSignature(SignedJwt signedJwt, Jwt jwt, JwkKeys keys) {
+        /*
+         * OpenID Connect Core 1.0, 10.1 Signing, requires kid when the referenced JWK Set contains multiple keys.
+         */
+        if (jwt.keyId().isEmpty() && keys.keys().size() != 1) {
+            Errors.Collector collector = Errors.collector();
+            collector.fatal(keys,
+                            "OpenID Connect JWS without kid requires a JWK Set containing exactly one key");
+            return collector.collect();
+        }
+        return verifySignature(signedJwt, jwt, keys);
     }
 
     static void validateConfiguredRsaKey(Jwk jwk, String description) {
@@ -136,6 +166,12 @@ final class OidcJoseKeyPolicy {
     }
 
     private static void validateSigningKey(Jwk jwk, String algorithm, String description) {
+        if (jwk.usage().filter(usage -> !Jwk.USE_SIGNATURE.equals(usage)).isPresent()) {
+            throw new IllegalArgumentException(description + " JWK use must be sig");
+        }
+        if (jwk.operations().filter(operations -> !operations.contains(Jwk.OPERATION_SIGN)).isPresent()) {
+            throw new IllegalArgumentException(description + " JWK key_ops must allow sign");
+        }
         switch (jwk) {
         case JwkRSA rsa -> {
             if (!RSA_SIGNATURE_ALGORITHMS.contains(algorithm)) {
@@ -173,6 +209,12 @@ final class OidcJoseKeyPolicy {
     }
 
     private static void validateVerificationKey(Jwk jwk, String algorithm) {
+        if (jwk.usage().filter(usage -> !Jwk.USE_SIGNATURE.equals(usage)).isPresent()) {
+            throw new IllegalArgumentException("Verification JWK use must be sig");
+        }
+        if (jwk.operations().filter(operations -> !operations.contains(Jwk.OPERATION_VERIFY)).isPresent()) {
+            throw new IllegalArgumentException("Verification JWK key_ops must allow verify");
+        }
         switch (jwk) {
         case JwkRSA rsa -> {
             if (!RSA_SIGNATURE_ALGORITHMS.contains(algorithm)) {
@@ -183,6 +225,18 @@ final class OidcJoseKeyPolicy {
         case JwkEC ec -> requireCompatibleEcAlgorithm(ec, algorithm, "EC verification JWK");
         case JwkOctet octet -> validateHmacJwk(octet, algorithm, "HMAC verification JWK");
         default -> throw new IllegalArgumentException("Unsupported JWK type for signature verification");
+        }
+    }
+
+    private static boolean isEligibleVerificationKey(Jwk jwk, String algorithm) {
+        if (jwk.declaredAlgorithm().filter(declared -> !declared.equals(algorithm)).isPresent()) {
+            return false;
+        }
+        try {
+            validateVerificationKey(jwk, algorithm);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 

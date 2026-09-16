@@ -71,6 +71,7 @@ class OidcFeatureRouteTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
+    private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
     private static final URI END_SESSION_ENDPOINT_URI = URI.create("https://issuer.example/logout");
     private static final URI CONFIGURED_REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
     private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("https://rp.example/logged-out");
@@ -90,6 +91,7 @@ class OidcFeatureRouteTest {
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
     private static String verifyJwkSet;
+    private static String singleVerifyJwkSet;
     private static String tokenEndpointResponseBody;
     private static String userInfoEndpointResponseBody;
     private static Status userInfoEndpointStatus;
@@ -105,6 +107,7 @@ class OidcFeatureRouteTest {
                 .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
         verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
+        singleVerifyJwkSet = Resource.create("oidc-next-verify-public-jwk.json").string();
     }
 
     @SetUpRoute
@@ -121,6 +124,8 @@ class OidcFeatureRouteTest {
         });
         routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(verifyJwkSet));
+        routing.get("/single-jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(singleVerifyJwkSet));
     }
 
     @BeforeEach
@@ -546,6 +551,7 @@ class OidcFeatureRouteTest {
                                                               .addUserGroup("admin")
                                                               .addUserGroup("auditor"));
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,
+                                                           serverUri.resolve("single-jwks"),
                                                            userInfo -> userInfo.jwt(jwt -> jwt
                                                                    .signingAlgorithm("RS384")));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
@@ -1812,7 +1818,8 @@ class OidcFeatureRouteTest {
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
@@ -1871,6 +1878,7 @@ class OidcFeatureRouteTest {
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI)
                         .endSessionEndpointUri(endSessionEndpointUri))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
@@ -1912,7 +1920,8 @@ class OidcFeatureRouteTest {
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .logout(logout)
@@ -1951,6 +1960,12 @@ class OidcFeatureRouteTest {
 
     private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri,
                                                             Consumer<OidcUserInfoConfig.Builder> userInfo) {
+        return tenantConfigWithUserInfo(openIdProviderUri, openIdProviderUri.resolve("jwks"), userInfo);
+    }
+
+    private static OidcTenantConfig tenantConfigWithUserInfo(URI openIdProviderUri,
+                                                             URI verificationJwksUri,
+                                                             Consumer<OidcUserInfoConfig.Builder> userInfo) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -1958,7 +1973,7 @@ class OidcFeatureRouteTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(openIdProviderUri.resolve("token"))
                         .userInfoEndpointUri(openIdProviderUri.resolve("userinfo"))
-                        .jwksUri(openIdProviderUri.resolve("jwks"))
+                        .jwksUri(verificationJwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
@@ -2196,10 +2211,19 @@ class OidcFeatureRouteTest {
                                          String issuer,
                                          String audience,
                                          Consumer<Jwt.Builder> customizer) {
-        return signedUserInfo("RS256", subject, issuer, audience, customizer);
+        return signedUserInfo("RS256", "verify-rsa", subject, issuer, audience, customizer);
     }
 
     private static String signedUserInfo(String algorithm,
+                                         String subject,
+                                         String issuer,
+                                         String audience,
+                                         Consumer<Jwt.Builder> customizer) {
+        return signedUserInfo(algorithm, null, subject, issuer, audience, customizer);
+    }
+
+    private static String signedUserInfo(String algorithm,
+                                         String keyId,
                                          String subject,
                                          String issuer,
                                          String audience,
@@ -2210,10 +2234,12 @@ class OidcFeatureRouteTest {
                 .subject(subject)
                 .issuer(issuer)
                 .algorithm(algorithm)
-                .keyId("verify-rsa")
                 .issueTime(now)
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
                 .addAudience(audience);
+        if (keyId != null) {
+            jwt.keyId(keyId);
+        }
         customizer.accept(jwt);
         Jwk signingKey = OidcJoseKeyPolicy.signingKey(signKeys.forKeyId("sign-rsa").orElseThrow(),
                                                       Optional.of(algorithm),

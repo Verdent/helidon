@@ -1045,7 +1045,7 @@ class OidcJwtAccessTokenValidationTest {
     @Test
     void rsaJwkWithoutDeclaredAlgorithmUsesAllowedJwtAlgorithm() {
         for (String algorithm : List.of("RS384", "RS512")) {
-            String token = signedToken(algorithm, "verify-rsa", "sign-rsa", _ -> { });
+            String token = signedToken(algorithm, null, "sign-rsa", _ -> { });
             OidcProvider provider = provider(true,
                                              true,
                                              jwksUri,
@@ -1277,12 +1277,14 @@ class OidcJwtAccessTokenValidationTest {
                 .preferredUsername(USERNAME)
                 .issuer(ISSUER.toString())
                 .algorithm(algorithm)
-                .keyId(keyId)
                 .issueTime(now)
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
                 .jwtId("jwt-id")
                 .addPayloadClaim("client_id", "calling-client")
                 .addAudience(AUDIENCE);
+        if (keyId != null) {
+            builder.keyId(keyId);
+        }
         if (accessTokenType) {
             builder.type("at+jwt");
         }

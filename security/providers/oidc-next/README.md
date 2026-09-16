@@ -606,6 +606,37 @@ thread loads the JWK Set from the remote endpoint for that refresh opportunity. 
 may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
 requests to fail until `failure-retry-interval` permits another reload attempt.
 
+JWS defines the `kid` header as optional. When it is present, OIDC Next selects that exact key and may refresh for an
+unknown value according to the policy above. For a JWT access token without `kid`, OIDC Next filters the complete JWK Set
+by the JWS algorithm, declared JWK `alg`, key type and curve, `use`, `key_ops`, and mandatory key strength. The signature
+is attempted only when exactly one eligible verification key remains. Zero eligible keys or multiple eligible keys are
+rejected; OIDC Next does not guess based on document order.
+
+OpenID Connect Core applies a stricter rule to ID Tokens and signed UserInfo JWTs: when the referenced JWK Set contains
+multiple keys, the issuer must include `kid`. OIDC Next therefore accepts one of these messages without `kid` only when
+the complete JWK Set contains exactly one key and that key satisfies all verification constraints.
+
+For example, an issuer can omit `kid` and JWK `alg` when its JWK Set contains exactly one key and that key is an eligible
+RSA verification key. The placeholder modulus must be replaced with an actual base64url-encoded value of at least 2048
+bits:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "key_ops": [ "verify" ],
+      "n": "<base64url-encoded modulus of at least 2048 bits>",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+During OpenID Connect signing-key rotation, the issuer must include `kid` as soon as its JWK Set contains more than one
+key. A JWT access token also needs `kid` whenever filtering would otherwise leave multiple eligible keys.
+
 ## Protected Resource With Introspection
 
 Use `method: INTROSPECTION` for opaque tokens or when the Authorization Server is responsible for access-token
@@ -846,7 +877,21 @@ When `authorization-code` is configured and not explicitly disabled:
   parameters.
 - `cookies.protection.password` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
+- A JWK Set URI is required for ID Token signature verification, either as `endpoints.jwks-uri` or as `jwks_uri` from
+  well-known metadata.
 - An issuer or well-known URI is required.
+
+When Authorization and Token Endpoint URIs are static but `endpoints.jwks-uri` is omitted, OIDC Next loads well-known
+metadata before initiating login to obtain `jwks_uri`. Tenant initialization fails before redirecting the browser or
+exchanging an authorization code if no JWK Set source is available. To run with fully static endpoint configuration,
+configure all three endpoints explicitly:
+
+```yaml
+endpoints:
+  authorization-endpoint-uri: "https://issuer.example/authorize"
+  token-endpoint-uri: "https://issuer.example/token"
+  jwks-uri: "https://issuer.example/jwks"
+```
 
 Cookie protection uses PBKDF2-HMAC-SHA-256 with 600,000 iterations by default, followed by HKDF-SHA-256 to derive
 separate AES-256-GCM keys for Authentication Request and local authentication cookies. Key derivation runs
@@ -2406,11 +2451,11 @@ Common checks:
 | --- | --- |
 | `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
 | JOSE key or client assertion initialization fails | Check that RSA moduli are at least 2048 bits, `CLIENT_SECRET_JWT` secrets meet the selected 32/48/64-octet HMAC minimum, the configured algorithm is compatible with the key type, and any declared JWK `alg` exactly matches the operation. |
-| `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. |
+| `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. Without `kid`, exactly one key must remain eligible after algorithm, use, operations, type, and strength filtering. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
 | `Bearer Token validation is unavailable` with HTTP `503` | Introspection admission capacity is exhausted. Check Introspection Endpoint latency and health, inbound request rate, and `protected-resource.token-validation.introspection.remote-work`; increase limits only within the service and Authorization Server connection budgets. |
 | `Bearer Token request is invalid` | Check for multiple Bearer token sources, multiple Authorization Bearer values, malformed `access_token` query parameters, or non-HTTPS transport when secure transport is required. |
-| Browser login loops or callback failures | Check redirect URI registration, reverse proxy requested-URI discovery, `X-Forwarded-*` headers, cookie domain/path/SameSite settings, clock skew, PKCE metadata, PAR/JAR requirements, and cookie protection setting consistency. |
+| Browser login loops or callback failures | Check redirect URI registration, reverse proxy requested-URI discovery, `X-Forwarded-*` headers, cookie domain/path/SameSite settings, clock skew, JWKS availability and key selection, PKCE metadata, PAR/JAR requirements, and cookie protection setting consistency. |
 | UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
 | Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
 | Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |

@@ -56,6 +56,7 @@ class OidcIdTokenValidatorTest {
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
     private static URI jwksUri;
+    private static URI singleJwksUri;
 
     private final OidcIdTokenValidator validator = new OidcIdTokenValidator();
 
@@ -69,6 +70,9 @@ class OidcIdTokenValidatorTest {
                 .build();
         jwksUri = OidcIdTokenValidatorTest.class.getClassLoader()
                 .getResource("oidc-next-verify-jwk.json")
+                .toURI();
+        singleJwksUri = OidcIdTokenValidatorTest.class.getClassLoader()
+                .getResource("oidc-next-verify-public-jwk.json")
                 .toURI();
     }
 
@@ -350,13 +354,19 @@ class OidcIdTokenValidatorTest {
     @Test
     void rsaJwkWithoutDeclaredAlgorithmUsesRegisteredIdTokenAlgorithm() {
         for (String algorithm : List.of("RS384", "RS512")) {
-            String idToken = signedIdToken(algorithm, "verify-rsa", "sign-rsa", _ -> { });
-            OidcTenantConfig tenantConfig = tenantConfig(tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
-                    .allowedAlgorithms(List.of(algorithm))));
+            String idToken = signedIdToken(algorithm, null, "sign-rsa", _ -> { });
+            OidcTenantConfig tenantConfig = tenantConfig(singleJwksUri,
+                                                         tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
+                                                                 .allowedAlgorithms(List.of(algorithm))));
 
             OidcValidationResult<OidcValidatedIdToken> result = validate(idToken, tenantConfig);
 
             assertThat(result.succeeded(), is(true));
+            assertFailure(validate(idToken,
+                                   tenantConfig(jwksUri,
+                                                tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
+                                                        .allowedAlgorithms(List.of(algorithm))))),
+                          "ID Token signature is invalid");
         }
     }
 
@@ -455,12 +465,17 @@ class OidcIdTokenValidatorTest {
     }
 
     private static OidcTenantConfig tenantConfig(Consumer<OidcTenantConfig.Builder> customizer) {
+        return tenantConfig(jwksUri, customizer);
+    }
+
+    private static OidcTenantConfig tenantConfig(URI verificationJwksUri,
+                                                  Consumer<OidcTenantConfig.Builder> customizer) {
         OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
-                        .jwksUri(jwksUri)
+                        .jwksUri(verificationJwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)));
@@ -544,10 +559,12 @@ class OidcIdTokenValidatorTest {
                 .subject(SUBJECT)
                 .issuer(ISSUER.toString())
                 .algorithm(algorithm)
-                .keyId(keyId)
                 .issueTime(VALIDATION_TIME)
                 .expirationTime(VALIDATION_TIME.plus(1, ChronoUnit.HOURS))
                 .nonce(NONCE);
+        if (keyId != null) {
+            builder.keyId(keyId);
+        }
         if (audience) {
             builder.addAudience(CLIENT_ID);
         }

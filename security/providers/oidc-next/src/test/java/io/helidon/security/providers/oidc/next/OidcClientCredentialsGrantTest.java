@@ -86,7 +86,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcClientCredentialsGrantTest {
     private static final String CLIENT_ID = "client/id";
-    private static final String CLIENT_SECRET = "client+secret=value";
+    private static final String CLIENT_SECRET =
+            "client+secret=value:0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String EXISTING_HEADER_NAME = "X-Existing";
     private static final String EXISTING_HEADER_VALUE = "existing-value";
     private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";

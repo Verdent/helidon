@@ -79,7 +79,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback?registered=true");
     private static final String CLIENT_ID = "client/id";
-    private static final String CLIENT_SECRET = "client+secret=value";
+    private static final String CLIENT_SECRET =
+            "client+secret=value:0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String AUTHORIZATION_CODE = "authorization-code+value";
     private static final String PKCE_VERIFIER = "pkce-verifier+value";
     private static final String REFRESH_TOKEN = "refresh-token+value";
@@ -388,10 +389,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .scopes(List.of("openid", "profile"))
                         .prompts(List.of("login"))
                         .resources(List.of("https://api.example.com", "urn:example:contacts"))
-                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
-                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
-                                .signingKeyId("sign-rsa")
-                                .signingAlgorithm("RS256")))
+                                .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                        .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                        .signingKeyId("sign-rsa")
+                                        .signingAlgorithm("RS512")))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
@@ -426,10 +427,12 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .readJsonObject();
         JsonObject requestObjectPayload = JsonParser.create(Base64.getUrlDecoder().decode(requestObjectParts[1]))
                 .readJsonObject();
-        byte[] signedBytes = (requestObjectParts[0] + "." + requestObjectParts[1]).getBytes(StandardCharsets.US_ASCII);
-        byte[] signature = Base64.getUrlDecoder().decode(requestObjectParts[2]);
-        assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
-        assertThat(requestObjectHeader.stringValue("alg").orElse(""), is("RS256"));
+        SignedJwt signedRequestObject = SignedJwt.parseToken(requestObject);
+        assertThat(OidcJoseKeyPolicy.verifySignature(signedRequestObject,
+                                                     signedRequestObject.getJwt(),
+                                                     signKeys).isValid(),
+                   is(true));
+        assertThat(requestObjectHeader.stringValue("alg").orElse(""), is("RS512"));
         assertThat(requestObjectHeader.stringValue("kid").orElse(""), is("sign-rsa"));
         assertThat(requestObjectPayload.stringValue("iss").orElse(""), is(CLIENT_ID));
         assertThat(requestObjectPayload.stringValue("response_type").orElse(""), is("code"));
@@ -768,12 +771,18 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
-    void privateKeyJwtRejectsMismatchedConfiguredAlgorithm() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcTenantContext.ready("default",
-                                                                                    privateKeyJwtTenant("RS384")));
+    void privateKeyJwtUsesConfiguredAlgorithmWhenJwkAlgIsOmitted() {
+        OidcTokenEndpointResult result = exchange(privateKeyJwtTenant("RS384"), PKCE_VERIFIER);
 
-        assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
+        assertThat(result.succeeded(), is(true));
+        SignedJwt assertion = SignedJwt.parseToken(
+                RECORDED_REQUEST.get().formParameters().get("client_assertion").getFirst());
+        assertThat(assertion.getJwt().algorithm().orElse(""), is("RS384"));
+        assertThat(OidcJoseKeyPolicy.verifySignature(
+                           assertion,
+                           assertion.getJwt(),
+                           signKeys).isValid(),
+                   is(true));
     }
 
     @Test

@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
@@ -347,6 +348,19 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void rsaJwkWithoutDeclaredAlgorithmUsesRegisteredIdTokenAlgorithm() {
+        for (String algorithm : List.of("RS384", "RS512")) {
+            String idToken = signedIdToken(algorithm, "verify-rsa", "sign-rsa", _ -> { });
+            OidcTenantConfig tenantConfig = tenantConfig(tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
+                    .allowedAlgorithms(List.of(algorithm))));
+
+            OidcValidationResult<OidcValidatedIdToken> result = validate(idToken, tenantConfig);
+
+            assertThat(result.succeeded(), is(true));
+        }
+    }
+
+    @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
         String idToken = unsignedIdToken(_ -> { });
 
@@ -538,7 +552,10 @@ class OidcIdTokenValidatorTest {
             builder.addAudience(CLIENT_ID);
         }
         customizer.accept(builder);
-        return SignedJwt.sign(builder.build(), signKeys.forKeyId(signingKeyId).orElseThrow())
+        Jwk signingKey = OidcJoseKeyPolicy.signingKey(signKeys.forKeyId(signingKeyId).orElseThrow(),
+                                                      Optional.of(algorithm),
+                                                      "test signing JWK");
+        return SignedJwt.sign(builder.build(), signingKey)
                 .tokenContent();
     }
 

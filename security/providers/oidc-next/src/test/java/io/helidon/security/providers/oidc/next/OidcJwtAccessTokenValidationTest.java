@@ -1043,6 +1043,25 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void rsaJwkWithoutDeclaredAlgorithmUsesAllowedJwtAlgorithm() {
+        for (String algorithm : List.of("RS384", "RS512")) {
+            String token = signedToken(algorithm, "verify-rsa", "sign-rsa", _ -> { });
+            OidcProvider provider = provider(true,
+                                             true,
+                                             jwksUri,
+                                             tenant -> tenant.protectedResource(resource -> resource
+                                                     .tokenValidation(validation -> validation
+                                                             .method(OidcTokenValidationMethod.JWT)
+                                                             .audience(AUDIENCE)
+                                                             .allowedAlgorithms(List.of(algorithm)))));
+
+            AuthenticationResponse response = authenticate(provider, token);
+
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        }
+    }
+
+    @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
         String token = unsignedToken(_ -> { });
 
@@ -1268,7 +1287,10 @@ class OidcJwtAccessTokenValidationTest {
             builder.type("at+jwt");
         }
         customizer.accept(builder);
-        return SignedJwt.sign(builder.build(), signKeys.forKeyId(signingKeyId).orElseThrow())
+        Jwk signingKey = OidcJoseKeyPolicy.signingKey(signKeys.forKeyId(signingKeyId).orElseThrow(),
+                                                      Optional.of(algorithm),
+                                                      "test signing JWK");
+        return SignedJwt.sign(builder.build(), signingKey)
                 .tokenContent();
     }
 

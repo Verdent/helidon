@@ -55,6 +55,7 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcProviderConfigTest {
@@ -1293,7 +1294,7 @@ class OidcProviderConfigTest {
     void introspectionRequiresEndpointAndClientAuthentication() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .clientId("client-id")
-                .clientSecret("client-secret-value")
+                .clientSecret("0123456789abcdef0123456789abcdef")
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)))
                 .buildPrototype());
 
@@ -2110,7 +2111,7 @@ class OidcProviderConfigTest {
         OidcTenantConfig clientSecretJwt = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
-                .clientSecret("client-secret-value")
+                .clientSecret("0123456789abcdef0123456789abcdef")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
@@ -2135,6 +2136,26 @@ class OidcProviderConfigTest {
                    is(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT));
         assertThat(privateKeyJwt.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
+    }
+
+    @Test
+    void clientSecretJwtEnforcesHmacMinimumForTokenAndIntrospectionEndpoints() {
+        for (Map.Entry<String, Integer> requirement : Map.of("HS256", 32, "HS384", 48, "HS512", 64).entrySet()) {
+            String algorithm = requirement.getKey();
+            int minimum = requirement.getValue();
+
+            IllegalArgumentException tokenFailure = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> clientSecretJwtTokenTenant("a".repeat(minimum - 1), algorithm));
+            assertThat(tokenFailure.getMessage(), containsString(minimum + " UTF-8 octets"));
+            assertDoesNotThrow(() -> clientSecretJwtTokenTenant("a".repeat(minimum), algorithm));
+
+            IllegalArgumentException introspectionFailure = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> clientSecretJwtIntrospectionTenant("a".repeat(minimum - 1), algorithm));
+            assertThat(introspectionFailure.getMessage(), containsString(minimum + " UTF-8 octets"));
+            assertDoesNotThrow(() -> clientSecretJwtIntrospectionTenant("a".repeat(minimum), algorithm));
+        }
     }
 
     @Test
@@ -2825,6 +2846,36 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));
+    }
+
+    private static OidcTenantConfig clientSecretJwtTokenTenant(String secret, String algorithm) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret(secret)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                .clientAssertion(assertion -> assertion.algorithm(algorithm))
+                .endpoints(endpoints -> endpoints.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+    }
+
+    private static OidcTenantConfig clientSecretJwtIntrospectionTenant(String secret, String algorithm) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret(secret)
+                .endpoints(endpoints -> endpoints.introspectionEndpointUri(
+                        URI.create("https://issuer.example/introspect")))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+                                .clientAssertion(assertion -> assertion.algorithm(algorithm)))))
+                .buildPrototype();
     }
 
     private static OidcTenantConfig jwtProtectedResourceTenant() {

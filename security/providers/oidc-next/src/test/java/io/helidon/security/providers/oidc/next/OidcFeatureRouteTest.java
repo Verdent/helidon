@@ -537,14 +537,17 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointRouteMergesSignedJwtUserInfoClaims(URI serverUri) {
         userInfoEndpointContentType = "application/jwt";
-        userInfoEndpointResponseBody = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, jwt -> jwt
-                .preferredUsername("userinfo-user")
-                .email("userinfo@example.org")
-                .addUserGroup("admin")
-                .addUserGroup("auditor"));
+        userInfoEndpointResponseBody = signedUserInfo("RS384",
+                                                      SUBJECT,
+                                                      ISSUER.toString(),
+                                                      CLIENT_ID,
+                                                      jwt -> jwt.preferredUsername("userinfo-user")
+                                                              .email("userinfo@example.org")
+                                                              .addUserGroup("admin")
+                                                              .addUserGroup("auditor"));
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,
                                                            userInfo -> userInfo.jwt(jwt -> jwt
-                                                                   .signingAlgorithm("RS256")));
+                                                                   .signingAlgorithm("RS384")));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             URI callbackUri = callbackUri(rpServer);
@@ -2193,18 +2196,29 @@ class OidcFeatureRouteTest {
                                          String issuer,
                                          String audience,
                                          Consumer<Jwt.Builder> customizer) {
+        return signedUserInfo("RS256", subject, issuer, audience, customizer);
+    }
+
+    private static String signedUserInfo(String algorithm,
+                                         String subject,
+                                         String issuer,
+                                         String audience,
+                                         Consumer<Jwt.Builder> customizer) {
         Instant now = Instant.now();
         Jwt.Builder jwt = Jwt.builder()
                 .type("JWT")
                 .subject(subject)
                 .issuer(issuer)
-                .algorithm("RS256")
+                .algorithm(algorithm)
                 .keyId("verify-rsa")
                 .issueTime(now)
                 .expirationTime(now.plus(1, ChronoUnit.HOURS))
                 .addAudience(audience);
         customizer.accept(jwt);
-        return SignedJwt.sign(jwt.build(), signKeys.forKeyId("sign-rsa").orElseThrow())
+        Jwk signingKey = OidcJoseKeyPolicy.signingKey(signKeys.forKeyId("sign-rsa").orElseThrow(),
+                                                      Optional.of(algorithm),
+                                                      "test signing JWK");
+        return SignedJwt.sign(jwt.build(), signingKey)
                 .tokenContent();
     }
 

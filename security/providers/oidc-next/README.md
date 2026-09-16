@@ -1493,8 +1493,9 @@ security:
 `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` and a signed `client_assertion` JWT. The assertion uses
 `client-id` as `iss` and `sub`, the Token Endpoint URI as `aud`, and includes `iat`, `exp`, and `jti`.
 For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if the Authorization Server expects a
-`kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required, `algorithm` must match the selected JWK
-algorithm, and `key-id` is required when the configured JWK Set contains more than one key.
+`kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required and `key-id` is required when the configured JWK
+Set contains more than one key. A configured `algorithm` must match a declared JWK `alg`; when the JWK omits optional
+`alg`, the configured algorithm selects a compatible use of that key.
 When well-known metadata is loaded, the configured method must be listed in `token_endpoint_auth_methods_supported`.
 If the metadata omits that entry, the Discovery default is `client_secret_basic`. JWT client authentication additionally
 requires `token_endpoint_auth_signing_alg_values_supported` to include the assertion signing algorithm; no default
@@ -1503,6 +1504,87 @@ assertion signing algorithms are assumed.
 The same authentication methods can be used for Token Introspection, but introspection is configured under
 `protected-resource.token-validation.introspection`. If `introspection.client-assertion` is omitted, the tenant
 `client-assertion` is reused. For introspection assertions, the `aud` claim is the Introspection Endpoint URI.
+
+### JOSE Key Strength And Optional JWK Algorithms
+
+OIDC Next applies the mandatory [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518.html) key-strength rules to every
+supported JOSE operation. For
+`CLIENT_SECRET_JWT`, the UTF-8 representation of `client-secret` must meet the selected HMAC hash-output size:
+
+| Algorithm | Minimum secret size |
+| --- | --- |
+| `HS256` | 32 UTF-8 octets |
+| `HS384` | 48 UTF-8 octets |
+| `HS512` | 64 UTF-8 octets |
+
+The limit is measured in encoded octets, not Java characters. OIDC Next does not hash, pad, or otherwise expand a short
+client secret into a compliant HMAC key. Provision a cryptographically random secret of sufficient size at the
+Authorization Server and supply the exact registered value to every service replica.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}" # At least 48 UTF-8 octets for HS384
+        token-endpoint-auth-method: CLIENT_SECRET_JWT
+        client-assertion:
+          algorithm: HS384
+```
+
+Programmatic equivalent:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .clientId(System.getenv("OIDC_CLIENT_ID"))
+        .clientSecret(System.getenv("OIDC_CLIENT_SECRET"))
+        .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT)
+        .clientAssertion(assertion -> assertion.algorithm("HS384"))
+        .endpoints(endpoints -> endpoints
+                .tokenEndpointUri(URI.create("https://issuer.example/token")))
+        .buildPrototype();
+```
+
+All RSA JWKs selected for OIDC Next signing, signature verification, key encryption, or key decryption must have a
+modulus of at least 2048 bits. This covers JWT access tokens, ID Tokens, signed UserInfo responses, client assertions,
+signed or encrypted Request Objects, and encrypted ID Token/UserInfo responses. A 1024-bit RSA key is rejected even if
+the underlying JCA provider can technically execute the operation.
+
+[RFC 7517 section 4.4](https://www.rfc-editor.org/rfc/rfc7517.html#section-4.4) makes the JWK `alg` member optional.
+Omission does not mean `RS256`: OIDC Next uses the already validated JWT/JWE header or configured signing algorithm when
+it is compatible with the key. If the JWK declares `alg`, that declaration is an exact constraint and a different
+operation algorithm is rejected. For example, this configuration legitimately uses `RS384` with a private JWK that
+omits `alg`:
+
+```yaml
+token-endpoint-auth-method: PRIVATE_KEY_JWT
+client-assertion:
+  algorithm: RS384
+  key-id: "client-signing-key"
+  jwk:
+    resource-path: "private-client-jwks.json"
+```
+
+The selected JWK can have this shape; the placeholder values must be replaced with actual base64url-encoded key values:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "client-signing-key",
+      "use": "sig",
+      "n": "<base64url-encoded modulus of at least 2048 bits>",
+      "e": "AQAB",
+      "d": "<base64url-encoded private exponent>"
+    }
+  ]
+}
+```
+
+Before upgrading an existing deployment, rotate any shorter HMAC secrets or RSA keys. These configurations previously
+reached the crypto provider but now fail at OIDC configuration/runtime initialization or remote-key validation with a
+controlled authentication failure.
 
 Example using `tls_client_auth`:
 
@@ -2323,6 +2405,7 @@ Common checks:
 | Symptom | Check |
 | --- | --- |
 | `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
+| JOSE key or client assertion initialization fails | Check that RSA moduli are at least 2048 bits, `CLIENT_SECRET_JWT` secrets meet the selected 32/48/64-octet HMAC minimum, the configured algorithm is compatible with the key type, and any declared JWK `alg` exactly matches the operation. |
 | `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
 | `Bearer Token validation is unavailable` with HTTP `503` | Introspection admission capacity is exhausted. Check Introspection Endpoint latency and health, inbound request rate, and `protected-resource.token-validation.introspection.remote-work`; increase limits only within the service and Authorization Server connection budgets. |
@@ -2358,7 +2441,7 @@ multi-tenant applications:
 | `initialization-retry-interval` | Minimum interval before retrying a failed well-known metadata load during tenant initialization or lazy endpoint-level outbound grant discovery. Defaults to `PT10S`. Deterministic local configuration or metadata compatibility failures are not retried. |
 | `issuer` | Expected Issuer Identifier string. Issuer identity comparisons use this exact string value. |
 | `client-id` | OAuth 2.0 client identifier. |
-| `client-secret` | OAuth 2.0 client secret. |
+| `client-secret` | OAuth 2.0 client secret. For `CLIENT_SECRET_JWT`, its UTF-8 representation must contain at least 32, 48, or 64 octets for `HS256`, `HS384`, or `HS512`. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Used for Token Endpoint authentication and as the default for Introspection Endpoint authentication unless `protected-resource.token-validation.introspection.client-assertion` overrides it. |
 | `id-token` | ID Token validation and decryption configuration. |
@@ -2379,21 +2462,21 @@ ID Token options:
 
 | Key | Description |
 | --- | --- |
-| `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. |
+| `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
 | `allowed-encryption-algorithms` | Allowed JWE `alg` algorithms for encrypted ID Tokens. Defaults to `[ "RSA-OAEP-256", "RSA-OAEP" ]`. `RSA1_5` is not enabled by default. |
 | `allowed-content-encryption-algorithms` | Allowed JWE `enc` algorithms for encrypted ID Tokens. Defaults to `[ "A256GCM", "A128CBC-HS256" ]`. |
 | `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
-| `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. |
+| `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. RSA moduli must contain at least 2048 bits; a declared JWK `alg` must match the JWE header. |
 | `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. |
 
 Client assertion options:
 
 | Key | Description |
 | --- | --- |
-| `algorithm` | JWS `alg` header used to sign the client assertion. Defaults to `HS256` for `CLIENT_SECRET_JWT`; for `PRIVATE_KEY_JWT`, defaults to the selected JWK algorithm and must match it when configured. |
+| `algorithm` | JWS `alg` header used to sign the client assertion. Defaults to `HS256` for `CLIENT_SECRET_JWT`. For `PRIVATE_KEY_JWT`, a configured value may select a compatible algorithm when JWK `alg` is omitted; a declared JWK `alg` must match exactly. |
 | `key-id` | JWS `kid` header. For `PRIVATE_KEY_JWT`, selects the signing key and is required when `jwk` contains multiple keys. For `CLIENT_SECRET_JWT`, written to the assertion header when configured. |
-| `jwk` | Private JWK Set resource used to sign `PRIVATE_KEY_JWT` assertions. |
+| `jwk` | Private JWK Set resource used to sign `PRIVATE_KEY_JWT` assertions. RSA moduli must contain at least 2048 bits. JWK `alg` is optional. |
 | `lifetime` | Assertion lifetime used to calculate `exp`. Defaults to `PT1M`. |
 
 JWK Set options:
@@ -2425,10 +2508,10 @@ Request Object options:
 | Key | Description |
 | --- | --- |
 | `mode` | Request Object mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` signs when `signing-jwk` is configured and requires signing when loaded metadata has `require_signed_request_object: true`. |
-| `signing-algorithm` | JWS `alg` header used to sign the Request Object. When omitted, the selected JWK algorithm is used. When configured, it must match the selected JWK and be one of the supported RSA or EC signing algorithms. |
+| `signing-algorithm` | JWS `alg` header used to sign the Request Object. A configured value may select a compatible algorithm when JWK `alg` is omitted; a declared JWK `alg` must match exactly. When both are omitted, a compatible key-type default is used. |
 | `signing-key-id` | JWS `kid` header and signing JWK selector. Required when `signing-jwk` contains more than one key. |
-| `signing-jwk` | Private JWK Set resource configuration used to sign Request Objects. This is local client key material registered with the Authorization Server; it is not the OP `jwks-uri`. URI resources are rejected before resource creation. |
-| `encryption-algorithm` | Optional JWE `alg` value enabling signed-then-encrypted Request Objects. Supported values are `RSA-OAEP-256` and `RSA-OAEP`. The public encryption key is loaded from the OP `jwks_uri`. |
+| `signing-jwk` | Private JWK Set resource configuration used to sign Request Objects. This is local client key material registered with the Authorization Server; it is not the OP `jwks-uri`. URI resources are rejected before resource creation. RSA moduli must contain at least 2048 bits. |
+| `encryption-algorithm` | Optional JWE `alg` value enabling signed-then-encrypted Request Objects. Supported values are `RSA-OAEP-256` and `RSA-OAEP`. The public encryption key is loaded from the OP `jwks_uri` and must have a modulus of at least 2048 bits. |
 | `content-encryption-algorithm` | Optional JWE `enc` value. Requires `encryption-algorithm` and defaults to `A128CBC-HS256` when omitted. |
 | `encryption-key-id` | Optional exact OP encryption JWK selector. When omitted, the first eligible OP key is selected. Requires `encryption-algorithm`. |
 | `lifetime` | Request Object lifetime used to calculate `exp`. Defaults to `PT1M`. |
@@ -2464,10 +2547,10 @@ UserInfo JWT options:
 
 | Key | Description |
 | --- | --- |
-| `signing-algorithm` | Exact `userinfo_signed_response_alg` registered for this client. `none` and `HS*` are rejected. |
+| `signing-algorithm` | Exact `userinfo_signed_response_alg` registered for this client. `none` and `HS*` are rejected. Selected RSA keys require at least 2048-bit moduli; an omitted JWK `alg` remains unconstrained. |
 | `encryption-algorithm` | Exact `userinfo_encrypted_response_alg` registered for this client. |
 | `content-encryption-algorithm` | Exact `userinfo_encrypted_response_enc`. Defaults to `A128CBC-HS256` when encryption is configured. |
-| `decryption-jwk` | Confidential private RP JWK Set resource used for UserInfo decryption. Required with `encryption-algorithm`. |
+| `decryption-jwk` | Confidential private RP JWK Set resource used for UserInfo decryption. Required with `encryption-algorithm`; RSA moduli must contain at least 2048 bits and a declared JWK `alg` must match. |
 | `clock-skew` | Clock skew for optional signed UserInfo JWT time claims. Defaults to `PT1M`. |
 
 Logout options:
@@ -2525,7 +2608,7 @@ Token validation options:
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
-| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. |
+| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |
 
 Certificate-bound access-token options:
@@ -2540,7 +2623,7 @@ Introspection options:
 | --- | --- |
 | `auth-method` | Introspection Endpoint authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, or `SELF_SIGNED_TLS_CLIENT_AUTH`. Defaults to `CLIENT_SECRET_BASIC` when an introspection or tenant `client-secret` is configured. `NONE` is rejected. |
 | `client-id` | Client identifier used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-id`. |
-| `client-secret` | Client secret used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-secret`. |
+| `client-secret` | Client secret used to authenticate this protected resource to the Introspection Endpoint. Defaults to the tenant `client-secret`. For `CLIENT_SECRET_JWT`, its UTF-8 representation must meet the selected 32/48/64-octet HMAC minimum. |
 | `client-assertion` | Client assertion signing configuration for Introspection Endpoint `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Defaults to the tenant `client-assertion`. |
 | `remote-work` | Per-tenant admission limits for Introspection Endpoint requests. |
 

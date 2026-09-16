@@ -44,8 +44,12 @@ interface OidcClientAssertionConfigBlueprint {
      * JWS {@code alg} header value used to sign the client assertion JWT.
      * <p>
      * When omitted, {@link OidcClientAuthenticationMethod#CLIENT_SECRET_JWT} uses {@code HS256}, and
-     * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} uses the algorithm configured on the selected JWK.
-     * When configured for {@code PRIVATE_KEY_JWT}, this value must match the selected JWK algorithm.
+     * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} uses the algorithm declared by the selected JWK, or a
+     * compatible key-type default when the optional JWK {@code alg} member is absent. A configured value may select a
+     * compatible algorithm when the JWK omits {@code alg}; it must exactly match when the JWK declares {@code alg}.
+     * <p>
+     * For {@code CLIENT_SECRET_JWT}, the UTF-8 client-secret representation must contain at least 32, 48, or 64 octets
+     * for {@code HS256}, {@code HS384}, or {@code HS512}, respectively.
      *
      * @return client assertion JWS algorithm
      */
@@ -69,7 +73,8 @@ interface OidcClientAssertionConfigBlueprint {
      * Private JWK Set resource used to sign a {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} client assertion.
      * <p>
      * This is local client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
-     * verification keys.
+     * verification keys. RSA keys must have a modulus of at least 2048 bits. The JWK {@code alg} member is optional; when
+     * present, it constrains the configured or default signing algorithm.
      *
      * @return private JWK Set resource
      */

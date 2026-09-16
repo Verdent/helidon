@@ -57,8 +57,9 @@ interface OidcRequestObjectConfigBlueprint {
     /**
      * JWS {@code alg} header value used to sign the Request Object JWT.
      * <p>
-     * When omitted, the selected JWK algorithm is used. When configured, this value must match the selected JWK
-     * algorithm.
+     * When omitted, the selected JWK's declared algorithm or a compatible key-type default is used. A configured value
+     * may select a compatible algorithm when the JWK omits the optional {@code alg} member; it must exactly match when
+     * the JWK declares {@code alg}.
      *
      * @return Request Object JWS algorithm
      */
@@ -80,7 +81,7 @@ interface OidcRequestObjectConfigBlueprint {
      * <p>
      * This is local client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
      * verification keys. URI-backed resources are rejected before the resource is created; use classpath, file, or
-     * configured content resources.
+     * configured content resources. RSA keys must have a modulus of at least 2048 bits.
      *
      * @return private JWK Set resource configuration
      */
@@ -92,7 +93,8 @@ interface OidcRequestObjectConfigBlueprint {
      * JWE {@code alg} header value used to encrypt the signed Request Object.
      * <p>
      * When configured, the signed Request Object is encrypted as a Nested JWT using an Authorization Server public key
-     * obtained from its {@code jwks_uri}. Supported values are {@code RSA-OAEP-256} and {@code RSA-OAEP}.
+     * obtained from its {@code jwks_uri}. Supported values are {@code RSA-OAEP-256} and {@code RSA-OAEP}. The selected
+     * RSA key must have a modulus of at least 2048 bits. An optional declared JWK {@code alg} must match this value.
      *
      * @return Request Object JWE key management algorithm
      */

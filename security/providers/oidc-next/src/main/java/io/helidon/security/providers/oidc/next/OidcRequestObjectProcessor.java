@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -36,7 +35,6 @@ import io.helidon.security.jwt.jwk.JwkRSA;
 final class OidcRequestObjectProcessor {
     private static final String REQUEST = "request";
     private static final String REQUEST_URI = "request_uri";
-    private static final int MINIMUM_RSA_KEY_BITS = 2048;
 
     private final OidcRequestObjectConfig requestObject;
     private final Jwk signingJwk;
@@ -164,9 +162,7 @@ final class OidcRequestObjectProcessor {
     }
 
     static boolean isEligibleEncryptionJwk(Jwk jwk, String algorithm, int keyCount) {
-        if (!(jwk instanceof JwkRSA rsa)
-                || !(rsa.publicKey() instanceof RSAPublicKey publicKey)
-                || publicKey.getModulus().bitLength() < MINIMUM_RSA_KEY_BITS) {
+        if (!OidcJoseKeyPolicy.isEligibleRsaEncryptionKey(jwk, algorithm)) {
             return false;
         }
         if (keyCount > 1 && jwk.keyId() == null) {
@@ -181,7 +177,7 @@ final class OidcRequestObjectProcessor {
                 .isPresent()) {
             return false;
         }
-        return jwk.declaredAlgorithm().filter(declared -> !algorithm.equals(declared)).isEmpty();
+        return true;
     }
 
     private static EncryptedJwt.SupportedAlgorithm supportedAlgorithm(String algorithm) {
@@ -244,18 +240,15 @@ final class OidcRequestObjectProcessor {
             throw new IllegalArgumentException(
                     "authorization-code.request-object.signing-jwk must select an RSA or EC private JWK");
         }
-        String algorithm = jwk.algorithm();
-        if (!OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm)) {
+        Jwk signingJwk = OidcJoseKeyPolicy.signingKey(
+                jwk,
+                requestObject.signingAlgorithm(),
+                "authorization-code.request-object.signing-jwk selected key");
+        if (!OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(signingJwk.algorithm())) {
             throw new IllegalArgumentException(
                     "authorization-code.request-object.signing-jwk selected key algorithm must be one of "
                             + OidcClientAuthenticationSupport.privateKeyJwtAlgorithms());
         }
-        requestObject.signingAlgorithm()
-                .filter(configuredAlgorithm -> !configuredAlgorithm.equals(algorithm))
-                .ifPresent(configuredAlgorithm -> {
-                    throw new IllegalArgumentException(
-                            "authorization-code.request-object.signing-algorithm must match the selected JWK algorithm");
-                });
-        return jwk;
+        return signingJwk;
     }
 }

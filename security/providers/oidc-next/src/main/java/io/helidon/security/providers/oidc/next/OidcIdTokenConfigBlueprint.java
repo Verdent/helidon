@@ -38,7 +38,9 @@ interface OidcIdTokenConfigBlueprint {
     /**
      * Allowed JWS algorithms for signed ID Tokens.
      * <p>
-     * Defaults to {@code RS256}, the OpenID Connect Core default ID Token signing algorithm.
+     * Defaults to {@code RS256}, the OpenID Connect Core default ID Token signing algorithm. A selected RSA verification
+     * key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg} member may be used with any
+     * compatible allowed algorithm; a declared JWK {@code alg} must match the ID Token header.
      *
      * @return allowed ID Token JWS algorithms
      */
@@ -98,7 +100,8 @@ interface OidcIdTokenConfigBlueprint {
      * Private JWK Set resource used to decrypt encrypted ID Tokens.
      * <p>
      * This is local RP/client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
-     * verification keys used after the encrypted ID Token is decrypted.
+     * verification keys used after the encrypted ID Token is decrypted. RSA keys must have a modulus of at least
+     * 2048 bits. A declared JWK {@code alg} must match the JWE header; an omitted JWK {@code alg} remains unconstrained.
      *
      * @return ID Token decryption JWK Set resource
      */

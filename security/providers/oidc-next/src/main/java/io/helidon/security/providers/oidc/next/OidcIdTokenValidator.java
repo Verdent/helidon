@@ -149,7 +149,10 @@ final class OidcIdTokenValidator {
              * algorithm specified in the JWT `alg` Header Parameter."
              * Quote: "The Client MUST use the keys provided by the Issuer."
              */
-            Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
+            Errors signatureErrors = OidcJoseKeyPolicy.verifySignature(
+                    signedJwt,
+                    jwt,
+                    tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
                 return OidcValidationResult.failure("ID Token signature is invalid");
             }

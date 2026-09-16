@@ -97,13 +97,17 @@ final class OidcClientAuthenticationConfigValidator {
                         "client-secret must be configured for " + method
                                 + " Introspection Endpoint authentication when introspection is enabled"));
         case CLIENT_SECRET_JWT -> {
-            clientSecret.orElseThrow(() -> new IllegalArgumentException(
+            String secret = clientSecret.orElseThrow(() -> new IllegalArgumentException(
                     "client-secret must be configured for CLIENT_SECRET_JWT Introspection Endpoint authentication when "
                             + "introspection is enabled"));
             validateClientAssertionAlgorithm(clientAssertion,
                                              OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
                                              "Introspection Endpoint",
                                              "introspection");
+            OidcJoseKeyPolicy.validateClientSecret(
+                    secret,
+                    OidcClientAuthenticationSupport.clientSecretJwtAlgorithm(clientAssertion),
+                    "client-secret for CLIENT_SECRET_JWT Introspection Endpoint authentication");
         }
         case PRIVATE_KEY_JWT -> {
             clientAssertion.jwk()
@@ -183,13 +187,17 @@ final class OidcClientAuthenticationConfigValidator {
                         "client-secret must be configured for " + method
                                 + " Token Endpoint authentication when " + operation + " is enabled"));
         case CLIENT_SECRET_JWT -> {
-            clientSecret.orElseThrow(() -> new IllegalArgumentException(
+            String secret = clientSecret.orElseThrow(() -> new IllegalArgumentException(
                     "client-secret must be configured for CLIENT_SECRET_JWT Token Endpoint authentication when "
                             + operation + " is enabled"));
             validateClientAssertionAlgorithm(clientAssertion,
                                              OidcClientAuthenticationMethod.CLIENT_SECRET_JWT,
                                              "Token Endpoint",
                                              operation);
+            OidcJoseKeyPolicy.validateClientSecret(
+                    secret,
+                    OidcClientAuthenticationSupport.clientSecretJwtAlgorithm(clientAssertion),
+                    "client-secret for CLIENT_SECRET_JWT Token Endpoint authentication");
         }
         case PRIVATE_KEY_JWT -> {
             clientAssertion.jwk()

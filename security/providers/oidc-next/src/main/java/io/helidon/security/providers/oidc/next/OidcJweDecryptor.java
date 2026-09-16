@@ -24,7 +24,6 @@ import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.JwtHeaders;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
-import io.helidon.security.jwt.jwk.JwkRSA;
 
 final class OidcJweDecryptor {
     private final Optional<JwkKeys> decryptionKeys;
@@ -45,7 +44,9 @@ final class OidcJweDecryptor {
         JwkKeys keys = decryptionKeys.orElseThrow(() -> new IllegalStateException(
                 tokenDescription + " decryption keys are not configured"));
         Jwk selectedKey = selectDecryptionKey(headers, keys);
-        validateDecryptionKeyUse(selectedKey);
+        String algorithm = headers.algorithm()
+                .orElseThrow(() -> new IllegalStateException(tokenDescription + " JWE alg header is missing"));
+        validateDecryptionKeyUse(selectedKey, algorithm);
         return EncryptedJwt.parseToken(headers, token).decryptPayload(keys, selectedKey);
     }
 
@@ -71,7 +72,7 @@ final class OidcJweDecryptor {
         return jwks.getFirst();
     }
 
-    private void validateDecryptionKeyUse(Jwk key) {
+    private void validateDecryptionKeyUse(Jwk key, String algorithm) {
         /*
          * Spec: OpenID Connect Core 1.0, 10.2 Signing and Encryption Order
          * https://openid.net/specs/openid-connect-core-1_0.html#SigningOrder
@@ -89,9 +90,9 @@ final class OidcJweDecryptor {
                     throw new IllegalStateException(
                             tokenDescription + " decryption JWK key_ops must allow unwrapKey or decrypt");
                 });
-        if (!(key instanceof JwkRSA)) {
-            throw new IllegalStateException(tokenDescription + " decryption JWK must be an RSA key");
-        }
+        OidcJoseKeyPolicy.validateRsaDecryptionKey(key,
+                                                  algorithm,
+                                                  tokenDescription + " decryption JWK");
     }
 
     private static JwkKeys loadKeys(Resource resource, String configKey) {
@@ -102,6 +103,7 @@ final class OidcJweDecryptor {
         if (keys.keys().isEmpty()) {
             throw new IllegalArgumentException(configKey + " must contain at least one JWK");
         }
+        keys.keys().forEach(key -> OidcJoseKeyPolicy.validateConfiguredRsaKey(key, configKey));
         return keys;
     }
 }

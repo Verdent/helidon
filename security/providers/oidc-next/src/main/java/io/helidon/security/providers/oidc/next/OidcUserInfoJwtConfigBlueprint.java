@@ -41,7 +41,9 @@ interface OidcUserInfoJwtConfigBlueprint {
      * Exact JWS {@code alg} registered as {@code userinfo_signed_response_alg}.
      * <p>
      * When configured without {@link #encryptionAlgorithm()}, the UserInfo response must be a signed JWT. When both
-     * algorithms are configured, the response must be signed and then encrypted as a Nested JWT.
+     * algorithms are configured, the response must be signed and then encrypted as a Nested JWT. A selected RSA
+     * verification key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg} member may be
+     * used with this compatible registered algorithm; a declared JWK {@code alg} must match it.
      *
      * @return registered UserInfo signing algorithm
      */
@@ -69,6 +71,9 @@ interface OidcUserInfoJwtConfigBlueprint {
 
     /**
      * Private RP JWK Set resource used to decrypt encrypted UserInfo responses.
+     * <p>
+     * RSA keys must have a modulus of at least 2048 bits. A declared JWK {@code alg} must match the registered JWE
+     * algorithm; an omitted JWK {@code alg} remains unconstrained.
      *
      * @return UserInfo decryption JWK Set resource
      */

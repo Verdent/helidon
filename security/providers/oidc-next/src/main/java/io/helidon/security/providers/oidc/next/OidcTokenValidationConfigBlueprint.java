@@ -93,6 +93,8 @@ interface OidcTokenValidationConfigBlueprint {
      * Allowed JWS algorithms for JWT access tokens.
      * <p>
      * The list must not be empty and must not contain blank, padded, or {@code none} values.
+     * A selected RSA verification key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg}
+     * member may be used with any compatible allowed algorithm; a declared JWK {@code alg} must match the JWT header.
      *
      * @return allowed algorithms
      */

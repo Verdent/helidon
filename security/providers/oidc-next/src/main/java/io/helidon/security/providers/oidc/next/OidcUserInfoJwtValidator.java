@@ -66,7 +66,10 @@ final class OidcUserInfoJwtValidator {
         }
 
         try {
-            Errors signatureErrors = signedJwt.verifySignature(tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
+            Errors signatureErrors = OidcJoseKeyPolicy.verifySignature(
+                    signedJwt,
+                    jwt,
+                    tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));
             if (!signatureErrors.isValid()) {
                 return OidcValidationResult.failure("UserInfo JWT signature is invalid");
             }

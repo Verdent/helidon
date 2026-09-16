@@ -214,7 +214,7 @@ final class OidcClientAuthenticationSupport {
 
     Optional<String> clientAssertionAlgorithm() {
         return switch (method) {
-        case CLIENT_SECRET_JWT -> Optional.of(assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM));
+        case CLIENT_SECRET_JWT -> Optional.of(clientSecretJwtAlgorithm(assertion));
         case PRIVATE_KEY_JWT -> Optional.of(privateKeyJwk.algorithm());
         default -> Optional.empty();
         };
@@ -262,7 +262,7 @@ final class OidcClientAuthenticationSupport {
         default -> throw new IllegalStateException("Unexpected client assertion authentication method: " + method);
         };
         String algorithm = method == OidcClientAuthenticationMethod.CLIENT_SECRET_JWT
-                ? assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM)
+                ? clientSecretJwtAlgorithm(assertion)
                 : jwk.algorithm();
         Instant now = Instant.now();
 
@@ -311,17 +311,21 @@ final class OidcClientAuthenticationSupport {
     }
 
     private Jwk clientSecretJwk() {
-        String algorithm = assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM);
+        String algorithm = clientSecretJwtAlgorithm(assertion);
         if (!isClientSecretJwtAlgorithm(algorithm)) {
             throw new IllegalArgumentException("client-assertion.algorithm must be one of "
                                                        + clientSecretJwtAlgorithms()
                                                        + " for CLIENT_SECRET_JWT " + endpointName + " authentication");
         }
+        String clientSecret = requireClientSecret();
+        OidcJoseKeyPolicy.validateClientSecret(clientSecret,
+                                               algorithm,
+                                               "client-secret for CLIENT_SECRET_JWT " + endpointName + " authentication");
         JsonObject.Builder builder = JsonObject.builder()
                 .set("kty", "oct")
                 .set("alg", algorithm)
                 .set("kid", assertion.keyId().orElse("client-secret"))
-                .set("k", base64Url(requireClientSecret().getBytes(StandardCharsets.UTF_8)));
+                .set("k", base64Url(clientSecret.getBytes(StandardCharsets.UTF_8)));
         return JwkOctet.create(builder.build());
     }
 
@@ -357,20 +361,20 @@ final class OidcClientAuthenticationSupport {
             throw new IllegalArgumentException(
                     "client-assertion.jwk must select an RSA or EC private JWK for PRIVATE_KEY_JWT");
         }
-        String algorithm = jwk.algorithm();
-        if (!isPrivateKeyJwtAlgorithm(algorithm)) {
+        Jwk signingJwk = OidcJoseKeyPolicy.signingKey(
+                jwk,
+                assertion.algorithm(),
+                "client-assertion.jwk selected key for PRIVATE_KEY_JWT " + endpointName + " authentication");
+        if (!isPrivateKeyJwtAlgorithm(signingJwk.algorithm())) {
             throw new IllegalArgumentException("client-assertion.jwk selected key algorithm must be one of "
                                                        + privateKeyJwtAlgorithms()
                                                        + " for PRIVATE_KEY_JWT " + endpointName + " authentication");
         }
-        assertion.algorithm()
-                .filter(configuredAlgorithm -> !configuredAlgorithm.equals(algorithm))
-                .ifPresent(configuredAlgorithm -> {
-                    throw new IllegalArgumentException("client-assertion.algorithm must match the selected JWK "
-                                                               + "algorithm for PRIVATE_KEY_JWT " + endpointName + " "
-                                                               + "authentication");
-                });
-        return jwk;
+        return signingJwk;
+    }
+
+    static String clientSecretJwtAlgorithm(OidcClientAssertionConfig assertion) {
+        return assertion.algorithm().orElse(DEFAULT_CLIENT_SECRET_JWT_ALGORITHM);
     }
 
     private static String base64Url(byte[] bytes) {

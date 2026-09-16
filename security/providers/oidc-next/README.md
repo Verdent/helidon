@@ -77,7 +77,8 @@ The supported standards surface is intentionally scoped:
   transport. Unsigned and client-hosted `request_uri` Request Objects are not implemented.
 - Pushed Authorization Requests, RFC 9126: PAR request and response handling, including metadata-driven enforcement.
 - Authorization Server Issuer Identification, RFC 9207: authorization response `iss` validation when present or when
-  metadata advertises support.
+  metadata advertises support. It is mandatory when distinct or not-statically-known issuers can share a callback;
+  distinct callback paths or absolute callback origins provide the RFC 9700 alternative defense.
 - DPoP, RFC 9449: DPoP is not implemented. DPoP-bound access tokens with `cnf.jkt` are rejected when presented as Bearer
   tokens, but DPoP proof validation, DPoP Token Endpoint behavior, nonce handling, replay protection, and outbound DPoP
   proof generation are not supported.
@@ -944,6 +945,14 @@ tenant ids used with Authorization Code Flow must not contain confidential infor
 Authorization Response `iss` validation is automatic. If the callback contains `iss`, the provider requires an exact
 string match with the issuer stored in the protected Authentication Request state. If well-known metadata advertises
 `authorization_response_iss_parameter_supported: true`, callbacks without `iss` are rejected.
+
+When enabled Authorization Code tenants with distinct (or not statically configured) issuers can use the same callback
+path and origin, `iss` is required even if metadata was not loaded. If well-known metadata is loaded for such a tenant,
+initialization requires `authorization_response_iss_parameter_supported: true`, so an incompatible provider fails before
+login is initiated. A provider which does not implement RFC 9207 can be used safely in a multi-issuer client only with a
+distinct callback path or distinct absolute callback origin for each issuer. Query-only differences are not treated as
+distinct callback routes. The callback is also rejected if the issuer stored in protected Authentication Request state no
+longer matches the initialized tenant issuer; no authorization code is sent to a Token Endpoint after either failure.
 
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure

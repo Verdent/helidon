@@ -35,6 +35,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcAuthorizationResponseProcessorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
+    private static final URI OTHER_ISSUER = URI.create("https://other-issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
@@ -180,6 +181,180 @@ class OidcAuthorizationResponseProcessorTest {
 
         assertThat(result.invalid(), is(true));
         assertThat(result.description(), is("Authorization Response iss is missing"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void missingAuthorizationResponseIssuerFailsWhenDistinctIssuersShareCallback() {
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig otherTenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                                "other-cookie-password",
+                                                                REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=" + STATE),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss is missing"));
+        assertThat(result.stateCookies().size(), is(1));
+    }
+
+    @Test
+    void matchingAuthorizationResponseIssuerAllowsSharedCallback() {
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig otherTenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                                "other-cookie-password",
+                                                                REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(
+                config,
+                UriQuery.create("code=authorization-code&state=" + STATE + "&iss=https%3A%2F%2Fissuer.example"),
+                cookies(tenant, state),
+                REDIRECTION_ENDPOINT_URI,
+                NOW);
+
+        assertThat(result.stateValidated(), is(true));
+        assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
+    }
+
+    @Test
+    void distinctIssuerCallbacksDoNotRequireAuthorizationResponseIssuer() {
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig otherTenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                                "other-cookie-password",
+                                                                OTHER_REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=" + STATE),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.stateValidated(), is(true));
+        assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
+    }
+
+    @Test
+    void sharedLocalCallbackRequiresAuthorizationResponseIssuer() {
+        URI localCallback = URI.create("/oidc/callback");
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", localCallback);
+        OidcTenantConfig otherTenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                                "other-cookie-password",
+                                                                localCallback);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=" + STATE),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(), is("Authorization Response iss is missing"));
+    }
+
+    @Test
+    void distinctAbsoluteCallbackOriginsDoNotRequireAuthorizationResponseIssuer() {
+        URI otherOriginCallback = URI.create("https://other-rp.example/oidc/callback");
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig otherTenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                                "other-cookie-password",
+                                                                otherOriginCallback);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=" + STATE),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.stateValidated(), is(true));
+    }
+
+    @Test
+    void sharedCallbackForSameIssuerDoesNotRequireAuthorizationResponseIssuer() {
+        OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig otherTenant = authorizationCodeTenant("other-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", tenant)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(config,
+                                                         UriQuery.create("code=authorization-code&state=" + STATE),
+                                                         cookies(tenant, state),
+                                                         REDIRECTION_ENDPOINT_URI,
+                                                         NOW);
+
+        assertThat(result.stateValidated(), is(true));
+    }
+
+    @Test
+    void authenticationRequestIssuerMustMatchCurrentTenantIssuer() {
+        OidcTenantConfig tenant = authorizationCodeTenant(OTHER_ISSUER,
+                                                          "test-cookie-password",
+                                                          REDIRECTION_ENDPOINT_URI);
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState state = authenticationRequestState("default",
+                                                                          STATE,
+                                                                          REDIRECTION_ENDPOINT_URI,
+                                                                          NOW.plusSeconds(60));
+
+        OidcAuthorizationResponseResult result = process(
+                config,
+                UriQuery.create("code=authorization-code&state=" + STATE + "&iss=https%3A%2F%2Fissuer.example"),
+                cookies(tenant, state),
+                REDIRECTION_ENDPOINT_URI,
+                NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(),
+                   is("Authentication Request issuer does not match current tenant issuer"));
         assertThat(result.stateCookies().size(), is(1));
     }
 
@@ -687,12 +862,18 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     private static OidcTenantConfig authorizationCodeTenant(String cookiePassword, URI redirectionEndpointUri) {
+        return authorizationCodeTenant(ISSUER, cookiePassword, redirectionEndpointUri);
+    }
+
+    private static OidcTenantConfig authorizationCodeTenant(URI issuer,
+                                                            String cookiePassword,
+                                                            URI redirectionEndpointUri) {
         return OidcTenantConfig.builder()
-                .issuer(ISSUER.toString())
+                .issuer(issuer.toString())
                 .clientId("client-id")
-                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
-                        .jwksUri(JWKS_URI))
+                .endpoints(it -> it.authorizationEndpointUri(issuer.resolve("/authorize"))
+                        .tokenEndpointUri(issuer.resolve("/token"))
+                        .jwksUri(issuer.resolve("/jwks")))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
                 .cookies(it -> it.protection(protection -> protection.password(cookiePassword)))
                 .buildPrototype();

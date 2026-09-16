@@ -69,6 +69,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @ServerTest
 class OidcFeatureRouteTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
+    private static final URI ATTACKER_ISSUER = URI.create("https://attacker.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
     private static final URI TOKEN_ENDPOINT_URI = URI.create("https://issuer.example/token");
     private static final URI JWKS_URI = URI.create("https://issuer.example/jwks");
@@ -97,6 +98,7 @@ class OidcFeatureRouteTest {
     private static Status userInfoEndpointStatus;
     private static String userInfoEndpointContentType;
     private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicInteger ATTACKER_TOKEN_REQUESTS = new AtomicInteger();
 
     @BeforeAll
     static void initClass() {
@@ -114,6 +116,10 @@ class OidcFeatureRouteTest {
     static void routing(HttpRouting.Builder routing) {
         OidcFeature.create(providerConfig()).setup(routing);
         routing.post("/token", (request, response) -> tokenEndpointResponse(response));
+        routing.post("/attacker-token", (request, response) -> {
+            ATTACKER_TOKEN_REQUESTS.incrementAndGet();
+            tokenEndpointResponse(response);
+        });
         routing.get("/userinfo", (request, response) -> {
             USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
             response.status(userInfoEndpointStatus);
@@ -135,6 +141,7 @@ class OidcFeatureRouteTest {
         userInfoEndpointStatus = Status.OK_200;
         userInfoEndpointContentType = "application/json";
         USER_INFO_AUTHORIZATION.set("");
+        ATTACKER_TOKEN_REQUESTS.set(0);
     }
 
     @Test
@@ -144,6 +151,56 @@ class OidcFeatureRouteTest {
                 .request()) {
             assertThat(response.status(), is(Status.BAD_REQUEST_400));
             assertThat(response.as(String.class), is("Authorization Response is invalid"));
+        }
+    }
+
+    @Test
+    void sharedMultiIssuerCallbackRejectsMissingIssuerBeforeWrongTokenEndpoint(URI serverUri) {
+        String attackerTenantId = "attacker";
+        String attackerState = authorizationState(attackerTenantId, 1);
+        OidcTenantConfig honestTenant = tenantConfig(serverUri);
+        OidcTenantConfig attackerTenant = OidcTenantConfig.builder()
+                .issuer(ATTACKER_ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .endpoints(endpoints -> endpoints
+                        // The malicious tenant declares the honest Authorization Endpoint and its own Token Endpoint.
+                        .authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(serverUri.resolve("attacker-token"))
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .tlsRequired(false))
+                .authorizationCode(authorizationCode -> authorizationCode
+                        .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .buildPrototype();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("honest", honestTenant)
+                .putTenant(attackerTenantId, attackerTenant)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(attackerTenantId,
+                                                                attackerState,
+                                                                ATTACKER_ISSUER.toString(),
+                                                                callbackUri,
+                                                                attackerTenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "honest-authorization-code")
+                    .queryParam("state", attackerState)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("Authorization Response is invalid"));
+                assertThat(ATTACKER_TOKEN_REQUESTS.get(), is(0));
+            }
+        } finally {
+            rpServer.stop();
         }
     }
 
@@ -2080,18 +2137,48 @@ class OidcFeatureRouteTest {
     private static SetCookie authenticationRequestCookie(URI callbackUri,
                                                         OidcTenantConfig tenant,
                                                         URI originalUri) {
+        return authenticationRequestCookie("default", STATE, ISSUER.toString(), callbackUri, tenant, originalUri);
+    }
+
+    private static SetCookie authenticationRequestCookie(String tenantId,
+                                                         String state,
+                                                         String expectedIssuer,
+                                                         URI callbackUri,
+                                                         OidcTenantConfig tenant) {
+        return authenticationRequestCookie(tenantId,
+                                           state,
+                                           expectedIssuer,
+                                           callbackUri,
+                                           tenant,
+                                           URI.create("https://rp.example/resource"));
+    }
+
+    private static SetCookie authenticationRequestCookie(String tenantId,
+                                                         String state,
+                                                         String expectedIssuer,
+                                                         URI callbackUri,
+                                                         OidcTenantConfig tenant,
+                                                         URI originalUri) {
         Instant now = Instant.now();
-        return OidcCookieStateHandler.create("default", tenant)
-                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
-                                                                                         STATE,
+        return OidcCookieStateHandler.create(tenantId, tenant)
+                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState(tenantId,
+                                                                                         state,
                                                                                          NONCE,
                                                                                          PKCE_VERIFIER,
                                                                                          null,
-                                                                                         ISSUER.toString(),
+                                                                                         expectedIssuer,
                                                                                          originalUri,
                                                                                          callbackUri,
                                                                                          now.minusSeconds(1),
                                                                                          now.plusSeconds(60)));
+    }
+
+    private static String authorizationState(String tenantId, int requestMarker) {
+        byte[] requestId = new byte[32];
+        requestId[0] = (byte) requestMarker;
+        return OidcAuthorizationState.create(tenantId,
+                                             Base64.getUrlEncoder().withoutPadding().encodeToString(requestId))
+                .value();
     }
 
     private static SetCookie localAuthenticationCookie(HttpClientResponse response, OidcTenantConfig tenant) {

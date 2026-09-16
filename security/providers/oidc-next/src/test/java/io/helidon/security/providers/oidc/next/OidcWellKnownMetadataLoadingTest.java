@@ -147,6 +147,51 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void sharedMultiIssuerCallbackRequiresIssuerResponseMetadataSupport() {
+        OidcTenantConfig tenantConfig = authorizationCodeTenantConfig();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                multiIssuerProviderConfig(tenantConfig, REDIRECTION_ENDPOINT_URI));
+
+        OidcTenantContext context = registry.tenantContext("tenant").orElseThrow();
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   is("well-known metadata authorization_response_iss_parameter_supported must be true when distinct "
+                              + "authorization servers share a redirection endpoint"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void sharedMultiIssuerCallbackAcceptsIssuerResponseMetadataSupport() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("authorization_response_iss_parameter_supported", true)
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = authorizationCodeTenantConfig();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                multiIssuerProviderConfig(tenantConfig, REDIRECTION_ENDPOINT_URI));
+
+        OidcTenantContext context = registry.tenantContext("tenant").orElseThrow();
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().authorizationResponseIssuerParameterSupported(), is(true));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void distinctMultiIssuerCallbacksDoNotRequireIssuerResponseMetadataSupport() {
+        OidcTenantConfig tenantConfig = authorizationCodeTenantConfig();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
+                multiIssuerProviderConfig(tenantConfig, URI.create("https://rp.example/other/callback")));
+
+        OidcTenantContext context = registry.tenantContext("tenant").orElseThrow();
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.metadata().authorizationResponseIssuerParameterSupported(), is(false));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
     void tenantRecoversFromTransientWellKnownFailureAfterRetryInterval() {
         MutableClock clock = MutableClock.create(Instant.parse("2026-09-15T00:00:00Z"));
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -1712,6 +1757,25 @@ class OidcWellKnownMetadataLoadingTest {
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+    }
+
+    private static OidcProviderConfig multiIssuerProviderConfig(OidcTenantConfig tenantConfig,
+                                                                URI otherRedirectionEndpointUri) {
+        OidcTenantConfig otherTenant = OidcTenantConfig.builder()
+                .issuer("https://other-issuer.example")
+                .clientId("other-client")
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(URI.create("https://other-issuer.example/authorize"))
+                        .tokenEndpointUri(URI.create("https://other-issuer.example/token"))
+                        .jwksUri(URI.create("https://other-issuer.example/jwks")))
+                .authorizationCode(authorizationCode -> authorizationCode
+                        .redirectionEndpointUri(otherRedirectionEndpointUri))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("other-cookie-password")))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .putTenant("other", otherTenant)
                 .buildPrototype();
     }
 

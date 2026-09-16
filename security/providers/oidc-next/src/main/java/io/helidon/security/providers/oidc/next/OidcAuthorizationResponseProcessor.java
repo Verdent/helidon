@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.SetCookie;
@@ -36,10 +37,12 @@ final class OidcAuthorizationResponseProcessor {
 
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
+    private final Set<String> issuerParameterRequiredTenants;
 
     OidcAuthorizationResponseProcessor(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
         this.config = Objects.requireNonNull(config);
         this.tenantRuntimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
+        this.issuerParameterRequiredTenants = OidcMixUpProtection.issuerParameterRequiredTenants(config);
     }
 
     OidcAuthorizationResponseResult process(UriQuery parameters,
@@ -215,6 +218,14 @@ final class OidcAuthorizationResponseProcessor {
                                                                      OidcAuthenticationRequestState state,
                                                                      OidcTenantContext tenantContext,
                                                                      List<SetCookie> stateRemovalCookie) {
+        if (tenantContext.metadata()
+                .issuer()
+                .filter(state.expectedIssuer()::equals)
+                .isEmpty()) {
+            return Optional.of(OidcAuthorizationResponseResult.invalid(
+                    "Authentication Request issuer does not match current tenant issuer",
+                    stateRemovalCookie));
+        }
         Optional<ParameterValue> issuer = singleParameter(parameters, ISS_PARAM);
         if (issuer.filter(ParameterValue::invalid).isPresent()) {
             return Optional.of(OidcAuthorizationResponseResult.invalid(
@@ -239,7 +250,8 @@ final class OidcAuthorizationResponseProcessor {
             }
             return Optional.empty();
         }
-        if (tenantContext.metadata().authorizationResponseIssuerParameterSupported()) {
+        if (tenantContext.metadata().authorizationResponseIssuerParameterSupported()
+                || issuerParameterRequiredTenants.contains(tenantContext.tenantId())) {
             return Optional.of(OidcAuthorizationResponseResult.invalid("Authorization Response iss is missing",
                                                                        stateRemovalCookie));
         }

@@ -171,21 +171,10 @@ public final class EncryptedJwt {
         Matcher matcher = JWE_PATTERN.matcher(token);
         if (matcher.matches()) {
             String headerBase64 = matcher.group(1);
-            String encryptedKeyBase64 = matcher.group(2);
-            String ivBase64 = matcher.group(3);
-            String payloadBase64 = matcher.group(4);
-            String authTagBase64 = matcher.group(5);
 
             // these all can fail
             JwtHeaders header = JwtHeaders.parseBase64(headerBase64, collector);
-            return parse(token,
-                         collector,
-                         header,
-                         headerBase64,
-                         encryptedKeyBase64,
-                         ivBase64,
-                         payloadBase64,
-                         authTagBase64);
+            return parse(token, collector, header, matcher);
         } else {
             throw new JwtException("Not a JWE token");
         }
@@ -214,20 +203,7 @@ public final class EncryptedJwt {
 
         Matcher matcher = JWE_PATTERN.matcher(token);
         if (matcher.matches()) {
-            String headerBase64 = matcher.group(1);
-            String encryptedKeyBase64 = matcher.group(2);
-            String ivBase64 = matcher.group(3);
-            String payloadBase64 = matcher.group(4);
-            String authTagBase64 = matcher.group(5);
-
-            return parse(token,
-                         collector,
-                         header,
-                         headerBase64,
-                         encryptedKeyBase64,
-                         ivBase64,
-                         payloadBase64,
-                         authTagBase64);
+            return parse(token, collector, header, matcher);
         } else {
             throw new JwtException("Not a JWE token");
         }
@@ -261,11 +237,12 @@ public final class EncryptedJwt {
     private static EncryptedJwt parse(String token,
                                       Errors.Collector collector,
                                       JwtHeaders header,
-                                      String protectedHeaderBase64,
-                                      String encryptedKeyBase64,
-                                      String ivBase64,
-                                      String payloadBase64,
-                                      String authTagBase64) {
+                                      Matcher matcher) {
+        String protectedHeaderBase64 = matcher.group(1);
+        String encryptedKeyBase64 = matcher.group(2);
+        String ivBase64 = matcher.group(3);
+        String payloadBase64 = matcher.group(4);
+        String authTagBase64 = matcher.group(5);
         byte[] encryptedKey = decodeBytes(encryptedKeyBase64, collector, JwtTokenPart.JWE_ENCRYPTED_KEY);
         byte[] iv = decodeBytes(ivBase64, collector, JwtTokenPart.JWE_INITIALIZATION_VECTOR);
         byte[] encryptedPayload = decodeBytes(payloadBase64, collector, JwtTokenPart.JWE_PAYLOAD);

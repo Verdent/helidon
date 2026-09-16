@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -42,6 +43,7 @@ final class OidcOutboundOrchestrator {
     private static final System.Logger LOGGER = System.getLogger(OidcOutboundOrchestrator.class.getName());
 
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
+    private final OidcOutboundMetadataResolver outboundMetadataResolver;
     private final OutboundConfig outboundConfig;
     private final ConcurrentMap<OutboundTarget, Optional<OidcOutboundPolicy>> targetPolicyCache =
             new ConcurrentHashMap<>();
@@ -50,7 +52,14 @@ final class OidcOutboundOrchestrator {
     private final OidcTokenExchangeTokenManager tokenExchangeTokenManager = new OidcTokenExchangeTokenManager();
 
     OidcOutboundOrchestrator(OidcProviderConfig providerConfig, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        this(providerConfig, tenantRuntimeRegistry, new OidcOutboundMetadataResolver());
+    }
+
+    OidcOutboundOrchestrator(OidcProviderConfig providerConfig,
+                             OidcTenantRuntimeRegistry tenantRuntimeRegistry,
+                             OidcOutboundMetadataResolver outboundMetadataResolver) {
         this.tenantRuntimeRegistry = tenantRuntimeRegistry;
+        this.outboundMetadataResolver = Objects.requireNonNull(outboundMetadataResolver);
         OutboundConfig.Builder outboundConfig = OutboundConfig.builder();
         providerConfig.outboundTargets().forEach(outboundConfig::addTarget);
         this.outboundConfig = outboundConfig.build();
@@ -216,29 +225,30 @@ final class OidcOutboundOrchestrator {
     private OutboundSecurityResponse secureWithClientCredentials(OidcTenantContext tenantContext,
                                                                  SecurityEnvironment outboundEnv,
                                                                  OidcOutboundPolicy outboundPolicy) {
-        OidcTenantContext clientCredentialsContext;
+        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
+        Optional<String> scope = outboundPolicy.clientCredentialsScope();
+        List<String> resources = outboundPolicy.clientCredentialsResources();
+        OidcTokenEndpointResult tokenResult;
         try {
             OidcClientAuthenticationConfigValidator.validateClientCredentialsGrant(tenantContext.tenantConfig(),
                                                                                   tenantContext.tenantConfig().endpoints(),
                                                                                   "Client Credentials Grant");
-            clientCredentialsContext = tokenEndpointContext(tenantContext);
+            tokenResult = clientCredentialsTokenManager.token(
+                    tenantContext,
+                    scope,
+                    resources,
+                    now,
+                    () -> outboundMetadataResolver.clientCredentialsEndpointClient(tenantContext));
         } catch (RuntimeException e) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
-                           "OIDC Client Credentials Grant failed before token request: tenant="
+                           "OIDC Client Credentials Grant failed while preparing token request: tenant="
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
             return OidcResponseFactory.clientCredentialsGrantFailed();
         }
 
-        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
-        Optional<String> scope = outboundPolicy.clientCredentialsScope();
-        List<String> resources = outboundPolicy.clientCredentialsResources();
-        OidcTokenEndpointResult tokenResult = clientCredentialsTokenManager.token(clientCredentialsContext,
-                                                                                 scope,
-                                                                                 resources,
-                                                                                 now);
         if (!tokenResult.succeeded()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
@@ -269,28 +279,28 @@ final class OidcOutboundOrchestrator {
             return OutboundSecurityResponse.abstain();
         }
 
-        OidcTenantContext tokenExchangeContext;
+        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
+        OidcTokenExchangeResult tokenResult;
         try {
             OidcClientAuthenticationConfigValidator.validateTokenExchange(tenantContext.tenantConfig(),
                                                                          tenantContext.tenantConfig().endpoints());
-            tokenExchangeContext = tokenEndpointContext(tenantContext);
+            tokenResult = tokenExchangeTokenManager.token(
+                    tenantContext,
+                    outboundPolicy,
+                    subjectToken.orElseThrow().token(),
+                    now,
+                    tenantContext.tokenExchangeRemoteWorkLimiter(),
+                    () -> outboundMetadataResolver.tokenExchangeEndpointClient(tenantContext));
         } catch (RuntimeException e) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
-                           "OIDC Token Exchange failed before token request: tenant="
+                           "OIDC Token Exchange failed while preparing token request: tenant="
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
             return OidcResponseFactory.tokenExchangeFailed();
         }
 
-        Instant now = outboundEnv == null ? Instant.now() : outboundEnv.time().toInstant();
-        OidcTokenExchangeResult tokenResult = tokenExchangeTokenManager.token(tokenExchangeContext,
-                                                                              outboundPolicy,
-                                                                              subjectToken.orElseThrow().token(),
-                                                                              now,
-                                                                              tenantContext
-                                                                                      .tokenExchangeRemoteWorkLimiter());
         if (!tokenResult.succeeded()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
@@ -304,23 +314,6 @@ final class OidcOutboundOrchestrator {
 
         OidcTokenExchangeResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
         return OutboundSecurityResponse.withHeaders(headersWithBearer(outboundEnv, tokenResponse.accessToken()));
-    }
-
-    private OidcTenantContext tokenEndpointContext(OidcTenantContext tenantContext) {
-        OidcProviderMetadata metadata = tenantContext.metadata();
-        if (metadata.tokenEndpointUri().isEmpty() && metadata.wellKnownUri().isPresent()) {
-            metadata = new OidcProviderMetadataLoader(tenantContext.webClient()).load(metadata);
-        }
-        metadata.tokenEndpointUri()
-                .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(
-                        uri,
-                        OidcClientAuthenticationConfigValidator.tokenEndpointTlsRequired(tenantContext.tenantConfig())));
-        return metadata == tenantContext.metadata()
-                ? tenantContext
-                : OidcTenantContext.ready(tenantContext.tenantId(),
-                                          tenantContext.tenantConfig(),
-                                          metadata,
-                                          tenantContext.webClient());
     }
 
     private Map<String, List<String>> headersWithBearer(SecurityEnvironment outboundEnv, String token) {

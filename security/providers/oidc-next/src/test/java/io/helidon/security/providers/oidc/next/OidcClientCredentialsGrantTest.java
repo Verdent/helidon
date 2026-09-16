@@ -18,6 +18,10 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -29,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -96,7 +101,10 @@ class OidcClientCredentialsGrantTest {
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static volatile CountDownLatch tokenRequestStarted;
     private static volatile CountDownLatch releaseTokenResponse;
+    private static volatile CountDownLatch metadataRequestStarted;
+    private static volatile CountDownLatch releaseMetadataResponse;
 
+    private static volatile int metadataResponseStatus;
     private static volatile int responseStatus;
     private static volatile String responseBody;
     private static volatile String providerMetadata;
@@ -127,11 +135,7 @@ class OidcClientCredentialsGrantTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> {
-            METADATA_REQUEST_COUNT.incrementAndGet();
-            response.header(HeaderValues.CONTENT_TYPE_JSON)
-                    .send(providerMetadata);
-        });
+        routing.get("/.well-known/openid-configuration", OidcClientCredentialsGrantTest::handleMetadata);
         routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/redirected-token", OidcClientCredentialsGrantTest::handleRedirectedTokenEndpoint);
@@ -139,11 +143,7 @@ class OidcClientCredentialsGrantTest {
 
     @SetUpRoute("mtls")
     static void mutualTlsRouting(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> {
-            METADATA_REQUEST_COUNT.incrementAndGet();
-            response.header(HeaderValues.CONTENT_TYPE_JSON)
-                    .send(providerMetadata);
-        });
+        routing.get("/.well-known/openid-configuration", OidcClientCredentialsGrantTest::handleMetadata);
         routing.post("/token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
         routing.post("/mtls-token", OidcClientCredentialsGrantTest::handleTokenEndpoint);
     }
@@ -160,6 +160,7 @@ class OidcClientCredentialsGrantTest {
         secureTokenEndpointUri = mutualTlsServerUri.resolve("token");
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("mtls-token");
         redirectedTokenEndpointUri = serverUri.resolve("redirected-token");
+        metadataResponseStatus = 200;
         responseStatus = 200;
         responseBody = tokenResponse("access-token", 600).toString();
         providerMetadata = JsonObject.builder()
@@ -178,6 +179,8 @@ class OidcClientCredentialsGrantTest {
         RECORDED_REQUEST.set(null);
         tokenRequestStarted = null;
         releaseTokenResponse = null;
+        metadataRequestStarted = null;
+        releaseMetadataResponse = null;
     }
 
     @Test
@@ -445,12 +448,91 @@ class OidcClientCredentialsGrantTest {
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
                                                                       outboundEnvironment,
                                                                       endpointConfig);
+        OutboundSecurityResponse cached = provider.outboundSecurity(providerRequest,
+                                                                    outboundEnvironment,
+                                                                    endpointConfig);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer access-token")));
+        assertThat(cached.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(cached.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer access-token")));
         assertThat(METADATA_REQUEST_COUNT.get(), is(1));
         assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void endpointPolicyRejectsUnsupportedClientCredentialsGrantBeforeTokenRequest() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .build()
+                .toString();
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      clientCredentialsEndpointConfig());
+        OutboundSecurityResponse repeated = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      clientCredentialsEndpointConfig());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
+        assertThat(repeated.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void endpointPolicyRejectsUnsupportedClientAuthenticationBeforeTokenRequest() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("grant_types_supported", List.of("client_credentials"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_post"))
+                .build()
+                .toString();
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      clientCredentialsEndpointConfig());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void endpointPolicyValidatesMetadataPreviouslyLoadedForAnotherFeature() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", issuer.resolve("/jwks").toString())
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .build()
+                .toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://orders")))
+                .buildPrototype();
+        OidcProvider provider = endpointPolicyProvider(tenant);
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                      outboundEnvironment(),
+                                                                      clientCredentialsEndpointConfig());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(0));
     }
 
     @Test
@@ -982,6 +1064,156 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void concurrentEndpointPolicyRequestsShareDiscoveryAndTokenRequest() throws Exception {
+        int taskCount = 1_000;
+        dynamicTokenResponse = true;
+        dynamicExpiresIn = 600;
+        tokenRequestStarted = new CountDownLatch(1);
+        releaseTokenResponse = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+        EndpointConfig endpointConfig = clientCredentialsEndpointConfig();
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                futures.add(executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return provider.outboundSecurity(providerRequest(), outboundEnvironment(), endpointConfig);
+                }));
+            }
+
+            start.countDown();
+            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            releaseTokenResponse.countDown();
+            for (Future<OutboundSecurityResponse> future : futures) {
+                assertThat(future.get(10, TimeUnit.SECONDS)
+                                   .requestHeaders()
+                                   .get(HeaderNames.AUTHORIZATION.defaultCase()),
+                           is(List.of("Bearer access-token-1")));
+            }
+        } finally {
+            releaseTokenResponse.countDown();
+        }
+
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void endpointMetadataFailureIsSharedBackedOffAndRecoverable() throws Exception {
+        int taskCount = 1_000;
+        MutableClock clock = new MutableClock(Instant.parse("2026-09-16T00:00:00Z"));
+        OidcOutboundMetadataResolver resolver = new OidcOutboundMetadataResolver(clock);
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                .initializationRetryInterval(Duration.ofSeconds(10))
+                .buildPrototype();
+        OidcTenantContext tenantContext = OidcTenantContext.ready("default", tenant);
+        metadataResponseStatus = 503;
+        metadataRequestStarted = new CountDownLatch(1);
+        releaseMetadataResponse = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Boolean>> futures = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                futures.add(executor.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThrows(OidcProviderMetadataLoader.RetryableDiscoveryException.class,
+                                 () -> resolver.clientCredentialsEndpointClient(tenantContext));
+                    return true;
+                }));
+            }
+
+            start.countDown();
+            assertTrue(metadataRequestStarted.await(5, TimeUnit.SECONDS));
+            releaseMetadataResponse.countDown();
+            for (Future<Boolean> future : futures) {
+                assertThat(future.get(10, TimeUnit.SECONDS), is(true));
+            }
+        } finally {
+            releaseMetadataResponse.countDown();
+        }
+
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThrows(OidcProviderMetadataLoader.RetryableDiscoveryException.class,
+                     () -> resolver.clientCredentialsEndpointClient(tenantContext));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+
+        metadataResponseStatus = 200;
+        clock.advance(Duration.ofSeconds(10));
+        resolver.clientCredentialsEndpointClient(tenantContext);
+        resolver.clientCredentialsEndpointClient(tenantContext);
+
+        assertThat(METADATA_REQUEST_COUNT.get(), is(2));
+    }
+
+    @Test
+    void deterministicEndpointMetadataFailureIsRetainedWithoutRetry() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", "https://other.example")
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("grant_types_supported", List.of("client_credentials"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .build()
+                .toString();
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+        EndpointConfig endpointConfig = clientCredentialsEndpointConfig();
+
+        OutboundSecurityResponse first = provider.outboundSecurity(providerRequest(),
+                                                                   outboundEnvironment(),
+                                                                   endpointConfig);
+        OutboundSecurityResponse second = provider.outboundSecurity(providerRequest(),
+                                                                    outboundEnvironment(),
+                                                                    endpointConfig);
+
+        assertThat(first.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(second.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
+    void interruptedMetadataFollowerDoesNotCancelSharedResolution() throws Exception {
+        OidcOutboundMetadataResolver resolver = new OidcOutboundMetadataResolver();
+        OidcTenantContext tenantContext = OidcTenantContext.ready("default", confidentialTenantFromWellKnown());
+        metadataRequestStarted = new CountDownLatch(1);
+        releaseMetadataResponse = new CountDownLatch(1);
+        AtomicReference<Throwable> followerFailure = new AtomicReference<>();
+        AtomicBoolean followerInterrupted = new AtomicBoolean();
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<OidcEndpointClient> leader = executor.submit(
+                    () -> resolver.clientCredentialsEndpointClient(tenantContext));
+            assertTrue(metadataRequestStarted.await(5, TimeUnit.SECONDS));
+
+            Thread follower = Thread.ofVirtual().start(() -> {
+                try {
+                    resolver.clientCredentialsEndpointClient(tenantContext);
+                } catch (RuntimeException e) {
+                    followerFailure.set(e);
+                    followerInterrupted.set(Thread.currentThread().isInterrupted());
+                }
+            });
+            follower.interrupt();
+            follower.join(5_000);
+
+            assertThat(follower.isAlive(), is(false));
+            assertThat(followerFailure.get() instanceof IllegalStateException, is(true));
+            assertThat(followerFailure.get().getCause() instanceof InterruptedException, is(true));
+            assertThat(followerInterrupted.get(), is(true));
+            assertThat(leader.isDone(), is(false));
+
+            releaseMetadataResponse.countDown();
+            leader.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseMetadataResponse.countDown();
+        }
+
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
     void expiredClientCredentialsTokenIsReacquired() {
         dynamicTokenResponse = true;
         dynamicExpiresIn = 120;
@@ -1195,6 +1427,21 @@ class OidcClientCredentialsGrantTest {
                                                                .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-credentials-grant-enabled"));
+    }
+
+    private static void handleMetadata(ServerRequest request, ServerResponse response) {
+        METADATA_REQUEST_COUNT.incrementAndGet();
+        CountDownLatch requestStarted = metadataRequestStarted;
+        if (requestStarted != null) {
+            requestStarted.countDown();
+        }
+        CountDownLatch releaseResponse = releaseMetadataResponse;
+        if (releaseResponse != null) {
+            await(releaseResponse);
+        }
+        response.status(metadataResponseStatus)
+                .header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(providerMetadata);
     }
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
@@ -1496,6 +1743,12 @@ class OidcClientCredentialsGrantTest {
                                            .buildPrototype());
     }
 
+    private static OidcProvider endpointPolicyProvider(OidcTenantConfig tenant) {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenant)
+                                           .buildPrototype());
+    }
+
     private static EndpointConfig clientCredentialsEndpointConfig() {
         return EndpointConfig.builder()
                 .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
@@ -1584,6 +1837,33 @@ class OidcClientCredentialsGrantTest {
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(bytes);
+    }
+
+    private static final class MutableClock extends Clock {
+        private volatile Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
     }
 
     private record RecordedRequest(String method,

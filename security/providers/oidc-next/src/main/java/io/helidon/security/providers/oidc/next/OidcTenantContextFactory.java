@@ -507,6 +507,16 @@ final class OidcTenantContextFactory {
                 });
     }
 
+    static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
+                                                       OidcProviderMetadata metadata) {
+        validateIssuerMetadata(tenantConfig, metadata);
+        validateClientCredentialsGrantMetadata(tenantConfig,
+                                               metadata,
+                                               metadata.wellKnownMetadataLoaded(),
+                                               true);
+        validateMutualTlsMetadata(tenantConfig, metadata);
+    }
+
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
                                                                OidcProviderMetadata metadata,
                                                                boolean wellKnownMetadataLoaded,
@@ -550,6 +560,16 @@ final class OidcTenantContextFactory {
             throw new IllegalStateException(
                     "well-known metadata grant_types_supported must include " + CLIENT_CREDENTIALS_GRANT);
         }
+    }
+
+    static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
+                                              OidcProviderMetadata metadata) {
+        validateIssuerMetadata(tenantConfig, metadata);
+        validateTokenExchangeMetadata(tenantConfig,
+                                      metadata,
+                                      metadata.wellKnownMetadataLoaded(),
+                                      true);
+        validateMutualTlsMetadata(tenantConfig, metadata);
     }
 
     private static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,

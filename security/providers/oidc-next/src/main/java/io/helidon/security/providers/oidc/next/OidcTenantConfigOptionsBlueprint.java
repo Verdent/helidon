@@ -91,7 +91,9 @@ interface OidcTenantConfigOptionsBlueprint {
      * {@link #clientSecret()} is configured, otherwise {@link OidcClientAuthenticationMethod#NONE}.
      * {@link OidcClientAuthenticationMethod#TLS_CLIENT_AUTH} and
      * {@link OidcClientAuthenticationMethod#SELF_SIGNED_TLS_CLIENT_AUTH} require enabled tenant
-     * {@code webclient.tls} with private key plus certificate chain, an SSL context, or a custom TLS manager.
+     * {@code webclient.tls} with private key plus certificate chain, an SSL context, or a custom TLS manager. When
+     * well-known metadata supplies an mTLS alias for the Token or PAR Endpoint, these methods prefer the alias even if
+     * the corresponding conventional endpoint URI is configured explicitly.
      *
      * @return Token Endpoint client authentication method
      */

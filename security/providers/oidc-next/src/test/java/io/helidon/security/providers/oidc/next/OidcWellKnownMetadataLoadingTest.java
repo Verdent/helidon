@@ -1479,6 +1479,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(httpsIssuer.resolve("/configured-token")))
                 .buildPrototype();
         OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
                 .mergeWellKnownMetadata(wellKnownMetadata);
@@ -1506,6 +1507,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH)
                 .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(httpsIssuer.resolve("/configured-token")))
                 .buildPrototype();
         OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
                 .mergeWellKnownMetadata(wellKnownMetadata);
@@ -1516,6 +1518,38 @@ class OidcWellKnownMetadataLoadingTest {
                                                                metadata));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+    }
+
+    @Test
+    void mutualTlsIntrospectionTenantFailsWhenWellKnownAliasIsInsecure() {
+        URI httpsIssuer = URI.create("https://issuer.example");
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", httpsIssuer.toString())
+                .set("introspection_endpoint", httpsIssuer.resolve("/introspect").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("introspection_endpoint", "http://issuer.example/mtls-introspect")
+                        .build())
+                .build());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(httpsIssuer.toString())
+                .clientId("client-id")
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.introspectionEndpointUri(httpsIssuer.resolve("/configured-introspect")))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH))))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        IllegalArgumentException thrown = assertThrows(
+                IllegalArgumentException.class,
+                () -> OidcTenantContextFactory.validateMutualTlsIntrospectionMetadata(tenantConfig, metadata));
+
+        assertThat(thrown.getMessage(),
+                   containsString("introspection-endpoint-uri must use https"));
     }
 
     @Test

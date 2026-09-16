@@ -225,9 +225,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
-    void pushedAuthorizationRequestWithMutualTlsUsesMetadataAlias(URI serverUri) {
+    void staticPushedAuthorizationRequestEndpointDoesNotOverrideWellKnownMutualTlsAlias(URI serverUri) {
         responseStatus = 201;
         responseBody = validPushedAuthorizationResponse().toString();
+        URI staticPushedAuthorizationRequestEndpointUri = serverUri.resolve("unused-par");
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -235,21 +236,29 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .webClient(mutualTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(mutualTlsTokenEndpointUri)
+                        .pushedAuthorizationRequestEndpointUri(staticPushedAuthorizationRequestEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
-        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())
                 .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
-                .set("pushed_authorization_request_endpoint", serverUri.resolve("unused-par").toString())
+                .set("pushed_authorization_request_endpoint", serverUri.resolve("well-known-par").toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
                         .set("pushed_authorization_request_endpoint",
                              mutualTlsPushedAuthorizationRequestEndpointUri.toString())
                         .build())
                 .build());
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenant)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        assertThat(metadata.pushedAuthorizationRequestEndpointUri(),
+                   is(Optional.of(staticPushedAuthorizationRequestEndpointUri)));
+        assertThat(metadata.mutualTlsPushedAuthorizationRequestEndpointUri(),
+                   is(Optional.of(mutualTlsPushedAuthorizationRequestEndpointUri)));
 
         OidcPushedAuthorizationRequestResult result = OidcTenantContext.ready("default", tenant, metadata)
                 .endpointClient()

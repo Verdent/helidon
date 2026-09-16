@@ -40,7 +40,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     public OidcValidationResult<OidcValidatedAccessToken> validate(OidcAccessTokenValidationRequest request) {
         String token = request.token();
         OidcTenantContext tenantContext = request.tenantContext();
-        Optional<URI> endpointUri = tenantContext.metadata().introspectionEndpointUri();
+        OidcClientAuthenticationSupport clientAuthentication = tenantContext.introspectionClientAuthentication();
+        Optional<URI> endpointUri = introspectionEndpointUri(tenantContext.metadata(), clientAuthentication);
         if (endpointUri.isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection is not configured");
         }
@@ -55,7 +56,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                 HttpClientResponse response = request(tenantContext.webClient(),
                                                       uri,
                                                       token,
-                                                      tenantContext.introspectionClientAuthentication())) {
+                                                      clientAuthentication)) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
                 if (response.status().code() >= 500) {
                     return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable");
@@ -67,6 +68,17 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable", e);
         }
+    }
+
+    static Optional<URI> introspectionEndpointUri(OidcProviderMetadata metadata,
+                                                  OidcClientAuthenticationSupport clientAuthentication) {
+        /*
+         * RFC 8705, 5 Metadata for Mutual-TLS Endpoint Aliases, requires a client intending to use mutual TLS to
+         * prefer the corresponding endpoint alias when one is present.
+         */
+        return clientAuthentication.usesMutualTls()
+                ? metadata.mutualTlsIntrospectionEndpointUri().or(metadata::introspectionEndpointUri)
+                : metadata.introspectionEndpointUri();
     }
 
     private OidcValidationResult<OidcValidatedAccessToken> validateResponse(OidcAccessTokenValidationRequest request,

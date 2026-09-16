@@ -29,6 +29,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,7 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -177,6 +180,43 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                        "token_type_hint", List.of("access_token"),
                                                        "client_id", List.of("introspection-client"),
                                                        "client_secret", List.of("introspection-secret"))));
+    }
+
+    @Test
+    void mutualTlsIntrospectionPrefersDiscoveredAliasWithStaticConventionalEndpoint() {
+        URI conventionalIntrospectionEndpointUri = URI.create("https://issuer.example/introspect");
+        URI mutualTlsIntrospectionEndpointUri = URI.create("https://issuer.example/mtls-introspect");
+        OidcTenantConfig mutualTlsTenant = introspectionTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH,
+                                                              conventionalIntrospectionEndpointUri);
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("introspection_endpoint", "https://issuer.example/introspect")
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("introspection_endpoint", mutualTlsIntrospectionEndpointUri.toString())
+                        .build())
+                .build());
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(mutualTlsTenant)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        assertThat(metadata.introspectionEndpointUri(), is(Optional.of(conventionalIntrospectionEndpointUri)));
+        assertThat(metadata.mutualTlsIntrospectionEndpointUri(),
+                   is(Optional.of(mutualTlsIntrospectionEndpointUri)));
+        assertThat(OidcIntrospectionAccessTokenValidator.introspectionEndpointUri(
+                           metadata,
+                           OidcClientAuthenticationSupport.introspectionEndpoint(mutualTlsTenant)),
+                   is(Optional.of(mutualTlsIntrospectionEndpointUri)));
+        assertThat(OidcIntrospectionAccessTokenValidator.introspectionEndpointUri(
+                           OidcProviderMetadata.fromStaticConfig(mutualTlsTenant),
+                           OidcClientAuthenticationSupport.introspectionEndpoint(mutualTlsTenant)),
+                   is(Optional.of(conventionalIntrospectionEndpointUri)));
+
+        OidcTenantConfig conventionalTenant = introspectionTenant(
+                OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+                conventionalIntrospectionEndpointUri);
+        assertThat(OidcIntrospectionAccessTokenValidator.introspectionEndpointUri(
+                           metadata,
+                           OidcClientAuthenticationSupport.introspectionEndpoint(conventionalTenant)),
+                   is(Optional.of(conventionalIntrospectionEndpointUri)));
     }
 
     @Test
@@ -792,6 +832,35 @@ class OidcIntrospectionAccessTokenValidationTest {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenantBuilder.buildPrototype())
                                            .buildPrototype());
+    }
+
+    private static OidcTenantConfig introspectionTenant(OidcClientAuthenticationMethod authenticationMethod,
+                                                        URI introspectionEndpointUri) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.introspectionEndpointUri(introspectionEndpointUri)
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection.authenticationMethod(authenticationMethod))))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig))
+                .buildPrototype();
     }
 
     private static WebClientConfig tenantWebClient() {

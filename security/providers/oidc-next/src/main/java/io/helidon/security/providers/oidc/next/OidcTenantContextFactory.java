@@ -748,7 +748,17 @@ final class OidcTenantContextFactory {
                                              "well-known metadata introspection_endpoint must be present for "
                                                      + "introspection");
                                  });
+        validateMutualTlsIntrospectionMetadata(tenantConfig, metadata);
         validateIntrospectionAuthenticationMetadata(tenantConfig, metadata);
+    }
+
+    static void validateMutualTlsIntrospectionMetadata(OidcTenantConfig tenantConfig,
+                                                       OidcProviderMetadata metadata) {
+        if (!mutualTlsIntrospectionEndpointAuthentication(tenantConfig)) {
+            return;
+        }
+        metadata.mutualTlsIntrospectionEndpointUri()
+                .ifPresent(uri -> OidcEndpointUris.validateIntrospectionEndpointUri(uri, true));
     }
 
     private static void validateIntrospectionAuthenticationMetadata(OidcTenantConfig tenantConfig,

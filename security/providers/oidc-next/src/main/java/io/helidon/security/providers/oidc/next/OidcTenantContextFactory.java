@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.webclient.api.WebClient;
 
@@ -42,7 +43,15 @@ final class OidcTenantContextFactory {
 
     static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
                                            boolean outboundTargetTokenExchange) {
-        return create(defaultInitializer(outboundTargetClientCredentialsGrant, outboundTargetTokenExchange));
+        return create(outboundTargetClientCredentialsGrant, outboundTargetTokenExchange, Set.of());
+    }
+
+    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
+                                           boolean outboundTargetTokenExchange,
+                                           Set<String> issuerParameterRequiredTenants) {
+        return create(defaultInitializer(outboundTargetClientCredentialsGrant,
+                                         outboundTargetTokenExchange,
+                                         Set.copyOf(issuerParameterRequiredTenants)));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -58,7 +67,8 @@ final class OidcTenantContextFactory {
     }
 
     private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant,
-                                                       boolean outboundTargetTokenExchange) {
+                                                       boolean outboundTargetTokenExchange,
+                                                       Set<String> issuerParameterRequiredTenants) {
         return (tenantId, tenantConfig) -> {
             WebClient webClient;
             try {
@@ -83,7 +93,10 @@ final class OidcTenantContextFactory {
                     metadata = staticMetadata;
                 }
                 validateIssuerMetadata(tenantConfig, metadata);
-                validateAuthorizationCodeMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+                validateAuthorizationCodeMetadata(tenantConfig,
+                                                  metadata,
+                                                  wellKnownMetadataLoaded,
+                                                  issuerParameterRequiredTenants.contains(tenantId));
                 validateClientCredentialsGrantMetadata(tenantConfig,
                                                        metadata,
                                                        wellKnownMetadataLoaded,
@@ -198,7 +211,8 @@ final class OidcTenantContextFactory {
 
     private static void validateAuthorizationCodeMetadata(OidcTenantConfig tenantConfig,
                                                           OidcProviderMetadata metadata,
-                                                          boolean wellKnownMetadataLoaded) {
+                                                          boolean wellKnownMetadataLoaded,
+                                                          boolean issuerParameterRequired) {
         if (tenantConfig.authorizationCode().filter(OidcAuthorizationCodeConfig::enabled).isEmpty()) {
             return;
         }
@@ -234,10 +248,36 @@ final class OidcTenantContextFactory {
                                                      + "Authorization Code Flow");
                                  });
         validateAuthorizationCodeCapabilityMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+        validateAuthorizationResponseIssuerMetadata(metadata, wellKnownMetadataLoaded, issuerParameterRequired);
         validateTokenEndpointAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateIdTokenMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validatePushedAuthorizationRequestMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
         validateRequestObjectMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
+    }
+
+    private static void validateAuthorizationResponseIssuerMetadata(OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded,
+                                                                    boolean issuerParameterRequired) {
+        if (!wellKnownMetadataLoaded || !issuerParameterRequired) {
+            return;
+        }
+        /*
+         * Spec: RFC 9700, 4.4.2 Authorization Server Mix-Up Mitigation
+         * https://www.rfc-editor.org/rfc/rfc9700.html#section-4.4.2
+         * Quote: "In scenarios where an OAuth client interacts with two or more authorization servers, however, clients
+         * MUST prevent mix-up attacks."
+         * Quote: "For this defense, clients MUST use a distinct redirection URI for each issuer they interact with."
+         *
+         * Spec: RFC 9207, 3 Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc9207.html#section-3
+         * Quote: "Boolean parameter indicating whether the authorization server provides the `iss` parameter in the
+         * authorization response as defined in Section 2."
+         */
+        if (!metadata.authorizationResponseIssuerParameterSupported()) {
+            throw new IllegalStateException(
+                    "well-known metadata authorization_response_iss_parameter_supported must be true when distinct "
+                            + "authorization servers share a redirection endpoint");
+        }
     }
 
     private static void validateAuthorizationCodeCapabilityMetadata(OidcTenantConfig tenantConfig,

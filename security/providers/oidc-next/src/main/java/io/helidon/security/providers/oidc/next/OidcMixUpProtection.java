@@ -1,0 +1,100 @@
+/*
+ * Copyright (c) 2026 Oracle and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.helidon.security.providers.oidc.next;
+
+import java.net.URI;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Resolves the Authorization Response issuer-identification policy required to prevent authorization-server mix-up.
+ */
+final class OidcMixUpProtection {
+    private OidcMixUpProtection() {
+    }
+
+    /**
+     * Returns tenants that must receive the RFC 9207 {@code iss} Authorization Response parameter.
+     * <p>
+     * RFC 9700 permits a client interacting with multiple authorization servers to use distinct redirection URIs as its
+     * mix-up defense. When redirection endpoints can overlap, issuer identification is mandatory instead. A tenant with
+     * no statically configured issuer is conservatively treated as a distinct authorization server; users can configure
+     * the common issuer explicitly when multiple tenant definitions intentionally address the same server.
+     *
+     * @param config provider configuration
+     * @return immutable set of tenant ids that require issuer identification
+     */
+    static Set<String> issuerParameterRequiredTenants(OidcProviderConfig config) {
+        List<AuthorizationCodeTenant> tenants = config.tenants()
+                .entrySet()
+                .stream()
+                .filter(entry -> entry.getValue().enabled())
+                .map(OidcMixUpProtection::authorizationCodeTenant)
+                .flatMap(Optional::stream)
+                .toList();
+        Set<String> required = new LinkedHashSet<>();
+        for (int firstIndex = 0; firstIndex < tenants.size(); firstIndex++) {
+            AuthorizationCodeTenant first = tenants.get(firstIndex);
+            for (int secondIndex = firstIndex + 1; secondIndex < tenants.size(); secondIndex++) {
+                AuthorizationCodeTenant second = tenants.get(secondIndex);
+                if (differentAuthorizationServers(first, second) && redirectionEndpointsMayOverlap(first, second)) {
+                    required.add(first.tenantId());
+                    required.add(second.tenantId());
+                }
+            }
+        }
+        return Set.copyOf(required);
+    }
+
+    private static Optional<AuthorizationCodeTenant> authorizationCodeTenant(Map.Entry<String, OidcTenantConfig> entry) {
+        OidcTenantConfig tenant = entry.getValue();
+        return tenant.authorizationCode()
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .map(authorizationCode -> new AuthorizationCodeTenant(entry.getKey(),
+                                                                       tenant.issuer(),
+                                                                       OidcEndpointUris.redirectionEndpointUri(
+                                                                               authorizationCode)));
+    }
+
+    private static boolean differentAuthorizationServers(AuthorizationCodeTenant first, AuthorizationCodeTenant second) {
+        Optional<String> firstIssuer = first.issuer();
+        Optional<String> secondIssuer = second.issuer();
+        return firstIssuer.isEmpty() || secondIssuer.isEmpty() || !firstIssuer.equals(secondIssuer);
+    }
+
+    private static boolean redirectionEndpointsMayOverlap(AuthorizationCodeTenant first,
+                                                           AuthorizationCodeTenant second) {
+        URI firstUri = first.redirectionEndpointUri();
+        URI secondUri = second.redirectionEndpointUri();
+        if (!OidcUri.path(firstUri).equals(OidcUri.path(secondUri))) {
+            return false;
+        }
+        if (!firstUri.isAbsolute() || !secondUri.isAbsolute()) {
+            // A local URI obtains its origin from the request, so overlap with the other URI cannot be ruled out.
+            return true;
+        }
+        return OidcUri.sameOrigin(firstUri, secondUri);
+    }
+
+    private record AuthorizationCodeTenant(String tenantId,
+                                           Optional<String> issuer,
+                                           URI redirectionEndpointUri) {
+    }
+}

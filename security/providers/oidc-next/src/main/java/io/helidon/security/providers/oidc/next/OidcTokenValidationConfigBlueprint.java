@@ -95,6 +95,7 @@ interface OidcTokenValidationConfigBlueprint {
      * The list must not be empty and must not contain blank, padded, or {@code none} values.
      * A selected RSA verification key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg}
      * member may be used with any compatible allowed algorithm; a declared JWK {@code alg} must match the JWT header.
+     * When the JWT omits {@code kid}, exactly one key must remain eligible after all key constraints are applied.
      *
      * @return allowed algorithms
      */

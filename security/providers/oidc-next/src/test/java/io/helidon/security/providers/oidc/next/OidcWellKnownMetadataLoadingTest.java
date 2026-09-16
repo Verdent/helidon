@@ -279,6 +279,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .webClient(tenantWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
                         .tokenEndpointUri(tokenEndpointUri)
+                        .jwksUri(jwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
@@ -288,7 +289,58 @@ class OidcWellKnownMetadataLoadingTest {
 
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().pushedAuthorizationRequestEndpointUri(), is(Optional.empty()));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(""));
+    }
+
+    @Test
+    void authorizationCodeTenantLoadsWellKnownMetadataWhenStaticEndpointsLackJwkSource() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .webClient(tenantWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void authorizationCodeTenantFailsInitializationWhenMetadataHasNoJwkSource() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                                      .set("issuer", issuer.toString())
+                                      .set("authorization_endpoint", authorizationEndpointUri.toString())
+                                      .set("token_endpoint", tokenEndpointUri.toString())
+                                      .setStrings("response_types_supported", List.of("code"))
+                                      .setStrings("grant_types_supported", List.of("authorization_code"))
+                                      .setStrings("code_challenge_methods_supported", List.of("S256"))
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
+                                      .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("jwks"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
     @Test

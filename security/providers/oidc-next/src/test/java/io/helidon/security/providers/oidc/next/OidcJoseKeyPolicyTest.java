@@ -172,6 +172,127 @@ class OidcJoseKeyPolicyTest {
     }
 
     @Test
+    void enforcesJwkUseAndOperationsForSigningAndVerification() {
+        JwkRSA encryptionUse = JwkRSA.builder()
+                .keyId("rsa")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .privateKey((RSAPrivateKey) minimumRsa.getPrivate())
+                .usage(Jwk.USE_ENCRYPTION)
+                .build();
+        JwkRSA verifyOnly = JwkRSA.builder()
+                .keyId("rsa")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .privateKey((RSAPrivateKey) minimumRsa.getPrivate())
+                .addOperation(Jwk.OPERATION_VERIFY)
+                .build();
+
+        assertThrows(IllegalArgumentException.class,
+                     () -> OidcJoseKeyPolicy.signingKey(encryptionUse, Optional.of("RS256"), "signing JWK"));
+        assertThrows(IllegalArgumentException.class,
+                     () -> OidcJoseKeyPolicy.signingKey(verifyOnly, Optional.of("RS256"), "signing JWK"));
+
+        Jwt jwt = Jwt.builder()
+                .algorithm("RS256")
+                .keyId("rsa")
+                .subject("subject")
+                .build();
+        SignedJwt signedJwt = SignedJwt.sign(jwt, rsa(minimumRsa, "RS256", true));
+        JwkRSA signOnly = JwkRSA.builder()
+                .keyId("rsa")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .addOperation(Jwk.OPERATION_SIGN)
+                .build();
+
+        assertThrows(IllegalArgumentException.class,
+                     () -> OidcJoseKeyPolicy.verifySignature(
+                             signedJwt,
+                             jwt,
+                             JwkKeys.builder().addKey(encryptionUse).build()));
+        assertThrows(IllegalArgumentException.class,
+                     () -> OidcJoseKeyPolicy.verifySignature(
+                             signedJwt,
+                             jwt,
+                             JwkKeys.builder().addKey(signOnly).build()));
+    }
+
+    @Test
+    void missingKeyIdRequiresExactlyOneEligibleVerificationKey() {
+        Jwt jwt = Jwt.builder()
+                .algorithm("RS384")
+                .subject("subject")
+                .build();
+        Jwk signingKey = OidcJoseKeyPolicy.signingKey(rsa(minimumRsa, null, true),
+                                                      Optional.of("RS384"),
+                                                      "signing JWK");
+        SignedJwt signedJwt = SignedJwt.sign(jwt, signingKey);
+        JwkRSA eligible = rsa(minimumRsa, null, false, "eligible");
+        JwkRSA wrongAlgorithm = rsa(minimumRsa, "RS256", false, "wrong-algorithm");
+        JwkRSA encryptionOnly = JwkRSA.builder()
+                .keyId("encryption-only")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .usage(Jwk.USE_ENCRYPTION)
+                .build();
+        JwkRSA signOnly = JwkRSA.builder()
+                .keyId("sign-only")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .addOperation(Jwk.OPERATION_SIGN)
+                .build();
+
+        assertThat(OidcJoseKeyPolicy.verifySignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder()
+                                   .addKey(eligible)
+                                   .addKey(wrongAlgorithm)
+                                   .addKey(encryptionOnly)
+                                   .addKey(signOnly)
+                                   .build()).isValid(),
+                   is(true));
+        assertThat(OidcJoseKeyPolicy.verifySignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder().addKey(wrongAlgorithm).build()).isValid(),
+                   is(false));
+        assertThat(OidcJoseKeyPolicy.verifySignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder()
+                                   .addKey(eligible)
+                                   .addKey(rsa(minimumRsa, null, false, "also-eligible"))
+                                   .build()).isValid(),
+                   is(false));
+    }
+
+    @Test
+    void oidcSignatureWithoutKeyIdRequiresSingleKeyJwkSet() {
+        Jwt jwt = Jwt.builder()
+                .algorithm("RS384")
+                .subject("subject")
+                .build();
+        Jwk signingKey = OidcJoseKeyPolicy.signingKey(rsa(minimumRsa, null, true),
+                                                      Optional.of("RS384"),
+                                                      "signing JWK");
+        SignedJwt signedJwt = SignedJwt.sign(jwt, signingKey);
+        JwkRSA eligible = rsa(minimumRsa, null, false, "eligible");
+        JwkRSA encryptionOnly = JwkRSA.builder()
+                .keyId("encryption-only")
+                .publicKey((RSAPublicKey) minimumRsa.getPublic())
+                .usage(Jwk.USE_ENCRYPTION)
+                .build();
+
+        assertThat(OidcJoseKeyPolicy.verifyOidcSignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder().addKey(eligible).build()).isValid(),
+                   is(true));
+        assertThat(OidcJoseKeyPolicy.verifyOidcSignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder().addKey(eligible).addKey(encryptionOnly).build()).isValid(),
+                   is(false));
+    }
+
+    @Test
     void acceptsRsaAtExactly2048BitsAndRejects1024BitConfiguredKey() {
         assertDoesNotThrow(
                 () -> OidcJoseKeyPolicy.validateConfiguredRsaKey(rsa(minimumRsa, null, false), "configured JWK"));
@@ -194,8 +315,15 @@ class OidcJoseKeyPolicyTest {
     }
 
     private static JwkRSA rsa(KeyPair keyPair, String algorithm, boolean includePrivateKey) {
+        return rsa(keyPair, algorithm, includePrivateKey, "rsa");
+    }
+
+    private static JwkRSA rsa(KeyPair keyPair,
+                              String algorithm,
+                              boolean includePrivateKey,
+                              String keyId) {
         JwkRSA.Builder builder = JwkRSA.builder()
-                .keyId("rsa")
+                .keyId(keyId)
                 .publicKey((RSAPublicKey) keyPair.getPublic());
         if (includePrivateKey) {
             builder.privateKey((RSAPrivateKey) keyPair.getPrivate());

@@ -393,6 +393,7 @@ class OidcClientCredentialsGrantTest {
                 .setStrings("code_challenge_methods_supported", List.of("S256"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("tls_client_auth"))
                 .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                .set("jwks_uri", issuer.resolve("/jwks").toString())
                 .set("userinfo_endpoint", issuer.resolve("/userinfo").toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())

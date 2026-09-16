@@ -772,6 +772,7 @@ class OidcRefreshTokenManagerTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(serverUri.resolve("token"))
                         .introspectionEndpointUri(serverUri.resolve("introspect"))
+                        .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))

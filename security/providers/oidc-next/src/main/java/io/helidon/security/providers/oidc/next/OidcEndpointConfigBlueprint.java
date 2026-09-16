@@ -62,6 +62,10 @@ interface OidcEndpointConfigBlueprint {
 
     /**
      * JSON Web Key Set URI.
+     * <p>
+     * Required for JWT access-token, ID Token, or signed UserInfo signature validation unless well-known metadata
+     * supplies {@code jwks_uri}. Authorization Code Flow loads well-known metadata during tenant initialization when
+     * this option is omitted, even if its Authorization and Token Endpoint URIs are configured statically.
      *
      * @return JWKS URI
      */

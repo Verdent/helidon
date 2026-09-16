@@ -150,7 +150,8 @@ final class OidcTenantContextFactory {
         if (authorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isPresent()) {
             if (staticMetadata.issuer().isEmpty()
                     || staticMetadata.authorizationEndpointUri().isEmpty()
-                    || staticMetadata.tokenEndpointUri().isEmpty()) {
+                    || staticMetadata.tokenEndpointUri().isEmpty()
+                    || staticMetadata.jwkSetUri().isEmpty()) {
                 return true;
             }
             if (needsPushedAuthorizationRequestMetadata(authorizationCode.orElseThrow(), staticMetadata)) {
@@ -295,6 +296,15 @@ final class OidcTenantContextFactory {
     private static void validateIdTokenMetadata(OidcTenantConfig tenantConfig,
                                                 OidcProviderMetadata metadata,
                                                 boolean wellKnownMetadataLoaded) {
+        metadata.jwkSetUri()
+                .ifPresentOrElse(uri -> OidcEndpointUris.validateJwksUri(
+                                         uri,
+                                         tenantConfig.endpoints().tlsRequired()),
+                                 () -> {
+                                     throw new IllegalStateException(
+                                             "jwks-uri or well-known metadata jwks_uri must be present for ID Token "
+                                                     + "validation");
+                                 });
         if (!wellKnownMetadataLoaded) {
             return;
         }

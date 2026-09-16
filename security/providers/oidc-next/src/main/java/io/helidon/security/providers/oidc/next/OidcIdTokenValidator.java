@@ -149,7 +149,7 @@ final class OidcIdTokenValidator {
              * algorithm specified in the JWT `alg` Header Parameter."
              * Quote: "The Client MUST use the keys provided by the Issuer."
              */
-            Errors signatureErrors = OidcJoseKeyPolicy.verifySignature(
+            Errors signatureErrors = OidcJoseKeyPolicy.verifyOidcSignature(
                     signedJwt,
                     jwt,
                     tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));

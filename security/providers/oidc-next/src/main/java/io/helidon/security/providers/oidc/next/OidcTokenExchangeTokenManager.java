@@ -22,7 +22,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Acquires and reuses outbound RFC 8693 Token Exchange access tokens.
@@ -32,6 +34,9 @@ import java.util.Optional;
  * cache. The underlying cache is bounded and process-local, and concurrent requests for the same complete key share one
  * Token Endpoint operation. Per-tenant admission control bounds remote operations for distinct keys and callers waiting
  * for same-key results.
+ * <p>
+ * The Token Endpoint client supplier is invoked only by an admitted elected loader after both cache lookups. A reusable
+ * exchanged token therefore bypasses deferred endpoint discovery and metadata validation entirely.
  */
 final class OidcTokenExchangeTokenManager {
     private final OidcSingleFlightCache<CacheKey, CachedToken, OidcTokenExchangeResult> tokens =
@@ -41,7 +46,8 @@ final class OidcTokenExchangeTokenManager {
                                   OidcOutboundPolicy policy,
                                   String subjectToken,
                                   Instant now,
-                                  OidcRemoteWorkLimiter remoteWorkLimiter) {
+                                  OidcRemoteWorkLimiter remoteWorkLimiter,
+                                  Supplier<OidcEndpointClient> endpointClientSupplier) {
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(),
                                          tokenHash(subjectToken),
                                          policy.tokenExchangeScope().orElse(""),
@@ -51,22 +57,22 @@ final class OidcTokenExchangeTokenManager {
         return tokens.resolve(cacheKey,
                               cachedToken -> cachedToken.activeAt(now, clockSkew),
                               cachedToken -> OidcTokenExchangeResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(tenantContext, policy, subjectToken, now, clockSkew),
+                              () -> loadToken(endpointClientSupplier, policy, subjectToken, now, clockSkew),
                               remoteWorkLimiter,
                               () -> OidcTokenExchangeResult.failure("Token Exchange capacity is exhausted"));
     }
 
     private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenExchangeResult> loadToken(
-            OidcTenantContext tenantContext,
+            Supplier<OidcEndpointClient> endpointClientSupplier,
             OidcOutboundPolicy policy,
             String subjectToken,
             Instant now,
             Duration clockSkew) {
-        OidcTokenExchangeResult result = tenantContext.endpointClient()
-                .tokenExchange(subjectToken,
-                               policy.tokenExchangeScope(),
-                               policy.tokenExchangeResource(),
-                               policy.tokenExchangeAudience());
+        OidcEndpointClient endpointClient = Objects.requireNonNull(endpointClientSupplier.get());
+        OidcTokenExchangeResult result = endpointClient.tokenExchange(subjectToken,
+                                                                      policy.tokenExchangeScope(),
+                                                                      policy.tokenExchangeResource(),
+                                                                      policy.tokenExchangeAudience());
         if (!result.succeeded()) {
             // Share this endpoint result with current waiters, but allow a later request to retry.
             return OidcSingleFlightCache.Resolution.doNotCache(result);

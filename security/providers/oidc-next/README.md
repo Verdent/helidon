@@ -448,11 +448,12 @@ This is the OpenID Connect Discovery location. The provider does not automatical
 `/.well-known/oauth-authorization-server` location; configure `endpoints.well-known-uri` explicitly when an OAuth
 Authorization Server metadata endpoint must be used instead.
 
-Tenant initialization retries a failed well-known metadata load after `initialization-retry-interval`, which defaults to
-`PT10S`. Callers during that interval observe the same unavailable tenant, and one caller performs the next initialization
-attempt after the interval. This avoids a retry storm while allowing recovery from an Authorization Server outage or an
-invalid response that is later corrected. Deterministic local configuration and metadata compatibility failures are not
-retried; correct the configuration or provider metadata and recreate the provider.
+Tenant initialization and lazy outbound Token Endpoint discovery retry a failed well-known metadata load after
+`initialization-retry-interval`, which defaults to `PT10S`. Callers during that interval observe the same failed outcome,
+and one caller performs the next load after the interval. This avoids a retry storm while allowing recovery from an
+Authorization Server outage or an invalid response that is later corrected. Deterministic local configuration and
+metadata compatibility failures are not retried; correct the configuration or provider metadata and recreate the
+provider.
 
 ```yaml
 security:
@@ -1653,6 +1654,29 @@ outside `ConcurrentHashMap` update callbacks. Callers waiting for the same key h
 Endpoint request does not serialize unrelated keys through a cache critical section. Token Exchange may deliberately
 queue unrelated keys at its configured admission limit.
 
+### Endpoint-Level Grant Discovery
+
+Provider-level `outbound` targets are known while each tenant is initialized, so required Token Endpoint metadata and
+capabilities can be loaded and validated at that point. An endpoint-level `OidcOutboundPolicy` is visible only when an
+outbound request is made. When such a policy needs Client Credentials Grant or Token Exchange and the tenant has no static
+`endpoints.token-endpoint-uri`, discovery is deferred until the first token-cache miss.
+
+Deferred discovery is coordinated once per configured tenant. Concurrent cache misses share one metadata request, and a
+successful result is reused by both endpoint-level grant types. A token-cache hit does not perform discovery at all, so a
+later metadata-endpoint outage does not prevent reuse of an otherwise valid cached token. Waiting metadata followers are
+interruptible and do not cancel the shared request.
+
+A transient metadata load failure is shared and held for the tenant's `initialization-retry-interval`; one later caller
+retries after that interval. Successfully loaded metadata is retained for the lifetime of the `OidcProvider` and is not
+periodically refreshed. Recreate the provider to adopt a later metadata capability or endpoint change. Static Token
+Endpoint configuration also remains static for the provider lifetime.
+
+Before any Token Endpoint request, deferred metadata is validated with the same rules as provider-level targets. Client
+Credentials requires `grant_types_supported` to include `client_credentials`; Token Exchange must be included when that
+metadata member is present. Both grants validate `token_endpoint_auth_methods_supported` and, for JWT client
+authentication, `token_endpoint_auth_signing_alg_values_supported`. An unsupported combination returns the grant's
+controlled outbound failure without contacting the Token Endpoint.
+
 Configure Client Credentials Grant scopes on the matching outbound target. OAuth scopes describe the access requested for
 the token, and for outbound calls that access is normally tied to the downstream resource API selected by the target.
 Keeping scopes on the target allows least-privilege tokens for different downstream services while still using the same
@@ -2307,7 +2331,7 @@ Common checks:
 | UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
 | Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
 | Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |
-| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
+| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, advertised grant and client-authentication capabilities, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. Endpoint-level policies retain successfully loaded metadata for the provider lifetime; recreate the provider after a deterministic metadata capability change. For transient discovery failures, check `initialization-retry-interval`. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
 | mTLS or certificate-bound token failures | Check WebServer client certificate configuration, tenant `webclient.tls`, mTLS endpoint aliases, HTTPS endpoint requirements, and the token/introspection `cnf.x5t#S256` thumbprint. |
 
 ## Configuration Reference
@@ -2331,7 +2355,7 @@ multi-tenant applications:
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether this tenant is enabled. Defaults to `true`. |
-| `initialization-retry-interval` | Minimum interval before retrying tenant initialization after a failed well-known metadata load. Defaults to `PT10S`. Deterministic local configuration or metadata compatibility failures are not retried. |
+| `initialization-retry-interval` | Minimum interval before retrying a failed well-known metadata load during tenant initialization or lazy endpoint-level outbound grant discovery. Defaults to `PT10S`. Deterministic local configuration or metadata compatibility failures are not retried. |
 | `issuer` | Expected Issuer Identifier string. Issuer identity comparisons use this exact string value. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. |

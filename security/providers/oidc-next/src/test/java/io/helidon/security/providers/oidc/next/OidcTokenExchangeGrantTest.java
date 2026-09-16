@@ -76,6 +76,7 @@ class OidcTokenExchangeGrantTest {
     private static final String EXISTING_HEADER_NAME = "X-Existing";
     private static final String EXISTING_HEADER_VALUE = "existing-value";
 
+    private static final AtomicInteger METADATA_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger ACTIVE_REQUESTS = new AtomicInteger();
     private static final AtomicInteger MAX_ACTIVE_REQUESTS = new AtomicInteger();
@@ -94,9 +95,11 @@ class OidcTokenExchangeGrantTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> response
-                .header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(providerMetadata));
+        routing.get("/.well-known/openid-configuration", (request, response) -> {
+            METADATA_REQUEST_COUNT.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(providerMetadata);
+        });
         routing.post("/token", OidcTokenExchangeGrantTest::handleTokenEndpoint);
     }
 
@@ -115,6 +118,7 @@ class OidcTokenExchangeGrantTest {
                 .toString();
         dynamicTokenResponse = false;
         dynamicExpiresIn = 600;
+        METADATA_REQUEST_COUNT.set(0);
         REQUEST_COUNT.set(0);
         ACTIVE_REQUESTS.set(0);
         MAX_ACTIVE_REQUESTS.set(0);
@@ -166,6 +170,27 @@ class OidcTokenExchangeGrantTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer exchanged-access-token")));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void endpointPolicyReusesWellKnownMetadataAndCachedToken() {
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+        EndpointConfig endpointConfig = tokenExchangeEndpointConfig();
+
+        OutboundSecurityResponse first = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                   outboundEnvironment(),
+                                                                   endpointConfig);
+        OutboundSecurityResponse second = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                    outboundEnvironment(),
+                                                                    endpointConfig);
+
+        assertThat(first.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer exchanged-access-token")));
+        assertThat(second.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer exchanged-access-token")));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
@@ -252,13 +277,14 @@ class OidcTokenExchangeGrantTest {
         releaseTokenResponse = new CountDownLatch(1);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch overloadObserved = new CountDownLatch(1);
-        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenant())
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
                 .tokenExchangeRemoteWork(remoteWork -> remoteWork
                         .maxConcurrent(maxConcurrent)
                         .maxQueued(maxQueued)
                         .admissionTimeout(Duration.ofMillis(100)))
                 .buildPrototype();
-        OidcProvider provider = provider(tenant, tokenExchangeTarget());
+        OidcProvider provider = endpointPolicyProvider(tenant);
+        EndpointConfig endpointConfig = tokenExchangeEndpointConfig();
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
@@ -268,7 +294,7 @@ class OidcTokenExchangeGrantTest {
                     assertTrue(start.await(5, TimeUnit.SECONDS));
                     OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(token),
                                                                                   outboundEnvironment(),
-                                                                                  EndpointConfig.create());
+                                                                                  endpointConfig);
                     if (response.status() == SecurityResponse.SecurityStatus.FAILURE) {
                         overloadObserved.countDown();
                     }
@@ -302,8 +328,9 @@ class OidcTokenExchangeGrantTest {
 
         OutboundSecurityResponse recovered = provider.outboundSecurity(providerRequest("recovery-token"),
                                                                        outboundEnvironment(),
-                                                                       EndpointConfig.create());
+                                                                       endpointConfig);
         assertThat(recovered.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
         assertThat(ACTIVE_REQUESTS.get(), is(0));
     }
 
@@ -459,6 +486,27 @@ class OidcTokenExchangeGrantTest {
     }
 
     @Test
+    void endpointPolicyRejectsUnsupportedTokenExchangeGrantBeforeTokenRequest() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("grant_types_supported", List.of("client_credentials"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .build()
+                .toString();
+        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                      outboundEnvironment(),
+                                                                      tokenExchangeEndpointConfig());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.description().orElse(""), is("Token Exchange failed"));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(0));
+    }
+
+    @Test
     void tokenExchangeResponseRejectsUnsupportedIssuedTokenType() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcTokenExchangeResponse.fromJson(JsonObject.builder()
@@ -554,6 +602,21 @@ class OidcTokenExchangeGrantTest {
                                            .putTenant("default", tenant)
                                            .outboundTargets(List.of(outboundTargets))
                                            .buildPrototype());
+    }
+
+    private static OidcProvider endpointPolicyProvider(OidcTenantConfig tenant) {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenant)
+                                           .buildPrototype());
+    }
+
+    private static EndpointConfig tokenExchangeEndpointConfig() {
+        return EndpointConfig.builder()
+                .customObject(OidcOutboundPolicy.class,
+                              OidcOutboundPolicy.tokenExchange(List.of("orders.read", "orders.write"),
+                                                               "https://orders.example.com",
+                                                               "api://orders"))
+                .build();
     }
 
     private static OutboundTarget tokenExchangeTarget() {

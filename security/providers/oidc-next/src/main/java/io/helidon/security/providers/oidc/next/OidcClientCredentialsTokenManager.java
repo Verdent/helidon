@@ -19,7 +19,9 @@ package io.helidon.security.providers.oidc.next;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Acquires and reuses outbound Client Credentials access tokens.
@@ -27,6 +29,9 @@ import java.util.Optional;
  * The cache key includes every input that can change the authority or requested access: tenant, scope, and ordered
  * resource indicators. The underlying cache is bounded and process-local, and concurrent requests for the same key
  * share one Token Endpoint operation. Requests for different keys remain independent.
+ * <p>
+ * The Token Endpoint client supplier is invoked only by the elected loader after both cache lookups. A reusable token
+ * therefore bypasses deferred endpoint discovery and metadata validation entirely.
  */
 final class OidcClientCredentialsTokenManager {
     private final OidcSingleFlightCache<CacheKey, CachedToken, OidcTokenEndpointResult> tokens =
@@ -35,23 +40,25 @@ final class OidcClientCredentialsTokenManager {
     OidcTokenEndpointResult token(OidcTenantContext tenantContext,
                                   Optional<String> scope,
                                   List<String> resources,
-                                  Instant now) {
+                                  Instant now,
+                                  Supplier<OidcEndpointClient> endpointClientSupplier) {
         List<String> resourceList = List.copyOf(resources);
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""), resourceList);
         Duration clockSkew = tenantContext.tokenValidation().clockSkew();
         return tokens.resolve(cacheKey,
                               cachedToken -> cachedToken.activeAt(now, clockSkew),
                               cachedToken -> OidcTokenEndpointResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(tenantContext, scope, resourceList, now, clockSkew));
+                              () -> loadToken(endpointClientSupplier, scope, resourceList, now, clockSkew));
     }
 
     private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenEndpointResult> loadToken(
-            OidcTenantContext tenantContext,
+            Supplier<OidcEndpointClient> endpointClientSupplier,
             Optional<String> scope,
             List<String> resources,
             Instant now,
             Duration clockSkew) {
-        OidcTokenEndpointResult result = tenantContext.endpointClient().clientCredentialsToken(scope, resources);
+        OidcEndpointClient endpointClient = Objects.requireNonNull(endpointClientSupplier.get());
+        OidcTokenEndpointResult result = endpointClient.clientCredentialsToken(scope, resources);
         if (!result.succeeded()) {
             // Share this endpoint result with current waiters, but allow a later request to retry.
             return OidcSingleFlightCache.Resolution.doNotCache(result);

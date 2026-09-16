@@ -58,6 +58,7 @@ final class OidcProviderMetadata {
     private final Optional<List<String>> requestObjectEncryptionAlgorithmsSupported;
     private final Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported;
     private final boolean requireSignedRequestObject;
+    private final boolean wellKnownMetadataLoaded;
 
     private OidcProviderMetadata(Optional<String> issuer,
                                  Optional<URI> wellKnownUri,
@@ -91,7 +92,8 @@ final class OidcProviderMetadata {
                                  Optional<List<String>> requestObjectSigningAlgorithmsSupported,
                                  Optional<List<String>> requestObjectEncryptionAlgorithmsSupported,
                                  Optional<List<String>> requestObjectContentEncryptionAlgorithmsSupported,
-                                 boolean requireSignedRequestObject) {
+                                 boolean requireSignedRequestObject,
+                                 boolean wellKnownMetadataLoaded) {
         this.issuer = issuer;
         this.wellKnownUri = wellKnownUri;
         this.authorizationEndpointUri = authorizationEndpointUri;
@@ -130,6 +132,7 @@ final class OidcProviderMetadata {
         this.requestObjectContentEncryptionAlgorithmsSupported =
                 requestObjectContentEncryptionAlgorithmsSupported.map(List::copyOf);
         this.requireSignedRequestObject = requireSignedRequestObject;
+        this.wellKnownMetadataLoaded = wellKnownMetadataLoaded;
     }
 
     static OidcProviderMetadata fromStaticConfig(OidcTenantConfig tenantConfig) {
@@ -166,6 +169,7 @@ final class OidcProviderMetadata {
                                         Optional.empty(),
                                         Optional.empty(),
                                         Optional.empty(),
+                                        false,
                                         false);
     }
 
@@ -207,7 +211,8 @@ final class OidcProviderMetadata {
                                         stringArrayValue(json, "request_object_encryption_alg_values_supported"),
                                         stringArrayValue(json, "request_object_encryption_enc_values_supported"),
                                         json.booleanValue("require_signed_request_object")
-                                                .orElse(false));
+                                                .orElse(false),
+                                        true);
     }
 
     OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnown) {
@@ -268,7 +273,8 @@ final class OidcProviderMetadata {
                                                 .or(wellKnown::requestObjectEncryptionAlgorithmsSupported),
                                         requestObjectContentEncryptionAlgorithmsSupported
                                                 .or(wellKnown::requestObjectContentEncryptionAlgorithmsSupported),
-                                        requireSignedRequestObject || wellKnown.requireSignedRequestObject());
+                                        requireSignedRequestObject || wellKnown.requireSignedRequestObject(),
+                                        wellKnownMetadataLoaded || wellKnown.wellKnownMetadataLoaded());
     }
 
     Optional<String> issuer() {
@@ -405,6 +411,10 @@ final class OidcProviderMetadata {
 
     boolean requireSignedRequestObject() {
         return requireSignedRequestObject;
+    }
+
+    boolean wellKnownMetadataLoaded() {
+        return wellKnownMetadataLoaded;
     }
 
     static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {

@@ -52,9 +52,19 @@ interface OidcTenantResolutionConfigBlueprint {
     Optional<String> pathTemplate();
 
     /**
-     * Host template containing the tenant id.
+     * DNS host template containing the tenant id as one complete {@code {tenant}} label.
+     * <p>
+     * The template is normalized to lower-case ASCII using {@link io.helidon.common.uri.UriHost}; a terminal DNS dot is
+     * removed. Request authorities are normalized the same way, and a port does not participate in matching. The
+     * resulting tenant id is therefore a canonical ASCII DNS label and must match the configured tenant-map key.
+     * <p>
+     * When this strategy is reached and a request authority is present, a malformed, repeated, IP-literal, nonmatching,
+     * or unknown host does not fall through to the default tenant. The default tenant remains available when the request
+     * has no authority. The effective target URI authority takes precedence over the {@code Host} header.
      *
      * @return tenant host template
+     * @see <a href="https://www.rfc-editor.org/rfc/rfc3986.html#section-3.2.2">RFC 3986, 3.2.2 Host</a>
+     * @see <a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-7.2">RFC 9110, 7.2 Host and :authority</a>
      */
     @Option.Configured
     Optional<String> hostTemplate();

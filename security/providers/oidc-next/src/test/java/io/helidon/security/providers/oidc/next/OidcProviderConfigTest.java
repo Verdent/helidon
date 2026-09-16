@@ -416,6 +416,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.user-info.jwt.decryption-jwk.resource-path",
                                   "oidc-next-encrypt-jwk.json"),
                         Map.entry("tenants.default.user-info.jwt.clock-skew", "PT2M"),
+                        Map.entry("tenant-resolution.host-template", "{tenant}.BÜCHER.Example."),
                         Map.entry("tenants.default.subject-mapping.principal-id-mode", "claim-path"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
@@ -436,6 +437,8 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.defaultTenant().orElse(""), is("default"));
         assertThat(providerConfig.socket().orElse(""), is("oidc"));
         assertThat(providerConfig.socketRequired(), is(false));
+        assertThat(providerConfig.tenantResolution().hostTemplate().orElseThrow(),
+                   is("{tenant}.xn--bcher-kva.example"));
         OidcTenantConfig tenant = providerConfig.tenants().get("default");
         OutboundTarget outboundTarget = providerConfig.outboundTargets().getFirst();
         assertThat(outboundTarget.name(), is("orders"));
@@ -866,6 +869,26 @@ class OidcProviderConfigTest {
                                       .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("{tenant}"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .hostTemplate("prefix-{tenant}.example.com")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("complete DNS label"));
+
+        thrown = assertThrows(IllegalArgumentException.class,
+                              () -> OidcTenantResolutionConfig.builder()
+                                      .hostTemplate("{tenant}.example.com:443")
+                                      .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("valid DNS host template"));
+
+        OidcTenantResolutionConfig normalized = OidcTenantResolutionConfig.builder()
+                .hostTemplate("{tenant}.BÜCHER.Example.")
+                .buildPrototype();
+
+        assertThat(normalized.hostTemplate().orElseThrow(), is("{tenant}.xn--bcher-kva.example"));
     }
 
     @Test

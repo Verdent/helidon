@@ -140,18 +140,98 @@ class OidcTenantRuntimeTest {
 
     @Test
     void hostTemplateTenantResolutionSelectsConfiguredTenant() {
-        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
-                .tenantResolution(it -> it.hostTemplate("{tenant}.example.com"))
-                .putTenant("api", protectedResourceTenant())
-                .putTenant("other", OidcTenantConfig.create())
-                .buildPrototype());
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(hostTenantProviderConfig());
 
-        OidcTenantContext context = registry.tenantContext(request(SecurityEnvironment.builder()
-                                                                          .targetUri(URI.create("https://api.example.com"))
-                                                                          .build()))
+        OidcTenantContext targetContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                .targetUri(URI.create(
+                                                                                        "https://API.example.com.:8443"))
+                                                                                .build()))
+                .orElseThrow();
+        OidcTenantContext headerContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                .header("Host",
+                                                                                        "API.EXAMPLE.COM.:8443")
+                                                                                .build()))
+                .orElseThrow();
+        OidcTenantContext idnContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                             .targetUri(URI.create(
+                                                                                     "https://Bücher.example.com"))
+                                                                             .build()))
                 .orElseThrow();
 
-        assertThat(context.tenantId(), is("api"));
+        assertThat(targetContext.tenantId(), is("api"));
+        assertThat(headerContext.tenantId(), is("api"));
+        assertThat(idnContext.tenantId(), is("xn--bcher-kva"));
+    }
+
+    @Test
+    void hostTemplateRejectsPresentInvalidNonMatchingAndUnknownAuthorities() {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(hostTenantProviderConfig());
+        List<SecurityEnvironment> rejected = List.of(
+                SecurityEnvironment.builder().header("Host", " ").build(),
+                SecurityEnvironment.builder().header("Host", List.of("api.example.com", "api.example.com")).build(),
+                SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://api.example.com"))
+                        .header("Host", List.of("api.example.com", "api.example.com"))
+                        .build(),
+                SecurityEnvironment.builder().header("Host", "api.example.com,default.example.com").build(),
+                SecurityEnvironment.builder().header("Host", "api.example.com:65536").build(),
+                SecurityEnvironment.builder().header("Host", "2001:db8::1").build(),
+                SecurityEnvironment.builder().header("Host", "[2001:db8::1]:443").build(),
+                SecurityEnvironment.builder().header("Host", "api.other.example.com").build(),
+                SecurityEnvironment.builder().header("Host", "missing.example.com").build(),
+                SecurityEnvironment.builder().header("Host", "api.invalid.example").build(),
+                SecurityEnvironment.builder().targetUri(URI.create("https://user@api.example.com")).build(),
+                SecurityEnvironment.builder().targetUri(URI.create("https://api.example.com:invalid")).build());
+
+        for (SecurityEnvironment environment : rejected) {
+            assertThat(environment.toString(),
+                       registry.tenantContext(request(environment)).isEmpty(),
+                       is(true));
+        }
+        assertThat(registry.cachedTenantCount(), is(0));
+
+        OidcProvider provider = OidcProvider.create(hostTenantProviderConfig());
+        var response = provider.authenticate(request(SecurityEnvironment.builder()
+                                                            .header("Host", "missing.example.com")
+                                                            .header("Authorization", "Bearer access-token")
+                                                            .build()));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void hostTemplateUsesDefaultOnlyWithoutAuthorityAndPrefersEffectiveTargetAuthority() {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(hostTenantProviderConfig());
+
+        OidcTenantContext defaultContext = registry.tenantContext(request(SecurityEnvironment.create())).orElseThrow();
+        OidcTenantContext targetContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                .targetUri(URI.create(
+                                                                                        "https://api.example.com"))
+                                                                                .header("Host", "default.example.com")
+                                                                                .build()))
+                .orElseThrow();
+        OidcTenantContext headerContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                                                                                .targetUri(URI.create("/resource"))
+                                                                                .header("Host", "api.example.com")
+                                                                                .build()))
+                .orElseThrow();
+        OidcTenantContext untrustedForwardedHostContext = registry.tenantContext(request(SecurityEnvironment.builder()
+                        .targetUri(URI.create("/resource"))
+                        .header("Host", "api.example.com")
+                        .header("X-Forwarded-Host", "missing.example.com")
+                        .build()))
+                .orElseThrow();
+
+        assertThat(defaultContext.tenantId(), is("default"));
+        assertThat(targetContext.tenantId(), is("api"));
+        assertThat(headerContext.tenantId(), is("api"));
+        assertThat(untrustedForwardedHostContext.tenantId(), is("api"));
+        assertThat(registry.tenantContext(request(SecurityEnvironment.builder()
+                                                         .targetUri(URI.create("https://unknown.invalid"))
+                                                         .header("Host", "api.example.com")
+                                                         .build()))
+                           .isEmpty(),
+                   is(true));
     }
 
     @Test
@@ -288,6 +368,16 @@ class OidcTenantRuntimeTest {
                 .endpoints(it -> it.jwksUri(JWKS_URI))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
+                .buildPrototype();
+    }
+
+    private static OidcProviderConfig hostTenantProviderConfig() {
+        return OidcProviderConfig.builder()
+                .defaultTenant("default")
+                .tenantResolution(it -> it.hostTemplate("{tenant}.EXAMPLE.com."))
+                .putTenant("default", protectedResourceTenant())
+                .putTenant("api", protectedResourceTenant())
+                .putTenant("xn--bcher-kva", protectedResourceTenant())
                 .buildPrototype();
     }
 

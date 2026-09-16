@@ -51,7 +51,7 @@ final class OidcTenantResolutionConfigDecorator
             if (hostTemplate.isBlank() || !hostTemplate.equals(hostTemplate.strip())) {
                 throw new IllegalArgumentException("tenant-resolution.host-template must not be blank or padded");
             }
-            validateSingleTenantVariable(hostTemplate, "tenant-resolution.host-template");
+            target.hostTemplate(OidcHostTemplate.create(hostTemplate).value());
         });
     }
 

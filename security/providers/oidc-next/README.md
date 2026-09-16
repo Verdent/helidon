@@ -2418,6 +2418,27 @@ tenant-resolution:
   host-template: "{tenant}.example.com"
 ```
 
+`{tenant}` must be one complete DNS label. OIDC Next normalizes both the template and request authority with Helidon's
+common URI policy: DNS names become lower-case ASCII, internationalized names use their IDNA ASCII form, and one terminal
+dot is removed. IPv4 and IPv6 literals are recognized but do not match a DNS host template. Ports do not participate in
+template matching. Consequently, host-derived tenant map keys must use the canonical label. For example, these
+authorities select the shown tenant keys:
+
+| Request authority | Tenant key |
+| --- | --- |
+| `API.example.com.:8443` | `api` |
+| `Bücher.example.com` | `xn--bcher-kva` |
+
+A host template does not accept an IP-literal authority, a tenant value spanning multiple labels, a malformed authority,
+or multiple `Host` header values. When the host strategy is reached, any present authority that is invalid, fails to match
+the template, or identifies an unconfigured tenant prevents selection of the default tenant. Only a request with no
+effective authority can fall through from host resolution to the default tenant.
+
+OIDC Next uses the effective target URI authority when available and otherwise requires exactly one nonblank `Host`
+header value. Behind a reverse proxy, that effective URI can contain trusted forwarded authority information supplied by
+WebServer requested URI discovery. Configure `trusted-proxies` narrowly; an untrusted forwarded host must never control
+tenant selection.
+
 Tenant resolution order is:
 
 1. Header.
@@ -2473,6 +2494,7 @@ Common checks:
 | Symptom | Check |
 | --- | --- |
 | `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
+| Host-based tenant does not resolve | Check the effective target URI or single `Host` value, canonical lower-case/IDNA tenant key, complete-label host template, port syntax, and trusted-proxy requested URI discovery. Present invalid, nonmatching, or unknown authorities never use the default tenant. |
 | JOSE key or client assertion initialization fails | Check that RSA moduli are at least 2048 bits, `CLIENT_SECRET_JWT` secrets meet the selected 32/48/64-octet HMAC minimum, the configured algorithm is compatible with the key type, and any declared JWK `alg` exactly matches the operation. |
 | `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. Without `kid`, exactly one key must remain eligible after algorithm, use, operations, type, and strength filtering. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |

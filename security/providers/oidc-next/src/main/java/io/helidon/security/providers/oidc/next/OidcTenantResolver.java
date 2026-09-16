@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+import io.helidon.common.uri.UriAuthority;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 
@@ -30,33 +31,38 @@ final class OidcTenantResolver {
 
     private final OidcProviderConfig config;
     private final OidcTenantResolutionConfig tenantResolution;
+    private final Optional<OidcHostTemplate> hostTemplate;
 
     OidcTenantResolver(OidcProviderConfig config) {
         this.config = config;
         this.tenantResolution = config.tenantResolution();
+        this.hostTemplate = tenantResolution.hostTemplate().map(OidcHostTemplate::create);
     }
 
     Optional<String> tenantId(ProviderRequest request) {
         if (request != null) {
             SecurityEnvironment environment = request.env();
-            TenantHeaderResolution headerResolution = headerTenantId(environment);
+            TenantResolution headerResolution = headerTenantId(environment);
             if (headerResolution.present()) {
                 return headerResolution.tenantId();
             }
             Optional<String> tenantId = pathTenantId(environment)
-                    .or(() -> pathTemplateTenantId(environment))
-                    .or(() -> hostTenantId(environment));
+                    .or(() -> pathTemplateTenantId(environment));
             if (tenantId.isPresent()) {
                 return tenantId;
+            }
+            TenantResolution hostResolution = hostTenantId(environment);
+            if (hostResolution.present()) {
+                return hostResolution.tenantId();
             }
         }
         return defaultTenantId();
     }
 
-    private TenantHeaderResolution headerTenantId(SecurityEnvironment environment) {
+    private TenantResolution headerTenantId(SecurityEnvironment environment) {
         return tenantResolution.headerName()
                 .map(header -> tenantHeaderValue(environment, header))
-                .orElseGet(TenantHeaderResolution::absent);
+                .orElseGet(TenantResolution::absent);
     }
 
     private Optional<String> pathTenantId(SecurityEnvironment environment) {
@@ -76,10 +82,19 @@ final class OidcTenantResolver {
                 });
     }
 
-    private Optional<String> hostTenantId(SecurityEnvironment environment) {
-        return tenantResolution.hostTemplate()
-                .flatMap(template -> host(environment)
-                        .flatMap(host -> tenantFromHostTemplate(host, template)));
+    private TenantResolution hostTenantId(SecurityEnvironment environment) {
+        if (hostTemplate.isEmpty()) {
+            return TenantResolution.absent();
+        }
+        try {
+            return authority(environment)
+                    .map(UriAuthority::create)
+                    .map(UriAuthority::host)
+                    .map(host -> TenantResolution.present(hostTemplate.orElseThrow().tenantId(host)))
+                    .orElseGet(TenantResolution::absent);
+        } catch (IllegalArgumentException _) {
+            return TenantResolution.invalid();
+        }
     }
 
     private Optional<String> pathTemplateTenantId(SecurityEnvironment environment) {
@@ -102,26 +117,15 @@ final class OidcTenantResolver {
         return Optional.empty();
     }
 
-    private static Optional<String> firstHeaderValue(SecurityEnvironment environment, String headerName) {
-        List<String> values = environment.headers().get(headerName);
-        if (values == null) {
-            return Optional.empty();
-        }
-        return values.stream()
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .findFirst();
-    }
-
-    private static TenantHeaderResolution tenantHeaderValue(SecurityEnvironment environment, String headerName) {
+    private static TenantResolution tenantHeaderValue(SecurityEnvironment environment, String headerName) {
         List<String> values = environment.headers().get(headerName);
         if (values == null || values.isEmpty()) {
-            return TenantHeaderResolution.absent();
+            return TenantResolution.absent();
         }
         if (values.size() != 1) {
-            return TenantHeaderResolution.invalid();
+            return TenantResolution.invalid();
         }
-        return TenantHeaderResolution.present(nonBlank(values.getFirst().strip()));
+        return TenantResolution.present(nonBlank(values.getFirst().strip()));
     }
 
     private static List<String> pathSegments(String path) {
@@ -130,47 +134,23 @@ final class OidcTenantResolver {
                 .toList();
     }
 
-    private static Optional<String> host(SecurityEnvironment environment) {
+    private static Optional<String> authority(SecurityEnvironment environment) {
+        List<String> values = environment.headers().get(HOST);
+        if (values != null && values.size() > 1) {
+            throw new IllegalArgumentException("Request must contain at most one Host header value");
+        }
         URI targetUri = environment.targetUri();
-        if (targetUri != null) {
-            Optional<String> targetHost = nonBlank(targetUri.getHost());
-            if (targetHost.isPresent()) {
-                return targetHost;
-            }
+        if (targetUri != null && targetUri.getRawAuthority() != null) {
+            return Optional.of(targetUri.getRawAuthority());
         }
-        return firstHeaderValue(environment, HOST)
-                .map(OidcTenantResolver::hostWithoutPort)
-                .flatMap(OidcTenantResolver::nonBlank);
-    }
-
-    private static String hostWithoutPort(String host) {
-        if (host.startsWith("[")) {
-            int end = host.indexOf(']');
-            if (end != -1) {
-                return host.substring(1, end);
-            }
-        }
-        int portIndex = host.indexOf(':');
-        if (portIndex == -1) {
-            return host;
-        }
-        return host.substring(0, portIndex);
-    }
-
-    private static Optional<String> tenantFromHostTemplate(String host, String template) {
-        int variableIndex = template.indexOf(TENANT_VARIABLE);
-        if (variableIndex == -1 || template.indexOf(TENANT_VARIABLE, variableIndex + TENANT_VARIABLE.length()) != -1) {
+        if (values == null || values.isEmpty()) {
             return Optional.empty();
         }
-
-        String prefix = template.substring(0, variableIndex);
-        String suffix = template.substring(variableIndex + TENANT_VARIABLE.length());
-        if (!host.startsWith(prefix) || !host.endsWith(suffix)) {
-            return Optional.empty();
+        String authority = values.getFirst();
+        if (authority == null || authority.isBlank()) {
+            throw new IllegalArgumentException("Host header value must not be blank");
         }
-
-        String tenantId = host.substring(prefix.length(), host.length() - suffix.length());
-        return nonBlank(tenantId);
+        return Optional.of(authority.strip());
     }
 
     private static Optional<String> tenantFromPathTemplate(String path, String template) {
@@ -201,17 +181,17 @@ final class OidcTenantResolver {
         return Optional.of(value);
     }
 
-    private record TenantHeaderResolution(boolean present, Optional<String> tenantId) {
-        private static TenantHeaderResolution absent() {
-            return new TenantHeaderResolution(false, Optional.empty());
+    private record TenantResolution(boolean present, Optional<String> tenantId) {
+        private static TenantResolution absent() {
+            return new TenantResolution(false, Optional.empty());
         }
 
-        private static TenantHeaderResolution invalid() {
+        private static TenantResolution invalid() {
             return present(Optional.empty());
         }
 
-        private static TenantHeaderResolution present(Optional<String> tenantId) {
-            return new TenantHeaderResolution(true, tenantId);
+        private static TenantResolution present(Optional<String> tenantId) {
+            return new TenantResolution(true, tenantId);
         }
     }
 }

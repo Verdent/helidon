@@ -236,9 +236,9 @@ final class OidcAuthenticationRequestFactory {
     private URI authorizationUri(URI authorizationEndpointUri, Parameters authorizationParameters) {
         UriQueryWriteable query = UriQueryWriteable.create();
         for (String name : authorizationParameters.names()) {
-            for (String value : authorizationParameters.all(name)) {
-                query.add(name, value);
-            }
+            List<String> values = authorizationParameters.all(name);
+            // `set` applies form-query encoding; pass every value together so repeated resources remain repeated.
+            query.set(name, values.toArray(String[]::new));
         }
         return authorizationUri(authorizationEndpointUri, query);
     }
@@ -254,8 +254,8 @@ final class OidcAuthenticationRequestFactory {
          * Quote: "the client MUST only use a `request_uri` value once."
          */
         UriQueryWriteable query = UriQueryWriteable.create()
-                .add("client_id", clientId)
-                .add("request_uri", pushedAuthorizationResponse.requestUri());
+                .set("client_id", clientId)
+                .set("request_uri", pushedAuthorizationResponse.requestUri());
         return authorizationUri(authorizationEndpointUri, query);
     }
 

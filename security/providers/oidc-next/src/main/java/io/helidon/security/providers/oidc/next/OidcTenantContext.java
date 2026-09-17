@@ -186,6 +186,12 @@ final class OidcTenantContext {
         return runtimeResources().remoteWorkLimiters().tokenExchange();
     }
 
+    OidcRefreshCoordinator<OidcRefreshTokenManager.RefreshResult> refreshCoordinator() {
+        return runtimeResources().refreshCoordinator()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Refresh coordination is available only when Authorization Code Flow is configured"));
+    }
+
     WebClient webClient() {
         return runtimeResources().webClient();
     }
@@ -245,6 +251,7 @@ final class OidcTenantContext {
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
                                     RemoteWorkLimiters remoteWorkLimiters,
+                                    Optional<OidcRefreshCoordinator<OidcRefreshTokenManager.RefreshResult>> refreshCoordinator,
                                     WebClient webClient) {
         private static RuntimeResources create(String tenantId,
                                                OidcTenantConfig tenantConfig,
@@ -264,6 +271,9 @@ final class OidcTenantContext {
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
                                         RemoteWorkLimiters.create(tenantConfig),
+                                        tenantConfig.authorizationCode()
+                                                .filter(OidcAuthorizationCodeConfig::enabled)
+                                                .map(OidcRefreshCoordinator::new),
                                         webClient);
         }
     }

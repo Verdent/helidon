@@ -25,8 +25,8 @@ import io.helidon.builder.api.Prototype;
  * Admission limits for high-cardinality OIDC remote work.
  * <p>
  * The active limit bounds remote HTTP operations. The queued limit is shared by leaders waiting for an active permit
- * and callers waiting for an existing same-key operation. Requests that cannot enter the queue within the admission
- * timeout fail without starting remote work.
+ * and callers waiting for an existing same-key operation. Queue capacity is reserved without waiting, making the queued
+ * limit a hard bound. Requests that cannot reserve a slot fail without starting remote work.
  */
 @Prototype.Blueprint(decorator = OidcRemoteWorkConfigDecorator.class)
 @Prototype.Configured
@@ -52,12 +52,12 @@ interface OidcRemoteWorkConfigBlueprint {
     int maxQueued();
 
     /**
-     * Total time allowed for admission.
+     * Time allowed for an admitted new operation to obtain an active-operation permit.
      * <p>
-     * A new operation may join the bounded queue and obtain an active-operation permit; a same-key follower may reserve
-     * a queue slot. Zero configures fail-fast admission when capacity is unavailable. Once admitted as a same-key
-     * follower, a caller waits interruptibly for that operation rather than applying this timeout to the remote
-     * operation itself.
+     * Queue capacity is reserved without waiting. A new operation which reserves a queue slot may wait for this duration
+     * to obtain an active-operation permit. Once a same-key follower reserves a queue slot, it waits interruptibly for
+     * that operation rather than applying this timeout to the remote operation itself. Zero configures fail-fast active
+     * admission.
      *
      * @return admission timeout
      */

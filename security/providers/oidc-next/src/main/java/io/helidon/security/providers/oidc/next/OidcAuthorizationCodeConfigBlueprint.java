@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,7 +27,7 @@ import io.helidon.builder.api.Prototype;
 /**
  * OpenID Connect Authorization Code Flow configuration.
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcAuthorizationCodeConfigDecorator.class)
 @Prototype.Configured
 interface OidcAuthorizationCodeConfigBlueprint {
     /**
@@ -100,6 +101,43 @@ interface OidcAuthorizationCodeConfigBlueprint {
     @Option.Configured("request-object")
     @Option.Default("create()")
     OidcRequestObjectConfig requestObject();
+
+    /**
+     * Admission limits for refresh-token operations performed for local authentication sessions.
+     * <p>
+     * One active operation refreshes a particular source session while admitted same-session callers share its result.
+     * Limits apply per tenant and per provider runtime.
+     *
+     * @return refresh-token remote-work limits
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcRemoteWorkConfig refreshRemoteWork();
+
+    /**
+     * Time for which a completed refresh outcome may be reused by late requests carrying the same source session.
+     * <p>
+     * The short grace interval prevents a request which was already in flight from redeeming an invalidated rotating
+     * refresh token. It is deliberately bounded because a long interval would weaken refresh-token replay detection.
+     * Defaults to {@code PT5S}; values must be between {@code PT1S} and {@code PT1M}, inclusive.
+     *
+     * @return completed refresh outcome retention
+     */
+    @Option.Configured
+    @Option.Default("PT5S")
+    Duration refreshResultRetention();
+
+    /**
+     * Maximum completed refresh outcomes retained during the grace interval.
+     * <p>
+     * The cache is local to one tenant runtime. Active refresh operations are tracked separately and are not evicted.
+     * Defaults to {@code 1024}.
+     *
+     * @return maximum retained refresh outcomes
+     */
+    @Option.Configured
+    @Option.DefaultInt(1024)
+    int refreshResultCacheCapacity();
 
     /**
      * Whether Proof Key for Code Exchange is required for Authorization Code Flow.

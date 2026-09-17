@@ -52,20 +52,18 @@ final class OidcRemoteWorkLimiter {
             return Optional.empty();
         }
 
-        long admissionStarted = System.nanoTime();
-        Optional<Permit> queuePermit = acquire(queued, admissionTimeoutNanos);
+        // Reserve queue capacity without waiting so maxQueued is a hard bound on retained callers.
+        Optional<Permit> queuePermit = acquire(queued, 0);
         if (queuePermit.isEmpty()) {
             return Optional.empty();
         }
         try (Permit ignored = queuePermit.orElseThrow()) {
-            long elapsed = System.nanoTime() - admissionStarted;
-            long remaining = elapsed >= admissionTimeoutNanos ? 0 : admissionTimeoutNanos - elapsed;
-            return acquire(active, remaining);
+            return acquire(active, admissionTimeoutNanos);
         }
     }
 
     Optional<Permit> acquireWaiter() {
-        return maxQueued == 0 ? Optional.empty() : acquire(queued, admissionTimeoutNanos);
+        return maxQueued == 0 ? Optional.empty() : acquire(queued, 0);
     }
 
     int activeCount() {

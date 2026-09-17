@@ -206,6 +206,9 @@ class OidcProviderConfigTest {
         assertThat(remoteWork.admissionTimeout(), is(Duration.ofSeconds(1)));
         assertThat(tokenValidation.introspection().remoteWork(), is(remoteWork));
         assertThat(tenantConfig.tokenExchangeRemoteWork(), is(remoteWork));
+        assertThat(authorizationCode.refreshRemoteWork(), is(remoteWork));
+        assertThat(authorizationCode.refreshResultRetention(), is(Duration.ofSeconds(5)));
+        assertThat(authorizationCode.refreshResultCacheCapacity(), is(1024));
         assertThat(providerConfig.outboundTargets().isEmpty(), is(true));
         assertThat(List.of(OidcClientAuthenticationMethod.values()),
                    is(List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -377,6 +380,11 @@ class OidcProviderConfigTest {
                                   "A256GCM"),
                         Map.entry("tenants.default.authorization-code.request-object.encryption-key-id", "encrypt-rsa"),
                         Map.entry("tenants.default.authorization-code.request-object.lifetime", "PT2M"),
+                        Map.entry("tenants.default.authorization-code.refresh-remote-work.max-concurrent", "3"),
+                        Map.entry("tenants.default.authorization-code.refresh-remote-work.max-queued", "9"),
+                        Map.entry("tenants.default.authorization-code.refresh-remote-work.admission-timeout", "PT0.2S"),
+                        Map.entry("tenants.default.authorization-code.refresh-result-retention", "PT7S"),
+                        Map.entry("tenants.default.authorization-code.refresh-result-cache-capacity", "256"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.protection.password",
                                   "this-password-is-long-enough-for-config-test"),
@@ -490,6 +498,11 @@ class OidcProviderConfigTest {
         assertThat(requestObject.encryptionKeyId().orElse(""), is("encrypt-rsa"));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(requestObject.lifetime(), is(Duration.ofMinutes(2)));
+        assertThat(authorizationCode.refreshRemoteWork().maxConcurrent(), is(3));
+        assertThat(authorizationCode.refreshRemoteWork().maxQueued(), is(9));
+        assertThat(authorizationCode.refreshRemoteWork().admissionTimeout(), is(Duration.ofMillis(200)));
+        assertThat(authorizationCode.refreshResultRetention(), is(Duration.ofSeconds(7)));
+        assertThat(authorizationCode.refreshResultCacheCapacity(), is(256));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcCookieProtectionConfig cookieProtection = tenant.cookies().protection().orElseThrow();
         assertThat(cookieProtection.password(), is("this-password-is-long-enough-for-config-test"));
@@ -549,6 +562,10 @@ class OidcProviderConfigTest {
                         Map.entry("id-token.decryption-jwk.resource-path", "oidc-next-sign-jwk.json"),
                         Map.entry("jwk-set.refresh-interval", "PT15M"),
                         Map.entry("endpoints.jwks-uri", JWKS_URI.toString()),
+                        Map.entry("authorization-code.enabled", "false"),
+                        Map.entry("authorization-code.refresh-result-retention", "PT8S"),
+                        Map.entry("authorization-code.refresh-result-cache-capacity", "300"),
+                        Map.entry("authorization-code.refresh-remote-work.max-concurrent", "6"),
                         Map.entry("protected-resource.token-validation.method", "JWT"),
                         Map.entry("protected-resource.token-validation.audience", AUDIENCE))))
                 .build();
@@ -563,6 +580,11 @@ class OidcProviderConfigTest {
         assertThat(tenant.idToken().decryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(15)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
+        OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
+        assertThat(authorizationCode.enabled(), is(false));
+        assertThat(authorizationCode.refreshResultRetention(), is(Duration.ofSeconds(8)));
+        assertThat(authorizationCode.refreshResultCacheCapacity(), is(300));
+        assertThat(authorizationCode.refreshRemoteWork().maxConcurrent(), is(6));
         assertThat(tenant.protectedResource().orElseThrow().tokenValidation().method().orElseThrow(),
                    is(OidcTokenValidationMethod.JWT));
     }
@@ -750,6 +772,26 @@ class OidcProviderConfigTest {
         assertThat(concurrent.getMessage(), containsString("max-concurrent"));
         assertThat(queued.getMessage(), containsString("max-queued"));
         assertThat(timeout.getMessage(), containsString("admission-timeout"));
+    }
+
+    @Test
+    void authorizationCodeRejectsUnsafeRefreshCoordinationBounds() {
+        IllegalArgumentException shortRetention = assertThrows(IllegalArgumentException.class,
+                                                               () -> OidcAuthorizationCodeConfig.builder()
+                                                                       .refreshResultRetention(Duration.ofMillis(999))
+                                                                       .buildPrototype());
+        IllegalArgumentException longRetention = assertThrows(IllegalArgumentException.class,
+                                                              () -> OidcAuthorizationCodeConfig.builder()
+                                                                      .refreshResultRetention(Duration.ofSeconds(61))
+                                                                      .buildPrototype());
+        IllegalArgumentException capacity = assertThrows(IllegalArgumentException.class,
+                                                         () -> OidcAuthorizationCodeConfig.builder()
+                                                                 .refreshResultCacheCapacity(0)
+                                                                 .buildPrototype());
+
+        assertThat(shortRetention.getMessage(), containsString("refresh-result-retention"));
+        assertThat(longRetention.getMessage(), containsString("refresh-result-retention"));
+        assertThat(capacity.getMessage(), containsString("refresh-result-cache-capacity"));
     }
 
     @Test

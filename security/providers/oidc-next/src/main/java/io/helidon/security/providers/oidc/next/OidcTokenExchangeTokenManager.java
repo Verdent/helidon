@@ -16,12 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -49,7 +45,7 @@ final class OidcTokenExchangeTokenManager {
                                   OidcRemoteWorkLimiter remoteWorkLimiter,
                                   Supplier<OidcEndpointClient> endpointClientSupplier) {
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(),
-                                         tokenHash(subjectToken),
+                                         OidcTokenFingerprint.sha256(subjectToken),
                                          policy.tokenExchangeScope().orElse(""),
                                          policy.tokenExchangeResource().orElse(""),
                                          policy.tokenExchangeAudience().orElse(""));
@@ -89,18 +85,6 @@ final class OidcTokenExchangeTokenManager {
         return cachedToken.activeAt(now, clockSkew)
                 ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
                 : OidcSingleFlightCache.Resolution.doNotCache(result);
-    }
-
-    private static String tokenHash(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder()
-                    .withoutPadding()
-                    .encodeToString(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 digest is not available", e);
-        }
     }
 
     private record CacheKey(String tenantId,

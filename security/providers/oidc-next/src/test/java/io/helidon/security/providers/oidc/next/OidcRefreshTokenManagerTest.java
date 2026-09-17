@@ -18,13 +18,21 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -37,6 +45,7 @@ import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.security.SecurityTime;
 import io.helidon.security.Subject;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
@@ -83,6 +92,8 @@ class OidcRefreshTokenManagerTest {
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static final AtomicReference<RecordedRequest> RECORDED_INTROSPECTION_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> RECORDED_USER_INFO_AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicInteger TOKEN_REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicReference<TokenEndpointResponder> TOKEN_ENDPOINT_RESPONDER = new AtomicReference<>();
 
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
@@ -127,6 +138,187 @@ class OidcRefreshTokenManagerTest {
         RECORDED_REQUEST.set(null);
         RECORDED_INTROSPECTION_REQUEST.set(null);
         RECORDED_USER_INFO_AUTHORIZATION.set(null);
+        TOKEN_REQUEST_COUNT.set(0);
+        TOKEN_ENDPOINT_RESPONDER.set(null);
+    }
+
+    @Test
+    void concurrentVirtualThreadRequestsShareOneRotatingRefresh(URI serverUri) throws Exception {
+        int taskCount = 16;
+        CountDownLatch tasksReady = new CountDownLatch(taskCount);
+        CountDownLatch startTasks = new CountDownLatch(1);
+        CountDownLatch firstRequestStarted = new CountDownLatch(1);
+        CountDownLatch secondRequestStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstRequest = new CountDownLatch(1);
+        String successfulResponse = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
+        String invalidGrantResponse = JsonObject.builder().set("error", "invalid_grant").build().toString();
+        TOKEN_ENDPOINT_RESPONDER.set((requestNumber, response) -> {
+            if (requestNumber == 1) {
+                firstRequestStarted.countDown();
+                await(releaseFirstRequest);
+                sendTokenResponse(response, 200, successfulResponse);
+            } else {
+                secondRequestStarted.countDown();
+                sendTokenResponse(response, 400, invalidGrantResponse);
+            }
+        });
+        OidcTenantConfig tenant = tenant(serverUri);
+        OidcProvider provider = provider(tenant);
+        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create("default", tenant);
+        Instant now = Instant.now();
+        LocalAuthenticationCookies cookies = localAuthenticationCookies(tenant,
+                                                                         now.minusSeconds(60),
+                                                                         now.plusSeconds(3600),
+                                                                         now.minusSeconds(1));
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<AuthenticationResponse>> responses = new ArrayList<>(taskCount);
+            for (int i = 0; i < taskCount; i++) {
+                responses.add(executor.submit(() -> {
+                    tasksReady.countDown();
+                    if (!startTasks.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out waiting to start refresh task");
+                    }
+                    return authenticate(provider, cookies);
+                }));
+            }
+            assertThat(tasksReady.await(5, TimeUnit.SECONDS), is(true));
+            startTasks.countDown();
+            assertThat(firstRequestStarted.await(5, TimeUnit.SECONDS), is(true));
+            boolean duplicateRefreshStarted;
+            try {
+                duplicateRefreshStarted = secondRequestStarted.await(500, TimeUnit.MILLISECONDS);
+            } finally {
+                releaseFirstRequest.countDown();
+            }
+
+            for (Future<AuthenticationResponse> responseFuture : responses) {
+                AuthenticationResponse response = responseFuture.get(5, TimeUnit.SECONDS);
+                assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                OidcLocalAuthenticationResult result = storedLocalAuthenticationResult(response,
+                                                                                        tenant,
+                                                                                        cookieStateHandler);
+                assertThat(result.accessToken(), is(REFRESHED_ACCESS_TOKEN));
+                assertThat(result.refreshToken().orElse(""), is(ROTATED_REFRESH_TOKEN));
+                assertThat(result.browserSessionGeneration(), is(Optional.of(cookies.generation())));
+            }
+            assertThat(duplicateRefreshStarted, is(false));
+        } finally {
+            releaseFirstRequest.countDown();
+        }
+
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void completedRefreshIsSharedWithLateRequestUsingSourceCookie(URI serverUri) {
+        String successfulResponse = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
+        String invalidGrantResponse = JsonObject.builder().set("error", "invalid_grant").build().toString();
+        TOKEN_ENDPOINT_RESPONDER.set((requestNumber, response) -> sendTokenResponse(
+                response,
+                requestNumber == 1 ? 200 : 400,
+                requestNumber == 1 ? successfulResponse : invalidGrantResponse));
+        OidcTenantConfig tenant = tenant(serverUri);
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie sourceCookie = localAuthenticationCookie(tenant,
+                                                           now.minusSeconds(60),
+                                                           now.plusSeconds(3600),
+                                                           now.minusSeconds(1));
+
+        AuthenticationResponse first = authenticate(provider, sourceCookie);
+        AuthenticationResponse late = authenticate(provider, sourceCookie);
+
+        assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(late.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(storedLocalAuthenticationResult(first, tenant).refreshToken().orElse(""),
+                   is(ROTATED_REFRESH_TOKEN));
+        assertThat(storedLocalAuthenticationResult(late, tenant).refreshToken().orElse(""),
+                   is(ROTATED_REFRESH_TOKEN));
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void refreshCapacityRejectionDoesNotMutateCookiesAndNeverAuthenticatesExpiredToken(URI serverUri) throws Exception {
+        CountDownLatch leaderStarted = new CountDownLatch(1);
+        CountDownLatch releaseLeader = new CountDownLatch(1);
+        TOKEN_ENDPOINT_RESPONDER.set((requestNumber, response) -> {
+            leaderStarted.countDown();
+            await(releaseLeader);
+            sendTokenResponse(response,
+                              200,
+                              refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString());
+        });
+        OidcTenantConfig tenant = tenant(
+                serverUri,
+                List.of(),
+                authorizationCode -> authorizationCode.refreshRemoteWork(remoteWork -> remoteWork
+                        .maxConcurrent(1)
+                        .maxQueued(0)
+                        .admissionTimeout(Duration.ofHours(1))));
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie leaderCookie = localAuthenticationCookie(tenant,
+                                                           now.minusSeconds(60),
+                                                           now.plusSeconds(3600),
+                                                           now.minusSeconds(1));
+        SetCookie expiredRejectedCookie = localAuthenticationCookie(tenant,
+                                                                    now.minusSeconds(59),
+                                                                    now.plusSeconds(3600),
+                                                                    now.minusSeconds(1),
+                                                                    "expired-rejected-refresh-token");
+        SetCookie validRejectedCookie = localAuthenticationCookie(tenant,
+                                                                  now.minusSeconds(58),
+                                                                  now.plusSeconds(3600),
+                                                                  now.plusSeconds(30),
+                                                                  "valid-rejected-refresh-token");
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<AuthenticationResponse> leader = executor.submit(() -> authenticate(provider, leaderCookie));
+            assertThat(leaderStarted.await(5, TimeUnit.SECONDS), is(true));
+
+            AuthenticationResponse expiredRejected = authenticate(provider, expiredRejectedCookie);
+            AuthenticationResponse validRejected = authenticate(provider, validRejectedCookie);
+
+            assertThat(expiredRejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(expiredRejected.statusCode().orElse(-1), is(503));
+            assertThat(expiredRejected.description().orElse(""), is("OIDC authentication is unavailable"));
+            assertThat(expiredRejected.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
+            assertThat(validRejected.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertAccessToken(validRejected, OLD_ACCESS_TOKEN);
+            assertThat(validRejected.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+
+            releaseLeader.countDown();
+            assertThat(leader.get(5, TimeUnit.SECONDS).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        } finally {
+            releaseLeader.countDown();
+        }
+    }
+
+    @Test
+    void cachedTransientFailureCannotAuthenticateSourceTokenAfterItExpires(URI serverUri) {
+        responseStatus = 503;
+        responseBody = JsonObject.builder().set("error", "server_error").build().toString();
+        OidcTenantConfig tenant = tenant(serverUri);
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie sourceCookie = localAuthenticationCookie(tenant,
+                                                           now.minusSeconds(60),
+                                                           now.plusSeconds(3600),
+                                                           now.plusSeconds(30));
+
+        AuthenticationResponse beforeExpiration = authenticate(provider, sourceCookie);
+        AuthenticationResponse afterExpiration = authenticate(provider,
+                                                               sourceCookie,
+                                                               SecurityTime.builder()
+                                                                       .shiftBySeconds(120)
+                                                                       .build());
+
+        assertThat(beforeExpiration.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertAccessToken(beforeExpiration, OLD_ACCESS_TOKEN);
+        assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(afterExpiration, tenant);
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(2));
     }
 
     @Test
@@ -698,11 +890,21 @@ class OidcRefreshTokenManagerTest {
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
         RECORDED_REQUEST.set(new RecordedRequest(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                  formParameters(request.content().as(Parameters.class))));
-        response.status(responseStatus)
+        int requestNumber = TOKEN_REQUEST_COUNT.incrementAndGet();
+        TokenEndpointResponder responder = TOKEN_ENDPOINT_RESPONDER.get();
+        if (responder != null) {
+            responder.respond(requestNumber, response);
+            return;
+        }
+        sendTokenResponse(response, responseStatus, responseBody);
+    }
+
+    private static void sendTokenResponse(ServerResponse response, int status, String body) {
+        response.status(status)
                 .header(HeaderValues.CONTENT_TYPE_JSON)
                 .header(HeaderNames.CACHE_CONTROL, "no-store")
                 .header(HeaderNames.PRAGMA, "no-cache")
-                .send(responseBody);
+                .send(body);
     }
 
     private static void handleIntrospectionEndpoint(ServerRequest request, ServerResponse response) {
@@ -730,6 +932,13 @@ class OidcRefreshTokenManagerTest {
     }
 
     private static OidcTenantConfig tenant(URI serverUri, List<String> authorizationCodeResources) {
+        return tenant(serverUri, authorizationCodeResources, _ -> { });
+    }
+
+    private static OidcTenantConfig tenant(
+            URI serverUri,
+            List<String> authorizationCodeResources,
+            Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer) {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -738,9 +947,12 @@ class OidcRefreshTokenManagerTest {
                         .tokenEndpointUri(serverUri.resolve("token"))
                         .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
-                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
-                        .scopes(List.of("openid", "profile"))
-                        .resources(authorizationCodeResources))
+                .authorizationCode(it -> {
+                    it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                            .scopes(List.of("openid", "profile"))
+                            .resources(authorizationCodeResources);
+                    authorizationCodeCustomizer.accept(it);
+                })
                 .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
     }
@@ -807,14 +1019,55 @@ class OidcRefreshTokenManagerTest {
     }
 
     private static AuthenticationResponse authenticate(OidcTenantConfig tenant, SetCookie localAuthenticationCookie) {
+        return authenticate(provider(tenant), localAuthenticationCookie);
+    }
+
+    private static AuthenticationResponse authenticate(OidcProvider provider, SetCookie localAuthenticationCookie) {
+        return authenticate(provider, localAuthenticationCookie, SecurityTime.create());
+    }
+
+    private static AuthenticationResponse authenticate(OidcProvider provider,
+                                                       SetCookie localAuthenticationCookie,
+                                                       SecurityTime securityTime) {
+        return provider.authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .time(securityTime)
+                .header(HeaderNames.COOKIE.defaultCase(),
+                        localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
+                .build()));
+    }
+
+    private static AuthenticationResponse authenticate(OidcProvider provider, LocalAuthenticationCookies cookies) {
+        return provider.authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .header(HeaderNames.COOKIE.defaultCase(),
+                        cookies.localAuthentication().name() + "=" + cookies.localAuthentication().value()
+                                + "; " + cookies.generationCookie().name() + "=" + cookies.generationCookie().value())
+                .build()));
+    }
+
+    private static OidcProvider provider(OidcTenantConfig tenant) {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenant)
-                                           .buildPrototype())
-                .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
-                        .targetUri(ORIGINAL_URI)
-                        .header(HeaderNames.COOKIE.defaultCase(),
-                                localAuthenticationCookie.name() + "=" + localAuthenticationCookie.value())
-                        .build()));
+                                           .buildPrototype());
+    }
+
+    private static LocalAuthenticationCookies localAuthenticationCookies(OidcTenantConfig tenant,
+                                                                         Instant createdAt,
+                                                                         Instant expiresAt,
+                                                                         Instant accessTokenExpiresAt) {
+        OidcCookieStateHandler cookieStateHandler = OidcCookieStateHandler.create("default", tenant);
+        OidcCookieStateHandler.BrowserSessionGeneration generation =
+                cookieStateHandler.createBrowserSessionGeneration();
+        SetCookie localAuthentication = localAuthenticationCookie(tenant,
+                                                                  createdAt,
+                                                                  expiresAt,
+                                                                  accessTokenExpiresAt,
+                                                                  OLD_REFRESH_TOKEN,
+                                                                  null,
+                                                                  _ -> { },
+                                                                  generation.value());
+        return new LocalAuthenticationCookies(localAuthentication, generation.cookie(), generation.value());
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
@@ -859,6 +1112,24 @@ class OidcRefreshTokenManagerTest {
                                                        String refreshToken,
                                                        JsonObject userInfo,
                                                        Consumer<Jwt.Builder> idTokenCustomizer) {
+        return localAuthenticationCookie(tenant,
+                                         createdAt,
+                                         expiresAt,
+                                         accessTokenExpiresAt,
+                                         refreshToken,
+                                         userInfo,
+                                         idTokenCustomizer,
+                                         null);
+    }
+
+    private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,
+                                                       Instant createdAt,
+                                                       Instant expiresAt,
+                                                       Instant accessTokenExpiresAt,
+                                                       String refreshToken,
+                                                       JsonObject userInfo,
+                                                       Consumer<Jwt.Builder> idTokenCustomizer,
+                                                       String browserSessionGeneration) {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create("default", tenant)
@@ -869,6 +1140,7 @@ class OidcRefreshTokenManagerTest {
                                 .accessToken(OLD_ACCESS_TOKEN)
                                 .tokenType("Bearer")
                                 .refreshToken(Optional.ofNullable(refreshToken))
+                                .browserSessionGeneration(Optional.ofNullable(browserSessionGeneration))
                                 .scope("openid profile")
                                 .userInfo(Optional.ofNullable(userInfo))
                                 .createdAt(createdAt)
@@ -1011,15 +1283,23 @@ class OidcRefreshTokenManagerTest {
 
     private static OidcLocalAuthenticationResult storedLocalAuthenticationResult(AuthenticationResponse response,
                                                                                 OidcTenantConfig tenant) {
+        return storedLocalAuthenticationResult(response,
+                                               tenant,
+                                               OidcCookieStateHandler.create("default", tenant));
+    }
+
+    private static OidcLocalAuthenticationResult storedLocalAuthenticationResult(
+            AuthenticationResponse response,
+            OidcTenantConfig tenant,
+            OidcCookieStateHandler cookieStateHandler) {
         String localAuthenticationCookieName = tenant.cookies().localAuthenticationCookieName();
         List<String> setCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
         assertThat(setCookies.size(), is(1));
         SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
         assertThat(refreshedCookie.name(), is(localAuthenticationCookieName));
-        return OidcCookieStateHandler.create("default", tenant)
-                .readLocalAuthenticationResult(refreshedCookie.value(),
-                                               Instant.now(),
-                                               OidcIdTokenDecryptor.create(tenant))
+        return cookieStateHandler.readLocalAuthenticationResult(refreshedCookie.value(),
+                                                                Instant.now(),
+                                                                OidcIdTokenDecryptor.create(tenant))
                 .orElseThrow();
     }
 
@@ -1029,6 +1309,27 @@ class OidcRefreshTokenManagerTest {
             result.put(name, parameters.all(name));
         }
         return result;
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting for test synchronization");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted during test synchronization", e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface TokenEndpointResponder {
+        void respond(int requestNumber, ServerResponse response);
+    }
+
+    private record LocalAuthenticationCookies(SetCookie localAuthentication,
+                                              SetCookie generationCookie,
+                                              String generation) {
     }
 
     private record RecordedRequest(String authorization, Map<String, List<String>> formParameters) {

@@ -741,10 +741,11 @@ protected-resource:
         admission-timeout: "PT0.25S"
 ```
 
-`max-concurrent` bounds Introspection Endpoint HTTP operations currently running for this tenant. `max-queued` bounds
-callers waiting for an active permit. `admission-timeout` is the total time a caller may spend joining that queue and
-obtaining an active permit; `PT0S` makes admission fail immediately. Setting `max-queued` to `0` also makes requests fail
-immediately whenever all active permits are occupied.
+`max-concurrent` bounds Introspection Endpoint HTTP operations currently running for this tenant. `max-queued` is a hard
+bound on callers waiting for an active permit; callers which cannot reserve queue capacity fail immediately.
+`admission-timeout` controls how long an admitted caller may wait for an active permit, and `PT0S` makes active admission
+fail immediately. Setting `max-queued` to `0` also makes requests fail immediately whenever all active permits are
+occupied.
 
 The defaults are 32 concurrent operations, 128 queued callers, and a `PT1S` admission timeout. Limits are local to each
 tenant in each `OidcProvider` instance, so every service node enforces its own capacity. Cache behavior does not change:
@@ -1958,11 +1959,11 @@ security:
             token-exchange-audience: "api://orders"
 ```
 
-`token-exchange-remote-work` uses the same defaults and option semantics as introspection remote work: 32 active, 128
-queued, and `PT1S` for admission. It is tenant configuration shared by all Token Exchange outbound targets for that tenant;
-it does not limit Token Propagation or Client Credentials Grant. On overload, outbound security returns `FAILURE` with the
-controlled description `Token Exchange failed` and does not add an exchanged Bearer token. `PT0S` or `max-queued: 0`
-provides fail-fast behavior when active capacity is exhausted.
+`token-exchange-remote-work` uses the same defaults and option semantics as introspection remote work: 32 active, a hard
+bound of 128 queued callers, and `PT1S` for an admitted caller to obtain active capacity. It is tenant configuration shared
+by all Token Exchange outbound targets for that tenant; it does not limit Token Propagation or Client Credentials Grant.
+On overload, outbound security returns `FAILURE` with the controlled description `Token Exchange failed` and does not add
+an exchanged Bearer token. `PT0S` or `max-queued: 0` provides fail-fast behavior when active capacity is exhausted.
 
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
 `OidcOutboundPolicy`.
@@ -2092,8 +2093,9 @@ cookies:
 ```
 
 Cookie lifetimes must be positive. Both names must be distinct valid HTTP cookie names. Use the same cookie protection
-password, salt override, and iteration count on every service node that must accept the same browser session; no request
-affinity is required when nodes share those settings.
+password, salt override, and iteration count on every service node that must accept the same browser session. This makes
+cookies readable without affinity, but safe coalescing of refresh-token rotation remains process-local as described
+below.
 
 The local authentication result lifetime is capped by the configured `local-authentication-lifetime` and by token
 expiration. The provider uses the ID Token as the authentication source and exposes the access token through
@@ -2101,6 +2103,36 @@ expiration. The provider uses the ID Token as the authentication source and expo
 
 If a refresh token is available, the provider can refresh the local authentication result before the access token
 expires. A terminal refresh failure, such as `invalid_grant`, removes the local authentication cookie.
+
+Concurrent requests carrying the same source authentication cookie share one refresh operation within a tenant runtime.
+The elected caller performs the Token Endpoint request, refreshed-token validation, and UserInfo retrieval. Admitted
+followers wait interruptibly without holding a cache or coordination lock, which allows virtual threads to park normally.
+All admitted cohort callers receive the same refreshed, retained, removal, or unavailable decision.
+
+A completed result remains reusable for a short grace interval so a request which reaches refresh just after rotation
+does not submit the now-invalid old refresh token. The key contains SHA-256 fingerprints rather than raw ID, access, or
+refresh tokens and also identifies the source browser generation and local-session creation time. The grace cache is
+strictly capacity bounded. Defaults are five seconds and 1,024 completed source sessions; configuration rejects intervals
+below one second or above one minute to avoid both ineffective coordination and long refresh-token replay windows.
+
+```yaml
+authorization-code:
+  refresh-result-retention: "PT5S"
+  refresh-result-cache-capacity: 1024
+  refresh-remote-work:
+    max-concurrent: 32
+    max-queued: 128
+    admission-timeout: "PT1S"
+```
+
+Refresh coordination and its limits are local to one tenant in one `OidcProvider` runtime. In a multi-node deployment,
+route a browser session consistently during refresh or use an Authorization Server with an appropriate legitimate-use
+grace policy. Process-local coordination cannot suppress a simultaneous redemption performed by another service node.
+
+Queue capacity is reserved without waiting and is therefore a hard bound. A distinct source session may wait up to
+`admission-timeout` for an active refresh slot. A same-session follower reserves a queue slot and then waits interruptibly
+for its leader. If admission fails or a follower is interrupted, a still-valid access token remains usable without a
+cookie change. An expired session receives `503 Service Unavailable` without cookie deletion or a competing login flow.
 
 ## Validating Refreshed Tokens
 
@@ -2508,6 +2540,7 @@ Common checks:
 | `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. Without `kid`, exactly one key must remain eligible after algorithm, use, operations, type, and strength filtering. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
 | `Bearer Token validation is unavailable` with HTTP `503` | Introspection admission capacity is exhausted. Check Introspection Endpoint latency and health, inbound request rate, and `protected-resource.token-validation.introspection.remote-work`; increase limits only within the service and Authorization Server connection budgets. |
+| `OIDC authentication is unavailable` with HTTP `503` while a local session refreshes | Refresh admission capacity is exhausted or the caller was interrupted after its source access token expired. Check Token Endpoint latency and health plus `authorization-code.refresh-remote-work`. No authentication cookie is removed by this response. |
 | `Bearer Token request is invalid` | Check for multiple Bearer token sources, multiple Authorization Bearer values, malformed `access_token` query parameters, or non-HTTPS transport when secure transport is required. |
 | Browser login loops or callback failures | Check redirect URI registration, reverse proxy requested-URI discovery, `X-Forwarded-*` headers, cookie domain/path/SameSite settings, clock skew, JWKS availability and key selection, PKCE metadata, PAR/JAR requirements, and cookie protection setting consistency. |
 | UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
@@ -2599,6 +2632,9 @@ Authorization Code Flow options:
 | `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
 | `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
 | `request-object` | RFC 9101 signed or signed-then-encrypted Request Object configuration. Defaults to `AUTO` mode without signing key material, so no Request Object is sent unless `signing-jwk` is configured or loaded metadata requires signed Request Objects. |
+| `refresh-remote-work` | Per-tenant admission limits for local-session refresh. One leader refreshes a source session and admitted same-session followers share its result. |
+| `refresh-result-retention` | Grace interval for reusing a completed outcome with the exact source session. Defaults to `PT5S`; must be between `PT1S` and `PT1M`, inclusive. |
+| `refresh-result-cache-capacity` | Strict maximum number of completed source-session outcomes retained during the grace interval. Defaults to `1024` and must be positive. Active operations are tracked separately. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
 
@@ -2726,11 +2762,11 @@ Introspection options:
 | `client-assertion` | Client assertion signing configuration for Introspection Endpoint `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Defaults to the tenant `client-assertion`. |
 | `remote-work` | Per-tenant admission limits for Introspection Endpoint requests. |
 
-Remote work options are used by `protected-resource.token-validation.introspection.remote-work` and
-`token-exchange-remote-work`:
+Remote work options are used by `authorization-code.refresh-remote-work`,
+`protected-resource.token-validation.introspection.remote-work`, and `token-exchange-remote-work`:
 
 | Key | Description |
 | --- | --- |
 | `max-concurrent` | Maximum remote HTTP operations running concurrently. Defaults to `32` and must be positive. |
-| `max-queued` | Maximum callers waiting for an active permit or an existing same-key operation. Defaults to `128`, must not be negative, and `0` provides fail-fast overload behavior. |
-| `admission-timeout` | Total admission time allowed. A new operation may join the bounded queue and obtain an active permit; a same-key follower may reserve a queue slot. Defaults to `PT1S`, must not be negative, and `PT0S` provides fail-fast admission. Once admitted as a same-key follower, the caller waits interruptibly for that operation to complete. |
+| `max-queued` | Hard maximum number of callers waiting for an active permit or an existing same-key operation. Queue capacity is reserved without waiting. Defaults to `128`, must not be negative, and `0` provides fail-fast overload behavior. |
+| `admission-timeout` | Time an admitted new operation may wait for an active permit. Defaults to `PT1S`, must not be negative, and `PT0S` provides fail-fast active admission. Once admitted as a same-key follower, the caller waits interruptibly for that operation to complete. |

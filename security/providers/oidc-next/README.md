@@ -10,7 +10,7 @@ named tenants under `tenants` and use `default-tenant` or `tenant-resolution` to
 The current implementation supports:
 
 - Protected Resource Bearer Token authentication.
-- Access-token validation by local JWT validation against an explicit JWKS URI or a JWKS URI from well-known metadata.
+- Access-token validation by local JWT validation against a provider JWKS URI or explicitly provisioned local verification keys.
 - Access-token validation by OAuth 2.0 Token Introspection.
 - Introspection Endpoint authentication with separate protected-resource credentials when needed.
 - RFC 8705 certificate-bound access-token validation for Protected Resource Bearer Token requests.
@@ -564,13 +564,43 @@ security:
             clock-skew: "PT1M"
 ```
 
-`issuer` or `endpoints.well-known-uri` is required. `endpoints.jwks-uri` can be configured explicitly; otherwise the
-provider loads well-known metadata and uses its `jwks_uri`. RFC 9068 JWT access-token validation expects `audience` to
-identify this resource server.
-When the JWK Set URI comes from well-known metadata, the provider treats it as the OpenID Provider's published public
-key set and rejects JWK Sets containing private or symmetric key values. Explicit local/private JWK resources for client
-assertion signing and ID Token decryption are configured separately under `client-assertion.jwk` and
-`id-token.decryption-jwk`.
+`issuer` or `endpoints.well-known-uri` is required. By default, `endpoints.jwks-uri` can be configured explicitly;
+otherwise the provider loads well-known metadata and uses its `jwks_uri`. RFC 9068 JWT access-token validation expects
+`audience` to identify this resource server.
+
+Provider JWKS URIs always supply public keys, whether configured explicitly, discovered, or overridden alongside
+discovery. Initial loads and refreshes reject private or symmetric key material, including in file-backed copies of
+provider JWKS. This follows the OP key-set rule in
+[OpenID Connect Discovery section 3](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata).
+RP private resources for client authentication, Request Object signing, ID Token decryption, and UserInfo decryption
+remain separate; they are not subject to the OP public-key-only restriction.
+
+For locally provisioned JWT access-token verification keys, use `protected-resource.token-validation.verification-jwk`.
+This option is required for HMAC access-token algorithms. Its complete key set is used exclusively for access tokens;
+there is no fallback to, or merging with, provider JWKS keys. It does not supply keys for ID Tokens, UserInfo, or Request
+Objects, and it does not enable HMAC ID Token or UserInfo signatures. Provision these keys securely from the trusted
+authorization server; the option does not derive verification keys from `client-secret`.
+
+```yaml
+issuer: "https://issuer.example"
+protected-resource:
+  token-validation:
+    method: JWT
+    audience: "api://orders"
+    allowed-algorithms: [ "HS256" ]
+    verification-jwk:
+      path: "/run/secrets/access-token-verification.jwks"
+```
+
+`verification-jwk` accepts Common Resource configuration for filesystem `path`, classpath `resource-path`, inline
+`content-plain`, or Base64 `content`. URI sources are rejected before opening. It requires `method: JWT` and does not
+remove issuer, audience, algorithm, key-use, or token-claim validation. A local-only JWT tenant with an explicit issuer
+does not need discovery or a provider JWKS URI; other enabled OIDC flows still require their normal metadata and OP keys.
+When discovery is loaded, its required JWKS metadata is still validated.
+
+Tenant `jwk-set` refresh, unknown-key throttling, and failure policies also apply to local verification keys. A
+successfully loaded empty key set replaces the old keys; it is not a fetch failure that retains stale keys. Configurations
+that previously placed HMAC secrets in `endpoints.jwks-uri` must move those keys to `verification-jwk`.
 
 Audience validation is enabled by default. For JWT access tokens, disabling it relaxes RFC 9068 validation, logs a warning
 during configuration, and should be used only for testing, local development, or legacy non-RFC9068 tokens. Without a
@@ -2857,7 +2887,8 @@ Token validation options:
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
-| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
+| `verification-jwk` | Optional local JWK Set resource configuration used exclusively for JWT access-token verification. Required for HMAC algorithms. URI sources are rejected; tenant JWK refresh policies apply. No fallback to provider JWKS. |
+| `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected; HMAC algorithms require `verification-jwk`. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |
 
 Certificate-bound access-token options:

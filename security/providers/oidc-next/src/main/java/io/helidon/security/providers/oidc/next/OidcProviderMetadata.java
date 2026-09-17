@@ -33,7 +33,6 @@ final class OidcProviderMetadata {
     private final Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri;
     private final Optional<URI> mutualTlsIntrospectionEndpointUri;
     private final Optional<URI> jwkSetUri;
-    private final boolean jwkSetUriFromWellKnownMetadata;
     private final Optional<List<String>> responseTypesSupported;
     private final Optional<List<String>> grantTypesSupported;
     private final Optional<List<String>> codeChallengeMethodsSupported;
@@ -69,7 +68,6 @@ final class OidcProviderMetadata {
                                  Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                  Optional<URI> mutualTlsIntrospectionEndpointUri,
                                  Optional<URI> jwkSetUri,
-                                 boolean jwkSetUriFromWellKnownMetadata,
                                  Optional<List<String>> responseTypesSupported,
                                  Optional<List<String>> grantTypesSupported,
                                  Optional<List<String>> codeChallengeMethodsSupported,
@@ -104,7 +102,6 @@ final class OidcProviderMetadata {
         this.mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsPushedAuthorizationRequestEndpointUri;
         this.mutualTlsIntrospectionEndpointUri = mutualTlsIntrospectionEndpointUri;
         this.jwkSetUri = jwkSetUri;
-        this.jwkSetUriFromWellKnownMetadata = jwkSetUriFromWellKnownMetadata;
         this.responseTypesSupported = responseTypesSupported.map(List::copyOf);
         this.grantTypesSupported = grantTypesSupported.map(List::copyOf);
         this.codeChallengeMethodsSupported = codeChallengeMethodsSupported.map(List::copyOf);
@@ -148,7 +145,6 @@ final class OidcProviderMetadata {
                                         Optional.empty(),
                                         Optional.empty(),
                                         endpoints.jwksUri(),
-                                        false,
                                         Optional.empty(),
                                         Optional.empty(),
                                         Optional.empty(),
@@ -187,7 +183,6 @@ final class OidcProviderMetadata {
                                         mutualTlsEndpointUri(json, "pushed_authorization_request_endpoint"),
                                         mutualTlsEndpointUri(json, "introspection_endpoint"),
                                         jwkSetUri,
-                                        jwkSetUri.isPresent(),
                                         stringArrayValue(json, "response_types_supported"),
                                         stringArrayValue(json, "grant_types_supported"),
                                         stringArrayValue(json, "code_challenge_methods_supported"),
@@ -223,9 +218,6 @@ final class OidcProviderMetadata {
     OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnown) {
         validateWellKnownMetadataIssuer(wellKnown);
         Optional<URI> mergedJwkSetUri = jwkSetUri.or(wellKnown::jwkSetUri);
-        boolean mergedJwkSetUriFromWellKnownMetadata = jwkSetUri.isPresent()
-                ? jwkSetUriFromWellKnownMetadata
-                : wellKnown.jwkSetUriFromWellKnownMetadata();
         return new OidcProviderMetadata(issuer.or(wellKnown::issuer),
                                         wellKnownUri.or(wellKnown::wellKnownUri),
                                         authorizationEndpointUri.or(wellKnown::authorizationEndpointUri),
@@ -236,7 +228,6 @@ final class OidcProviderMetadata {
                                         mutualTlsIntrospectionEndpointUri
                                                 .or(wellKnown::mutualTlsIntrospectionEndpointUri),
                                         mergedJwkSetUri,
-                                        mergedJwkSetUriFromWellKnownMetadata,
                                         responseTypesSupported.or(wellKnown::responseTypesSupported),
                                         grantTypesSupported.or(wellKnown::grantTypesSupported),
                                         codeChallengeMethodsSupported.or(wellKnown::codeChallengeMethodsSupported),
@@ -314,10 +305,6 @@ final class OidcProviderMetadata {
 
     Optional<URI> jwkSetUri() {
         return jwkSetUri;
-    }
-
-    boolean jwkSetUriFromWellKnownMetadata() {
-        return jwkSetUriFromWellKnownMetadata;
     }
 
     Optional<List<String>> responseTypesSupported() {

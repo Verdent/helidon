@@ -69,7 +69,7 @@ class OidcIdTokenValidatorTest {
                 .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
         jwksUri = OidcIdTokenValidatorTest.class.getClassLoader()
-                .getResource("oidc-next-verify-jwk.json")
+                .getResource("oidc-next-verify-multiple-public-jwk.json")
                 .toURI();
         singleJwksUri = OidcIdTokenValidatorTest.class.getClassLoader()
                 .getResource("oidc-next-verify-public-jwk.json")

@@ -23,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 
+import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
@@ -43,19 +45,25 @@ final class OidcJwkSetLoader {
         this.webClient = webClient;
     }
 
-    JwkKeys load(URI uri, boolean openIdProviderJwkSet) {
-        JsonObject jsonObject = loadJson(uri);
-        if (openIdProviderJwkSet) {
-            validateOpenIdProviderJwkSet(jsonObject);
+    static JwkKeys loadLocal(ResourceConfig config) {
+        if (config.uri().isPresent()) {
+            throw new IllegalArgumentException("token-validation.verification-jwk must be local key material, not a URI");
         }
+        Resource resource = config.build();
+        resource.cacheBytes();
+        return JwkKeys.builder().resource(resource).build();
+    }
+
+    JwkKeys load(URI uri) {
+        JsonObject jsonObject = loadJson(uri);
+        validateOpenIdProviderJwkSet(jsonObject);
         return JwkKeys.create(jsonObject);
     }
 
     private static void validateOpenIdProviderJwkSet(JsonObject jsonObject) {
         /*
-         * This validation applies only to the OpenID Provider JWK Set loaded from provider metadata. Explicit local
-         * JWK resources, such as client assertion signing keys or ID Token decryption keys, are loaded without this
-         * provider-metadata restriction.
+         * Configured and discovered provider JWK Set URIs have the same public-key role. Explicit local resources
+         * for access-token verification, client assertion signing, or ID Token decryption are loaded separately.
          *
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata, jwks_uri
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata

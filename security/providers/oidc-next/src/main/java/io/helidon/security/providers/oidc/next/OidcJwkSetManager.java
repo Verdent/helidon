@@ -22,29 +22,31 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetManager {
     private final String tenantId;
-    private final OidcProviderMetadata metadata;
+    private final Optional<URI> jwkSetUri;
     private final OidcJwkSetConfig config;
-    private final OidcJwkSetLoader jwkSetLoader;
+    private final Supplier<JwkKeys> keyLoader;
     private final Clock clock;
     private final ReentrantLock refreshLock = new ReentrantLock();
     private volatile JwkSetState state = JwkSetState.empty();
     private Instant lastUnknownKeyIdRefreshAttempt;
 
     private OidcJwkSetManager(String tenantId,
-                              OidcProviderMetadata metadata,
+                              Optional<URI> jwkSetUri,
                               OidcJwkSetConfig config,
-                              OidcJwkSetLoader jwkSetLoader,
+                              Supplier<JwkKeys> keyLoader,
                               Clock clock) {
         this.tenantId = tenantId;
-        this.metadata = metadata;
+        this.jwkSetUri = jwkSetUri;
         this.config = config;
-        this.jwkSetLoader = jwkSetLoader;
+        this.keyLoader = keyLoader;
         this.clock = clock;
     }
 
@@ -67,11 +69,24 @@ final class OidcJwkSetManager {
                                     WebClient webClient,
                                     Clock clock,
                                     OidcJwkSetConfig config) {
-        return new OidcJwkSetManager(tenantId, metadata, config, new OidcJwkSetLoader(webClient), clock);
+        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient);
+        Optional<URI> uri = metadata.jwkSetUri();
+        return new OidcJwkSetManager(tenantId, uri, config,
+                                    () -> loader.load(uri.orElseThrow(() -> new IllegalStateException(
+                                            "JWK Set URI is not configured for tenant: "
+                                                    + OidcDiagnostics.sanitizeLogValue(tenantId)))), clock);
+    }
+
+    static OidcJwkSetManager createLocal(String tenantId,
+                                         ResourceConfig verificationJwk,
+                                         Clock clock,
+                                         OidcJwkSetConfig config) {
+        return new OidcJwkSetManager(tenantId, Optional.empty(), config,
+                                    () -> OidcJwkSetLoader.loadLocal(verificationJwk), clock);
     }
 
     Optional<URI> jwkSetUri() {
-        return metadata.jwkSetUri();
+        return jwkSetUri;
     }
 
     JwkKeys jwkKeys() {
@@ -97,15 +112,12 @@ final class OidcJwkSetManager {
     }
 
     private JwkKeys loadJwkKeys() {
-        URI uri = jwkSetUri()
-                .orElseThrow(() -> new IllegalStateException("JWK Set URI is not configured for tenant: "
-                                                                     + OidcDiagnostics.sanitizeLogValue(tenantId)));
         try {
-            return jwkSetLoader.load(uri, metadata.jwkSetUriFromWellKnownMetadata());
+            return keyLoader.get();
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to load JWK Set for tenant: "
                                                     + OidcDiagnostics.sanitizeLogValue(tenantId)
-                                                    + ", uri=" + OidcDiagnostics.safeUri(uri),
+                                                    + jwkSetUri.map(uri -> ", uri=" + OidcDiagnostics.safeUri(uri)).orElse(""),
                                             e);
         }
     }

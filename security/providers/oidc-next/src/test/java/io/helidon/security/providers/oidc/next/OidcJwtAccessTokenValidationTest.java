@@ -43,6 +43,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -61,6 +62,7 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
@@ -113,10 +115,10 @@ class OidcJwtAccessTokenValidationTest {
         signKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-sign-jwk.json"))
                 .build();
-        verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
+        verifyJwkSet = Resource.create("oidc-next-verify-public-jwk.json").string();
         publicVerifyJwkSet = Resource.create("oidc-next-verify-public-jwk.json").string();
         jwksUri = OidcJwtAccessTokenValidationTest.class.getClassLoader()
-                .getResource("oidc-next-verify-jwk.json")
+                .getResource("oidc-next-verify-public-jwk.json")
                 .toURI();
     }
 
@@ -528,6 +530,98 @@ class OidcJwtAccessTokenValidationTest {
 
         assertInvalidToken(response, "Bearer Token signature keys are unavailable");
         assertThat(remoteJwkSetRequests.get(), is(1));
+    }
+
+    @Test
+    void localVerificationKeysReloadOnUnknownKeyId() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path file = tempDir.resolve("local-jwks.json");
+        String localKeys = Resource.create("oidc-next-verify-jwk.json").string();
+        Files.writeString(file, localKeys);
+        OidcJwkSetConfig config = OidcJwkSetConfig.create();
+        OidcJwkSetManager manager = OidcJwkSetManager.createLocal("local",
+                ResourceConfig.builder().path(file).buildPrototype(), clock, config);
+
+        assertThat(manager.jwkKeys().forKeyId("verify-oct").isPresent(), is(true));
+        Files.writeString(file, localKeys.replace("\"verify-oct\"", "\"rotated-oct\""));
+        clock.advance(config.unknownKeyIdRefreshInterval());
+
+        JwkKeys refreshed = manager.jwkKeys(Optional.of("rotated-oct"));
+        assertThat(refreshed.forKeyId("rotated-oct").isPresent(), is(true));
+        assertThat(refreshed.forKeyId("verify-oct").isEmpty(), is(true));
+    }
+
+    @Test
+    void emptyLocalKeySetRevokesCachedKeysEvenWhenStaleKeysAreAllowed() throws Exception {
+        MutableClock clock = MutableClock.create(TEST_INSTANT);
+        Path file = tempDir.resolve("local-jwks.json");
+        Files.writeString(file, Resource.create("oidc-next-verify-jwk.json").string());
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder().refreshInterval(Duration.ofSeconds(1))
+                .staleOnError(true).buildPrototype();
+        OidcJwkSetManager manager = OidcJwkSetManager.createLocal("local",
+                ResourceConfig.builder().path(file).buildPrototype(), clock, config);
+        assertThat(manager.jwkKeys().forKeyId("verify-oct").isPresent(), is(true));
+
+        Files.writeString(file, emptyJwkSet());
+        clock.advance(Duration.ofSeconds(2));
+
+        assertThat(manager.jwkKeys().keys().isEmpty(), is(true));
+        assertThat(manager.jwkKeys(Optional.of("verify-oct")).forKeyId("verify-oct").isEmpty(), is(true));
+    }
+
+    @Test
+    void localVerificationKeysSupportConcurrentVirtualThreadCallers() throws Exception {
+        Path file = tempDir.resolve("local-jwks.json");
+        Files.writeString(file, Resource.create("oidc-next-verify-jwk.json").string());
+        OidcJwkSetManager manager = OidcJwkSetManager.createLocal("local",
+                ResourceConfig.builder().path(file).buildPrototype(), Clock.fixed(TEST_INSTANT, ZoneId.of("UTC")),
+                OidcJwkSetConfig.create());
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, 64, start, manager::jwkKeys);
+            start.countDown();
+            for (Future<JwkKeys> future : futures) {
+                assertThat(future.get(5, TimeUnit.SECONDS).forKeyId("verify-oct").isPresent(), is(true));
+            }
+        }
+    }
+
+    @Test
+    void privateMaterialIsRejectedDuringPeriodicAndUnknownKeyRefresh() throws Exception {
+        for (boolean periodic : List.of(false, true)) {
+            for (boolean staleAllowed : List.of(false, true)) {
+                MutableClock clock = MutableClock.create(TEST_INSTANT);
+                Path file = tempDir.resolve("public-jwks.json");
+                Files.writeString(file, publicVerifyJwkSet);
+                OidcJwkSetConfig.Builder config = OidcJwkSetConfig.builder()
+                        .staleOnError(staleAllowed).unknownKeyIdRefreshInterval(Duration.ZERO);
+                if (periodic) {
+                    config.refreshInterval(Duration.ofSeconds(1));
+                }
+                OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(OidcTenantConfig.builder()
+                        .issuer(ISSUER.toString()).endpoints(endpoints -> endpoints.jwksUri(file.toUri()).tlsRequired(false))
+                        .buildPrototype());
+                WebClient client = WebClient.create();
+                try {
+                    OidcJwkSetManager manager = OidcJwkSetManager.create("public", metadata, client, clock, config.buildPrototype());
+                    assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+                    Files.writeString(file, Resource.create("oidc-next-verify-jwk.json").string());
+                    clock.advance(Duration.ofSeconds(2));
+                    Supplier<JwkKeys> reload = periodic ? manager::jwkKeys : () -> manager.jwkKeys(Optional.of("verify-oct"));
+                    if (staleAllowed) {
+                        JwkKeys keys = reload.get();
+                        assertThat(keys.forKeyId("verify-rsa").isPresent(), is(true));
+                        assertThat(keys.forKeyId("verify-oct").isEmpty(), is(true));
+                    } else {
+                        IllegalStateException failure = assertThrows(IllegalStateException.class, reload::get);
+                        assertThat(failure.getCause().getMessage(),
+                                   is("OpenID Provider JWK Set must not contain private or symmetric key values"));
+                    }
+                } finally {
+                    client.closeResource();
+                }
+            }
+        }
     }
 
     @Test
@@ -1067,6 +1161,20 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void locallyProvisionedHmacAccessTokenIsAccepted() {
+        String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
+        OidcProvider provider = provider(true, true, jwksUri,
+                tenant -> tenant.protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .allowedAlgorithms(List.of(JwkOctet.ALG_HS256))
+                        .verificationJwk(ResourceConfig.builder()
+                                                 .resourcePath("oidc-next-verify-jwk.json").buildPrototype()))));
+
+        assertThat(authenticate(provider, token).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
         String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
 
@@ -1272,7 +1380,7 @@ class OidcJwtAccessTokenValidationTest {
                                                            Supplier<JwkKeys> operation) {
         return IntStream.range(0, threads)
                 .mapToObj(_ -> executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     return operation.get();
                 }))
                 .toList();

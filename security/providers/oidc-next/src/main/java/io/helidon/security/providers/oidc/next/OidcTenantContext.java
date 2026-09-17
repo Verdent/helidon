@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Clock;
 import java.util.Optional;
 
 import io.helidon.webclient.api.WebClient;
@@ -178,6 +179,11 @@ final class OidcTenantContext {
         return runtimeResources().jwkSetManager();
     }
 
+    OidcJwkSetManager accessTokenJwkSetManager() {
+        RuntimeResources resources = runtimeResources();
+        return resources.accessTokenJwkSetManager().orElse(resources.jwkSetManager());
+    }
+
     OidcRemoteWorkLimiter introspectionRemoteWorkLimiter() {
         return runtimeResources().remoteWorkLimiters().introspection();
     }
@@ -248,6 +254,7 @@ final class OidcTenantContext {
                                     Optional<OidcRequestObjectProcessor> requestObjectProcessor,
                                     OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
+                                    Optional<OidcJwkSetManager> accessTokenJwkSetManager,
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
                                     RemoteWorkLimiters remoteWorkLimiters,
@@ -262,12 +269,17 @@ final class OidcTenantContext {
                                                                       metadata,
                                                                       webClient,
                                                                       tenantConfig.jwkSet());
+            Optional<OidcJwkSetManager> accessTokenJwkSetManager = tenantConfig.protectedResource()
+                    .map(OidcProtectedResourceConfig::tokenValidation)
+                    .flatMap(OidcTokenValidationConfig::verificationJwk)
+                    .map(resource -> OidcJwkSetManager.createLocal(tenantId, resource, Clock.systemUTC(), tenantConfig.jwkSet()));
             return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
                                         new OidcEndpointClient(tenantConfig, metadata, webClient),
                                         OidcRequestObjectProcessor.create(tenantConfig, jwkSetManager),
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         jwkSetManager,
+                                        accessTokenJwkSetManager,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
                                         RemoteWorkLimiters.create(tenantConfig),

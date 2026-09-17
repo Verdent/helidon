@@ -52,14 +52,22 @@ final class OidcJwkSetManager {
                                     OidcProviderMetadata metadata,
                                     WebClient webClient,
                                     OidcJwkSetConfig config) {
-        return new OidcJwkSetManager(tenantId, metadata, config, new OidcJwkSetLoader(webClient), Clock.systemUTC());
+        return create(tenantId, metadata, webClient, Clock.systemUTC(), config);
     }
 
     static OidcJwkSetManager create(String tenantId,
                                     OidcProviderMetadata metadata,
                                     Clock clock,
                                     OidcJwkSetConfig config) {
-        return new OidcJwkSetManager(tenantId, metadata, config, new OidcJwkSetLoader(WebClient.create()), clock);
+        return create(tenantId, metadata, WebClient.create(), clock, config);
+    }
+
+    static OidcJwkSetManager create(String tenantId,
+                                    OidcProviderMetadata metadata,
+                                    WebClient webClient,
+                                    Clock clock,
+                                    OidcJwkSetConfig config) {
+        return new OidcJwkSetManager(tenantId, metadata, config, new OidcJwkSetLoader(webClient), clock);
     }
 
     Optional<URI> jwkSetUri() {

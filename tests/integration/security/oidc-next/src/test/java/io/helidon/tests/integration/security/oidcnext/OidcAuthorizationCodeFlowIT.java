@@ -40,6 +40,44 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcAuthorizationCodeFlowIT {
     @Test
+    void signedOnlyBrowserFlowIgnoresUnrelatedEncryptionCapabilities() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .user("alice", user -> user.subject("alice-id")
+                        .claim("preferred_username", "alice")
+                        .claim("email", "alice@example.org"))
+                .defaultScopes("openid", "profile")
+                .tokenDefaults(tokens -> tokens.idToken(id -> id.includeUserClaims("preferred_username")))
+                .metadata("id_token_encryption_alg_values_supported", List.of("dir"))
+                .metadata("id_token_encryption_enc_values_supported", List.of("A192GCM"))
+                .build()) {
+            OidcProviderConfig config = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp, _ -> { });
+            assertThat(config.tenants().get("default").idToken().encryptionRequired(), is(false));
+            assertThat(config.tenants().get("default").idToken().decryptionJwk().isEmpty(), is(true));
+            WebServer rp = OidcIntegrationSupport.rpServer(config,
+                    routing -> OidcIntegrationSupport.protectedRoute(routing, "/resource"));
+            try (BrowserSession browser = new BrowserSession()) {
+                URI resource = OidcIntegrationSupport.rpBaseUri(rp).resolve("/resource");
+                URI callback = authorizeWithoutBrowser(browser, resource);
+                try (HttpClientResponse response = browser.get(callback)) {
+                    assertThat(response.status(), is(Status.SEE_OTHER_303));
+                }
+                try (HttpClientResponse response = browser.get(resource)) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
+                }
+                assertThat(idp.metadataRequests().isEmpty(), is(false));
+                assertThat(idp.jwksRequests().isEmpty(), is(false));
+                assertThat(idp.tokenRequests().size(), is(1));
+            } finally {
+                rp.stop();
+            }
+        }
+    }
+
+    @Test
     void browserAuthorizationCodeFlowAuthenticatesProtectedResource() {
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client

@@ -528,6 +528,12 @@ final class OidcTenantContextFactory {
 
     private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,
                                                                   OidcProviderMetadata metadata) {
+        OidcIdTokenConfig idToken = tenantConfig.idToken();
+        // OP capabilities do not request encryption for this client (OpenID Connect Client Registration, section 2).
+        if (!idToken.encryptionRequired() && idToken.decryptionJwk().isEmpty()) {
+            return;
+        }
+
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
@@ -537,7 +543,7 @@ final class OidcTenantContextFactory {
          * encryption algorithms (`enc` values) supported by the OP for the ID Token to encode the Claims in a JWT."
          */
         metadata.idTokenEncryptionAlgorithmsSupported()
-                .filter(supportedAlgorithms -> tenantConfig.idToken()
+                .filter(supportedAlgorithms -> idToken
                         .allowedEncryptionAlgorithms()
                         .stream()
                         .noneMatch(supportedAlgorithms::contains))
@@ -547,7 +553,7 @@ final class OidcTenantContextFactory {
                                     + "configured ID Token encryption algorithm");
                 });
         metadata.idTokenContentEncryptionAlgorithmsSupported()
-                .filter(supportedAlgorithms -> tenantConfig.idToken()
+                .filter(supportedAlgorithms -> idToken
                         .allowedContentEncryptionAlgorithms()
                         .stream()
                         .noneMatch(supportedAlgorithms::contains))

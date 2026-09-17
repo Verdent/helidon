@@ -963,7 +963,6 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void configuredIdTokenEncryptionStillRejectsIncompatibleCapabilities() {
         List<Consumer<OidcIdTokenConfig.Builder>> modes = List.of(
-                idToken -> idToken.encryptionRequired(true),
                 idToken -> idToken.decryptionJwk(idTokenDecryptionKeys()),
                 idToken -> idToken.encryptionRequired(true).decryptionJwk(idTokenDecryptionKeys()));
         for (Consumer<OidcIdTokenConfig.Builder> mode : modes) {

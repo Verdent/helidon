@@ -1602,6 +1602,19 @@ The same authentication methods can be used for Token Introspection, but introsp
 `protected-resource.token-validation.introspection`. If `introspection.client-assertion` is omitted, the tenant
 `client-assertion` is reused. For introspection assertions, the `aud` claim is the Introspection Endpoint URI.
 
+Private assertion key resources are buffered through Common's `Resource` when the client assertion configuration is
+built, before runtime consumers share it. This closes the original stream and enables repeated and concurrent reads
+for inherited assertions, deferred endpoint clients, and provider/feature initialization. Each authentication-support
+instance parses its signing key from the buffered resource and retains that key for its requests.
+
+Only key material is reused, not a signed assertion. Every JWT client authentication request still creates a unique `jti`
+and computes `iat` and `exp` for that request, with the effective client identity, endpoint audience, key selection, and
+signing algorithm. This
+preserves [OIDC Core section 9](https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication) assertion
+single-use semantics. The original `Resource` and its normal Common ownership/mutability contract are retained; treat
+its contents as read-only while the configuration is in use. To rotate private assertion material, use a new resource
+and configuration. Do not concurrently consume an unbuffered input resource while building the configuration.
+
 ### JOSE Key Strength And Optional JWK Algorithms
 
 OIDC Next applies the mandatory [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518.html) key-strength rules to every
@@ -2656,7 +2669,7 @@ Client assertion options:
 | --- | --- |
 | `algorithm` | JWS `alg` header used to sign the client assertion. Defaults to `HS256` for `CLIENT_SECRET_JWT`. For `PRIVATE_KEY_JWT`, a configured value may select a compatible algorithm when JWK `alg` is omitted; a declared JWK `alg` must match exactly. |
 | `key-id` | JWS `kid` header. For `PRIVATE_KEY_JWT`, selects the signing key and is required when `jwk` contains multiple keys. For `CLIENT_SECRET_JWT`, written to the assertion header when configured. |
-| `jwk` | Private JWK Set resource used to sign `PRIVATE_KEY_JWT` assertions. RSA moduli must contain at least 2048 bits. JWK `alg` is optional. |
+| `jwk` | Private JWK Set resource, buffered when configuration is built for repeatable runtime reads. Treat its contents as read-only; rotation requires a new resource/configuration. RSA moduli must contain at least 2048 bits. JWK `alg` is optional. |
 | `lifetime` | Assertion lifetime used to calculate `exp`. Defaults to `PT1M`. |
 
 JWK Set options:

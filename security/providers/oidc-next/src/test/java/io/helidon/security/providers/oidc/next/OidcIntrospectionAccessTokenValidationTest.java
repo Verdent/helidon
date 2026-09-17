@@ -53,6 +53,8 @@ import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.SecurityTime;
 import io.helidon.security.Subject;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
@@ -88,6 +90,7 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static int responseStatus;
     private static String responseBody;
     private static String responseContentType;
+    private static volatile String discoveryResponseBody;
     private static String redirectLocation;
     private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
     private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
@@ -102,6 +105,8 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
+        routing.get("/.well-known/openid-configuration", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(discoveryResponseBody));
         routing.post("/introspect", OidcIntrospectionAccessTokenValidationTest::handleIntrospection);
         routing.post("/redirected-introspect", (request, response) -> {
             REDIRECTED_REQUEST_COUNT.incrementAndGet();
@@ -114,6 +119,16 @@ class OidcIntrospectionAccessTokenValidationTest {
     void setUp(URI serverUri) {
         introspectionEndpointUri = serverUri.resolve("introspect");
         redirectedIntrospectionEndpointUri = serverUri.resolve("redirected-introspect");
+        discoveryResponseBody = JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("token_endpoint", "https://issuer.example/token")
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
+                .setStrings("token_endpoint_auth_methods_supported", List.of("private_key_jwt"))
+                .setStrings("token_endpoint_auth_signing_alg_values_supported", List.of("RS256"))
+                .setStrings("introspection_endpoint_auth_methods_supported", List.of("private_key_jwt"))
+                .setStrings("introspection_endpoint_auth_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString();
         responseStatus = 200;
         responseBody = validResponse(_ -> { }).toString();
         responseContentType = "application/json";
@@ -218,6 +233,43 @@ class OidcIntrospectionAccessTokenValidationTest {
                            metadata,
                            OidcClientAuthenticationSupport.introspectionEndpoint(conventionalTenant)),
                    is(Optional.of(conventionalIntrospectionEndpointUri)));
+    }
+
+    @Test
+    void discoveredIntrospectionReusesInheritedPrivateKeyJwtMaterial() {
+        OidcProvider provider = provider(tenant -> tenant
+                .clearClientSecret()
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256"))
+                .endpoints(endpoints -> endpoints
+                        .wellKnownUri(introspectionEndpointUri.resolve("/.well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection
+                                .authenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)))));
+        JwkKeys keys = JwkKeys.builder().resource(Resource.create("oidc-next-sign-jwk.json")).build();
+
+        AuthenticationResponse firstResponse = authenticate(provider, OPAQUE_TOKEN);
+        assertThat(firstResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        RecordedRequest firstRequest = RECORDED_REQUEST.get();
+        SignedJwt first = SignedJwt.parseToken(firstRequest.formParameters().get("client_assertion").getFirst());
+        first.verifySignature(keys).checkValid();
+        assertThat(first.getJwt().issuer().orElseThrow(), is(CLIENT_ID));
+        assertThat(first.getJwt().subject().orElseThrow(), is(CLIENT_ID));
+        assertThat(first.getJwt().audience().orElseThrow(), is(List.of(introspectionEndpointUri.toString())));
+        assertThat(firstRequest.authorization(), is(""));
+        assertThat(firstRequest.formParameters().containsKey("client_secret"), is(false));
+
+        AuthenticationResponse secondResponse = authenticate(provider, OPAQUE_TOKEN);
+        assertThat(secondResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        SignedJwt second = SignedJwt.parseToken(RECORDED_REQUEST.get().formParameters().get("client_assertion").getFirst());
+        second.verifySignature(keys).checkValid();
+        assertThat(second.getJwt().jwtId(), not(first.getJwt().jwtId()));
+        assertThat(REQUEST_COUNT.get(), is(2));
     }
 
     @Test

@@ -516,9 +516,10 @@ If discovery is not loaded, no alias is known and OIDC Next uses the statically 
 deployment can therefore configure the intended mTLS listener directly as the conventional endpoint URI.
 When Authorization Code Flow is configured with explicit Authorization and Token Endpoint URIs instead of loading
 well-known metadata, configure `endpoints.jwks-uri` as well so ID Token signatures can be verified.
-When present in well-known metadata, `id_token_encryption_alg_values_supported` and
-`id_token_encryption_enc_values_supported` must include at least one algorithm allowed by the local `id-token` JWE
-policy.
+When ID Token encryption is configured through `id-token.decryption-jwk` or `id-token.encryption-required: true`, advertised
+`id_token_encryption_alg_values_supported` and `id_token_encryption_enc_values_supported` must each include at least one
+algorithm allowed by the local `id-token` JWE policy. When encryption is not required and no decryption key is configured,
+these optional provider capabilities do not constrain a signed-only client. Local JWE allowlists alone do not enable encryption.
 When Authorization Code Flow loads well-known metadata, the metadata must advertise `response_types_supported`
 containing `code`. If `grant_types_supported` is present, it must contain `authorization_code`; if it is omitted, the
 Discovery default includes `authorization_code`. When PKCE is enabled, `code_challenge_methods_supported` must be present
@@ -1202,6 +1203,10 @@ Tokens must use JWE `alg` `RSA-OAEP-256` or `RSA-OAEP`, encrypted ID Tokens must
 If the OpenID Provider returns encrypted ID Tokens, configure `id-token.decryption-jwk` with the private JWK Set resource
 used to decrypt them. Set `id-token.encryption-required: true` only when your client registration requires encrypted ID
 Tokens and signed-only ID Tokens should fail.
+
+Provider-wide discovery capabilities do not request encryption for the client. Align the decryption key, allowed
+algorithms, and `encryption-required` setting with the client registration. Ignoring unused discovery encryption
+capabilities does not relax signature, claim, JWE-header, or required-encryption validation of received ID Tokens.
 
 ```yaml
 security:

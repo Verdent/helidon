@@ -255,7 +255,7 @@ final class OidcIntegrationSupport {
         return builder.build();
     }
 
-    static final class BrowserSession {
+    static final class BrowserSession implements AutoCloseable {
         private final WebClient client = WebClient.builder()
                 .followRedirects(false)
                 .build();
@@ -281,6 +281,11 @@ final class OidcIntegrationSupport {
             HttpClientResponse response = request.submit(form);
             rememberCookies(response);
             return response;
+        }
+
+        @Override
+        public void close() {
+            client.closeResource();
         }
 
         private Optional<String> cookieHeader() {

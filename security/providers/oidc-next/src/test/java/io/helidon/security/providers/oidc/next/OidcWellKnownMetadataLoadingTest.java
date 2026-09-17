@@ -891,7 +891,7 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenEncryptionAlgorithmsDoNotMatchConfig() {
+    void authorizationCodeSignedOnlyTenantIgnoresUnrelatedEncryptionAlgorithms() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                 .setStrings("id_token_encryption_alg_values_supported", List.of("dir"))
                 .build()
@@ -904,13 +904,13 @@ class OidcWellKnownMetadataLoadingTest {
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
-        OidcTenantContext context = tenantContext(tenantConfig);
-
-        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(tenantConfig.idToken().encryptionRequired(), is(false));
+        assertThat(tenantConfig.idToken().decryptionJwk().isEmpty(), is(true));
+        assertReadyTenant(tenantConfig);
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenContentEncryptionAlgorithmsDoNotMatchConfig() {
+    void authorizationCodeSignedOnlyTenantIgnoresUnrelatedContentEncryptionAlgorithms() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                 .setStrings("id_token_encryption_enc_values_supported", List.of("A192GCM"))
                 .build()
@@ -923,9 +923,119 @@ class OidcWellKnownMetadataLoadingTest {
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
 
-        OidcTenantContext context = tenantContext(tenantConfig);
+        assertThat(tenantConfig.idToken().encryptionRequired(), is(false));
+        assertThat(tenantConfig.idToken().decryptionJwk().isEmpty(), is(true));
+        assertReadyTenant(tenantConfig);
+    }
 
-        assertThat(context.state(), is(OidcTenantState.FAILED));
+    @Test
+    void authorizationCodeSignedOnlyTenantWorksWithoutEncryptionMetadata() {
+        assertReadyTenant(authorizationCodeTenantConfig());
+    }
+
+    @Test
+    void signedOnlyTenantIgnoresEmptyEncryptionCapabilityLists() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                .setStrings("id_token_encryption_alg_values_supported", List.of())
+                .setStrings("id_token_encryption_enc_values_supported", List.of())
+                .build().toString());
+
+        assertReadyTenant(authorizationCodeTenantConfig());
+    }
+
+    @Test
+    void localDecryptionAllowlistsAloneDoNotEnableIdTokenEncryption() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                .setStrings("id_token_encryption_alg_values_supported", List.of("RSA-OAEP"))
+                .setStrings("id_token_encryption_enc_values_supported", List.of("A128CBC-HS256"))
+                .build().toString());
+        OidcTenantConfig tenant = OidcTenantConfig.builder().from(authorizationCodeTenantConfig())
+                .idToken(idToken -> idToken
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))
+                        .allowedContentEncryptionAlgorithms(List.of("A256GCM")))
+                .buildPrototype();
+
+        assertThat(tenant.idToken().encryptionRequired(), is(false));
+        assertThat(tenant.idToken().decryptionJwk().isEmpty(), is(true));
+        assertReadyTenant(tenant);
+    }
+
+    @Test
+    void configuredIdTokenEncryptionStillRejectsIncompatibleCapabilities() {
+        List<Consumer<OidcIdTokenConfig.Builder>> modes = List.of(
+                idToken -> idToken.encryptionRequired(true),
+                idToken -> idToken.decryptionJwk(idTokenDecryptionKeys()),
+                idToken -> idToken.encryptionRequired(true).decryptionJwk(idTokenDecryptionKeys()));
+        for (Consumer<OidcIdTokenConfig.Builder> mode : modes) {
+            for (String field : List.of("id_token_encryption_alg_values_supported", "id_token_encryption_enc_values_supported")) {
+                String unsupported = field.equals("id_token_encryption_alg_values_supported") ? "dir" : "A192GCM";
+                for (List<String> algorithms : List.of(List.<String>of(), List.of(unsupported))) {
+                    PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                            .setStrings("id_token_encryption_alg_values_supported", List.of("RSA-OAEP"))
+                            .setStrings("id_token_encryption_enc_values_supported", List.of("A256GCM"))
+                            .setStrings(field, algorithms)
+                            .build().toString());
+                    OidcTenantConfig tenant = OidcTenantConfig.builder().from(authorizationCodeTenantConfig())
+                            .idToken(mode).buildPrototype();
+
+                    OidcTenantContext context = tenantContext(tenant);
+
+                    assertThat(context.state(), is(OidcTenantState.FAILED));
+                    assertThat(context.failureCause().orElseThrow().getMessage(), containsString(field));
+                }
+            }
+        }
+    }
+
+    @Test
+    void configuredIdTokenEncryptionAcceptsCompatibleOrAbsentCapabilities() {
+        for (boolean required : List.of(false, true)) {
+            for (boolean advertised : List.of(false, true)) {
+                JsonObject.Builder metadata = authorizationCodeMetadataBuilder();
+                if (advertised) {
+                    metadata.setStrings("id_token_encryption_alg_values_supported", List.of("RSA-OAEP"))
+                            .setStrings("id_token_encryption_enc_values_supported", List.of("A256GCM"));
+                }
+                PROVIDER_METADATA.set(metadata.build().toString());
+                OidcTenantConfig tenant = OidcTenantConfig.builder().from(authorizationCodeTenantConfig())
+                        .idToken(idToken -> idToken.encryptionRequired(required).decryptionJwk(idTokenDecryptionKeys()))
+                        .buildPrototype();
+
+                assertReadyTenant(tenant);
+            }
+        }
+    }
+
+    @Test
+    void signedOnlyTenantStillRequiresCompatibleSigningMetadata() {
+        for (boolean missing : List.of(false, true)) {
+            JsonObject.Builder metadata = authorizationCodeMetadataBuilder()
+                    .setStrings("id_token_encryption_alg_values_supported", List.of("dir"))
+                    .setStrings("id_token_encryption_enc_values_supported", List.of("A192GCM"));
+            if (missing) {
+                metadata.unset("id_token_signing_alg_values_supported");
+            } else {
+                metadata.setStrings("id_token_signing_alg_values_supported", List.of("ES256"));
+            }
+            PROVIDER_METADATA.set(metadata.build().toString());
+
+            OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+            assertThat(context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(), containsString("id_token_signing_alg_values_supported"));
+        }
+    }
+
+    @Test
+    void signedOnlyTenantStillRejectsMalformedEncryptionMetadata() {
+        for (String field : List.of("id_token_encryption_alg_values_supported", "id_token_encryption_enc_values_supported")) {
+            PROVIDER_METADATA.set(authorizationCodeMetadataBuilder().set(field, true).build().toString());
+
+            OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+            assertThat(context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().isPresent(), is(true));
+        }
     }
 
     @Test
@@ -2003,6 +2113,26 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype());
         return registry.tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
                 .orElseThrow();
+    }
+
+    private static Resource idTokenDecryptionKeys() {
+        Resource keys = Resource.create("oidc-next-encrypt-jwk.json");
+        keys.cacheBytes();
+        return keys;
+    }
+
+    private static void assertReadyTenant(OidcTenantConfig tenant) {
+        int requests = WELL_KNOWN_REQUESTS.get();
+        OidcTenantContext context = tenantContext(tenant);
+        try {
+            assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                       context.state(), is(OidcTenantState.READY));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
+        } finally {
+            if (context.ready()) {
+                context.webClient().closeResource();
+            }
+        }
     }
 
     private OidcTenantConfig.Builder jwtIntrospectionTenant(OidcClientAuthenticationMethod method,

@@ -60,6 +60,8 @@ class OidcWellKnownMetadataLoadingTest {
     private static final AtomicReference<String> WELL_KNOWN_WEBCLIENT_HEADER = new AtomicReference<>();
     private static final AtomicInteger WELL_KNOWN_REQUESTS = new AtomicInteger();
     private static final AtomicInteger REDIRECTED_WELL_KNOWN_REQUESTS = new AtomicInteger();
+    private static final List<OidcClientAuthenticationMethod> JWT_AUTHENTICATION_METHODS =
+            List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT, OidcClientAuthenticationMethod.PRIVATE_KEY_JWT);
 
     private static volatile String redirectLocation;
     private static volatile String wellKnownContentType;
@@ -1463,6 +1465,149 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void jwtIntrospectionRejectsMissingDiscoveredSigningAlgorithms() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            PROVIDER_METADATA.set(jwtIntrospectionMetadata(method)
+                    .unset("introspection_endpoint_auth_signing_alg_values_supported").build().toString());
+            int requests = WELL_KNOWN_REQUESTS.get();
+
+            OidcTenantContext context = tenantContext(jwtIntrospectionTenant(method, _ -> { }).buildPrototype());
+
+            assertThat(method.name(), context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(),
+                       is("well-known metadata introspection_endpoint_auth_signing_alg_values_supported must be present for "
+                                  + method.wireName()));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
+        }
+    }
+
+    @Test
+    void jwtIntrospectionRejectsUnsupportedDiscoveredSigningAlgorithms() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            boolean privateKey = method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT;
+            PROVIDER_METADATA.set(jwtIntrospectionMetadata(method)
+                    .setStrings("introspection_endpoint_auth_signing_alg_values_supported",
+                                List.of(privateKey ? "RS512" : "HS512")).build().toString());
+
+            OidcTenantContext context = tenantContext(jwtIntrospectionTenant(method, _ -> { }).buildPrototype());
+
+            assertThat(method.name(), context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(),
+                       is("well-known metadata introspection_endpoint_auth_signing_alg_values_supported must include "
+                                  + (privateKey ? "RS256" : "HS256")));
+        }
+    }
+
+    @Test
+    void jwtIntrospectionRejectsUnadvertisedAuthenticationMethods() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            PROVIDER_METADATA.set(jwtIntrospectionMetadata(method)
+                    .setStrings("introspection_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                    .build().toString());
+
+            OidcTenantContext context = tenantContext(jwtIntrospectionTenant(method, _ -> { }).buildPrototype());
+
+            assertThat(method.name(), context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(),
+                       is("well-known metadata introspection_endpoint_auth_methods_supported must include " + method.wireName()));
+        }
+    }
+
+    @Test
+    void jwtIntrospectionWithStaticEndpointStillChecksLoadedDiscovery() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            PROVIDER_METADATA.set(jwtIntrospectionMetadata(method)
+                    .unset("introspection_endpoint_auth_signing_alg_values_supported").build().toString());
+            OidcTenantConfig tenant = jwtIntrospectionTenant(method, _ -> { })
+                    .clearIssuer()
+                    .endpoints(endpoints -> endpoints
+                            .introspectionEndpointUri(introspectionEndpointUri)
+                            .wellKnownUri(issuer.resolve("/.well-known/openid-configuration"))
+                            .tlsRequired(false))
+                    .buildPrototype();
+            int requests = WELL_KNOWN_REQUESTS.get();
+
+            OidcTenantContext context = tenantContext(tenant);
+
+            assertThat(method.name(), context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(),
+                       is("well-known metadata introspection_endpoint_auth_signing_alg_values_supported must be present for "
+                                  + method.wireName()));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
+        }
+    }
+
+    @Test
+    void staticJwtIntrospectionCanUseIdentityNamespaceWithoutDiscovery() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            OidcTenantConfig tenant = jwtIntrospectionTenant(method, _ -> { })
+                    .clearIssuer()
+                    .subjectMapping(mapping -> mapping.principalIdNamespace("resource-authority"))
+                    .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri).tlsRequired(false))
+                    .buildPrototype();
+
+            OidcTenantContext context = tenantContext(tenant);
+
+            try {
+                assertThat(method.name(), context.state(), is(OidcTenantState.READY));
+                assertThat(context.metadata().wellKnownUri(), is(Optional.empty()));
+                assertThat(context.metadata().introspectionEndpointAuthenticationSigningAlgorithmsSupported(), is(Optional.empty()));
+                assertThat(context.introspectionClientAuthentication().clientAssertionAlgorithm(),
+                           is(Optional.of(method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT ? "RS256" : "HS256")));
+                assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+            } finally {
+                if (context.ready()) {
+                    context.webClient().closeResource();
+                }
+            }
+        }
+    }
+
+    @Test
+    void staticJwtIntrospectionStillValidatesLocalCredentialsAndAlgorithms() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> jwtIntrospectionTenant(method, assertion -> assertion.algorithm("none"))
+                            .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri).tlsRequired(false))
+                            .buildPrototype());
+            assertThat(failure.getMessage(), containsString("client-assertion.algorithm must not be blank, padded, or none"));
+        }
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> jwtIntrospectionTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT, _ -> { })
+                        .clientSecret("too-short")
+                        .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri).tlsRequired(false))
+                        .buildPrototype());
+        assertThat(failure.getMessage(), containsString("CLIENT_SECRET_JWT Introspection Endpoint authentication"));
+    }
+
+    @Test
+    void staticPrivateKeyJwtIntrospectionStillValidatesSigningKey() {
+        OidcTenantConfig tenant = jwtIntrospectionTenant(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                                                        assertion -> assertion.keyId("missing"))
+                .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri).tlsRequired(false))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   is("client-assertion.key-id does not match a configured JWK"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void staticJwtIntrospectionStillRequiresHttps() {
+        for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> jwtIntrospectionTenant(method, _ -> { })
+                            .issuer("https://issuer.example")
+                            .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri))
+                            .buildPrototype());
+            assertThat(failure.getMessage(), containsString("introspection-endpoint-uri must use https"));
+        }
+    }
+
+    @Test
     void introspectionProtectedResourceTenantFailsWhenWellKnownMetadataEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
@@ -1858,6 +2003,36 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype());
         return registry.tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
                 .orElseThrow();
+    }
+
+    private OidcTenantConfig.Builder jwtIntrospectionTenant(OidcClientAuthenticationMethod method,
+                                                           Consumer<OidcClientAssertionConfig.Builder> assertionCustomizer) {
+        boolean privateKey = method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT;
+        OidcClientAssertionConfig.Builder assertion = OidcClientAssertionConfig.builder()
+                .algorithm(privateKey ? "RS256" : "HS256");
+        if (privateKey) {
+            assertion.jwk(Resource.create("oidc-next-sign-jwk.json")).keyId("sign-rsa");
+        }
+        assertionCustomizer.accept(assertion);
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("introspection-client")
+                .clientSecret("0123456789abcdef0123456789abcdef")
+                .endpoints(endpoints -> endpoints.tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")
+                        .introspection(introspection -> introspection.authenticationMethod(method)
+                                .clientAssertion(assertion.buildPrototype()))));
+    }
+
+    private JsonObject.Builder jwtIntrospectionMetadata(OidcClientAuthenticationMethod method) {
+        return JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("introspection_endpoint", introspectionEndpointUri.toString())
+                .setStrings("introspection_endpoint_auth_methods_supported", List.of(method.wireName()))
+                .setStrings("introspection_endpoint_auth_signing_alg_values_supported",
+                            List.of(method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT ? "RS256" : "HS256"));
     }
 
     private static final class MutableClock extends Clock {

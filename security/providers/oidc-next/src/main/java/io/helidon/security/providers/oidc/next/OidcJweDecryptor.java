@@ -41,6 +41,17 @@ final class OidcJweDecryptor {
     }
 
     byte[] decrypt(String token, JwtHeaders headers) {
+        /*
+         * RFC 7516 sections 4.1.13 and 5.2 require processing all critical JWE extensions.
+         * https://www.rfc-editor.org/rfc/rfc7516.html#section-5.2
+         * RFC 7515 section 4.1.11 also forbids an empty crit list.
+         * https://www.rfc-editor.org/rfc/rfc7515.html#section-4.1.11
+         * No critical JWE extensions are supported, so reject any presence, including an empty list,
+         * before selecting a key or decrypting. The JWT header parser rejects other invalid value types.
+         */
+        if (headers.critical().isPresent()) {
+            throw new IllegalStateException(tokenDescription + " JWE contains unsupported critical headers");
+        }
         JwkKeys keys = decryptionKeys.orElseThrow(() -> new IllegalStateException(
                 tokenDescription + " decryption keys are not configured"));
         Jwk selectedKey = selectDecryptionKey(headers, keys);

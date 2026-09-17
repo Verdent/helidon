@@ -1184,6 +1184,10 @@ inner signed JWT with the normal ID Token validation rules and the OpenID Provid
 accepted when decryption keys are configured unless `encryption-required` is enabled; decryption keys mean that encrypted
 ID Tokens can be processed.
 
+Critical JWE extensions are not supported. Encrypted ID Tokens containing a `crit` header are rejected before key
+selection or decryption, including empty or malformed critical lists. Unknown non-critical extension headers are ignored.
+The same policy applies when validating a refreshed ID Token or restoring an encrypted ID Token from a local cookie.
+
 The decryption JWK Set should contain private client/RP encryption keys. If more than one decryption key is configured,
 the encrypted ID Token JWE header must contain `kid`. When a JWK declares `use`, the value must be `enc`; when it
 declares `key_ops`, it must allow `unwrapKey` or `decrypt`. `RSA1_5` is not allowed by default because RFC 7516
@@ -1313,6 +1317,9 @@ registration algorithms must be advertised.
 UserInfo and ID Token algorithms are separate client-registration properties. Their configuration is therefore kept
 separate. Both can reference the same private JWK Set resource when the provider registration uses the same RP key, but
 configuring ID Token decryption does not implicitly enable UserInfo decryption.
+
+Encrypted UserInfo uses the same critical-header policy as encrypted ID Tokens: any `crit` header is rejected, including
+an empty or malformed list. This applies to both encryption-only and signed-then-encrypted UserInfo responses.
 
 By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used by `subject-mapping`, and claims listed
 in `attribute-claim-paths`. This follows the OpenID Connect Core privacy guidance: "Only necessary UserInfo data should

@@ -970,9 +970,8 @@ class OidcProviderTest {
     }
 
     @Test
-    void localAuthenticationResultCookieCanUseRawSubjectPrincipalId() {
-        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
-                .subjectMapping(mapping -> mapping.principalIdMode(OidcPrincipalIdMode.SUBJECT)));
+    void localAuthenticationRetainsRawSubjectAsAttribute() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
         OidcProvider provider = provider(tenant);
         Instant now = Instant.now();
         SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
@@ -984,14 +983,15 @@ class OidcProviderTest {
                         .build()));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user().orElseThrow().principal().id(), is(SUBJECT));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+        assertThat(response.user().orElseThrow().principal().abacAttributeRaw("sub"), is(SUBJECT));
+        assertThat(response.user().orElseThrow().principal().abacAttributeRaw("iss"), is(ISSUER.toString()));
     }
 
     @Test
     void localAuthenticationResultCookieUsesCustomSubjectMapping() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
-                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
                         .principalNameClaimPaths(List.of("display_name"))
                         .roleClaimPaths(List.of("realm_access.roles"))
@@ -1021,7 +1021,8 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is("tenant-user-id"));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
+        assertThat(subject.principal().abacAttributeRaw("tenant_user"), is("tenant-user-id"));
         assertThat(subject.principal().getName(), is("Tenant User"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
                    is(List.of("app-admin", "app-auditor")));
@@ -1032,7 +1033,6 @@ class OidcProviderTest {
     void localAuthenticationResultUserInfoDoesNotOverridePrincipalIdMapping() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
-                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))
                         .principalNameClaimPaths(List.of("display_name"))
                         .roleClaimPaths(List.of("groups"))));
@@ -1066,7 +1066,7 @@ class OidcProviderTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is("id-token-user-id"));
+        assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is("UserInfo User"));
         assertThat(subject.principal().abacAttributeRaw("tenant_user"), is("userinfo-user-id"));
         assertThat(subject.principal().abacAttributeRaw("full_name"), is("ID Token Full Name"));
@@ -1116,10 +1116,9 @@ class OidcProviderTest {
     }
 
     @Test
-    void localAuthenticationResultCookieRequiresConfiguredPrincipalIdClaim() {
+    void localAuthenticationDoesNotRequireProtectedResourcePrincipalClaim() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                 .subjectMapping(mapping -> mapping
-                        .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                         .principalIdClaimPaths(List.of("tenant_user"))));
         OidcProvider provider = provider(tenant);
         Instant now = Instant.now();
@@ -1131,7 +1130,8 @@ class OidcProviderTest {
                         .header("Cookie", cookie.name() + "=" + cookie.value())
                         .build()));
 
-        assertAuthenticationRequestStarted(response);
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
     }
 
     @Test

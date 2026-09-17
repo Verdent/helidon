@@ -67,6 +67,7 @@ import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
@@ -133,7 +134,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("admin", "auditor")));
@@ -220,17 +221,160 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
-    void clientIdCanBePrincipalWhenSubjectIsMissing() {
+    void clientIdCanBeExplicitlySelectedWhenSubjectIsMissing() {
         responseBody = validResponse(it -> it.unset("sub")
                 .unset("username")
                 .unset("preferred_username")
                 .set("client_id", "service-client")).toString();
 
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("client_id")))), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.issuerClaim(ISSUER.toString(), "client_id", "service-client")));
+        assertThat(response.user().orElseThrow().principal().getName(), is("service-client"));
+    }
+
+    @Test
+    void missingSubjectDoesNotSilentlySelectUsernameOrClientId() {
+        responseBody = validResponse(it -> it.unset("sub")).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Configured principal mapping cannot be satisfied");
+    }
+
+    @Test
+    void explicitFallbackDoesNotMergeSubjectAndClientIdentities() {
+        OidcProvider provider = provider(tenant -> tenant.subjectMapping(mapping -> mapping
+                .principalIdClaimPaths(List.of("sub", "client_id"))));
+        responseBody = validResponse(it -> it.set("sub", "123").set("client_id", "123")).toString();
+        AuthenticationResponse subjectResponse = authenticate(provider, OPAQUE_TOKEN);
+
+        responseBody = validResponse(it -> it.unset("sub").set("client_id", "123")).toString();
+        AuthenticationResponse clientResponse = authenticate(provider, OPAQUE_TOKEN);
+
+        assertThat(subjectResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(clientResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(clientResponse.user().orElseThrow().principal().id(),
+                   not(subjectResponse.user().orElseThrow().principal().id()));
+    }
+
+    @Test
+    void missingIssuerUsesTrustedTenantWithoutInventingAClaim() {
+        responseBody = validResponse(it -> it.unset("iss")).toString();
+
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
-        assertThat(response.user().orElseThrow().principal().id(), is("service-client"));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().id(), is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
+        assertThat(subject.principal().abacAttributeNames().contains("iss"), is(false));
+        TokenCredential credential = subject.publicCredential(TokenCredential.class).orElseThrow();
+        assertThat(credential.getIssuer().isEmpty(), is(true));
+        assertThat(credential.getTokenInstance(JsonObject.class).orElseThrow().value("iss").isEmpty(), is(true));
+    }
+
+    @Test
+    void issuerlessIntrospectionUsesExplicitLocalNamespace() {
+        responseBody = validResponse(it -> it.unset("iss")).toString();
+        OidcProvider provider = provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("payments-authorization-server")));
+
+        AuthenticationResponse response = authenticate(provider, OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.namespaceClaim("payments-authorization-server", "sub", SUBJECT)));
+        assertThat(response.user().orElseThrow().principal().abacAttributeNames().contains("iss"), is(false));
+    }
+
+    @Test
+    void introspectionResponseCannotChangeConfiguredLocalNamespace() {
+        OidcProvider provider = provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("payments-authorization-server")));
+        responseBody = validResponse(it -> it.unset("iss")).toString();
+        AuthenticationResponse withoutIssuer = authenticate(provider, OPAQUE_TOKEN);
+
+        responseBody = validResponse(it -> it.set("iss", "https://response-issuer.example")).toString();
+        AuthenticationResponse withIssuer = authenticate(provider, OPAQUE_TOKEN);
+
+        assertThat(withoutIssuer.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(withIssuer.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(withIssuer.user().orElseThrow().principal().id(),
+                   is(withoutIssuer.user().orElseThrow().principal().id()));
+    }
+
+    @Test
+    void localNamespaceCannotImpersonateIssuerQualifiedIdentity() {
+        AuthenticationResponse issuerResponse = authenticate(provider(), OPAQUE_TOKEN);
+        AuthenticationResponse namespaceResponse = authenticate(provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace(ISSUER.toString()))), OPAQUE_TOKEN);
+
+        assertThat(issuerResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(namespaceResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(namespaceResponse.user().orElseThrow().principal().id(),
+                   not(issuerResponse.user().orElseThrow().principal().id()));
+    }
+
+    @Test
+    void trustedIssuerTakesPrecedenceOverFallbackNamespace() {
+        responseBody = validResponse(it -> it.unset("iss")).toString();
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant
+                .subjectMapping(mapping -> mapping.principalIdNamespace("fallback"))), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
+    }
+
+    @Test
+    void differentLocalNamespacesRemainDifferentIdentities() {
+        responseBody = validResponse(it -> it.unset("iss")).toString();
+        AuthenticationResponse first = authenticate(provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("first-authority"))), OPAQUE_TOKEN);
+        AuthenticationResponse second = authenticate(provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("second-authority"))), OPAQUE_TOKEN);
+
+        assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(second.user().orElseThrow().principal().id(), not(first.user().orElseThrow().principal().id()));
+    }
+
+    @Test
+    void customMappingSupportsResponsesWithoutIssuerOrSubject() {
+        responseBody = validResponse(it -> it.unset("iss").unset("sub")
+                .unset("username").unset("preferred_username").set("client_id", "service-client")).toString();
+
+        AuthenticationResponse response = authenticate(provider(tenant -> tenant.clearIssuer()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("service-authority")
+                        .principalIdClaimPaths(List.of("client_id")))), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.namespaceClaim("service-authority", "client_id", "service-client")));
         assertThat(response.user().orElseThrow().principal().getName(), is("service-client"));
+    }
+
+    @Test
+    void missingDisplayNameFallsBackToRawSubject() {
+        responseBody = validResponse(it -> it.unset("username").unset("preferred_username")).toString();
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().getName(), is(SUBJECT));
+        assertThat(response.user().orElseThrow().principal().id(), not(SUBJECT));
+    }
+
+    @Test
+    void unpairedSurrogateInPrincipalClaimIsRejected() {
+        responseBody = validResponse(_ -> { }).toString().replace("\"" + SUBJECT + "\"", "\"\\uD800\"");
+
+        AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
+
+        assertInvalidToken(response, "Principal claim must not be changed by UTF-8 replacement");
     }
 
     @Test
@@ -250,7 +394,8 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is("opaque-user-id"));
+        assertThat(subject.principal().id(),
+                   is(OidcTestIdentities.issuerClaim(ISSUER.toString(), "principal_id", "opaque-user-id")));
         assertThat(subject.principal().getName(), is("Opaque User"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
                    is(List.of("realm-admin", "realm-auditor")));

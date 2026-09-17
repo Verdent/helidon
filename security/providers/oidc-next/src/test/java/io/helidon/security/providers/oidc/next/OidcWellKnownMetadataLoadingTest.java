@@ -1348,6 +1348,52 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void introspectionWithStaticEndpointDiscoversIssuerForIdentityMapping() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(endpoints -> endpoints
+                        .introspectionEndpointUri(introspectionEndpointUri)
+                        .wellKnownUri(issuer.resolve("/.well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
+        assertThat(OidcSubjectMapper.principalId(JsonObject.builder().set("sub", "123").build(), context).orElseThrow(),
+                   is(OidcTestIdentities.issuerSubject(issuer.toString(), "123")));
+    }
+
+    @Test
+    void discoveredIssuerTakesPrecedenceOverLocalIdentityNamespace() {
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .subjectMapping(mapping -> mapping.principalIdNamespace("fallback"))
+                .endpoints(endpoints -> endpoints
+                        .introspectionEndpointUri(introspectionEndpointUri)
+                        .wellKnownUri(issuer.resolve("/.well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.ready(), is(true));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+        assertThat(OidcSubjectMapper.principalId(JsonObject.builder().set("sub", "123").build(), context).orElseThrow(),
+                   is(OidcTestIdentities.issuerSubject(issuer.toString(), "123")));
+    }
+
+    @Test
     void introspectionProtectedResourceTenantLoadsEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())

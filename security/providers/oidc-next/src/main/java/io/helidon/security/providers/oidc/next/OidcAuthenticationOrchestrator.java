@@ -185,7 +185,7 @@ final class OidcAuthenticationOrchestrator {
             return LocalAuthenticationOutcome.empty(removalCookie);
         }
         OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
-        if (OidcSubjectMapper.localPrincipalId(result.idToken().jwt(), readyTenant.subjectMapping()).isEmpty()) {
+        if (OidcSubjectMapper.localPrincipalId(result.idToken().jwt()).isEmpty()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
                            "OIDC local authentication result rejected: tenant="
@@ -297,7 +297,7 @@ final class OidcAuthenticationOrchestrator {
         if (validationResult.succeeded()) {
             return AuthenticationResponse.success(
                     OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),
-                                          tenantContext.subjectMapping()));
+                                          tenantContext));
         }
         debugBearerTokenValidationFailure(tenantContext, validationResult);
         if (validationResult.unavailable()) {

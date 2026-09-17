@@ -182,7 +182,7 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("admin", "auditor")));
@@ -217,12 +217,45 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is("tenant-user-id"));
+        assertThat(subject.principal().id(),
+                   is(OidcTestIdentities.issuerClaim(ISSUER.toString(), "tenant_user", "tenant-user-id")));
         assertThat(subject.principal().getName(), is("Tenant User"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
                    is(List.of("realm-admin", "realm-auditor")));
         assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
                    is(List.of("message:read", "message:write")));
+    }
+
+    @Test
+    void validTokensFromDifferentTrustedIssuersDoNotSharePrincipalId() {
+        String otherIssuer = "https://other-issuer.example";
+        String firstToken = signedToken(it -> it.subject("123"));
+        String secondToken = signedToken(it -> it.issuer(otherIssuer).subject("123"));
+
+        AuthenticationResponse first = authenticate(provider(), firstToken);
+        AuthenticationResponse second = authenticate(provider(true, true, jwksUri,
+                                                               tenant -> tenant.issuer(otherIssuer)), secondToken);
+
+        assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(first.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.issuerSubject(ISSUER.toString(), "123")));
+        assertThat(second.user().orElseThrow().principal().id(),
+                   is(OidcTestIdentities.issuerSubject(otherIssuer, "123")));
+    }
+
+    @Test
+    void jwtPrincipalRetainsRawSubjectAndIssuerForApplications() {
+        String token = signedToken(it -> it.preferredUsername(null));
+
+        AuthenticationResponse response = authenticate(provider(), token);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        Subject subject = response.user().orElseThrow();
+        assertThat(subject.principal().getName(), is(SUBJECT));
+        assertThat(subject.principal().abacAttributeRaw("sub"), is(SUBJECT));
+        assertThat(subject.principal().abacAttributeRaw("iss"), is(ISSUER.toString()));
+        assertThat(subject.principal().abacAttributeRaw("id"), is(subject.principal().id()));
     }
 
     @Test
@@ -402,7 +435,7 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         Subject subject = response.user().orElseThrow();
-        assertThat(subject.principal().id(), is(SUBJECT));
+        assertThat(subject.principal().id(), is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
         assertThat(subject.principal().getName(), is("mcp-user"));
         assertThat(subject.principal().abacAttributeRaw("department"), is("finance"));
         assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),

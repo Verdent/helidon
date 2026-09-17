@@ -69,7 +69,7 @@ class KeycloakMixedFlowIT {
                         .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                         .request()) {
                     assertThat(bearerApi.status(), is(Status.OK_200));
-                    assertThat(bearerApi.as(String.class), is("alice|alice|alice@example.org"));
+                    assertThat(bearerApi.as(String.class), is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 }
             } finally {
                 client.closeResource();
@@ -81,7 +81,7 @@ class KeycloakMixedFlowIT {
             try (HttpClientResponse page = browser.get(pageUri)) {
                 assertThat(page.status(), is(Status.OK_200));
                 assertThat(page.as(String.class),
-                           is("11111111-1111-1111-1111-111111111111|alice|alice@example.org"));
+                           is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
             }
         } finally {
             rpServer.stop();

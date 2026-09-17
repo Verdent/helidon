@@ -57,7 +57,6 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
@@ -246,7 +245,7 @@ class KeycloakLogoutIT {
                 ResourceResponse lateRefresh = refreshRequest.get(RACE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 assertThat(lateRefresh.status(), is(Status.OK_200));
                 assertThat(lateRefresh.body(),
-                           containsString("11111111-1111-1111-1111-111111111111"));
+                           is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 SetCookie replacementCookie = responseCookie(lateRefresh.setCookies(),
                                                              localAuthenticationCookieName);
                 assertThat(isRemovalCookie(replacementCookie), is(false));

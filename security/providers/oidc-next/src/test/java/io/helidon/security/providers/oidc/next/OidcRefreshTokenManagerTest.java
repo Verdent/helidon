@@ -502,6 +502,24 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void browserRefreshDoesNotRequireCustomApiPrincipalClaim(URI serverUri) {
+        String refreshedAccessToken = signedAccessToken(_ -> { });
+        responseBody = refreshResponse(refreshedAccessToken, ROTATED_REFRESH_TOKEN).toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .from(tenantWithJwtAccessTokenValidation(serverUri))
+                .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("api_account")))
+                .buildPrototype();
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, now.minusSeconds(60), now.plusSeconds(3600), now.minusSeconds(1));
+
+        AuthenticationResponse response = authenticate(tenant, cookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+        assertThat(storedLocalAuthenticationResult(response, tenant).accessToken(), is(refreshedAccessToken));
+    }
+
+    @Test
     void refreshedJwtAccessTokenIsValidatedBeforeCookieIsStored(URI serverUri) {
         String refreshedAccessToken = signedAccessToken(_ -> { });
         responseBody = refreshResponse(refreshedAccessToken, ROTATED_REFRESH_TOKEN).toString();
@@ -550,6 +568,27 @@ class OidcRefreshTokenManagerTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertAccessToken(response, OLD_ACCESS_TOKEN);
         assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
+    }
+
+    @Test
+    void browserRefreshAllowsIntrospectionWithoutIssuerOrSubject(URI serverUri) {
+        introspectionResponseBody = JsonObject.builder()
+                .from(activeIntrospectionResponse())
+                .unset("iss")
+                .unset("sub")
+                .unset("preferred_username")
+                .build()
+                .toString();
+        OidcTenantConfig tenant = tenantWithIntrospectionAccessTokenValidation(serverUri);
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, now.minusSeconds(60), now.plusSeconds(3600), now.minusSeconds(1));
+
+        AuthenticationResponse response = authenticate(tenant, cookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+        assertThat(storedLocalAuthenticationResult(response, tenant).accessToken(), is(REFRESHED_ACCESS_TOKEN));
+        assertThat(RECORDED_INTROSPECTION_REQUEST.get(), is(notNullValue()));
     }
 
     @Test

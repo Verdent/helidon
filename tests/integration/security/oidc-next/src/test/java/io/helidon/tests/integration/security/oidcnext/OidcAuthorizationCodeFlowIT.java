@@ -97,7 +97,8 @@ class OidcAuthorizationCodeFlowIT {
 
                 try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                    assertThat(authenticated.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
                 }
 
                 assertThat(idp.tokenRequests().size(), is(1));
@@ -140,7 +141,8 @@ class OidcAuthorizationCodeFlowIT {
 
                 try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                    assertThat(authenticated.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
                 }
 
                 assertThat(idp.tokenRequests().size(), is(1));
@@ -193,7 +195,8 @@ class OidcAuthorizationCodeFlowIT {
 
                 try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                    assertThat(authenticated.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
                 }
 
                 assertThat(idp.tokenRequests().size(), is(1));
@@ -315,7 +318,8 @@ class OidcAuthorizationCodeFlowIT {
 
                 try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice|alice@example.org"));
+                    assertThat(authenticated.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
                 }
 
                 assertThat(idp.tokenRequests().size(), is(2));

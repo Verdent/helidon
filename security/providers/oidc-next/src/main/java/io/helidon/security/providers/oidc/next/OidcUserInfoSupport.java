@@ -125,7 +125,6 @@ final class OidcUserInfoSupport {
          */
         Set<String> claimPaths = new LinkedHashSet<>();
         claimPaths.add("sub");
-        claimPaths.addAll(subjectMapping.principalIdClaimPaths());
         claimPaths.addAll(subjectMapping.principalNameClaimPaths());
         claimPaths.addAll(subjectMapping.roleClaimPaths());
         claimPaths.addAll(subjectMapping.scopeClaimPaths());

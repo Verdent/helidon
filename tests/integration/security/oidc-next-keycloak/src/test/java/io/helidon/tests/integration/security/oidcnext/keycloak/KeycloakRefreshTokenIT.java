@@ -57,7 +57,7 @@ class KeycloakRefreshTokenIT {
             try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                 assertThat(authenticated.status(), is(Status.OK_200));
                 assertThat(authenticated.as(String.class),
-                           is("11111111-1111-1111-1111-111111111111|alice|alice@example.org"));
+                           is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 assertThat(authenticated.headers().contains(HeaderNames.SET_COOKIE), is(true));
             }
         } finally {

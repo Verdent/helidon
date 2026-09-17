@@ -69,7 +69,8 @@ class OidcAccessTokenValidationIT {
                             .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                             .request()) {
                         assertThat(response.status(), is(Status.OK_200));
-                        assertThat(response.as(String.class), is("service-client|service-client|"));
+                        assertThat(response.as(String.class),
+                                   is(OidcIntegrationSupport.principalResponse(idp, "service-client", "service-client", "")));
                     }
 
                     assertThat(idp.tokenRequests().getFirst().formParam("grant_type").orElse(""),
@@ -120,7 +121,8 @@ class OidcAccessTokenValidationIT {
                             .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                             .request()) {
                         assertThat(response.status(), is(Status.OK_200));
-                        assertThat(response.as(String.class), is("service-client|service-client|"));
+                        assertThat(response.as(String.class),
+                                   is(OidcIntegrationSupport.principalResponse(idp, "service-client", "service-client", "")));
                     }
 
                     assertThat(idp.jwksRequests().size(), is(2));
@@ -161,7 +163,8 @@ class OidcAccessTokenValidationIT {
                             .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                             .request()) {
                         assertThat(response.status(), is(Status.OK_200));
-                        assertThat(response.as(String.class), is("service-client|service-client|"));
+                        assertThat(response.as(String.class),
+                                   is(OidcIntegrationSupport.principalResponse(idp, "service-client", "service-client", "")));
                     }
 
                     assertThat(accessToken.startsWith("opaque-access-"), is(true));

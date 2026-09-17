@@ -207,7 +207,7 @@ final class OidcRefreshTokenManager {
                 .filter(expirationTime -> expirationTime.isBefore(current.expiresAt()))
                 .orElse(current.expiresAt());
         Optional<Instant> accessTokenExpiresAt = tokenResponse.expiresIn()
-                .map(refreshedAt::plusSeconds);
+                .map(seconds -> OidcTokenLifetime.expiresAt(refreshedAt, seconds));
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
                 .tenantId(current.tenantId())
                 .idToken(idToken)
@@ -225,7 +225,7 @@ final class OidcRefreshTokenManager {
     }
 
     private boolean refreshNeeded(Instant expiresAt, Duration skew, Instant now) {
-        return accessTokenExpired(expiresAt, now) || !now.plus(skew).isBefore(expiresAt);
+        return !OidcTokenLifetime.activeAt(expiresAt, now, skew);
     }
 
     private boolean accessTokenExpired(Instant expiresAt, Instant now) {

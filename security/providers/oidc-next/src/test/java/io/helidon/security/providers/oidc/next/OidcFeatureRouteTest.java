@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -454,6 +455,82 @@ class OidcFeatureRouteTest {
                 assertThat(!accessTokenExpiresAt.isAfter(Instant.now().plusSeconds(600)), is(true));
             }
         } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointRejectsUnusableAccessTokenLifetimesBeforeUserInfo(URI serverUri) {
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        WebClient client = WebClient.builder().baseUri(rpBaseUri(rpServer)).build();
+        try {
+            for (String lifetime : List.of("0", "-1", "1.5", "9223372036854775808")) {
+                tokenEndpointResponseBody = JsonObject.builder()
+                        .from(tokenEndpointResponse(signedIdToken(NONCE)))
+                        .set("expires_in", new BigDecimal(lifetime))
+                        .build()
+                        .toString();
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+                try (HttpClientResponse response = client.get("/oidc/callback")
+                        .followRedirects(false)
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat("expires_in=" + lifetime, response.status(), is(Status.BAD_GATEWAY_502));
+                    assertThat(response.as(String.class), is("Token Endpoint exchange failed"));
+                    assertThat(response.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                                       .map(SetCookie::parse)
+                                       .anyMatch(cookie -> cookie.name().equals(tenant.cookies().localAuthenticationCookieName())),
+                               is(false));
+                    assertThat(USER_INFO_AUTHORIZATION.get(), is(""));
+                }
+            }
+        } finally {
+            client.closeResource();
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointPreservesOmittedShortAndVeryLargeLifetimes(URI serverUri) {
+        OidcTenantConfig tenant = tenantConfig(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        WebClient client = WebClient.builder().baseUri(rpBaseUri(rpServer)).build();
+        try {
+            for (Optional<Long> lifetime : List.of(Optional.<Long>empty(), Optional.of(1L), Optional.of(60L),
+                                                  Optional.of(Instant.MAX.getEpochSecond()), Optional.of(Long.MAX_VALUE))) {
+                JsonObject.Builder json = JsonObject.builder()
+                        .from(tokenEndpointResponse(signedIdToken(NONCE)))
+                        .unset("expires_in");
+                lifetime.ifPresent(seconds -> json.set("expires_in", seconds));
+                tokenEndpointResponseBody = json.build().toString();
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+                try (HttpClientResponse response = client.get("/oidc/callback")
+                        .followRedirects(false)
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat("expires_in=" + lifetime, response.status(), is(Status.SEE_OTHER_303));
+                    SetCookie cookie = response.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                            .map(SetCookie::parse)
+                            .filter(it -> it.name().equals(tenant.cookies().localAuthenticationCookieName()))
+                            .findFirst()
+                            .orElseThrow();
+                    OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create("default", tenant)
+                            .decodeLocalAuthenticationResult(cookie.value(), OidcIdTokenDecryptor.create(tenant))
+                            .orElseThrow();
+                    Optional<Instant> expectedExpiry = lifetime.map(seconds -> seconds > 60
+                            ? Instant.MAX : stored.createdAt().plusSeconds(seconds));
+                    assertThat(stored.accessTokenExpiresAt(), is(expectedExpiry));
+                    assertThat(stored.expiresAt(), is(stored.idToken().jwt().expirationTime().orElseThrow()));
+                    assertThat(stored.expiresAt().isAfter(stored.createdAt()), is(true));
+                }
+            }
+        } finally {
+            client.closeResource();
             rpServer.stop();
         }
     }

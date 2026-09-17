@@ -39,8 +39,10 @@ final class OidcLocalAuthenticationResult {
                                                            Instant createdAt,
                                                            Duration maxLifetime) {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
-        Instant maxExpiresAt = createdAt.plus(maxLifetime);
-        Instant expiresAt = idTokenExpiresAt.isBefore(maxExpiresAt) ? idTokenExpiresAt : maxExpiresAt;
+        // Add the configured lifetime only when it is bounded by the representable ID Token expiry.
+        Instant expiresAt = Duration.between(createdAt, idTokenExpiresAt).compareTo(maxLifetime) > 0
+                ? createdAt.plus(maxLifetime)
+                : idTokenExpiresAt;
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
                 .tenantId(tenantId)
                 .idToken(idToken)
@@ -51,7 +53,7 @@ final class OidcLocalAuthenticationResult {
                 .userInfo(userInfo)
                 .createdAt(createdAt)
                 .expiresAt(expiresAt)
-                .accessTokenExpiresAt(tokenResponse.expiresIn().map(createdAt::plusSeconds))
+                .accessTokenExpiresAt(tokenResponse.expiresIn().map(seconds -> OidcTokenLifetime.expiresAt(createdAt, seconds)))
                 .buildPrototype();
         return fromStoredValues(state);
     }

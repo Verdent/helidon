@@ -1926,6 +1926,27 @@ outside `ConcurrentHashMap` update callbacks. Callers waiting for the same key h
 Endpoint request does not serialize unrelated keys through a cache critical section. Token Exchange may deliberately
 queue unrelated keys at its configured admission limit.
 
+### Token Response Lifetimes
+
+Authorization Code, refresh, Client Credentials, and Token Exchange responses use `expires_in` as a lifetime in seconds,
+as defined by [RFC 6749 section 5.1](https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1) and
+[RFC 8693 section 2.2.1](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.2.1). An explicit zero means that the access
+token is already expired. OIDC Next rejects such a response before sending the token to UserInfo or an outbound resource
+or storing it in an authentication cookie. Negative, fractional, nonnumeric, or numerically out-of-range values also
+produce a controlled Token Endpoint failure. Numeric lifetimes must fit in a signed 64-bit integer.
+
+An omitted `expires_in` remains distinct from an expired token. Client Credentials and Token Exchange can use a token
+without this field for the current request, but do not cache it. Initial browser authentication stores no access-token
+deadline when the field is absent; the ID Token expiry and configured local authentication lifetime still bound the
+session. Automatic renewal needs an access-token deadline, and a refresh response without `expires_in` retains its
+existing failure handling: keep the current authentication only while its access token remains valid; otherwise clear it
+and start authentication again.
+
+A short positive lifetime is not rejected just because it falls within the clock-skew margin. Such an outbound token is
+used for the current request without being cached. Very large positive lifetimes are converted without arithmetic
+overflow: an absolute expiry beyond Java's `Instant.MAX` is conservatively capped at that representable bound. This does
+not extend the advertised token lifetime or the browser's configured/ID-Token-bounded session lifetime.
+
 ### Endpoint-Level Grant Discovery
 
 Provider-level `outbound` targets are known while each tenant is initialized, so required Token Endpoint metadata and

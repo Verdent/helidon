@@ -75,13 +75,13 @@ final class OidcTokenExchangeTokenManager {
         }
 
         OidcTokenExchangeResponse tokenResponse = result.tokenResponse().orElseThrow();
-        Optional<Long> expiresIn = tokenResponse.expiresIn().filter(value -> value > 0);
+        Optional<Long> expiresIn = tokenResponse.expiresIn();
         if (expiresIn.isEmpty()) {
-            // Without a positive lifetime, there is no defensible interval in which this token can be reused.
+            // Without an explicit lifetime, there is no defensible interval in which this token can be reused.
             return OidcSingleFlightCache.Resolution.doNotCache(result);
         }
 
-        CachedToken cachedToken = new CachedToken(tokenResponse, now.plusSeconds(expiresIn.orElseThrow()));
+        CachedToken cachedToken = new CachedToken(tokenResponse, OidcTokenLifetime.expiresAt(now, expiresIn.orElseThrow()));
         return cachedToken.activeAt(now, clockSkew)
                 ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
                 : OidcSingleFlightCache.Resolution.doNotCache(result);
@@ -96,7 +96,7 @@ final class OidcTokenExchangeTokenManager {
 
     private record CachedToken(OidcTokenExchangeResponse tokenResponse, Instant expiresAt) {
         private boolean activeAt(Instant now, Duration clockSkew) {
-            return expiresAt.minus(clockSkew).isAfter(now);
+            return OidcTokenLifetime.activeAt(expiresAt, now, clockSkew);
         }
     }
 }

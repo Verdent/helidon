@@ -438,6 +438,40 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void deferredMetadataReusesPrivateKeyJwtMaterial() {
+        providerMetadata = JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .setStrings("grant_types_supported", List.of("client_credentials"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("private_key_jwt"))
+                .setStrings("token_endpoint_auth_signing_alg_values_supported", List.of("RS256"))
+                .build()
+                .toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256"))
+                .endpoints(endpoints -> endpoints.tlsRequired(false))
+                .buildPrototype();
+        OidcProvider provider = endpointPolicyProvider(tenant);
+        EndpointConfig endpoint = clientCredentialsEndpointConfig();
+
+        assertThat(provider.isOutboundSupported(providerRequest(), outboundEnvironment(), endpoint), is(true));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(), outboundEnvironment(), endpoint);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+        assertThat(REQUEST_COUNT.get(), is(1));
+        SignedJwt assertion = SignedJwt.parseToken(RECORDED_REQUEST.get().formParameters().get("client_assertion").getFirst());
+        assertion.verifySignature(signKeys).checkValid();
+        assertClientAssertionClaims(assertion);
+    }
+
+    @Test
     void providerAndSupportCheckDeferMetadataUntilClientCredentialsRequest() {
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                 .putTenant("default", confidentialTenantFromWellKnown())

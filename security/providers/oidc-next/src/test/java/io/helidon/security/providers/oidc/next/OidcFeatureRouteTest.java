@@ -30,6 +30,7 @@ import java.util.function.Consumer;
 
 import io.helidon.common.configurable.AllowList;
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -98,6 +99,7 @@ class OidcFeatureRouteTest {
     private static Status userInfoEndpointStatus;
     private static String userInfoEndpointContentType;
     private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicReference<String> TOKEN_CLIENT_ASSERTION = new AtomicReference<>();
     private static final AtomicInteger ATTACKER_TOKEN_REQUESTS = new AtomicInteger();
 
     @BeforeAll
@@ -115,7 +117,10 @@ class OidcFeatureRouteTest {
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
         OidcFeature.create(providerConfig()).setup(routing);
-        routing.post("/token", (request, response) -> tokenEndpointResponse(response));
+        routing.post("/token", (request, response) -> {
+            TOKEN_CLIENT_ASSERTION.set(request.content().as(Parameters.class).first("client_assertion").orElse(""));
+            tokenEndpointResponse(response);
+        });
         routing.post("/attacker-token", (request, response) -> {
             ATTACKER_TOKEN_REQUESTS.incrementAndGet();
             tokenEndpointResponse(response);
@@ -141,6 +146,7 @@ class OidcFeatureRouteTest {
         userInfoEndpointStatus = Status.OK_200;
         userInfoEndpointContentType = "application/json";
         USER_INFO_AUTHORIZATION.set("");
+        TOKEN_CLIENT_ASSERTION.set("");
         ATTACKER_TOKEN_REQUESTS.set(0);
     }
 
@@ -320,6 +326,69 @@ class OidcFeatureRouteTest {
             assertThat(removalCookies.size(), is(1));
             assertThat(removalCookies.getFirst(), containsString("__Host-helidon-oidc-state="));
             assertThat(removalCookies.getFirst(), containsString("Expires="));
+        }
+    }
+
+    @Test
+    void providerAndFeatureReuseOnePrivateKeyJwtConfiguration(URI serverUri) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri,
+                                                                      authorization -> authorization.redirectionEndpointUri(
+                                                                              URI.create("/oidc/callback"))))
+                .clearClientSecret()
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                        .keyId("sign-rsa")
+                        .algorithm("RS256"))
+                .buildPrototype();
+        OidcProviderConfig config = providerConfig(tenant);
+        OidcProvider provider = OidcProvider.create(config);
+        WebServer rp = oidcFeatureServer(config);
+        WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+        try {
+            URI resourceUri = rpBaseUri(rp).resolve("/resource");
+            AuthenticationResponse login = provider.authenticate(OidcProviderTest.request(null,
+                                                                                         SecurityEnvironment.builder()
+                                                                                                 .targetUri(resourceUri)
+                                                                                                 .build()));
+            UriQuery authorization = UriQuery.create(URI.create(login.responseHeaders().get("Location").getFirst()));
+            assertThat(authorization.first("redirect_uri").orElseThrow(), is(callbackUri(rp).toString()));
+            tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(authorization.first("nonce").orElseThrow()))
+                    .toString();
+            String initialCookies = String.join("; ", login.responseHeaders().get("Set-Cookie").stream()
+                    .map(SetCookie::parse)
+                    .map(cookie -> cookie.name() + "=" + cookie.value())
+                    .toList());
+
+            try (HttpClientResponse callback = client.get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", authorization.first("state").orElseThrow())
+                    .header(HeaderNames.COOKIE, initialCookies)
+                    .request()) {
+                assertThat(callback.status(), is(Status.SEE_OTHER_303));
+                SignedJwt assertion = SignedJwt.parseToken(TOKEN_CLIENT_ASSERTION.get());
+                assertion.verifySignature(signKeys).checkValid();
+                assertThat(assertion.getJwt().issuer().orElseThrow(), is(CLIENT_ID));
+                assertThat(assertion.getJwt().subject().orElseThrow(), is(CLIENT_ID));
+                assertThat(assertion.getJwt().audience().orElseThrow(), is(List.of(serverUri.resolve("token").toString())));
+                SetCookie authenticationCookie = callback.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                        .map(SetCookie::parse)
+                        .filter(cookie -> cookie.name().equals(tenant.cookies().localAuthenticationCookieName()))
+                        .findFirst()
+                        .orElseThrow();
+                AuthenticationResponse authenticated = provider.authenticate(OidcProviderTest.request(null,
+                        SecurityEnvironment.builder()
+                                .targetUri(resourceUri)
+                                .header(HeaderNames.COOKIE.defaultCase(), initialCookies + "; "
+                                        + authenticationCookie.name() + "=" + authenticationCookie.value())
+                                .build()));
+
+                assertThat(authenticated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                assertThat(authenticated.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+            }
+        } finally {
+            client.closeResource();
+            rp.stop();
         }
     }
 

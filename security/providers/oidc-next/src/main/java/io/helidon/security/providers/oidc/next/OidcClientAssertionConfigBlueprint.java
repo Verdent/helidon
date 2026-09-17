@@ -37,7 +37,7 @@ import io.helidon.common.configurable.Resource;
  * @see <a href="https://www.rfc-editor.org/rfc/rfc7523.html">
  * RFC 7523, OAuth JWT Assertion Profiles</a>
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcClientAssertionConfigDecorator.class)
 @Prototype.Configured
 interface OidcClientAssertionConfigBlueprint {
     /**
@@ -75,6 +75,11 @@ interface OidcClientAssertionConfigBlueprint {
      * This is local client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
      * verification keys. RSA keys must have a modulus of at least 2048 bits. The JWK {@code alg} member is optional; when
      * present, it constrains the configured or default signing algorithm.
+     * <p>
+     * Building this configuration buffers the resource and closes its original stream, allowing repeated and concurrent
+     * reads during runtime initialization. The resource retains its normal Common Resource ownership and mutability
+     * contract; treat its contents as read-only once the configuration is shared. Use a new resource/configuration to
+     * rotate key material. Every PRIVATE_KEY_JWT authentication request still gets a fresh JWT assertion.
      *
      * @return private JWK Set resource
      */

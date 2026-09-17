@@ -89,9 +89,6 @@ final class OidcUserInfoJwtProcessor {
         if (headers.encryption().filter(expectedContentEncryption::equals).isEmpty()) {
             return OidcValidationResult.failure("UserInfo JWE enc header does not match registration");
         }
-        if (headers.critical().filter(critical -> !critical.isEmpty()).isPresent()) {
-            return OidcValidationResult.failure("UserInfo JWE contains unsupported critical headers");
-        }
 
         boolean signed = config.signingAlgorithm().isPresent();
         boolean nestedJwt = headers.contentType().filter("JWT"::equalsIgnoreCase).isPresent();

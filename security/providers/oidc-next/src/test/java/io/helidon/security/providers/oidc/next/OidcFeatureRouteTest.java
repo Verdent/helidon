@@ -446,6 +446,43 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void redirectionEndpointRouteRejectsCriticalEncryptedIdToken(URI serverUri) throws Exception {
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri))
+                .idToken(config -> config.decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            for (List<String> critical : List.of(List.of("extension"), List.<String>of())) {
+                String encrypted = OidcTestJwe.encrypt(signedIdToken(NONCE),
+                                                       encryptKeys,
+                                                       true,
+                                                       JsonObject.builder()
+                                                               .setStrings("crit", critical)
+                                                               .set("extension", true)
+                                                               .build());
+                tokenEndpointResponseBody = tokenEndpointResponse(encrypted).toString();
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .get("/oidc/callback")
+                        .followRedirects(false)
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                    assertThat(response.as(String.class), is("ID Token is invalid"));
+                    assertNoLocalAuthenticationCookie(response, tenant);
+                }
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteMergesUserInfoClaims(URI serverUri) {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
                 .set("preferred_username", "userinfo-user")
@@ -666,7 +703,7 @@ class OidcFeatureRouteTest {
     }
 
     @Test
-    void redirectionEndpointRouteRejectsInvalidEncryptedUserInfo(URI serverUri) {
+    void redirectionEndpointRouteRejectsInvalidEncryptedUserInfo(URI serverUri) throws Exception {
         userInfoEndpointContentType = "application/jwt";
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,
                                                            userInfo -> userInfo.jwt(jwt -> jwt
@@ -682,6 +719,15 @@ class OidcFeatureRouteTest {
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             for (String invalidResponse : List.of(
+                    OidcTestJwe.encrypt(userInfoEndpointResponse(SUBJECT).build().toString(),
+                                        encryptKeys,
+                                        false,
+                                        JsonObject.builder().setStrings("crit", List.of("extension"))
+                                                .set("extension", true).build()),
+                    OidcTestJwe.encrypt(userInfoEndpointResponse(SUBJECT).build().toString(),
+                                        encryptKeys,
+                                        false,
+                                        JsonObject.builder().setStrings("crit", List.of()).build()),
                     encryptedUserInfo(SUBJECT,
                                       EncryptedJwt.SupportedAlgorithm.RSA_OAEP,
                                       EncryptedJwt.SupportedEncryption.A256GCM,

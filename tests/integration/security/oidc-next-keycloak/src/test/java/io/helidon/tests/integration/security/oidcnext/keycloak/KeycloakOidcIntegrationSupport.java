@@ -44,7 +44,6 @@ import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
-import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcPushedAuthorizationRequestMode;
@@ -79,6 +78,14 @@ final class KeycloakOidcIntegrationSupport {
     private KeycloakOidcIntegrationSupport() {
     }
 
+    static String alicePrincipalResponse() {
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        return "oidc-sub:" + encoder.encodeToString(KeycloakOidcContainer.issuer().toString()
+                                                          .getBytes(StandardCharsets.UTF_8))
+                + "." + encoder.encodeToString("11111111-1111-1111-1111-111111111111".getBytes(StandardCharsets.UTF_8))
+                + "|alice|alice@example.org";
+    }
+
     static OidcProviderConfig protectedResourceProviderConfig(OidcTokenValidationMethod method) {
         return protectedResourceProviderConfig(method, API_AUDIENCE, method == OidcTokenValidationMethod.JWT);
     }
@@ -102,8 +109,6 @@ final class KeycloakOidcIntegrationSupport {
                                         .clientId(API_AUDIENCE)
                                         .clientSecret(API_CLIENT_SECRET))
                                 .audienceValidationEnabled(audienceValidationEnabled)))
-                .subjectMapping(subjectMapping -> subjectMapping
-                        .principalIdClaimPaths(List.of("preferred_username", "client_id", "sub")))
                 .buildPrototype();
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant)
@@ -136,7 +141,6 @@ final class KeycloakOidcIntegrationSupport {
                     authorizationCode.scopes(List.of("openid", "profile", "email"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .logout(logout -> logout.endSession(endSession -> {
                 }))
@@ -160,10 +164,7 @@ final class KeycloakOidcIntegrationSupport {
                                         .introspection(introspection -> introspection
                                                 .clientId(API_AUDIENCE)
                                                 .clientSecret(API_CLIENT_SECRET))
-                                        .audienceValidationEnabled(false)))
-                        .subjectMapping(subjectMapping -> subjectMapping
-                                .principalIdMode(OidcPrincipalIdMode.SUBJECT)
-                                .principalIdClaimPaths(List.of("preferred_username", "username", "sub", "client_id"))));
+                                        .audienceValidationEnabled(false))));
     }
 
     static OidcProviderConfig authorizationCodeRefreshProviderConfig() {

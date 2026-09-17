@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,6 +47,14 @@ final class OidcTenantConfigDecorator
         validateClaimPaths(subjectMapping.principalIdClaimPaths(),
                            "subject-mapping.principal-id-claim-paths",
                            true);
+        subjectMapping.principalIdNamespace()
+                .filter(namespace -> namespace.isBlank()
+                        || !namespace.equals(namespace.strip())
+                        || !StandardCharsets.UTF_8.newEncoder().canEncode(namespace))
+                .ifPresent(_ -> {
+                    throw new IllegalArgumentException("subject-mapping.principal-id-namespace must not be blank, padded, "
+                                                               + "or contain unpaired surrogates");
+                });
         validateClaimPaths(subjectMapping.principalNameClaimPaths(),
                            "subject-mapping.principal-name-claim-paths",
                            false);
@@ -288,7 +297,8 @@ final class OidcTenantConfigDecorator
         }
         paths.stream()
                 .filter(path -> {
-                    if (path.isBlank() || !path.equals(path.strip())) {
+                    if (path.isBlank() || !path.equals(path.strip())
+                            || !StandardCharsets.UTF_8.newEncoder().canEncode(path)) {
                         return true;
                     }
                     return Arrays.stream(path.split("\\.", -1))
@@ -785,6 +795,12 @@ final class OidcTenantConfigDecorator
             tokenValidation.audience()
                     .orElseThrow(() -> new IllegalArgumentException(
                             "token-validation.audience must be configured when introspection is enabled"));
+        }
+        if (tenant.issuer().isEmpty()
+                && wellKnownUri.isEmpty()
+                && tenant.subjectMapping().principalIdNamespace().isEmpty()) {
+            throw new IllegalArgumentException("subject-mapping.principal-id-namespace must be configured for "
+                                                       + "introspection without issuer or well-known-uri");
         }
     }
 

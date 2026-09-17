@@ -40,7 +40,6 @@ import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
-import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
@@ -83,7 +82,6 @@ final class OidcIntegrationSupport {
                     authorizationCode.scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
         tenantCustomizer.accept(tenant);
@@ -106,7 +104,6 @@ final class OidcIntegrationSupport {
                     authorizationCode.scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .subjectMapping(subjectMapping -> subjectMapping.principalIdMode(OidcPrincipalIdMode.SUBJECT))
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
                 .buildPrototype();
@@ -209,6 +206,13 @@ final class OidcIntegrationSupport {
                 .flatMap(context -> context.get(SecurityContext.class))
                 .flatMap(SecurityContext::user)
                 .orElseThrow();
+    }
+
+    static String principalResponse(TestOidcServer idp, String subject, String name, String email) {
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        return "oidc-sub:" + encoder.encodeToString(idp.issuer().toString().getBytes(StandardCharsets.UTF_8))
+                + "." + encoder.encodeToString(subject.getBytes(StandardCharsets.UTF_8))
+                + "|" + name + "|" + email;
     }
 
     static String basicAuthorization(String clientId, String clientSecret) {

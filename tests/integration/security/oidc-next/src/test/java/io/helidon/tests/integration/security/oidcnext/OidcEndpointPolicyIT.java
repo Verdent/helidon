@@ -81,7 +81,8 @@ class OidcEndpointPolicyIT {
                             .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                             .request()) {
                         assertThat(bearerApi.status(), is(Status.OK_200));
-                        assertThat(bearerApi.as(String.class), is("service-client|service-client|"));
+                        assertThat(bearerApi.as(String.class),
+                                   is(OidcIntegrationSupport.principalResponse(idp, "service-client", "service-client", "")));
                     }
                 } finally {
                     client.closeResource();
@@ -117,7 +118,7 @@ class OidcEndpointPolicyIT {
 
                 try (HttpClientResponse page = browser.get(pageUri)) {
                     assertThat(page.status(), is(Status.OK_200));
-                    assertThat(page.as(String.class), is("alice-id|alice|"));
+                    assertThat(page.as(String.class), is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "")));
                 }
             } finally {
                 rpServer.stop();

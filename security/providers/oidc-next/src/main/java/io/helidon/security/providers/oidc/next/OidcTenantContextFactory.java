@@ -156,7 +156,8 @@ final class OidcTenantContextFactory {
             return true;
         }
         if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isPresent()
-                && staticMetadata.introspectionEndpointUri().isEmpty()) {
+                && (staticMetadata.introspectionEndpointUri().isEmpty()
+                || staticMetadata.issuer().isEmpty())) {
             return true;
         }
         Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
@@ -771,6 +772,11 @@ final class OidcTenantContextFactory {
                 .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isEmpty()) {
             return;
+        }
+
+        if (metadata.issuer().isEmpty() && tenantConfig.subjectMapping().principalIdNamespace().isEmpty()) {
+            throw new IllegalStateException("Introspection principal mapping requires an issuer or "
+                                                    + "subject-mapping.principal-id-namespace");
         }
 
         /*

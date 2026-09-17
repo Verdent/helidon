@@ -38,6 +38,8 @@ import io.helidon.security.providers.common.TokenCredential;
 
 final class OidcSubjectMapper {
     private static final String ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX = "oidc-sub:";
+    private static final String ISSUER_CLAIM_PRINCIPAL_ID_PREFIX = "oidc-claim:";
+    private static final String NAMESPACE_PRINCIPAL_ID_PREFIX = "oidc-namespace:";
     private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder()
             .withoutPadding();
     private static final Set<String> ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO = Set.of("iss",
@@ -59,17 +61,17 @@ final class OidcSubjectMapper {
     private OidcSubjectMapper() {
     }
 
-    static Subject map(OidcValidatedAccessToken validatedToken, OidcSubjectMappingConfig subjectMapping) {
+    static Subject map(OidcValidatedAccessToken validatedToken, OidcTenantContext tenantContext) {
         return switch (validatedToken) {
-        case OidcValidatedJwt validatedJwt -> mapJwt(validatedJwt, subjectMapping);
+        case OidcValidatedJwt validatedJwt -> mapJwt(validatedJwt, tenantContext.subjectMapping());
         case OidcValidatedIntrospection validatedIntrospection -> mapIntrospection(validatedIntrospection,
-                                                                                    subjectMapping);
+                                                                                    tenantContext);
         };
     }
 
     static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
         Jwt idToken = authenticationResult.idToken().jwt();
-        String principalId = localPrincipalId(idToken, subjectMapping).orElseThrow();
+        PrincipalIdentity identity = localIdentity(idToken).orElseThrow();
         Optional<JsonObject> userInfo = authenticationResult.userInfo();
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -83,10 +85,10 @@ final class OidcSubjectMapper {
         if (userInfo.isPresent()) {
             JsonObject userInfoClaims = userInfo.orElseThrow();
             JsonObject mergedClaims = mergeUserInfo(idToken, userInfoClaims);
-            subjectBuilder.principal(principal(idToken, mergedClaims, userInfoClaims, principalId, subjectMapping));
+            subjectBuilder.principal(principal(idToken, mergedClaims, userInfoClaims, identity, subjectMapping));
             addRoles(subjectBuilder, roleClaimValues(mergedClaims, subjectMapping));
         } else {
-            subjectBuilder.principal(principal(idToken, principalId, subjectMapping));
+            subjectBuilder.principal(principal(idToken, identity, subjectMapping));
             addRoles(subjectBuilder, roleClaimValues(idToken.payloadClaimsJson(), subjectMapping));
         }
         if (subjectMapping.scopeGrantsEnabled()) {
@@ -99,6 +101,18 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
+    static Optional<String> principalId(JsonObject claims, OidcTenantContext tenantContext) {
+        return introspectionIdentity(claims, tenantContext).map(PrincipalIdentity::id);
+    }
+
+    static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
+        return jwtIdentity(jwt, subjectMapping).map(PrincipalIdentity::id);
+    }
+
+    static Optional<String> localPrincipalId(Jwt idToken) {
+        return localIdentity(idToken).map(PrincipalIdentity::id);
+    }
+
     private static JsonObject mergeUserInfo(Jwt idToken, JsonObject userInfo) {
         JsonObject.Builder builder = JsonObject.builder()
                 .from(JsonObject.create(idToken.payloadClaimsJson()));
@@ -109,24 +123,11 @@ final class OidcSubjectMapper {
         return builder.build();
     }
 
-    static Optional<String> principalId(JsonObject claims, OidcSubjectMappingConfig subjectMapping) {
-        return firstClaimValue(claims, subjectMapping.principalIdClaimPaths());
-    }
-
-    static Optional<String> localPrincipalId(Jwt idToken, OidcSubjectMappingConfig subjectMapping) {
-        return switch (subjectMapping.principalIdMode()) {
-        case CLAIM_PATH -> principalId(idToken, subjectMapping);
-        case ISSUER_SUBJECT -> issuerSubjectPrincipalId(idToken);
-        case SUBJECT -> idToken.subject()
-                .filter(value -> !value.isBlank());
-        };
-    }
-
     private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcSubjectMappingConfig subjectMapping) {
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
-        String principalId = principalId(jwt, subjectMapping).orElseThrow();
-        Principal principal = principal(jwt, principalId, subjectMapping);
+        PrincipalIdentity identity = jwtIdentity(jwt, subjectMapping).orElseThrow();
+        Principal principal = principal(jwt, identity, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(validatedToken.rawToken());
@@ -148,9 +149,10 @@ final class OidcSubjectMapper {
     }
 
     private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken,
-                                            OidcSubjectMappingConfig subjectMapping) {
-        String principalId = principalId(validatedToken.claims(), subjectMapping).orElseThrow();
-        Principal.Builder principalBuilder = principalBuilder(validatedToken.claims(), principalId, subjectMapping);
+                                            OidcTenantContext tenantContext) {
+        OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
+        PrincipalIdentity identity = introspectionIdentity(validatedToken.claims(), tenantContext).orElseThrow();
+        Principal.Builder principalBuilder = principalBuilder(validatedToken.claims(), identity, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
                 .token(validatedToken.rawToken());
@@ -170,17 +172,17 @@ final class OidcSubjectMapper {
         return subjectBuilder.build();
     }
 
-    private static Principal principal(Jwt jwt, String principalId, OidcSubjectMappingConfig subjectMapping) {
-        Principal.Builder builder = principalBuilder(jwt, principalId, subjectMapping);
+    private static Principal principal(Jwt jwt, PrincipalIdentity identity, OidcSubjectMappingConfig subjectMapping) {
+        Principal.Builder builder = principalBuilder(jwt, identity, subjectMapping);
         return builder.build();
     }
 
     private static Principal principal(Jwt jwt,
                                        JsonObject mergedClaims,
                                        JsonObject userInfo,
-                                       String principalId,
+                                       PrincipalIdentity identity,
                                        OidcSubjectMappingConfig subjectMapping) {
-        Principal.Builder builder = principalBuilder(jwt, principalId, subjectMapping);
+        Principal.Builder builder = principalBuilder(jwt, identity, subjectMapping);
         firstClaimValue(mergedClaims, subjectMapping.principalNameClaimPaths()).ifPresent(builder::name);
         userInfo.keysAsStrings()
                 .stream()
@@ -191,13 +193,13 @@ final class OidcSubjectMapper {
     }
 
     private static Principal.Builder principalBuilder(Jwt jwt,
-                                                      String principalId,
+                                                      PrincipalIdentity identity,
                                                       OidcSubjectMappingConfig subjectMapping) {
         String name = firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalNameClaimPaths())
-                .orElse(principalId);
+                .orElse(identity.value());
         Principal.Builder builder = Principal.builder()
                 .name(name)
-                .id(principalId);
+                .id(identity.id());
 
         jwt.payloadClaimsJson()
                 .forEach((key, jsonValue) -> builder.addAttribute(key, JwtUtil.toObject(jsonValue)));
@@ -211,45 +213,81 @@ final class OidcSubjectMapper {
     }
 
     private static Principal.Builder principalBuilder(JsonObject claims,
-                                                      String principalId,
+                                                      PrincipalIdentity identity,
                                                       OidcSubjectMappingConfig subjectMapping) {
         String name = firstClaimValue(claims, subjectMapping.principalNameClaimPaths())
-                .orElse(principalId);
+                .orElse(identity.value());
         Principal.Builder builder = Principal.builder()
                 .name(name)
-                .id(principalId);
+                .id(identity.id());
         claims.keysAsStrings()
                 .forEach(key -> claims.value(key)
                         .ifPresent(value -> builder.addAttribute(key, JwtUtil.toObject(value))));
         return builder;
     }
 
-    static Optional<String> principalId(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
-        return firstClaimValue(jwt.payloadClaimsJson(), subjectMapping.principalIdClaimPaths());
+    private static Optional<PrincipalIdentity> jwtIdentity(Jwt jwt, OidcSubjectMappingConfig subjectMapping) {
+        return jwt.issuer()
+                .flatMap(issuer -> firstClaim(name -> Optional.ofNullable(jwt.payloadClaimsJson().get(name)),
+                                              subjectMapping.principalIdClaimPaths())
+                        .flatMap(claim -> qualifiedIdentity(issuer, claim, true)));
     }
 
-    private static Optional<String> issuerSubjectPrincipalId(Jwt idToken) {
+    private static Optional<PrincipalIdentity> localIdentity(Jwt idToken) {
         /*
          * Spec: OpenID Connect Core 1.0, 5.7 Claim Stability and Uniqueness
          * https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability
          * Quote: "the only guaranteed unique identifier for a given End-User is the combination of the `iss` Claim and
          * the `sub` Claim."
          */
-        Optional<String> issuer = idToken.issuer()
-                .filter(value -> !value.isBlank());
-        Optional<String> subject = idToken.subject()
-                .filter(value -> !value.isBlank());
-        if (issuer.isEmpty() || subject.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX
-                                   + base64Url(issuer.orElseThrow())
-                                   + "."
-                                   + base64Url(subject.orElseThrow()));
+        return idToken.issuer()
+                .flatMap(issuer -> idToken.subject()
+                        .flatMap(subject -> qualifiedIdentity(issuer, new SelectedClaim("sub", subject), true)));
     }
 
-    private static String base64Url(String value) {
-        return BASE64_URL_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    private static Optional<PrincipalIdentity> introspectionIdentity(JsonObject claims, OidcTenantContext tenantContext) {
+        /*
+         * RFC 7662, 2.2 makes both iss and sub optional. Identity qualification is a local mapping policy, not an
+         * additional wire requirement. Bind the authority to the trusted tenant, including when the response omits iss.
+         * The validator checks a returned iss against the configured/discovered issuer before mapping the response.
+         */
+        OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
+        Optional<String> issuer = tenantContext.metadata().issuer();
+        return firstClaim(claims::value, subjectMapping.principalIdClaimPaths())
+                .flatMap(claim -> issuer.isPresent()
+                        ? qualifiedIdentity(issuer.orElseThrow(), claim, true)
+                        : subjectMapping.principalIdNamespace()
+                                .flatMap(namespace -> qualifiedIdentity(namespace, claim, false)));
+    }
+
+    private static Optional<PrincipalIdentity> qualifiedIdentity(String authority, SelectedClaim claim, boolean issuer) {
+        boolean issuerSubject = issuer && "sub".equals(claim.path());
+        Optional<String> encodedAuthority = encodedIdentityComponent(authority);
+        Optional<String> encodedValue = encodedIdentityComponent(claim.value());
+        Optional<String> encodedClaimPath = issuerSubject
+                ? Optional.of("")
+                : encodedIdentityComponent(claim.path()).map(path -> path + ".");
+        if (encodedAuthority.isEmpty() || encodedValue.isEmpty() || encodedClaimPath.isEmpty()) {
+            return Optional.empty();
+        }
+        String prefix = issuer ? ISSUER_CLAIM_PRINCIPAL_ID_PREFIX : NAMESPACE_PRINCIPAL_ID_PREFIX;
+        if (issuerSubject) {
+            prefix = ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX;
+        }
+        return Optional.of(new PrincipalIdentity(prefix
+                                                         + encodedAuthority.orElseThrow()
+                                                         + "."
+                                                         + encodedClaimPath.orElseThrow()
+                                                         + encodedValue.orElseThrow(),
+                                                 claim.value()));
+    }
+
+    private static Optional<String> encodedIdentityComponent(String value) {
+        // Do not silently replace unpaired surrogates: replacement would collapse distinct identity values.
+        if (value.isBlank() || !StandardCharsets.UTF_8.newEncoder().canEncode(value)) {
+            return Optional.empty();
+        }
+        return Optional.of(BASE64_URL_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static Optional<String> firstClaimValue(JsonObject claims, List<String> claimPaths) {
@@ -261,11 +299,16 @@ final class OidcSubjectMapper {
     }
 
     private static Optional<String> firstClaimValue(ClaimSource claims, List<String> claimPaths) {
+        return firstClaim(claims, claimPaths).map(SelectedClaim::value);
+    }
+
+    private static Optional<SelectedClaim> firstClaim(ClaimSource claims, List<String> claimPaths) {
         return claimPaths.stream()
-                .map(claimPath -> claimValue(claims, claimPath))
+                .map(claimPath -> claimValue(claims, claimPath)
+                        .flatMap(OidcSubjectMapper::stringValue)
+                        .filter(value -> !value.isBlank())
+                        .map(value -> new SelectedClaim(claimPath, value)))
                 .flatMap(Optional::stream)
-                .flatMap(jsonValue -> stringValue(jsonValue).stream())
-                .filter(value -> !value.isBlank())
                 .findFirst();
     }
 
@@ -380,5 +423,11 @@ final class OidcSubjectMapper {
     @FunctionalInterface
     private interface ClaimSource {
         Optional<JsonValue> value(String name);
+    }
+
+    private record SelectedClaim(String path, String value) {
+    }
+
+    private record PrincipalIdentity(String id, String value) {
     }
 }

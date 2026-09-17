@@ -72,7 +72,7 @@ class OidcLogoutFlowIT {
 
                 try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice|"));
+                    assertThat(authenticated.as(String.class), is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "")));
                 }
 
                 URI localLogout = rpBaseUri.resolve("/oidc/logout?state=logout-state");

@@ -57,7 +57,7 @@ class KeycloakIntrospectionIT {
                         .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                         .request()) {
                     assertThat(response.status(), is(Status.OK_200));
-                    assertThat(response.as(String.class), is("alice|alice|alice@example.org"));
+                    assertThat(response.as(String.class), is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 }
             } finally {
                 client.closeResource();
@@ -87,7 +87,7 @@ class KeycloakIntrospectionIT {
                         .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                         .request()) {
                     assertThat(response.status(), is(Status.OK_200));
-                    assertThat(response.as(String.class), is("alice|alice|alice@example.org"));
+                    assertThat(response.as(String.class), is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 }
             } finally {
                 client.closeResource();

@@ -185,7 +185,6 @@ import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundPolicy;
 import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
-import io.helidon.security.providers.oidc.next.OidcPrincipalIdMode;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcRequestObjectMode;
@@ -476,8 +475,8 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 
 Well-known metadata is used by Authorization Code Flow when the issuer, Authorization Endpoint, or Token Endpoint is
 missing, by Client Credentials Grant when `endpoints.token-endpoint-uri` is not configured, by Protected Resource JWT
-validation when `endpoints.jwks-uri` is not configured, and by Protected Resource introspection when
-`endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
+validation when the issuer or `endpoints.jwks-uri` is not configured, and by Protected Resource introspection when the
+issuer or `endpoints.introspection-endpoint-uri` is not configured. It is also used by RP-Initiated Logout when
 `endpoints.end-session-endpoint-uri` is not configured, and by UserInfo when `endpoints.user-info-endpoint-uri` is not
 configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `introspection_endpoint`,
 `response_types_supported`, `grant_types_supported`, `code_challenge_methods_supported`,
@@ -716,6 +715,9 @@ included in those metadata values.
 
 Introspection requires `client-id`, authentication credentials for the selected method, and either
 `endpoints.introspection-endpoint-uri` or well-known metadata that provides `introspection_endpoint`.
+Principal mapping also needs a configured/discovered issuer or an explicit `subject-mapping.principal-id-namespace`.
+This does not require the introspection response to contain `iss` or `sub`; see [Subject Mapping](#subject-mapping) for
+issuer-less responses and explicit client/custom identity mappings.
 
 Audience validation is enabled by default. Introspection responses with an `aud` claim must contain the configured
 expected audience. If the Authorization Server omits `aud` from introspection responses, disable audience validation
@@ -1331,12 +1333,13 @@ configuring ID Token decryption does not implicitly enable UserInfo decryption.
 Encrypted UserInfo uses the same critical-header policy as encrypted ID Tokens: any `crit` header is rejected, including
 an empty or malformed list. This applies to both encryption-only and signed-then-encrypted UserInfo responses.
 
-By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used by `subject-mapping`, and claims listed
-in `attribute-claim-paths`. This follows the OpenID Connect Core privacy guidance: "Only necessary UserInfo data should
+By default, `storage-policy: mapped` stores only the UserInfo `sub`, claims used to map names/roles/scopes, and claims listed
+in `attribute-claim-paths`. Protected Resource principal-id paths do not add fields to browser UserInfo storage.
+This follows the OpenID Connect Core privacy guidance: "Only necessary UserInfo data should
 be stored at the Client". Stored UserInfo claims are kept in the protected local authentication result cookie and merged
 into subject attributes on later requests. UserInfo claims override ID Token claims with the same name for principal
 attributes, principal name, and roles, except ID Token protocol and authentication claims remain ID Token sourced.
-Principal id still comes from the validated ID Token claim mapping.
+Principal id always comes from the validated ID Token's issuer and subject.
 
 Use `attribute-claim-paths` for additional UserInfo claims that should be exposed as principal attributes but are not
 used by `subject-mapping`.
@@ -2191,8 +2194,7 @@ Defaults:
 
 ```yaml
 subject-mapping:
-  principal-id-mode: issuer-subject
-  principal-id-claim-paths: [ "sub", "username", "client_id" ]
+  principal-id-claim-paths: [ "sub" ]
   principal-name-claim-paths: [ "preferred_username", "username" ]
   role-claim-paths: [ "groups" ]
   scope-claim-paths: [ "scope" ]
@@ -2200,8 +2202,8 @@ subject-mapping:
 ```
 
 Principal name claim paths are tried in order. Principal id claim paths are tried in order for Protected Resource JWT and
-introspection authentication, and for Authorization Code Flow local authentication when `principal-id-mode` is
-`claim-path`. Role and scope claim paths are aggregated from all configured paths and duplicate grant names are ignored.
+introspection authentication. Authorization Code Flow always uses the ID Token's issuer and subject. Role and scope claim
+paths are aggregated from all configured paths and duplicate grant names are ignored.
 Dotted paths read nested objects, for example `realm_access.roles`.
 
 Principal id and principal name claims must be strings. Role claims may be strings or string arrays. Standard `scope`
@@ -2211,15 +2213,47 @@ strings or string arrays; array values are treated as individual scope tokens.
 For Authorization Code Flow local authentication, scope grants come from the Token Endpoint scope value stored in the
 local authentication result. ID Token scope claims are not promoted to Helidon scope grants.
 
-For Authorization Code Flow local authentication, `principal-id-mode` controls `Principal.id()`. The default
-`issuer-subject` mode derives an opaque issuer-qualified value from the ID Token `iss` and `sub` claims. OpenID Connect
-Core 1.0, section 5.7 says that "the only guaranteed unique identifier for a given End-User is the combination of the
-`iss` Claim and the `sub` Claim." The raw ID Token `iss` and `sub` values are still preserved as principal attributes.
+`Principal.id()` is an opaque, issuer-qualified identity, not a raw token claim. Authorization Code Flow derives it from
+the validated ID Token's exact `iss` and `sub` values, following
+[OpenID Connect Core 1.0, section 5.7](https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability).
+Protected Resource authentication uses the same identity for the same issuer and `sub` by default. Issuer and subject
+strings are not case-folded or normalized. Pairwise or otherwise different subject identifiers remain different identities;
+the provider does not link accounts using usernames or email addresses. The opaque Helidon encoding is a local API choice,
+not an OIDC wire format. Store/compare the complete ID rather than parsing it.
 
-Use `principal-id-mode: subject` when the application intentionally wants the raw ID Token `sub` claim as the principal
-id, for example in a single-issuer application. Use `principal-id-mode: claim-path` when Authorization Code Flow local
-authentication should use `principal-id-claim-paths`. Protected Resource JWT and introspection authentication always use
-`principal-id-claim-paths`.
+Protocol identity claims (`iss` and `sub`, when present) remain available as principal attributes. Bearer token credentials
+also retain the parsed JWT or introspection response. `Principal.name()` remains a display name and falls back to the raw
+identity claim value when no configured name claim is present. Names are not globally unique
+identifiers. Changing a display name does not change the OIDC identity.
+
+For resource-server policies that explicitly identify a client or use a provider-specific stable identifier, configure
+`principal-id-claim-paths`. The selected claim path is part of the qualified identity: `sub=123` and `client_id=123` are
+different identities even at the same issuer. There is no default fallback to `username` or `client_id`. Custom claims
+require an application-specific uniqueness and stability contract with the authorization server; qualification cannot
+make a mutable or reused claim stable. These settings do not replace the ID Token identity during browser authentication.
+
+[RFC 7662, section 2.2](https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2) permits introspection responses without `iss`
+or `sub`. When `iss` is absent, the configured/discovered issuer still qualifies the identity; a returned `iss` must match
+that issuer. When neither a configured nor a discovered issuer exists, configure a stable local namespace for the trusted
+introspection endpoint's identities. Choose different namespaces for independent identity authorities in the application:
+
+```yaml
+subject-mapping:
+  principal-id-namespace: payments-authorization-server
+  principal-id-claim-paths: [ "client_id" ]
+```
+
+This example explicitly identifies the requesting client; it does not infer a client credentials grant or identify the
+resource owner of a delegated token. A response without `sub` can instead use a suitable explicitly configured custom claim.
+A response that cannot satisfy the chosen principal mapping is rejected as unusable for this application, not because
+RFC 7662 mandates `sub`. An unknown identity authority is reported as a configuration error.
+Principal mapping is required only when the access token authenticates a Protected Resource request. Browser refresh
+retains the ID Token identity and does not require a principal claim in the refreshed access token or its introspection
+response; the configured token-validity checks still run.
+
+The local namespace is separate from issuer-qualified identities, never fabricates an `iss` claim, and is not selected or
+changed by response claims. It is a fallback only: configured/discovered issuers take precedence. These local identities
+are not automatically linked to OIDC identities. This setting is not used for JWT access tokens or browser authentication.
 
 ID Token validation requires `sub` to be non-blank ASCII and no longer than 255 characters. This is an ID Token protocol
 check; protected-resource access tokens and introspection responses keep using the configured subject mapping rules.
@@ -2228,7 +2262,6 @@ Example for a Keycloak-style token:
 
 ```yaml
 subject-mapping:
-  principal-id-mode: claim-path
   principal-id-claim-paths: [ "sub" ]
   principal-name-claim-paths: [ "preferred_username", "email" ]
   role-claim-paths: [ "realm_access.roles", "groups" ]
@@ -2264,7 +2297,6 @@ security:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile", "email", "mcp.tools.read" ]
         subject-mapping:
-          principal-id-mode: claim-path
           principal-id-claim-paths: [ "sub" ]
           principal-name-claim-paths: [ "preferred_username", "email" ]
           role-claim-paths: [ "groups", "idcs_groups", "iam.groups" ]
@@ -2333,7 +2365,6 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile", "email", "mcp.tools.read")))
         .subjectMapping(subjectMapping -> subjectMapping
-                .principalIdMode(OidcPrincipalIdMode.CLAIM_PATH)
                 .principalIdClaimPaths(List.of("sub"))
                 .principalNameClaimPaths(List.of("preferred_username", "email"))
                 .roleClaimPaths(List.of("groups", "idcs_groups", "iam.groups"))
@@ -2679,8 +2710,8 @@ Subject mapping options:
 
 | Key | Description |
 | --- | --- |
-| `principal-id-mode` | Authorization Code Flow local authentication principal id mode: `issuer-subject`, `subject`, or `claim-path`. Defaults to `issuer-subject`. Protected Resource JWT and introspection authentication use `principal-id-claim-paths`. |
-| `principal-id-claim-paths` | Dotted claim paths tried in order for Protected Resource JWT and introspection principal ids, and for Authorization Code Flow local authentication when `principal-id-mode` is `claim-path`. Defaults to `[ "sub", "username", "client_id" ]`. |
+| `principal-id-claim-paths` | Dotted claim paths tried in order for Protected Resource JWT and introspection identities. Defaults to `[ "sub" ]`. IDs are qualified by authority and selected claim path. Browser authentication always uses the ID Token issuer and subject. |
+| `principal-id-namespace` | Stable, application-controlled identity namespace required for introspection without a configured/discovered issuer. Does not create or override an `iss` claim; ignored when an issuer is known. Not used for JWT or browser identities. |
 | `principal-name-claim-paths` | Dotted claim paths tried in order for the principal display name. Defaults to `[ "preferred_username", "username" ]`. |
 | `role-claim-paths` | Dotted claim paths used to create Helidon role grants. String values and string-array values are supported. Defaults to `[ "groups" ]`. |
 | `scope-claim-paths` | Dotted claim paths used to create Helidon scope grants for Protected Resource JWT and introspection authentication. Defaults to `[ "scope" ]`. |

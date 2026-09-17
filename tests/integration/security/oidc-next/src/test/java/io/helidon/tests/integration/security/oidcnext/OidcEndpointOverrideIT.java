@@ -124,7 +124,8 @@ class OidcEndpointOverrideIT {
 
                 try (HttpClientResponse authenticated = browser.get(rpBaseUri.resolve("/resource"))) {
                     assertThat(authenticated.status(), is(Status.OK_200));
-                    assertThat(authenticated.as(String.class), is("alice-id|alice-id|"));
+                    assertThat(authenticated.as(String.class),
+                               is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice-id", "")));
                 }
 
                 assertThat(idp.tokenRequests().size(), is(1));

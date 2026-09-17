@@ -54,6 +54,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -156,8 +157,8 @@ class OidcProviderConfigTest {
         assertThat(tokenValidation.allowedAlgorithms(), is(List.of("RS256")));
         assertThat(tokenValidation.certificateBoundAccessTokens().mode(),
                    is(OidcCertificateBoundAccessTokenMode.DISABLED));
-        assertThat(subjectMapping.principalIdMode(), is(OidcPrincipalIdMode.ISSUER_SUBJECT));
-        assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub", "username", "client_id")));
+        assertThat(subjectMapping.principalIdClaimPaths(), is(List.of("sub")));
+        assertThat(subjectMapping.principalIdNamespace().isEmpty(), is(true));
         assertThat(subjectMapping.principalNameClaimPaths(), is(List.of("preferred_username", "username")));
         assertThat(subjectMapping.roleClaimPaths(), is(List.of("groups")));
         assertThat(subjectMapping.scopeClaimPaths(), is(List.of("scope")));
@@ -176,10 +177,6 @@ class OidcProviderConfigTest {
                    is(List.of(OidcUserInfoStoragePolicy.MAPPED,
                               OidcUserInfoStoragePolicy.ALL,
                               OidcUserInfoStoragePolicy.NONE)));
-        assertThat(List.of(OidcPrincipalIdMode.values()),
-                   is(List.of(OidcPrincipalIdMode.ISSUER_SUBJECT,
-                              OidcPrincipalIdMode.SUBJECT,
-                              OidcPrincipalIdMode.CLAIM_PATH)));
         assertThat(List.of(OidcCertificateBoundAccessTokenMode.values()),
                    is(List.of(OidcCertificateBoundAccessTokenMode.DISABLED,
                               OidcCertificateBoundAccessTokenMode.IF_PRESENT,
@@ -246,13 +243,6 @@ class OidcProviderConfigTest {
         assertThat(OidcUserInfoStoragePolicy.MAPPED.text(), is("mapped"));
         assertThat(OidcUserInfoStoragePolicy.ALL.text(), is("all"));
         assertThat(OidcUserInfoStoragePolicy.NONE.text(), is("none"));
-    }
-
-    @Test
-    void principalIdModesUseConfigTextValues() {
-        assertThat(OidcPrincipalIdMode.ISSUER_SUBJECT.text(), is("issuer-subject"));
-        assertThat(OidcPrincipalIdMode.SUBJECT.text(), is("subject"));
-        assertThat(OidcPrincipalIdMode.CLAIM_PATH.text(), is("claim-path"));
     }
 
     @Test
@@ -425,7 +415,7 @@ class OidcProviderConfigTest {
                                   "oidc-next-encrypt-jwk.json"),
                         Map.entry("tenants.default.user-info.jwt.clock-skew", "PT2M"),
                         Map.entry("tenant-resolution.host-template", "{tenant}.BÜCHER.Example."),
-                        Map.entry("tenants.default.subject-mapping.principal-id-mode", "claim-path"),
+                        Map.entry("tenants.default.subject-mapping.principal-id-namespace", "test-authority"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.0", "custom_sub"),
                         Map.entry("tenants.default.subject-mapping.principal-id-claim-paths.1", "sub"),
                         Map.entry("tenants.default.subject-mapping.principal-name-claim-paths.0", "display_name"),
@@ -544,7 +534,7 @@ class OidcProviderConfigTest {
         assertThat(userInfoJwt.decryptionJwk().orElseThrow().location(), is("oidc-next-encrypt-jwk.json"));
         assertThat(userInfoJwt.clockSkew(), is(Duration.ofMinutes(2)));
         assertThat(providerConfig.toString().contains("oidc-next-encrypt-jwk.json"), is(false));
-        assertThat(tenant.subjectMapping().principalIdMode(), is(OidcPrincipalIdMode.CLAIM_PATH));
+        assertThat(tenant.subjectMapping().principalIdNamespace().orElseThrow(), is("test-authority"));
         assertThat(tenant.subjectMapping().principalIdClaimPaths(), is(List.of("custom_sub", "sub")));
         assertThat(tenant.subjectMapping().principalNameClaimPaths(), is(List.of("display_name")));
         assertThat(tenant.subjectMapping().roleClaimPaths(), is(List.of("realm_access.roles")));
@@ -1356,6 +1346,64 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void principalIdNamespaceRejectsBlankPaddedAndMalformedUnicodeValues() {
+        for (String namespace : List.of("", " ", " padded", "padded ", "\uD800", "namespace\uDC00")) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                           () -> OidcTenantConfig.builder()
+                                                                   .subjectMapping(mapping -> mapping
+                                                                           .principalIdNamespace(namespace))
+                                                                   .buildPrototype());
+            assertThat(thrown.getMessage(), containsString("subject-mapping.principal-id-namespace"));
+        }
+    }
+
+    @Test
+    void principalClaimPathsRejectMalformedUnicode() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantConfig.builder()
+                                                               .subjectMapping(mapping -> mapping
+                                                                       .principalIdClaimPaths(List.of("id\uD800")))
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("subject-mapping.principal-id-claim-paths"));
+    }
+
+    @Test
+    void principalIdNamespaceSupportsRootAndNestedConfiguration() {
+        for (String prefix : List.of("", "tenants.default.")) {
+            Config config = Config.builder()
+                    .disableEnvironmentVariablesSource()
+                    .disableSystemPropertiesSource()
+                    .sources(ConfigSources.create(Map.of(prefix + "subject-mapping.principal-id-namespace", "authority-é")))
+                    .build();
+
+            OidcTenantConfig tenant = OidcProviderConfig.create(config).tenants().get("default");
+
+            assertThat(tenant.subjectMapping().principalIdNamespace().orElseThrow(), is("authority-é"));
+            assertThat(tenant.issuer().isEmpty(), is(true));
+        }
+    }
+
+    @Test
+    void issuerlessIntrospectionRequiresExplicitIdentityNamespace() {
+        OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(endpoints -> endpoints.introspectionEndpointUri(URI.create("https://issuer.example/introspect")))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)));
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, builder::buildPrototype);
+        assertThat(thrown.getMessage(), containsString("subject-mapping.principal-id-namespace"));
+
+        OidcTenantConfig tenant = builder.subjectMapping(mapping -> mapping.principalIdNamespace("authorization-server"))
+                .buildPrototype();
+        assertThat(tenant.subjectMapping().principalIdNamespace().orElseThrow(), is("authorization-server"));
+        assertThat(tenant.issuer().isEmpty(), is(true));
+    }
+
+    @Test
     void introspectionRequiresEndpointAndClientAuthentication() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .clientId("client-id")
@@ -1396,6 +1444,7 @@ class OidcProviderConfigTest {
     void introspectionCanUseSeparateClientAuthenticationFromConfig() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.default.subject-mapping.principal-id-namespace", "authorization-server"),
                         Map.entry("tenants.default.endpoints.introspection-endpoint-uri",
                                   "https://issuer.example/introspect"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "INTROSPECTION"),
@@ -1476,6 +1525,7 @@ class OidcProviderConfigTest {
     @Test
     void endpointTlsRequirementCanBeDisabledForIntrospection() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .subjectMapping(mapping -> mapping.principalIdNamespace("authorization-server"))
                 .clientId("client-id")
                 .clientSecret("client-secret-value")
                 .endpoints(it -> it.introspectionEndpointUri(URI.create("http://issuer.example/introspect"))
@@ -2907,7 +2957,8 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("endpoint-policy"));
         assertThat(metadata, containsString("accepted-credentials"));
         assertThat(metadata, containsString("authentication-failure-response"));
-        assertThat(metadata, containsString("principal-id-mode"));
+        assertThat(metadata, containsString("principal-id-namespace"));
+        assertThat(metadata, not(containsString("principal-id-mode")));
         assertThat(metadata, containsString("principal-id-claim-paths"));
         assertThat(metadata, containsString("role-claim-paths"));
         assertThat(metadata, containsString("scope-grants-enabled"));

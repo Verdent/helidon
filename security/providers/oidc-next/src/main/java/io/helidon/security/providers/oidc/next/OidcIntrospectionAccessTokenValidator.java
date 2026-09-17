@@ -151,8 +151,10 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                                                 confirmationValidation.cause().orElse(null));
         }
 
-        if (OidcSubjectMapper.principalId(validated.claims(), tenantContext.subjectMapping()).isEmpty()) {
-            return OidcValidationResult.failure("Bearer Token introspection response has no principal claim");
+        // RFC 7662 does not require identity claims; browser refresh uses the validated ID Token identity instead.
+        if (request.protectedResource() && OidcSubjectMapper.principalId(validated.claims(), tenantContext).isEmpty()) {
+            return OidcValidationResult.failure("Bearer Token introspection response cannot satisfy the configured "
+                                                       + "principal mapping");
         }
         if (validated.tokenType()
                 .filter(tokenType -> !"bearer".equalsIgnoreCase(tokenType))

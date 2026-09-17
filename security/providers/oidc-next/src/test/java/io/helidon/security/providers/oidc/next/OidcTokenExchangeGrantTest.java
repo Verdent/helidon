@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -335,6 +336,53 @@ class OidcTokenExchangeGrantTest {
     }
 
     @Test
+    void tokenExchangeRejectsUnusableLifetimesWithoutCaching() {
+        int expectedRequests = 0;
+        for (String lifetime : List.of("0", "-1", "1.5", "9223372036854775808")) {
+            responseBody = JsonObject.builder()
+                    .from(tokenExchangeResponse("unusable-access-token", null))
+                    .set("expires_in", new BigDecimal(lifetime))
+                    .build()
+                    .toString();
+            OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
+
+            for (int i = 0; i < 2; i++) {
+                OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                              outboundEnvironment(),
+                                                                              EndpointConfig.create());
+
+                assertThat("expires_in=" + lifetime, response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(response.description().orElseThrow(), is("Token Exchange failed"));
+                assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                assertThat(response.throwable().isEmpty(), is(true));
+            }
+            expectedRequests += 2;
+            assertThat(REQUEST_COUNT.get(), is(expectedRequests));
+        }
+    }
+
+    @Test
+    void tokenExchangeCachesVeryLargeLifetimeWithoutOverflow() {
+        responseBody = JsonObject.builder()
+                .from(tokenExchangeResponse("exchanged-access-token", null))
+                .set("expires_in", Long.MAX_VALUE)
+                .build()
+                .toString();
+        OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
+
+        for (int i = 0; i < 2; i++) {
+            OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                          outboundEnvironment(),
+                                                                          EndpointConfig.create());
+
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer exchanged-access-token")));
+        }
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
     void tokenExchangeDoesNotCacheTokenWithoutExpiresIn() {
         dynamicTokenResponse = true;
         dynamicExpiresIn = null;
@@ -352,6 +400,31 @@ class OidcTokenExchangeGrantTest {
         assertThat(second.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer exchanged-access-token-2")));
         assertThat(REQUEST_COUNT.get(), is(2));
+    }
+
+    @Test
+    void tokenExchangeDoesNotCacheShortPositiveLifetimes() {
+        dynamicTokenResponse = true;
+        for (int lifetime : List.of(1, 60)) {
+            dynamicExpiresIn = lifetime;
+            OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
+            int requestsBefore = REQUEST_COUNT.get();
+
+            OutboundSecurityResponse first = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                       outboundEnvironment(),
+                                                                       EndpointConfig.create());
+            OutboundSecurityResponse second = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                        outboundEnvironment(),
+                                                                        EndpointConfig.create());
+
+            assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(first.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer exchanged-access-token-" + (requestsBefore + 1))));
+            assertThat(second.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer exchanged-access-token-" + (requestsBefore + 2))));
+            assertThat(REQUEST_COUNT.get(), is(requestsBefore + 2));
+        }
     }
 
     @Test

@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -1275,6 +1276,53 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
+    void clientCredentialsGrantRejectsUnusableLifetimesWithoutCaching() {
+        int expectedRequests = 0;
+        for (String lifetime : List.of("0", "-1", "1.5", "9223372036854775808")) {
+            responseBody = JsonObject.builder()
+                    .from(tokenResponse("unusable-access-token", null))
+                    .set("expires_in", new BigDecimal(lifetime))
+                    .build()
+                    .toString();
+            OidcProvider provider = provider(confidentialTenant());
+
+            for (int i = 0; i < 2; i++) {
+                OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                              outboundEnvironment(),
+                                                                              EndpointConfig.create());
+
+                assertThat("expires_in=" + lifetime, response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(response.description().orElseThrow(), is("Client Credentials Grant failed"));
+                assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                assertThat(response.throwable().isEmpty(), is(true));
+            }
+            expectedRequests += 2;
+            assertThat(REQUEST_COUNT.get(), is(expectedRequests));
+        }
+    }
+
+    @Test
+    void clientCredentialsGrantCachesVeryLargeLifetimeWithoutOverflow() {
+        responseBody = JsonObject.builder()
+                .from(tokenResponse("access-token", null))
+                .set("expires_in", Long.MAX_VALUE)
+                .build()
+                .toString();
+        OidcProvider provider = provider(confidentialTenant());
+
+        for (int i = 0; i < 2; i++) {
+            OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
+                                                                          outboundEnvironment(),
+                                                                          EndpointConfig.create());
+
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer access-token")));
+        }
+        assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
     void clientCredentialsGrantDoesNotCacheTokenWithoutExpiresIn() {
         dynamicTokenResponse = true;
         dynamicExpiresIn = null;
@@ -1295,23 +1343,28 @@ class OidcClientCredentialsGrantTest {
     }
 
     @Test
-    void clientCredentialsGrantDoesNotCacheTokenWithinClockSkew() {
+    void clientCredentialsGrantDoesNotCacheShortPositiveLifetimes() {
         dynamicTokenResponse = true;
-        dynamicExpiresIn = 60;
-        OidcProvider provider = provider(confidentialTenant());
+        for (int lifetime : List.of(1, 60)) {
+            dynamicExpiresIn = lifetime;
+            OidcProvider provider = provider(confidentialTenant());
+            int requestsBefore = REQUEST_COUNT.get();
 
-        OutboundSecurityResponse first = provider.outboundSecurity(providerRequest(),
-                                                                   outboundEnvironment(),
-                                                                   EndpointConfig.create());
-        OutboundSecurityResponse second = provider.outboundSecurity(providerRequest(),
-                                                                    outboundEnvironment(),
-                                                                    EndpointConfig.create());
+            OutboundSecurityResponse first = provider.outboundSecurity(providerRequest(),
+                                                                       outboundEnvironment(),
+                                                                       EndpointConfig.create());
+            OutboundSecurityResponse second = provider.outboundSecurity(providerRequest(),
+                                                                        outboundEnvironment(),
+                                                                        EndpointConfig.create());
 
-        assertThat(first.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
-                   is(List.of("Bearer access-token-1")));
-        assertThat(second.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
-                   is(List.of("Bearer access-token-2")));
-        assertThat(REQUEST_COUNT.get(), is(2));
+            assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(first.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer access-token-" + (requestsBefore + 1))));
+            assertThat(second.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                       is(List.of("Bearer access-token-" + (requestsBefore + 2))));
+            assertThat(REQUEST_COUNT.get(), is(requestsBefore + 2));
+        }
     }
 
     @Test

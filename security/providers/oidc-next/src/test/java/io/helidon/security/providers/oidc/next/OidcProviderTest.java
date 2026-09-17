@@ -1242,6 +1242,24 @@ class OidcProviderTest {
     }
 
     @Test
+    void localAuthenticationLifetimeIsBoundedWithoutOverflow() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant idTokenExpiresAt = now.plusSeconds(120);
+        String idToken = signedIdToken(it -> it.expirationTime(idTokenExpiresAt));
+        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromTokenResponse(
+                "default",
+                tokenResponse(idToken, Long.MAX_VALUE, "openid"),
+                validatedIdToken(idToken),
+                List.of("openid"),
+                Optional.empty(),
+                now,
+                Duration.ofSeconds(Long.MAX_VALUE));
+
+        assertThat(result.expiresAt(), is(idTokenExpiresAt));
+        assertThat(result.accessTokenExpiresAt().orElseThrow(), is(Instant.MAX));
+    }
+
+    @Test
     void authorizationResponseProcessingIsLeftToFeatureEndpoint() {
         OidcProvider provider = OidcProvider.create();
         SecurityEnvironment environment = SecurityEnvironment.builder()

@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -370,6 +371,103 @@ class OidcRefreshTokenManagerTest {
         RecordedRequest request = RECORDED_REQUEST.get();
         assertThat(request.formParameters().get("resource"),
                    is(List.of("https://api.example.com", "urn:example:contacts")));
+    }
+
+    @Test
+    void unusableRefreshLifetimesClearExpiredAuthenticationBeforeUserInfo(URI serverUri) {
+        int expectedRequests = 0;
+        for (String lifetime : List.of("0", "-1", "1.5", "9223372036854775808")) {
+            responseBody = JsonObject.builder()
+                    .from(refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, null, null))
+                    .set("expires_in", new BigDecimal(lifetime))
+                    .build()
+                    .toString();
+            OidcTenantConfig tenant = tenantWithUserInfo(serverUri);
+            Instant now = Instant.now();
+            SetCookie cookie = localAuthenticationCookie(tenant,
+                                                         now.minusSeconds(60),
+                                                         now.plusSeconds(3600),
+                                                         now.minusSeconds(1));
+
+            AuthenticationResponse response = authenticate(tenant, cookie);
+
+            assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
+            assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is(nullValue()));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(++expectedRequests));
+        }
+    }
+
+    @Test
+    void expiredRefreshResponseKeepsOnlyStillValidSourceToken(URI serverUri) {
+        responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, null, 0).toString();
+        OidcTenantConfig tenant = tenantWithUserInfo(serverUri);
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant,
+                                                     now.minusSeconds(60),
+                                                     now.plusSeconds(3600),
+                                                     now.plusSeconds(30));
+
+        AuthenticationResponse response = authenticate(provider, cookie);
+        AuthenticationResponse afterExpiration = authenticate(provider,
+                                                               cookie,
+                                                               SecurityTime.builder().shiftBySeconds(120).build());
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertAccessToken(response, OLD_ACCESS_TOKEN);
+        assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
+        assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(afterExpiration, tenant);
+        assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is(nullValue()));
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(2));
+    }
+
+    @Test
+    void refreshPreservesShortPositiveLifetimes(URI serverUri) {
+        int expectedRequests = 0;
+        for (int lifetime : List.of(1, 60)) {
+            responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, null, lifetime).toString();
+            OidcTenantConfig tenant = tenant(serverUri);
+            Instant now = Instant.now();
+            SetCookie cookie = localAuthenticationCookie(tenant,
+                                                         now.minusSeconds(60),
+                                                         now.plusSeconds(3600),
+                                                         now.minusSeconds(1));
+
+            AuthenticationResponse response = authenticate(tenant, cookie);
+
+            assertThat("expires_in=" + lifetime, response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertAccessToken(response, REFRESHED_ACCESS_TOKEN);
+            OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(response, tenant);
+            assertThat(stored.accessTokenExpiresAt().orElseThrow(), is(stored.createdAt().plusSeconds(lifetime)));
+            assertThat(stored.refreshToken().orElseThrow(), is(ROTATED_REFRESH_TOKEN));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(++expectedRequests));
+        }
+    }
+
+    @Test
+    void refreshAcceptsVeryLargeLifetimeWithoutExtendingLocalSession(URI serverUri) {
+        responseBody = JsonObject.builder()
+                .from(refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, null, null))
+                .set("expires_in", Long.MAX_VALUE)
+                .build()
+                .toString();
+        OidcTenantConfig tenant = tenant(serverUri);
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant sessionExpiresAt = now.plusSeconds(3600);
+        SetCookie cookie = localAuthenticationCookie(tenant,
+                                                     now.minusSeconds(60),
+                                                     sessionExpiresAt,
+                                                     now.minusSeconds(1));
+
+        AuthenticationResponse response = authenticate(tenant, cookie);
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertAccessToken(response, REFRESHED_ACCESS_TOKEN);
+        OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(response, tenant);
+        assertThat(stored.accessTokenExpiresAt().orElseThrow(), is(Instant.MAX));
+        assertThat(stored.expiresAt(), is(sessionExpiresAt));
+        assertThat(stored.refreshToken().orElseThrow(), is(ROTATED_REFRESH_TOKEN));
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
     }
 
     @Test

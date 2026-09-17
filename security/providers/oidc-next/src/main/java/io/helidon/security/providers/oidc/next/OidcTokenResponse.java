@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -91,7 +90,7 @@ final class OidcTokenResponse {
                                      tokenType,
                                      idToken,
                                      stringValue(json, "refresh_token"),
-                                     expiresIn(json),
+                                     OidcTokenLifetime.expiresIn(json),
                                      stringValue(json, "scope")
                                              .map(scope -> OidcScopeSupport.validateScopeString(
                                                      scope,
@@ -135,17 +134,6 @@ final class OidcTokenResponse {
                         return jsonValue.asString().value();
                     }
                     throw new IllegalArgumentException("Token Endpoint response field " + name + " must be a string");
-                });
-    }
-
-    private static Optional<Long> expiresIn(JsonObject json) {
-        return json.numberValue("expires_in")
-                .map(BigDecimal::longValueExact)
-                .map(value -> {
-                    if (value < 0) {
-                        throw new IllegalArgumentException("Token Endpoint response expires_in must not be negative");
-                    }
-                    return value;
                 });
     }
 }

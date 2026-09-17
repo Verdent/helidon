@@ -175,22 +175,28 @@ final class OidcTenantConfigDecorator
                             "id-token.allowed-content-encryption-algorithms must not contain blank or padded values");
                 });
         idToken.allowedEncryptionAlgorithms()
-                .stream()
-                .filter("RSA1_5"::equals)
-                .findFirst()
-                .ifPresent(algorithm -> {
-                    /*
-                     * Spec: RFC 7516, 11.5 Timing Attacks
-                     * https://www.rfc-editor.org/rfc/rfc7516.html#section-11.5
-                     * Quote: "To mitigate the attacks described in RFC 3218, the recipient MUST NOT distinguish
-                     * between format, padding, and length errors of encrypted keys."
-                     */
-                    if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
-                        LOGGER.log(System.Logger.Level.WARNING,
-                                   "id-token.allowed-encryption-algorithms contains RSA1_5. This should be used only "
-                                           + "for legacy OpenID Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
-                    }
-                });
+                .forEach(algorithm -> validateEncryptionAlgorithm(algorithm, "id-token.allowed-encryption-algorithms"));
+        idToken.allowedContentEncryptionAlgorithms()
+                .forEach(algorithm -> validateContentEncryptionAlgorithm(algorithm,
+                                                                         "id-token.allowed-content-encryption-algorithms"));
+    }
+
+    private static void validateEncryptionAlgorithm(String algorithm, String configKey) {
+        // RFC 8725 section 3.2 recommends avoiding RSA-PKCS1 v1.5 encryption; the shared JWT primitive rejects it.
+        if (Arrays.stream(EncryptedJwt.SupportedAlgorithm.values())
+                .filter(EncryptedJwt.SupportedAlgorithm::supported)
+                .map(Object::toString)
+                .noneMatch(algorithm::equals)) {
+            throw new IllegalArgumentException(configKey + " is not supported: " + algorithm);
+        }
+    }
+
+    private static void validateContentEncryptionAlgorithm(String algorithm, String configKey) {
+        if (Arrays.stream(EncryptedJwt.SupportedEncryption.values())
+                .map(Object::toString)
+                .noneMatch(algorithm::equals)) {
+            throw new IllegalArgumentException(configKey + " is not supported: " + algorithm);
+        }
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
@@ -466,12 +472,7 @@ final class OidcTenantConfigDecorator
                 throw new IllegalArgumentException(
                         "authorization-code.request-object.content-encryption-algorithm must not be blank or padded");
             }
-            if (Arrays.stream(EncryptedJwt.SupportedEncryption.values())
-                    .map(Object::toString)
-                    .noneMatch(algorithm::equals)) {
-                throw new IllegalArgumentException(
-                        "authorization-code.request-object.content-encryption-algorithm is not supported: " + algorithm);
-            }
+            validateContentEncryptionAlgorithm(algorithm, "authorization-code.request-object.content-encryption-algorithm");
         });
         requestObject.encryptionKeyId().ifPresent(keyId -> {
             if (requestObject.encryptionAlgorithm().isEmpty()) {
@@ -607,29 +608,14 @@ final class OidcTenantConfigDecorator
                 throw new IllegalArgumentException(
                         "user-info.jwt.encryption-algorithm must not be blank or padded");
             }
-            if (Arrays.stream(EncryptedJwt.SupportedAlgorithm.values())
-                    .map(Object::toString)
-                    .noneMatch(algorithm::equals)) {
-                throw new IllegalArgumentException(
-                        "user-info.jwt.encryption-algorithm is not supported: " + algorithm);
-            }
-            if ("RSA1_5".equals(algorithm) && LOGGER.isLoggable(System.Logger.Level.WARNING)) {
-                LOGGER.log(System.Logger.Level.WARNING,
-                           "user-info.jwt.encryption-algorithm is RSA1_5. This should be used only for legacy OpenID "
-                                   + "Providers that cannot use RSA-OAEP or RSA-OAEP-256.");
-            }
+            validateEncryptionAlgorithm(algorithm, "user-info.jwt.encryption-algorithm");
         });
         contentEncryptionAlgorithm.ifPresent(algorithm -> {
             if (algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
                 throw new IllegalArgumentException(
                         "user-info.jwt.content-encryption-algorithm must not be blank or padded");
             }
-            if (Arrays.stream(EncryptedJwt.SupportedEncryption.values())
-                    .map(Object::toString)
-                    .noneMatch(algorithm::equals)) {
-                throw new IllegalArgumentException(
-                        "user-info.jwt.content-encryption-algorithm is not supported: " + algorithm);
-            }
+            validateContentEncryptionAlgorithm(algorithm, "user-info.jwt.content-encryption-algorithm");
         });
         if (encryptionAlgorithm.isPresent() && jwt.decryptionJwk().isEmpty()) {
             throw new IllegalArgumentException(

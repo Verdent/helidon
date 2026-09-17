@@ -26,6 +26,7 @@ import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -52,7 +53,9 @@ import com.nimbusds.jose.crypto.RSADecrypter;
 import com.nimbusds.jose.crypto.RSAEncrypter;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import static io.helidon.security.jwt.EncryptedJwt.SupportedEncryption;
 import static io.helidon.security.jwt.EncryptedJwt.builder;
@@ -64,6 +67,7 @@ import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
  * Encrypted JWT tests.
@@ -229,20 +233,53 @@ public class EncryptedJwtTest {
     }
 
     @Test
-    void testUnsupportedRsaKeyManagementAlgorithmIsRejected() {
+    void testKeyManagementSupport() {
+        assertThat(SupportedAlgorithm.RSA_OAEP.supported(), is(true));
+        assertThat(SupportedAlgorithm.RSA_OAEP_256.supported(), is(true));
+        assertThat(SupportedAlgorithm.valueOf("RSA1_5").supported(), is(false));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> supportedAlgorithmsInteroperateWithNimbus() {
+        return Arrays.stream(SupportedAlgorithm.values())
+                .filter(SupportedAlgorithm::supported)
+                .flatMap(algorithm -> Arrays.stream(SupportedEncryption.values())
+                        .map(encryption -> dynamicTest(algorithm + "/" + encryption, () -> {
+                            JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
+                            JWEHeader header = new JWEHeader.Builder(JWEAlgorithm.parse(algorithm.toString()),
+                                                                    EncryptionMethod.parse(encryption.toString()))
+                                    .keyID("RS_512")
+                                    .contentType("JWT")
+                                    .build();
+                            JWEObject fromNimbus = new JWEObject(header, new Payload(signedJwt.tokenContent()));
+                            fromNimbus.encrypt(new RSAEncrypter((RSAPublicKey) jwk.publicKey()));
+
+                            assertThat(parseToken(fromNimbus.serialize()).decrypt(jwkKeys).tokenContent(),
+                                       is(signedJwt.tokenContent()));
+
+                            EncryptedJwt fromHelidon = builder(signedJwt)
+                                    .jwks(jwkKeys, "RS_512")
+                                    .algorithm(algorithm)
+                                    .encryption(encryption)
+                                    .build();
+                            JWEObject parsed = JWEObject.parse(fromHelidon.token());
+                            parsed.decrypt(new RSADecrypter((RSAPrivateKey) jwk.privateKey().orElseThrow()));
+
+                            assertThat(parsed.getPayload().toString(), is(signedJwt.tokenContent()));
+                        })));
+    }
+
+    @Test
+    void testUnsupportedRsaKeyManagementAlgorithmIsRejected() throws JOSEException {
         String rsaPkcs1 = "RSA1_5";
-        String headerBase64 = Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(JwtHeaders.builder()
-                                        .algorithm(rsaPkcs1)
-                                        .encryption(SupportedEncryption.A256GCM.toString())
-                                        .contentType("JWT")
-                                        .keyId("RS_512")
-                                        .build()
-                                        .headerJsonObject()
-                                        .toString()
-                                        .getBytes(StandardCharsets.UTF_8));
-        EncryptedJwt encryptedJwt = parseToken(headerBase64 + ".AA.AA.AA.AA");
+        JwkRSA jwk = (JwkRSA) jwkKeys.forKeyId("RS_512").orElseThrow();
+        JWEHeader header = new JWEHeader.Builder(JWEAlgorithm.parse(rsaPkcs1), EncryptionMethod.A256GCM)
+                .keyID("RS_512")
+                .contentType("JWT")
+                .build();
+        JWEObject fromNimbus = new JWEObject(header, new Payload(signedJwt.tokenContent()));
+        fromNimbus.encrypt(new RSAEncrypter((RSAPublicKey) jwk.publicKey()));
+        EncryptedJwt encryptedJwt = parseToken(fromNimbus.serialize());
 
         assertThat(encryptedJwt.headers().algorithm(), is(Optional.of(rsaPkcs1)));
         Errors.ErrorMessagesException exception =

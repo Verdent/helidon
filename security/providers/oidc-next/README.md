@@ -1241,9 +1241,15 @@ The same policy applies when validating a refreshed ID Token or restoring an enc
 
 The decryption JWK Set should contain private client/RP encryption keys. If more than one decryption key is configured,
 the encrypted ID Token JWE header must contain `kid`. When a JWK declares `use`, the value must be `enc`; when it
-declares `key_ops`, it must allow `unwrapKey` or `decrypt`. `RSA1_5` is not allowed by default because RFC 7516
-describes downgrade and oracle risks for it. It can still be added to `allowed-encryption-algorithms` for a legacy
-OpenID Provider that cannot use RSA-OAEP.
+declares `key_ops`, it must allow `unwrapKey` or `decrypt`.
+
+Supported JWE key management algorithms are `RSA-OAEP-256` and `RSA-OAEP`. Supported content encryption algorithms are
+`A128GCM`, `A192GCM`, `A256GCM`, `A128CBC-HS256`, `A192CBC-HS384`, and `A256CBC-HS512`. The local allowlists may select
+a subset of these capabilities; defaults remain `[ "RSA-OAEP-256", "RSA-OAEP" ]` for `alg` and
+`[ "A256GCM", "A128CBC-HS256" ]` for `enc`. Algorithm names are case-sensitive, and every configured entry must be
+supported by Helidon's shared JWT implementation. Unsupported values, including `RSA1_5`, are rejected when an enabled
+tenant is built. Keeping `RSA1_5` disabled follows the recommendation in
+[RFC 8725 section 3.2](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.2) to avoid RSA-PKCS1 v1.5 encryption.
 
 The protected local authentication cookie stores the original ID Token value. When that value is encrypted, the provider
 decrypts it again when the local authentication result is restored. RP-Initiated Logout also sends the original OpenID
@@ -1359,9 +1365,10 @@ For encryption-only UserInfo, omit `signing-algorithm`. For signed-only UserInfo
 decryption keys are then unnecessary. If `encryption-algorithm` is configured and `content-encryption-algorithm` is
 omitted, the OpenID Connect Registration default `A128CBC-HS256` is required.
 
-Supported JWE key management algorithms are `RSA-OAEP-256`, `RSA-OAEP`, and legacy `RSA1_5`. Supported content
+Supported JWE key management algorithms are `RSA-OAEP-256` and `RSA-OAEP`. Supported content
 encryption algorithms are `A128GCM`, `A192GCM`, `A256GCM`, `A128CBC-HS256`, `A192CBC-HS384`, and
-`A256CBC-HS512`. `RSA1_5` is not recommended and emits a startup warning. UserInfo signing algorithm `none` and `HS*`
+`A256CBC-HS512`. Algorithm names are case-sensitive. Unsupported values, including `RSA1_5`, are rejected during tenant
+configuration when UserInfo is enabled; there is no algorithm fallback. UserInfo signing algorithm `none` and `HS*`
 algorithms are rejected. When well-known metadata publishes UserInfo signing or encryption capabilities, the configured
 registration algorithms must be advertised.
 
@@ -2699,7 +2706,7 @@ ID Token options:
 | Key | Description |
 | --- | --- |
 | `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
-| `allowed-encryption-algorithms` | Allowed JWE `alg` algorithms for encrypted ID Tokens. Defaults to `[ "RSA-OAEP-256", "RSA-OAEP" ]`. `RSA1_5` is not enabled by default. |
+| `allowed-encryption-algorithms` | Allowed JWE `alg` algorithms for encrypted ID Tokens. Defaults to `[ "RSA-OAEP-256", "RSA-OAEP" ]`, the supported values. Unsupported values, including `RSA1_5`, are rejected. |
 | `allowed-content-encryption-algorithms` | Allowed JWE `enc` algorithms for encrypted ID Tokens. Defaults to `[ "A256GCM", "A128CBC-HS256" ]`. |
 | `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |

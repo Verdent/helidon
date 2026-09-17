@@ -54,8 +54,12 @@ interface OidcUserInfoJwtConfigBlueprint {
 
     /**
      * Exact JWE {@code alg} registered as {@code userinfo_encrypted_response_alg}.
+     * <p>
+     * Supported values are {@code RSA-OAEP-256} and {@code RSA-OAEP}. Values are case-sensitive. Unsupported values,
+     * including {@code RSA1_5}, are rejected when UserInfo is enabled for an enabled tenant.
      *
      * @return registered UserInfo JWE key management algorithm
+     * @see io.helidon.security.jwt.EncryptedJwt.SupportedAlgorithm#supported()
      */
     @Option.Configured
     Optional<String> encryptionAlgorithm();
@@ -65,8 +69,12 @@ interface OidcUserInfoJwtConfigBlueprint {
      * <p>
      * OpenID Connect registration defines {@value #DEFAULT_CONTENT_ENCRYPTION_ALGORITHM} as the default when
      * {@link #encryptionAlgorithm()} is configured and this option is omitted.
+     * Supported values are {@code A128GCM}, {@code A192GCM}, {@code A256GCM}, {@code A128CBC-HS256},
+     * {@code A192CBC-HS384}, and {@code A256CBC-HS512}. Values are case-sensitive; unsupported values are rejected
+     * when UserInfo is enabled for an enabled tenant.
      *
      * @return registered UserInfo JWE content encryption algorithm
+     * @see io.helidon.security.jwt.EncryptedJwt.SupportedEncryption
      */
     @Option.Configured
     Optional<String> contentEncryptionAlgorithm();

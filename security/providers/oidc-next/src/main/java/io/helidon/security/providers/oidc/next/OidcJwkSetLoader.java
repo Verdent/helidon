@@ -108,8 +108,17 @@ final class OidcJwkSetLoader {
     }
 
     private JsonObject loadRemote(URI uri) {
+        /*
+         * OpenID Connect Discovery 1.0 sections 3 and 7.1, and RFC 8414 sections 2 and 6.1,
+         * require authenticated HTTPS for provider key retrieval.
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-6.1
+         * Refuse redirects so the approved key endpoint cannot silently change or downgrade its transport.
+         * Deployments using redirects must configure the final JWKS URI instead.
+         */
         try (HttpClientResponse response = webClient.get()
                 .uri(uri)
+                .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)
                 .request()) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {

@@ -402,7 +402,8 @@ tenant WebClient.
 
 Token Endpoint requests, introspection requests, and UserInfo requests disable redirect following per request because
 those requests carry client credentials or access tokens. This remains true even if `webclient.follow-redirects` is
-enabled.
+enabled. JWKS requests also disable redirect following to preserve the configured or discovered key endpoint and
+prevent transport downgrades.
 
 Programmatic WebClient configuration:
 
@@ -611,6 +612,15 @@ security:
             method: JWT
             audience: "api://orders"
 ```
+
+Remote JWK Set loads never follow HTTP redirects, including same-origin redirects. This OIDC Next security policy keeps
+key retrieval at the configured or discovered endpoint and prevents HTTPS-to-HTTP downgrades. Configure the final HTTPS
+location in `endpoints.jwks-uri` or the provider's `jwks_uri`; do not use a redirecting alias. The policy applies to initial
+loading, unknown-key refresh, and periodic refresh, even if `webclient.follow-redirects` is enabled. Explicitly disabling
+`endpoints.tls-required` still permits direct HTTP for development, but does not enable JWKS redirects.
+
+A redirect is handled as a key-load failure. Initial loading fails; refresh follows the configured `stale-on-error` and
+retry policy without contacting the redirect target or replacing cached keys with that target's response.
 
 `unknown-key-id-refresh-enabled` reloads the JWK Set when a token uses a `kid` that is not present in the cached keys.
 This supports Authorization Server key rotation. `unknown-key-id-refresh-interval` globally rate-limits those reload

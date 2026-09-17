@@ -152,7 +152,8 @@ final class OidcTenantContextFactory {
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()
-                && (staticMetadata.issuer().isEmpty() || staticMetadata.jwkSetUri().isEmpty())) {
+                && (staticMetadata.issuer().isEmpty()
+                || (staticMetadata.jwkSetUri().isEmpty() && tokenValidation.verificationJwk().isEmpty()))) {
             return true;
         }
         if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isPresent()
@@ -755,6 +756,9 @@ final class OidcTenantContextFactory {
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+            return;
+        }
+        if (tokenValidation.verificationJwk().isPresent() && !metadata.wellKnownMetadataLoaded()) {
             return;
         }
 

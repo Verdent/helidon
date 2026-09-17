@@ -114,7 +114,7 @@ class OidcRefreshTokenManagerTest {
         encryptKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
-        verifyJwkSet = Resource.create("oidc-next-verify-jwk.json").string();
+        verifyJwkSet = Resource.create("oidc-next-verify-public-jwk.json").string();
     }
 
     @SetUpRoute

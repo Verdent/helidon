@@ -204,6 +204,14 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        tokenValidation.verificationJwk().ifPresent(resource -> {
+            if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+                throw new IllegalArgumentException("token-validation.verification-jwk requires token-validation.method JWT");
+            }
+            if (resource.uri().isPresent()) {
+                throw new IllegalArgumentException("token-validation.verification-jwk must be local key material, not a URI");
+            }
+        });
         if (tokenValidation.allowedAlgorithms().isEmpty()) {
             throw new IllegalArgumentException("token-validation.allowed-algorithms must not be empty");
         }
@@ -731,13 +739,20 @@ final class OidcTenantConfigDecorator
             throw new IllegalArgumentException(
                     "issuer or well-known-uri must be configured when JWT access-token validation is enabled");
         }
-        Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-        OidcEndpointUris.requireEndpointOrWellKnown(endpoints.jwksUri(),
-                                                    wellKnownUri,
-                                                    "jwks-uri",
-                                                    "JWT access-token validation",
-                                                    endpoints.tlsRequired(),
-                                                    OidcEndpointUris::validateJwksUri);
+        if (tokenValidation.verificationJwk().isEmpty()) {
+            if (tokenValidation.allowedAlgorithms().stream()
+                    .anyMatch(algorithm -> algorithm.toUpperCase(Locale.ROOT).startsWith("HS"))) {
+                throw new IllegalArgumentException(
+                        "token-validation.verification-jwk must be configured for HMAC access-token algorithms");
+            }
+            Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+            OidcEndpointUris.requireEndpointOrWellKnown(endpoints.jwksUri(),
+                                                        wellKnownUri,
+                                                        "jwks-uri",
+                                                        "JWT access-token validation",
+                                                        endpoints.tlsRequired(),
+                                                        OidcEndpointUris::validateJwksUri);
+        }
         if (tokenValidation.audienceValidationEnabled()) {
             /*
              * Spec: RFC 9068, 2.2 Data Structure and 4 Validation

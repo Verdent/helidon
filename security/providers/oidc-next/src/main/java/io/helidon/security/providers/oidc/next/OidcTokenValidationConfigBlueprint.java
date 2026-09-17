@@ -22,6 +22,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
+import io.helidon.common.configurable.ResourceConfig;
 
 /**
  * Access-token validation configuration for Protected Resource Bearer Token requests and refreshed Authorization Code
@@ -90,12 +91,31 @@ interface OidcTokenValidationConfigBlueprint {
     OidcCertificateBoundAccessTokenConfig certificateBoundAccessTokens();
 
     /**
+     * Locally provisioned JWK Set for JWT access-token signature verification.
+     * <p>
+     * When present, only these keys are used for access tokens; provider JWKS keys are not used as a fallback.
+     * This source is required for HMAC access-token algorithms. It is independent of ID Token verification,
+     * UserInfo, Request Object encryption, client authentication, and RP decryption keys.
+     * The keys must be provisioned by the trusted authorization server. Filesystem, classpath, and inline content
+     * sources are supported; URI sources are rejected before opening. The tenant JWK refresh settings apply.
+     * <p>
+     * When absent, access tokens use the provider's public JWK Set. This option requires {@link #method()} to be
+     * {@link OidcTokenValidationMethod#JWT}. A trusted issuer is required with either source.
+     *
+     * @return local access-token verification JWK Set resource configuration
+     */
+    @Option.Configured
+    @Option.Confidential
+    Optional<ResourceConfig> verificationJwk();
+
+    /**
      * Allowed JWS algorithms for JWT access tokens.
      * <p>
      * The list must not be empty and must not contain blank, padded, or {@code none} values.
      * A selected RSA verification key must have a modulus of at least 2048 bits. A JWK without the optional {@code alg}
      * member may be used with any compatible allowed algorithm; a declared JWK {@code alg} must match the JWT header.
      * When the JWT omits {@code kid}, exactly one key must remain eligible after all key constraints are applied.
+     * HMAC algorithms require {@link #verificationJwk()}; symmetric keys must not be published in the provider JWKS.
      *
      * @return allowed algorithms
      */

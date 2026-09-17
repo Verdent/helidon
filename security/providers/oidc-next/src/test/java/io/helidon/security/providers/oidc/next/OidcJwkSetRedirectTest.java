@@ -213,7 +213,7 @@ class OidcJwkSetRedirectTest {
         URI uri = getClass().getClassLoader().getResource("oidc-next-verify-public-jwk.json").toURI();
         WebClient client = WebClient.create();
         try {
-            assertThat(new OidcJwkSetLoader(client).load(uri, true).forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(new OidcJwkSetLoader(client).load(uri).forKeyId("verify-rsa").isPresent(), is(true));
             assertThat(SOURCE_REQUESTS.get(), is(0));
             assertThat(TARGET_REQUESTS.get(), is(0));
         } finally {

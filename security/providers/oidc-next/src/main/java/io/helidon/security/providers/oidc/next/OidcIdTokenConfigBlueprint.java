@@ -54,10 +54,12 @@ interface OidcIdTokenConfigBlueprint {
     /**
      * Allowed JWE {@code alg} algorithms for encrypted ID Tokens.
      * <p>
-     * Defaults to {@code RSA-OAEP-256} and {@code RSA-OAEP}. {@code RSA1_5} is not enabled by default because
-     * RFC 7516 describes downgrade and oracle risks for that algorithm.
+     * Defaults to {@code RSA-OAEP-256} and {@code RSA-OAEP}, the supported key management algorithms.
+     * Values are case-sensitive. Unsupported values, including {@code RSA1_5}, are rejected when an enabled tenant
+     * is built. RFC 8725 section 3.2 recommends avoiding RSA-PKCS1 v1.5 encryption in favor of RSAES-OAEP.
      *
      * @return allowed ID Token JWE key management algorithms
+     * @see io.helidon.security.jwt.EncryptedJwt.SupportedAlgorithm#supported()
      */
     @Option.Configured
     @Option.Default({"RSA-OAEP-256", "RSA-OAEP"})
@@ -69,8 +71,12 @@ interface OidcIdTokenConfigBlueprint {
      * <p>
      * Defaults to {@code A256GCM} and {@code A128CBC-HS256}. The latter is the OpenID Connect Dynamic Client
      * Registration default content encryption algorithm when ID Token encryption is registered and {@code enc} is omitted.
+     * Supported values are {@code A128GCM}, {@code A192GCM}, {@code A256GCM}, {@code A128CBC-HS256},
+     * {@code A192CBC-HS384}, and {@code A256CBC-HS512}. Values are case-sensitive; unsupported values are rejected
+     * when an enabled tenant is built.
      *
      * @return allowed ID Token JWE content encryption algorithms
+     * @see io.helidon.security.jwt.EncryptedJwt.SupportedEncryption
      */
     @Option.Configured
     @Option.Default({"A256GCM", "A128CBC-HS256"})

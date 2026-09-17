@@ -412,7 +412,7 @@ public final class EncryptedJwt {
         if (alg != null) {
             try {
                 supportedAlgorithm = SupportedAlgorithm.getValue(alg);
-                if (supportedAlgorithm == SupportedAlgorithm.RSA1_5) {
+                if (!supportedAlgorithm.supported()) {
                     errors.fatal("Value of the claim alg not supported. alg: " + alg);
                 }
             } catch (IllegalArgumentException e) {
@@ -624,7 +624,7 @@ public final class EncryptedJwt {
 
         @Override
         public EncryptedJwt build() {
-            if (algorithm == SupportedAlgorithm.RSA1_5) {
+            if (!algorithm.supported()) {
                 throw new JwtException("JWE key encryption algorithm is not supported: " + algorithm);
             }
             headersBuilder.algorithm(algorithm.toString());
@@ -713,6 +713,21 @@ public final class EncryptedJwt {
             this.algorithmName = algorithmName;
             this.cipherName = cipherName;
             this.parameterSpec = parameterSpec;
+        }
+
+        /**
+         * Whether this algorithm is supported for encryption and decryption.
+         * <p>
+         * The enum retains unsupported algorithms for compatibility. Use this method when selecting the algorithms
+         * that can be used with {@link io.helidon.security.jwt.EncryptedJwt}.
+         *
+         * @return whether the algorithm is supported
+         */
+        public boolean supported() {
+            return switch (this) {
+                case RSA_OAEP, RSA_OAEP_256 -> true;
+                case RSA1_5 -> false;
+            };
         }
 
         @Override

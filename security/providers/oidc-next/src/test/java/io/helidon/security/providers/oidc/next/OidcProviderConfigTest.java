@@ -1236,8 +1236,8 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void idTokenEncryptionAlgorithmsCanExplicitlyAllowRsa15() {
-        OidcTenantConfig tenant = OidcTenantConfig.builder()
+    void idTokenEncryptionAlgorithmsRejectRsa15() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
@@ -1246,9 +1246,10 @@ class OidcProviderConfigTest {
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedEncryptionAlgorithms(List.of("RSA1_5")))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
-                .buildPrototype();
+                .buildPrototype());
 
-        assertThat(tenant.idToken().allowedEncryptionAlgorithms(), is(List.of("RSA1_5")));
+        assertThat(thrown.getMessage(), containsString("id-token.allowed-encryption-algorithms"));
+        assertThat(thrown.getMessage(), containsString("RSA1_5"));
     }
 
     @Test

@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
@@ -57,8 +58,25 @@ final class OidcRefreshTokenManager {
             return keepOrRemoveLocalAuthentication(authenticationResult, expiresAt, now);
         }
 
+        RefreshResult result = tenantContext.refreshCoordinator()
+                .resolve(authenticationResult,
+                         cachedResult -> cachedResult.authenticationActiveAt(now),
+                         () -> refresh(authenticationResult,
+                                       tenantContext,
+                                       expiresAt,
+                                       now,
+                                       refreshToken.orElseThrow()),
+                         () -> refreshRejected(authenticationResult, expiresAt, now));
+        return result.authenticationActiveAt(now) ? result : RefreshResult.serviceUnavailable();
+    }
+
+    private RefreshResult refresh(OidcLocalAuthenticationResult authenticationResult,
+                                  OidcTenantContext tenantContext,
+                                  Instant expiresAt,
+                                  Instant now,
+                                  String refreshToken) {
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
-                .refreshAccessToken(refreshToken.orElseThrow());
+                .refreshAccessToken(refreshToken);
         if (tokenResult.succeeded()) {
             OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
             if (tokenResponse.expiresIn().isEmpty()) {
@@ -139,6 +157,19 @@ final class OidcRefreshTokenManager {
             return RefreshResult.removeLocalAuthentication();
         }
         return RefreshResult.authenticated(authenticationResult);
+    }
+
+    private RefreshResult refreshRejected(OidcLocalAuthenticationResult current,
+                                          Instant expiresAt,
+                                          Instant now) {
+        boolean interrupted = Thread.currentThread().isInterrupted();
+        logFailure(interrupted
+                           ? "Interrupted while waiting for local authentication refresh"
+                           : "Local authentication refresh capacity is exhausted",
+                   Optional.empty());
+        return accessTokenExpired(expiresAt, now)
+                ? RefreshResult.serviceUnavailable()
+                : RefreshResult.authenticated(current);
     }
 
     private RefreshResult refreshFailure(OidcLocalAuthenticationResult current,
@@ -224,19 +255,65 @@ final class OidcRefreshTokenManager {
                 .isPresent();
     }
 
-    record RefreshResult(Optional<OidcLocalAuthenticationResult> authenticationResult,
-                         boolean refreshed,
-                         boolean removeCookie) {
+    static final class RefreshResult {
+        private final Optional<OidcLocalAuthenticationResult> authenticationResult;
+        private final Outcome outcome;
+
+        private RefreshResult(Optional<OidcLocalAuthenticationResult> authenticationResult, Outcome outcome) {
+            this.authenticationResult = Objects.requireNonNull(authenticationResult);
+            this.outcome = Objects.requireNonNull(outcome);
+            boolean authenticationExpected = outcome == Outcome.AUTHENTICATED || outcome == Outcome.REFRESHED;
+            if (authenticationResult.isPresent() != authenticationExpected) {
+                throw new IllegalArgumentException("Refresh authentication result does not match outcome: " + outcome);
+            }
+        }
+
         private static RefreshResult authenticated(OidcLocalAuthenticationResult authenticationResult) {
-            return new RefreshResult(Optional.of(authenticationResult), false, false);
+            return new RefreshResult(Optional.of(authenticationResult), Outcome.AUTHENTICATED);
         }
 
         private static RefreshResult refreshed(OidcLocalAuthenticationResult authenticationResult) {
-            return new RefreshResult(Optional.of(authenticationResult), true, false);
+            return new RefreshResult(Optional.of(authenticationResult), Outcome.REFRESHED);
         }
 
         private static RefreshResult removeLocalAuthentication() {
-            return new RefreshResult(Optional.empty(), false, true);
+            return new RefreshResult(Optional.empty(), Outcome.REMOVE_COOKIE);
+        }
+
+        private static RefreshResult serviceUnavailable() {
+            return new RefreshResult(Optional.empty(), Outcome.UNAVAILABLE);
+        }
+
+        Optional<OidcLocalAuthenticationResult> authenticationResult() {
+            return authenticationResult;
+        }
+
+        boolean refreshed() {
+            return outcome == Outcome.REFRESHED;
+        }
+
+        boolean removeCookie() {
+            return outcome == Outcome.REMOVE_COOKIE;
+        }
+
+        boolean unavailable() {
+            return outcome == Outcome.UNAVAILABLE;
+        }
+
+        private boolean authenticationActiveAt(Instant now) {
+            return authenticationResult
+                    .map(result -> now.isBefore(result.expiresAt())
+                            && result.accessTokenExpiresAt()
+                                    .map(expiresAt -> now.isBefore(expiresAt))
+                                    .orElse(true))
+                    .orElse(true);
+        }
+
+        private enum Outcome {
+            AUTHENTICATED,
+            REFRESHED,
+            REMOVE_COOKIE,
+            UNAVAILABLE
         }
     }
 }

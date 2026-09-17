@@ -173,6 +173,10 @@ final class OidcAuthenticationOrchestrator {
                 currentAuthenticationResult,
                 readyTenant,
                 context.environment().time().toInstant());
+        if (refreshResult.unavailable()) {
+            return LocalAuthenticationOutcome.response(
+                    OidcResponseFactory.authorizationCodeFlowUnavailable(Optional.empty()));
+        }
         Optional<String> removalCookie = refreshResult.removeCookie()
                 ? Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie().toString())
                 : Optional.empty();

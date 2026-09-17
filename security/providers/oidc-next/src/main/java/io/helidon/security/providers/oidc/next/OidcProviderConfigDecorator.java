@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.time.Duration;
 import java.util.List;
 
 import io.helidon.builder.api.Prototype;
@@ -25,6 +26,7 @@ final class OidcProviderConfigDecorator
         implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
+                                                                        "initialization-retry-interval",
                                                                         "issuer",
                                                                         "client-id",
                                                                         "client-secret",
@@ -33,6 +35,7 @@ final class OidcProviderConfigDecorator
                                                                         "client-assertion",
                                                                         "webclient",
                                                                         "jwk-set",
+                                                                        "token-exchange-remote-work",
                                                                         "endpoints",
                                                                         "protected-resource",
                                                                         "authorization-code",
@@ -42,9 +45,12 @@ final class OidcProviderConfigDecorator
                                                                         "token-transport",
                                                                         "subject-mapping",
                                                                         "cookies");
+    private static final Duration DEFAULT_INITIALIZATION_RETRY_INTERVAL =
+            OidcTenantConfig.builder().initializationRetryInterval();
     private static final OidcClientAssertionConfig DEFAULT_CLIENT_ASSERTION = OidcClientAssertionConfig.create();
     private static final OidcIdTokenConfig DEFAULT_ID_TOKEN = OidcIdTokenConfig.create();
     private static final OidcJwkSetConfig DEFAULT_JWK_SET = OidcJwkSetConfig.create();
+    private static final OidcRemoteWorkConfig DEFAULT_TOKEN_EXCHANGE_REMOTE_WORK = OidcRemoteWorkConfig.create();
     private static final OidcEndpointConfig DEFAULT_ENDPOINTS = OidcEndpointConfig.create();
     private static final OidcEndpointPolicyConfig DEFAULT_ENDPOINT_POLICY = OidcEndpointPolicyConfig.create();
     private static final OidcTokenTransportConfig DEFAULT_TOKEN_TRANSPORT = OidcTokenTransportConfig.create();
@@ -112,6 +118,7 @@ final class OidcProviderConfigDecorator
 
     private static boolean rootTenantOptionsChanged(OidcProviderConfig.BuilderBase<?, ?> target) {
         return !target.enabled()
+                || !DEFAULT_INITIALIZATION_RETRY_INTERVAL.equals(target.initializationRetryInterval())
                 || target.issuer().isPresent()
                 || target.clientId().isPresent()
                 || target.clientSecret().isPresent()
@@ -120,6 +127,7 @@ final class OidcProviderConfigDecorator
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || OidcWebClientFactory.optionsChanged(target.webClient())
                 || !DEFAULT_JWK_SET.equals(target.jwkSet())
+                || !DEFAULT_TOKEN_EXCHANGE_REMOTE_WORK.equals(target.tokenExchangeRemoteWork())
                 || !DEFAULT_ENDPOINTS.equals(target.endpoints())
                 || target.protectedResource().isPresent()
                 || target.authorizationCode().isPresent()
@@ -134,10 +142,12 @@ final class OidcProviderConfigDecorator
     private static OidcTenantConfig singleTenant(OidcProviderConfig.BuilderBase<?, ?> target) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .enabled(target.enabled())
+                .initializationRetryInterval(target.initializationRetryInterval())
                 .idToken(target.idToken())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())
                 .jwkSet(target.jwkSet())
+                .tokenExchangeRemoteWork(target.tokenExchangeRemoteWork())
                 .endpoints(target.endpoints())
                 .endpointPolicy(target.endpointPolicy())
                 .tokenTransport(target.tokenTransport())

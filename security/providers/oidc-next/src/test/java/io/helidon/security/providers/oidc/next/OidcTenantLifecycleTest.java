@@ -117,6 +117,35 @@ class OidcTenantLifecycleTest {
     }
 
     @Test
+    void rootConfiguredRetryIntervalControlsRuntimeReinitialization() {
+        MutableClock clock = MutableClock.create(Instant.parse("2026-09-17T00:00:00Z"));
+        AtomicInteger attempts = new AtomicInteger();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .initializationRetryInterval(Duration.ofSeconds(2)).buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(config,
+                OidcTenantContextFactory.create((tenantId, tenant) -> attempts.incrementAndGet() == 1
+                        ? OidcTenantContext.retryableFailure(tenantId, tenant, new IllegalStateException("discovery failed"))
+                        : OidcTenantContext.ready(tenantId, tenant)),
+                clock);
+
+        OidcTenantContext failed = registry.tenantContext("default").orElseThrow();
+        assertThat(failed.state(), is(OidcTenantState.FAILED));
+        clock.advance(Duration.ofMillis(1_999));
+        assertThat(registry.tenantContext("default").orElseThrow(), sameInstance(failed));
+        assertThat(attempts.get(), is(1));
+        clock.advance(Duration.ofMillis(1));
+        OidcTenantContext ready = registry.tenantContext("default").orElseThrow();
+        try {
+            assertThat(ready.state(), is(OidcTenantState.READY));
+            assertThat(attempts.get(), is(2));
+        } finally {
+            if (ready.ready()) {
+                ready.webClient().closeResource();
+            }
+        }
+    }
+
+    @Test
     void retryableTenantFailureIsCachedThenRetriedAsOneCohort() throws Exception {
         int taskCount = 8;
         MutableClock clock = MutableClock.create(Instant.parse("2026-09-15T00:00:00Z"));

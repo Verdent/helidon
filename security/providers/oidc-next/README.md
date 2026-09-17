@@ -2662,6 +2662,10 @@ Provider options:
 Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for
 multi-tenant applications:
 
+Both forms apply `initialization-retry-interval` and `token-exchange-remote-work` to the effective runtime tenant.
+In configuration files, either option also identifies root single-tenant configuration when it is the only tenant option
+present. Root tenant options are not shared defaults for named tenants; do not combine them with `tenants`.
+
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether this tenant is enabled. Defaults to `true`. |

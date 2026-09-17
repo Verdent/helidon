@@ -713,6 +713,15 @@ contains `introspection_endpoint_auth_methods_supported` or
 `introspection_endpoint_auth_signing_alg_values_supported`, the configured method and assertion algorithm must be
 included in those metadata values.
 
+JWT client authentication also supports a fully static Introspection Endpoint configuration. Configure the endpoint,
+authentication method, credentials, and assertion settings to match the Authorization Server's registration; discovery
+signing-algorithm metadata is not required when discovery is not loaded. A configured well-known URI alone does not
+trigger discovery when the required endpoint and issuer are already available.
+
+If discovery is loaded, including to obtain an issuer for a statically configured endpoint, its authentication capability
+checks still apply. JWT authentication then requires signing-algorithm metadata containing the effective assertion
+algorithm. Local credential, signing-key, and endpoint security checks apply in both static and discovered configurations.
+
 Introspection requires `client-id`, authentication credentials for the selected method, and either
 `endpoints.introspection-endpoint-uri` or well-known metadata that provides `introspection_endpoint`.
 Principal mapping also needs a configured/discovered issuer or an explicit `subject-mapping.principal-id-namespace`.

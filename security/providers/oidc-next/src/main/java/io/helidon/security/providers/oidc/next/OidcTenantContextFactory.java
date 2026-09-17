@@ -106,7 +106,7 @@ final class OidcTenantContextFactory {
                                               wellKnownMetadataLoaded,
                                               outboundTargetTokenExchange);
                 validateJwtMetadata(tenantConfig, metadata);
-                validateIntrospectionMetadata(tenantConfig, metadata);
+                validateIntrospectionMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 validateUserInfoMetadata(tenantConfig, metadata);
                 validateEndSessionMetadata(tenantConfig, metadata);
                 validateMutualTlsMetadata(tenantConfig, metadata);
@@ -766,7 +766,9 @@ final class OidcTenantContextFactory {
                                  });
     }
 
-    private static void validateIntrospectionMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+    private static void validateIntrospectionMetadata(OidcTenantConfig tenantConfig,
+                                                       OidcProviderMetadata metadata,
+                                                       boolean wellKnownMetadataLoaded) {
         OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
@@ -795,7 +797,7 @@ final class OidcTenantContextFactory {
                                                      + "introspection");
                                  });
         validateMutualTlsIntrospectionMetadata(tenantConfig, metadata);
-        validateIntrospectionAuthenticationMetadata(tenantConfig, metadata);
+        validateIntrospectionAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
     }
 
     static void validateMutualTlsIntrospectionMetadata(OidcTenantConfig tenantConfig,
@@ -808,7 +810,12 @@ final class OidcTenantContextFactory {
     }
 
     private static void validateIntrospectionAuthenticationMetadata(OidcTenantConfig tenantConfig,
-                                                                    OidcProviderMetadata metadata) {
+                                                                    OidcProviderMetadata metadata,
+                                                                    boolean wellKnownMetadataLoaded) {
+        if (!wellKnownMetadataLoaded) {
+            return;
+        }
+
         OidcClientAuthenticationMethod method =
                 OidcClientAuthenticationSupport.introspectionEndpointAuthenticationMethod(tenantConfig);
         metadata.introspectionEndpointAuthenticationMethodsSupported()

@@ -43,7 +43,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         OidcClientAuthenticationSupport clientAuthentication = tenantContext.introspectionClientAuthentication();
         Optional<URI> endpointUri = introspectionEndpointUri(tenantContext.metadata(), clientAuthentication);
         if (endpointUri.isEmpty()) {
-            return OidcValidationResult.failure("Bearer Token introspection is not configured");
+            return OidcValidationResult.unavailable("Bearer Token introspection is not configured");
         }
         URI uri = endpointUri.orElseThrow();
         Optional<OidcRemoteWorkLimiter.Permit> admission = tenantContext.introspectionRemoteWorkLimiter()
@@ -52,21 +52,23 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             return OidcValidationResult.unavailable("Bearer Token introspection capacity is exhausted");
         }
 
-        try (OidcRemoteWorkLimiter.Permit ignored = admission.orElseThrow();
+        try (OidcRemoteWorkLimiter.Permit _ = admission.orElseThrow();
                 HttpClientResponse response = request(tenantContext.webClient(),
                                                       uri,
                                                       token,
                                                       clientAuthentication)) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
-                if (response.status().code() >= 500) {
-                    return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable");
-                }
-                return OidcValidationResult.failure("Bearer Token introspection endpoint rejected the token");
+                /*
+                 * RFC 7662 sections 2.2 and 2.3 distinguish active:false from errors of the introspection call,
+                 * including invalid resource-server credentials. An HTTP error does not establish token invalidity.
+                 */
+                return OidcValidationResult.unavailable("Bearer Token introspection endpoint returned HTTP "
+                                                               + response.status().code());
             }
 
             return validateResponse(request, response);
         } catch (RuntimeException e) {
-            return OidcValidationResult.failure("Bearer Token introspection endpoint is unavailable", e);
+            return OidcValidationResult.unavailable("Bearer Token introspection endpoint is unavailable", e);
         }
     }
 
@@ -92,17 +94,17 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
              * top-level members."
              */
             if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
-                return OidcValidationResult.failure("Bearer Token introspection response is invalid");
+                return OidcValidationResult.unavailable("Bearer Token introspection response is invalid");
             }
             jsonObject = response.as(JsonObject.class);
         } catch (RuntimeException e) {
-            return OidcValidationResult.failure("Bearer Token introspection response is invalid", e);
+            return OidcValidationResult.unavailable("Bearer Token introspection response is invalid", e);
         }
 
         try {
             Optional<Boolean> active = jsonObject.booleanValue("active");
             if (active.isEmpty()) {
-                return OidcValidationResult.failure("Bearer Token introspection response is invalid");
+                return OidcValidationResult.unavailable("Bearer Token introspection response is invalid");
             }
             if (!active.orElseThrow()) {
                 return OidcValidationResult.failure("Bearer Token introspection response is inactive");
@@ -115,7 +117,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             }
             return OidcValidationResult.success(validated);
         } catch (RuntimeException e) {
-            return OidcValidationResult.failure("Bearer Token introspection response is invalid", e);
+            return OidcValidationResult.unavailable("Bearer Token introspection response is invalid", e);
         }
     }
 
@@ -127,7 +129,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         Optional<String> expectedAudience = tokenValidation.audience();
         Instant validationTime = request.validationTime();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
-            return OidcValidationResult.failure("Bearer Token introspection is not configured");
+            return OidcValidationResult.unavailable("Bearer Token introspection is not configured");
         }
 
         JwtValidator.Builder builder = JwtValidator.builder()

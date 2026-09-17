@@ -746,6 +746,31 @@ the full introspection response `JsonObject` through the subject's public `Token
 Server introspection policy to return only claims this resource needs. `oidc-next` does not cache introspection responses
 by default, so each Bearer Token validation uses the current Authorization Server response.
 
+### Introspection Failure Responses
+
+Protected Resource authentication distinguishes token rejection from an inability to complete introspection:
+
+| Result | Protected Resource response |
+| --- | --- |
+| Successful introspection with `active: false`, or token claims that fail local validation policy | `401` with the Bearer `invalid_token` challenge |
+| An unsuccessful Introspection Endpoint HTTP response, including `400`, `401`, `403`, `429`, or `5xx` | `503 Service Unavailable` |
+| A transport failure, timeout, cancellation, or unusable introspection response | `503 Service Unavailable` |
+| Introspection admission capacity is exhausted | `503 Service Unavailable` |
+
+This follows the distinction in [RFC 7662 sections 2.2 and 2.3](https://www.rfc-editor.org/rfc/rfc7662.html#section-2.3):
+an inactive token is represented by a successful response containing `active: false`; an upstream authentication error
+concerns the resource server's own introspection credentials. It does not establish that the caller's access token is
+invalid. HTTP `503` is OIDC Next's dependency-unavailability policy, not a downstream status mandated by RFC 7662.
+
+Unavailable validation fails closed with the controlled description `Bearer Token validation is unavailable` and no
+`invalid_token` challenge. Upstream bodies, authentication challenges, cookies, redirect locations, and `Retry-After`
+values are not forwarded. Safe HTTP status and exception-type diagnostics remain available internally. No automatic
+retry or token acceptance fallback is introduced; once introspection recovers, the same still-valid token can succeed.
+
+These responses describe Protected Resource Bearer Token authentication. Browser refresh retains its existing failure
+policy; this change does not add recovery of partially completed refreshes or persistence of rotated refresh tokens
+when subsequent validation cannot complete.
+
 ### Limiting Introspection Remote Work
 
 Every distinct opaque token can cause an Introspection Endpoint request. Bound this work so a burst of invalid or unique

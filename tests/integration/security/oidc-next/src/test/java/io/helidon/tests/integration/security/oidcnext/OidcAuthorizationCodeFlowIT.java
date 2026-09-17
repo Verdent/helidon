@@ -37,8 +37,33 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcAuthorizationCodeFlowIT {
+    @Test
+    void requiredIdTokenEncryptionWithoutKeyFailsBeforeProviderRequests() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                        .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                .build()) {
+            for (boolean discovery : List.of(false, true)) {
+                IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                        () -> OidcIntegrationSupport.authorizationCodeProviderConfig(idp, _ -> { }, tenant -> {
+                            tenant.idToken(idToken -> idToken.encryptionRequired(true));
+                            if (discovery) {
+                                tenant.endpoints(endpoints -> endpoints.wellKnownUri(idp.metadataUri()).tlsRequired(false));
+                            }
+                        }));
+
+                assertThat(exception.getMessage(),
+                           is("id-token.decryption-jwk must be configured when id-token.encryption-required is true"));
+                assertThat(idp.metadataRequests().isEmpty(), is(true));
+                assertThat(idp.jwksRequests().isEmpty(), is(true));
+                assertThat(idp.tokenRequests().isEmpty(), is(true));
+            }
+        }
+    }
+
     @Test
     void signedOnlyBrowserFlowIgnoresUnrelatedEncryptionCapabilities() {
         try (TestOidcServer idp = TestOidcServer.builder()

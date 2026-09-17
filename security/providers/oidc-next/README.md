@@ -1203,6 +1203,9 @@ Tokens must use JWE `alg` `RSA-OAEP-256` or `RSA-OAEP`, encrypted ID Tokens must
 If the OpenID Provider returns encrypted ID Tokens, configure `id-token.decryption-jwk` with the private JWK Set resource
 used to decrypt them. Set `id-token.encryption-required: true` only when your client registration requires encrypted ID
 Tokens and signed-only ID Tokens should fail.
+An enabled tenant with `encryption-required: true` must configure `decryption-jwk`; otherwise configuration fails before
+tenant initialization or any login requests. When encryption is not required, decryption keys remain optional, and
+configuring a key alone does not prohibit signed-only ID Tokens.
 
 Provider-wide discovery capabilities do not request encryption for the client. Align the decryption key, allowed
 algorithms, and `encryption-required` setting with the client registration. Ignoring unused discovery encryption
@@ -2711,7 +2714,7 @@ ID Token options:
 | `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
 | `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. RSA moduli must contain at least 2048 bits; a declared JWK `alg` must match the JWE header. |
-| `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. |
+| `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. An enabled tenant must configure `decryption-jwk` when this is `true`; otherwise configuration fails. |
 
 Client assertion options:
 

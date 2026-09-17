@@ -92,6 +92,10 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateIdToken(OidcIdTokenConfig idToken) {
+        if (idToken.encryptionRequired() && idToken.decryptionJwk().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "id-token.decryption-jwk must be configured when id-token.encryption-required is true");
+        }
         if (idToken.allowedAlgorithms().isEmpty()) {
             throw new IllegalArgumentException("id-token.allowed-algorithms must not be empty");
         }

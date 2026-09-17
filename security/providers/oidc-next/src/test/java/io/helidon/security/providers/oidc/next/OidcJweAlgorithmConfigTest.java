@@ -46,6 +46,7 @@ import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.RSAEncrypter;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import static org.hamcrest.CoreMatchers.containsString;
@@ -81,6 +82,30 @@ class OidcJweAlgorithmConfigTest {
         SignedJwt signed = SignedJwt.sign(jwt, signingKeys.forKeyId("sign-rsa").orElseThrow());
         signedIdToken = new OidcValidatedIdToken(signed.tokenContent(), false, signed, jwt);
         jwksUri = OidcJweAlgorithmConfigTest.class.getClassLoader().getResource("oidc-next-verify-public-jwk.json").toURI();
+    }
+
+    @TestFactory
+    Stream<DynamicTest> requiredIdTokenEncryptionNeedsDecryptionKey() {
+        return invalidConfigurations("id-token.encryption-required", "", "true",
+                                     tenant -> tenant.idToken(idToken -> idToken.encryptionRequired(true)));
+    }
+
+    @Test
+    void disabledTenantMayRetainIncompleteIdTokenEncryptionConfiguration() {
+        OidcTenantConfig tenant = tenantBuilder().enabled(false)
+                .idToken(idToken -> idToken.encryptionRequired(true)).buildPrototype();
+        assertThat(tenant.enabled(), is(false));
+        assertThat(tenant.idToken().encryptionRequired(), is(true));
+        assertThat(tenant.idToken().decryptionJwk().isEmpty(), is(true));
+
+        for (String prefix : List.of("", "tenants.default.")) {
+            OidcProviderConfig provider = OidcProviderConfig.create(config(prefix, Map.of(
+                    "enabled", "false", "id-token.encryption-required", "true")));
+            OidcTenantConfig configuredTenant = provider.tenants().get("default");
+            assertThat(configuredTenant.enabled(), is(false));
+            assertThat(configuredTenant.idToken().encryptionRequired(), is(true));
+            assertThat(configuredTenant.idToken().decryptionJwk().isEmpty(), is(true));
+        }
     }
 
     @TestFactory
@@ -167,17 +192,17 @@ class OidcJweAlgorithmConfigTest {
 
     private static Stream<DynamicTest> invalidConfigurations(String property,
                                                              String index,
-                                                             String algorithm,
+                                                             String value,
                                                              Consumer<OidcTenantConfig.Builder> customizer) {
-        DynamicTest builderTest = dynamicTest("builder: " + property + "=" + algorithm, () -> {
+        DynamicTest builderTest = dynamicTest("builder: " + property + "=" + value, () -> {
             OidcTenantConfig.Builder builder = tenantBuilder();
             customizer.accept(builder);
             IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, builder::buildPrototype);
             assertThat(exception.getMessage(), containsString(property));
         });
         Stream<DynamicTest> configTests = Stream.of("", "tenants.default.").map(prefix -> dynamicTest(
-                "config: " + prefix + property + "=" + algorithm, () -> {
-                    Config config = config(prefix, Map.of(property + index, algorithm));
+                "config: " + prefix + property + "=" + value, () -> {
+                    Config config = config(prefix, Map.of(property + index, value));
                     IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                                                                      () -> OidcProviderConfig.create(config));
                     assertThat(exception.getMessage(), containsString(property));

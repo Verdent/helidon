@@ -213,7 +213,8 @@ class OidcIdTokenValidatorTest {
     void signedIdTokenIsRejectedWhenEncryptionIsRequired() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
-        var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config.encryptionRequired(true))));
+        var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config.encryptionRequired(true)
+                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
 
         assertFailure(result, "ID Token encryption is required");
     }

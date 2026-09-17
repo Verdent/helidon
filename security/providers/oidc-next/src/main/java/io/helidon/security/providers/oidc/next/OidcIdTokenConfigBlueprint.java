@@ -110,6 +110,7 @@ interface OidcIdTokenConfigBlueprint {
      * This is local RP/client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
      * verification keys used after the encrypted ID Token is decrypted. RSA keys must have a modulus of at least
      * 2048 bits. A declared JWK {@code alg} must match the JWE header; an omitted JWK {@code alg} remains unconstrained.
+     * Required when {@link #encryptionRequired()} is {@code true} for an enabled tenant; otherwise optional.
      *
      * @return ID Token decryption JWK Set resource
      */
@@ -120,7 +121,8 @@ interface OidcIdTokenConfigBlueprint {
     /**
      * Whether ID Tokens must be encrypted.
      * <p>
-     * Defaults to {@code false}. When enabled, a signed-only ID Token is rejected.
+     * Defaults to {@code false}. When enabled, a signed-only ID Token is rejected. An enabled tenant must also
+     * configure {@link #decryptionJwk()}; otherwise tenant configuration fails before initialization.
      *
      * @return whether ID Token encryption is required
      */

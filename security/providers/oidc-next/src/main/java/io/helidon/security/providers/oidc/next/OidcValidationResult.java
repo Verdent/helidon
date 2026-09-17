@@ -54,10 +54,14 @@ final class OidcValidationResult<T> {
     }
 
     static <T> OidcValidationResult<T> unavailable(String errorDescription) {
+        return unavailable(errorDescription, null);
+    }
+
+    static <T> OidcValidationResult<T> unavailable(String errorDescription, Throwable cause) {
         return new OidcValidationResult<>(OidcValidationStatus.UNAVAILABLE,
                                           Optional.empty(),
                                           Optional.of(errorDescription),
-                                          Optional.empty());
+                                          Optional.ofNullable(cause));
     }
 
     boolean succeeded() {

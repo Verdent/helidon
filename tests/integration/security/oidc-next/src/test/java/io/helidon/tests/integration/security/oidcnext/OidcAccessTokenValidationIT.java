@@ -18,7 +18,9 @@ package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
@@ -37,7 +39,9 @@ import io.helidon.webserver.WebServer;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 
 class OidcAccessTokenValidationIT {
     private static final String SERVICE_CLIENT = "service-client";
@@ -308,6 +312,79 @@ class OidcAccessTokenValidationIT {
                 }
             } finally {
                 client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void protectedResourceDistinguishesIntrospectionFailuresFromInactiveTokens() {
+        AtomicInteger upstreamStatus = new AtomicInteger(200);
+        AtomicReference<String> upstreamBody = new AtomicReference<>();
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(SERVICE_CLIENT, SERVICE_SECRET)
+                .defaultScopes("service.read")
+                .tokenDefaults(tokens -> tokens.accessToken(token -> token.opaque(true)))
+                .endpoints(endpoints -> endpoints.introspection(ctx -> {
+                    String body = upstreamBody.get();
+                    if (body == null) {
+                        ctx.sendDefault();
+                        return;
+                    }
+                    ctx.response().status(upstreamStatus.get())
+                            .header(HeaderValues.CONTENT_TYPE_JSON)
+                            .header(HeaderNames.WWW_AUTHENTICATE, "Basic realm=\"upstream-private\"")
+                            .header(HeaderNames.SET_COOKIE, "upstream-private=secret")
+                            .header(HeaderNames.LOCATION, "https://upstream.example/private")
+                            .header(HeaderNames.RETRY_AFTER, "86400")
+                            .send(body);
+                }))
+                .build()) {
+            String accessToken = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+            OidcProviderConfig config = OidcIntegrationSupport.protectedResourceProviderConfig(
+                    idp, SERVICE_CLIENT, SERVICE_SECRET, SERVICE_CLIENT, OidcTokenValidationMethod.INTROSPECTION);
+            WebServer rp = OidcIntegrationSupport.rpServer(config,
+                    routing -> OidcIntegrationSupport.protectedRoute(routing, "/api"));
+            WebClient client = WebClient.builder().baseUri(OidcIntegrationSupport.rpBaseUri(rp)).followRedirects(false).build();
+            try {
+                for (int status : List.of(307, 400, 401, 403, 429, 500, 502, 503, 504, 200)) {
+                    upstreamStatus.set(status);
+                    upstreamBody.set(status == 200 ? "{not-json" : JsonObject.builder()
+                            .set("active", false)
+                            .set("error", "invalid_token")
+                            .set("error_description", "upstream-private:" + accessToken + SERVICE_SECRET)
+                            .build().toString());
+                    int requests = idp.introspectionRequests().size();
+                    try (HttpClientResponse response = client.get("/api")
+                            .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
+                        assertThat("upstream status " + status, response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+                        for (var header : List.of(HeaderNames.WWW_AUTHENTICATE, HeaderNames.SET_COOKIE,
+                                                  HeaderNames.LOCATION, HeaderNames.RETRY_AFTER)) {
+                            assertThat(response.headers().first(header).isEmpty(), is(true));
+                        }
+                        String body = response.entity().hasEntity() ? response.as(String.class) : "";
+                        assertThat(body, not(containsString("upstream-private")));
+                        assertThat(body, not(containsString(accessToken)));
+                        assertThat(body, not(containsString(SERVICE_SECRET)));
+                    }
+                    assertThat(idp.introspectionRequests().size(), is(requests + 1));
+                    upstreamBody.set(null);
+                    upstreamStatus.set(200);
+                    try (HttpClientResponse response = client.get("/api")
+                            .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
+                        assertThat(response.status(), is(Status.OK_200));
+                    }
+                    assertThat(idp.introspectionRequests().size(), is(requests + 2));
+                }
+                upstreamBody.set("{\"active\":false}");
+                try (HttpClientResponse response = client.get("/api")
+                        .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
+                    assertThat(response.status(), is(Status.UNAUTHORIZED_401));
+                    assertThat(response.headers().first(HeaderNames.WWW_AUTHENTICATE).orElseThrow(),
+                               containsString("error=\"invalid_token\""));
+                }
+            } finally {
+                client.closeResource();
+                rp.stop();
             }
         }
     }

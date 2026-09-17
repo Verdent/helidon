@@ -31,11 +31,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -59,6 +61,7 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
@@ -69,10 +72,12 @@ import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
+import static io.helidon.common.testing.junit5.MatcherWithRetry.assertThatWithRetry;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -107,6 +112,7 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static volatile CountDownLatch introspectionRequestsStarted;
     private static volatile CountDownLatch releaseIntrospectionResponses;
+    private static volatile Map<HeaderName, String> introspectionResponseHeaders = Map.of();
 
     private URI introspectionEndpointUri;
     private URI redirectedIntrospectionEndpointUri;
@@ -142,6 +148,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         responseStatus = 200;
         responseBody = validResponse(_ -> { }).toString();
         responseContentType = "application/json";
+        introspectionResponseHeaders = Map.of();
         redirectLocation = null;
         REDIRECTED_REQUEST_COUNT.set(0);
         REQUEST_COUNT.set(0);
@@ -477,7 +484,8 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Principal claim must not be changed by UTF-8 replacement");
+        // The JSON parser rejects the unpaired surrogate before identity mapping can run.
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -599,7 +607,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -686,7 +694,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -695,7 +703,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -705,7 +713,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -864,7 +872,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -873,7 +881,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection response is invalid");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -886,7 +894,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection endpoint rejected the token");
+        assertIntrospectionUnavailable(response);
     }
 
     @Test
@@ -899,7 +907,162 @@ class OidcIntrospectionAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(provider(), OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection endpoint is unavailable");
+        assertIntrospectionUnavailable(response);
+    }
+
+    @Test
+    void upstreamErrorsDoNotRejectTheTokenOrLeakHeadersAndRecoveryReusesThePermit() {
+        OidcProvider provider = limitedIntrospectionProvider(Duration.ofSeconds(5));
+        int requests = 0;
+        for (int status : List.of(301, 302, 307, 308, 400, 401, 403, 404, 405, 408, 415, 422, 429, 500, 502, 503, 504)) {
+            responseStatus = status;
+            responseBody = JsonObject.builder()
+                    .set("active", false)
+                    .set("error", "invalid_token")
+                    .set("error_description", "upstream-private-data:" + OPAQUE_TOKEN + CLIENT_SECRET)
+                    .build().toString();
+            introspectionResponseHeaders = Map.of(HeaderNames.WWW_AUTHENTICATE, "Basic realm=\"upstream-private\"",
+                                                  HeaderNames.SET_COOKIE, "upstream-session=private",
+                                                  HeaderNames.LOCATION, redirectedIntrospectionEndpointUri.toString(),
+                                                  HeaderNames.RETRY_AFTER, "86400");
+
+            AuthenticationResponse rejected = authenticate(provider, OPAQUE_TOKEN);
+
+            assertIntrospectionUnavailable(rejected);
+            assertThat("one introspection request for upstream HTTP " + status, REQUEST_COUNT.get(), is(++requests));
+            assertThat(REDIRECTED_REQUEST_COUNT.get(), is(0));
+            responseStatus = 200;
+            responseBody = validResponse(_ -> { }).toString();
+            introspectionResponseHeaders = Map.of();
+
+            AuthenticationResponse recovered = authenticate(provider, OPAQUE_TOKEN);
+
+            assertThat(recovered.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(REQUEST_COUNT.get(), is(++requests));
+        }
+    }
+
+    @Test
+    void unusableIntrospectionResponsesDoNotEstablishTokenInvalidity() {
+        OidcProvider provider = provider();
+        for (String body : List.of("", "null", "[]", "{}", "{not-json", "{\"active\":null}",
+                                   "{\"active\":\"false\"}", "{\"active\":1}", "{\"active\":[]}")) {
+            responseBody = body;
+            assertIntrospectionUnavailable(authenticate(provider, OPAQUE_TOKEN));
+        }
+        responseBody = JsonObject.builder().set("active", false).set("exp", "ignored-for-inactive-token").build().toString();
+
+        assertInvalidToken(authenticate(provider, OPAQUE_TOKEN), "Inactive token remains a token rejection");
+    }
+
+    @Test
+    void introspectionReadTimeoutReturnsUnavailableAndReleasesPermit() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        introspectionRequestsStarted = started;
+        releaseIntrospectionResponses = release;
+        OidcProvider provider = limitedIntrospectionProvider(Duration.ofMillis(500));
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            try {
+                Future<AuthenticationResponse> outcome = executor.submit(() -> {
+                    AuthenticationResponse response = authenticate(provider, OPAQUE_TOKEN);
+                    assertThat(Thread.currentThread().isInterrupted(), is(false));
+                    return response;
+                });
+                assertThat(started.await(5, TimeUnit.SECONDS), is(true));
+                assertIntrospectionUnavailable(outcome.get(5, TimeUnit.SECONDS));
+                releaseIntrospectionResponses = null;
+
+                assertThat(authenticate(provider, OPAQUE_TOKEN).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                assertThat(REQUEST_COUNT.get(), is(2));
+            } finally {
+                release.countDown();
+                assertThatWithRetry(ACTIVE_REQUESTS::get, is(0));
+            }
+        }
+    }
+
+    @RepeatedTest(10)
+    void interruptedVirtualThreadReturnsUnavailableAndReleasesPermit() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        introspectionRequestsStarted = started;
+        releaseIntrospectionResponses = release;
+        OidcProvider provider = limitedIntrospectionProvider(Duration.ofSeconds(10));
+        CompletableFuture<AuthenticationResponse> outcome = new CompletableFuture<>();
+        AtomicBoolean interruptPreserved = new AtomicBoolean();
+        Thread worker = Thread.ofVirtual().start(() -> {
+            try {
+                AuthenticationResponse response = authenticate(provider, OPAQUE_TOKEN);
+                interruptPreserved.set(Thread.currentThread().isInterrupted());
+                outcome.complete(response);
+            } catch (Throwable t) {
+                outcome.completeExceptionally(t);
+            }
+        });
+        try {
+            assertThat(started.await(5, TimeUnit.SECONDS), is(true));
+            worker.interrupt();
+            assertIntrospectionUnavailable(outcome.get(5, TimeUnit.SECONDS));
+            assertThat(interruptPreserved.get(), is(true));
+            releaseIntrospectionResponses = null;
+
+            assertThat(authenticate(provider, OPAQUE_TOKEN).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(REQUEST_COUNT.get(), is(2));
+        } finally {
+            release.countDown();
+            worker.interrupt();
+            worker.join(5_000);
+            assertThatWithRetry(ACTIVE_REQUESTS::get, is(0));
+        }
+        assertThat(worker.isAlive(), is(false));
+    }
+
+    @Test
+    void introspectionConnectionFailureDoesNotRejectTheToken() {
+        WebServer stopped = WebServer.builder().port(0).build().start();
+        URI endpoint = URI.create("http://localhost:" + stopped.port() + "/introspect");
+        stopped.stop();
+        OidcProvider provider = provider(tenant -> tenant
+                .endpoints(endpoints -> endpoints.introspectionEndpointUri(endpoint).tlsRequired(false))
+                .webClient(WebClientConfig.builder().connectTimeout(Duration.ofSeconds(1)).buildPrototype()));
+
+        assertIntrospectionUnavailable(authenticate(provider, OPAQUE_TOKEN));
+    }
+
+    @Test
+    void unavailableIntrospectionRetainsInternalCauseAndHttpStatusDiagnostics() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString()).clientId(CLIENT_ID).clientSecret(CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints.introspectionEndpointUri(introspectionEndpointUri).tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION).audience(AUDIENCE)))
+                .buildPrototype();
+        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+        try {
+            assertThat(context.ready(), is(true));
+            responseBody = "{not-json";
+            OidcIntrospectionAccessTokenValidator validator = new OidcIntrospectionAccessTokenValidator();
+            OidcAccessTokenValidationRequest request = OidcAccessTokenValidationRequest
+                    .refreshedAuthorizationCodeAccessToken(OPAQUE_TOKEN, context, Instant.now());
+            OidcValidationResult<OidcValidatedAccessToken> malformed = validator.validate(request);
+
+            assertThat(malformed.unavailable(), is(true));
+            assertThat(malformed.succeeded(), is(false));
+            assertThat(malformed.validatedToken().isEmpty(), is(true));
+            assertThat(malformed.cause().isPresent(), is(true));
+            assertThat(malformed.errorDescription().orElseThrow(), is("Bearer Token introspection response is invalid"));
+            responseStatus = 401;
+            OidcValidationResult<OidcValidatedAccessToken> rejected = validator.validate(request);
+
+            assertThat(rejected.unavailable(), is(true));
+            assertThat(rejected.cause().isEmpty(), is(true));
+            assertThat(rejected.errorDescription().orElseThrow(), is("Bearer Token introspection endpoint returned HTTP 401"));
+        } finally {
+            if (context.ready()) {
+                context.webClient().closeResource();
+            }
+        }
     }
 
     @Test
@@ -975,7 +1138,7 @@ class OidcIntrospectionAccessTokenValidationTest {
                 provider(tenant -> tenant.webClient(redirectFollowingTenantWebClient())),
                 OPAQUE_TOKEN);
 
-        assertInvalidToken(response, "Bearer Token introspection endpoint rejected the token");
+        assertIntrospectionUnavailable(response);
         assertThat(REDIRECTED_REQUEST_COUNT.get(), is(0));
         assertThat(RECORDED_REQUEST.get().tenantWebClientHeader(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
@@ -985,6 +1148,11 @@ class OidcIntrospectionAccessTokenValidationTest {
         int active = ACTIVE_REQUESTS.incrementAndGet();
         MAX_ACTIVE_REQUESTS.accumulateAndGet(active, Math::max);
         try {
+            RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
+                                                    request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
+                                                    request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
+                                                    request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
+                                                    formParameters(request.content().as(Parameters.class))));
             CountDownLatch started = introspectionRequestsStarted;
             if (started != null) {
                 started.countDown();
@@ -993,12 +1161,8 @@ class OidcIntrospectionAccessTokenValidationTest {
             if (release != null && !release.await(10, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timed out waiting to release Introspection Endpoint response");
             }
-            RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
-                                                    request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
-                                                    request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),
-                                                    request.headers().first(TENANT_WEBCLIENT_HEADER_NAME).orElse(""),
-                                                    formParameters(request.content().as(Parameters.class))));
             response.status(responseStatus);
+            introspectionResponseHeaders.forEach(response::header);
             if (responseContentType != null) {
                 response.header(HeaderNames.CONTENT_TYPE, responseContentType);
             }
@@ -1012,6 +1176,15 @@ class OidcIntrospectionAccessTokenValidationTest {
         } finally {
             ACTIVE_REQUESTS.decrementAndGet();
         }
+    }
+
+    private OidcProvider limitedIntrospectionProvider(Duration readTimeout) {
+        return provider(tenant -> tenant
+                .webClient(WebClientConfig.builder().readTimeout(readTimeout).buildPrototype())
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION).audience(AUDIENCE)
+                        .introspection(introspection -> introspection.remoteWork(work -> work
+                                .maxConcurrent(1).maxQueued(0).admissionTimeout(Duration.ZERO))))));
     }
 
     private void assertJwtIntrospection(OidcClientAuthenticationMethod method,
@@ -1245,6 +1418,18 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     private static String formEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static void assertIntrospectionUnavailable(AuthenticationResponse response) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(503));
+        assertThat(response.description().orElseThrow(), is("Bearer Token validation is unavailable"));
+        assertThat(response.user().isEmpty(), is(true));
+        assertThat(response.service().isEmpty(), is(true));
+        for (HeaderName header : List.of(HeaderNames.WWW_AUTHENTICATE, HeaderNames.SET_COOKIE,
+                                         HeaderNames.LOCATION, HeaderNames.RETRY_AFTER)) {
+            assertThat(response.responseHeaders().containsKey(header.defaultCase()), is(false));
+        }
     }
 
     private static void assertInvalidToken(AuthenticationResponse response, String ignoredDescription) {

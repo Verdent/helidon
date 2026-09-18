@@ -540,7 +540,11 @@ class OidcRefreshTokenManagerTest {
             }
         } finally {
             client.closeResource();
-            rp.stop();
+            try {
+                rp.stop();
+            } finally {
+                provider.close();
+            }
         }
     }
 

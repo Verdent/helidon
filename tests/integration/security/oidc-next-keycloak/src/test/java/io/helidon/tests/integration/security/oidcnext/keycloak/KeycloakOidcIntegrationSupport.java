@@ -54,6 +54,7 @@ import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.security.WebClientSecurity;
 import io.helidon.webserver.WebServer;
+import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.security.SecurityFeature;
 import io.helidon.webserver.security.SecurityHandler;
@@ -274,6 +275,17 @@ final class KeycloakOidcIntegrationSupport {
                 .build();
         HttpRouting.Builder routing = HttpRouting.builder();
         OidcFeature.create(provider).setup(routing);
+        // This fixture owns one provider for this server; the OIDC feature itself only borrows it.
+        routing.addFeature(new HttpFeature() {
+            @Override
+            public void setup(HttpRouting.Builder routing) {
+            }
+
+            @Override
+            public void afterStop() {
+                provider.close();
+            }
+        });
         routes.accept(routing);
         return WebServer.builder()
                 .port(port)

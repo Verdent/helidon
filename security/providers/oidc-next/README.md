@@ -319,7 +319,7 @@ Security security = Security.builder()
         .addProvider(oidcProvider, config.providerName())
         .build();
 
-WebServer.builder()
+WebServer server = WebServer.builder()
         .addFeature(SecurityFeature.builder()
                 .security(security)
                 .build())
@@ -388,6 +388,40 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .scopeGrantsEnabled(true))
         .buildPrototype();
 ```
+
+### Runtime ownership and shutdown
+
+`OidcProvider` implements `AutoCloseable` and owns its tenant clients. The application must stop all consumers, including
+servers and outbound work, before closing the provider. A feature created with `OidcFeature.create(provider)` borrows that
+runtime: stopping one server must not close a provider that another server or Security instance still uses. Neither
+registering the provider with Security nor creating a feature from it transfers ownership.
+
+At application shutdown, for the single-server example above:
+
+```java
+try {
+    server.stop();
+} finally {
+    oidcProvider.close();
+}
+```
+
+Use `try`-with-resources around the provider's application lifetime when convenient, with server shutdown inside that
+scope. The same ownership rule applies to a provider retrieved from a configuration-created Security instance.
+
+The configuration-only `OidcFeature.create(config)` factories own an independent runtime. WebServer lifecycle hooks
+release that runtime when its last active routing registration stops, including when using `feature.setup(routing)`
+directly. An independently owned feature shared by several running servers stays usable until the last one stops.
+For explicit cleanup independent of lifecycle-hook dispatch, create and own an `OidcProvider` and pass it to the feature.
+
+Closing is terminal and idempotent: new authentication, outbound operations, and runtime lookups are rejected after
+closure. Create a new provider or independent feature for a new lifetime. Cleanup does not wait for pending discovery;
+an initialization finishing after closure releases its client instead of reactivating the runtime. Other in-flight work
+must be quiesced by the application before close.
+
+Cleanup releases client-owned resources, including private connection pools configured with
+`webclient.share-connection-cache: false`. Default JVM-shared connection pools remain managed by WebClient and are not
+evicted when an OIDC runtime closes.
 
 ## WebClient Configuration
 

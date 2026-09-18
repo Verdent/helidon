@@ -31,9 +31,10 @@ import io.helidon.security.spi.OutboundSecurityProvider;
 
 /**
  * New OpenID Connect security provider.
+ * The application owns the provider and must {@link #close()} it after all consumers stop.
  */
 public final class OidcProvider
-        implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcProviderConfig> {
+        implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcProviderConfig>, AutoCloseable {
     private final OidcProviderConfig config;
     private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcAuthenticationOrchestrator authentication;
@@ -105,6 +106,7 @@ public final class OidcProvider
 
     @Override
     public AuthenticationResponse authenticate(ProviderRequest providerRequest) {
+        tenantRuntimeRegistry.requireOpen();
         return authentication.authenticate(providerRequest);
     }
 
@@ -112,6 +114,7 @@ public final class OidcProvider
     public boolean isOutboundSupported(ProviderRequest providerRequest,
                                        SecurityEnvironment outboundEnv,
                                        EndpointConfig outboundConfig) {
+        tenantRuntimeRegistry.requireOpen();
         return outbound.isSupported(providerRequest, outboundEnv, outboundConfig);
     }
 
@@ -119,10 +122,23 @@ public final class OidcProvider
     public OutboundSecurityResponse outboundSecurity(ProviderRequest providerRequest,
                                                      SecurityEnvironment outboundEnv,
                                                      EndpointConfig outboundConfig) {
+        tenantRuntimeRegistry.requireOpen();
         return outbound.secure(providerRequest, outboundEnv, outboundConfig);
     }
 
+    /**
+     * Release this provider's tenant clients after all consumers have stopped.
+     * This operation is terminal and idempotent. Subsequent authentication and outbound operations fail with
+     * {@link java.lang.IllegalStateException}. Initialization still in progress releases its client when it completes;
+     * this method does not wait for that remote work. JVM-wide connection caches remain managed by WebClient.
+     */
+    @Override
+    public void close() {
+        tenantRuntimeRegistry.close();
+    }
+
     OidcTenantRuntimeRegistry tenantRuntimeRegistry() {
+        tenantRuntimeRegistry.requireOpen();
         return tenantRuntimeRegistry;
     }
 }

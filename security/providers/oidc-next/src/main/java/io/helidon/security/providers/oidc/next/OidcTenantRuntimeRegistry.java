@@ -18,9 +18,11 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.security.ProviderRequest;
@@ -32,6 +34,10 @@ final class OidcTenantRuntimeRegistry {
     private final Clock clock;
     private final ConcurrentMap<String, TenantContextSlot> contexts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, OidcCookieStateHandler> cookieStateHandlers = new ConcurrentHashMap<>();
+    private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+    private volatile boolean closed;
+    private int featureReferences;
 
     private OidcTenantRuntimeRegistry(OidcProviderConfig config,
                                       OidcTenantResolver tenantResolver,
@@ -69,44 +75,131 @@ final class OidcTenantRuntimeRegistry {
     }
 
     Optional<OidcTenantContext> tenantContext(ProviderRequest request) {
+        requireOpen();
         return tenantResolver.tenantId(request)
                 .flatMap(this::tenantContext);
     }
 
     Optional<OidcTenantConfig> tenantConfig(ProviderRequest request) {
+        requireOpen();
         return tenantResolver.tenantId(request)
                 .flatMap(this::tenantConfig);
     }
 
     Optional<OidcTenantContext> tenantContext(String tenantId) {
-        return tenantConfig(tenantId)
-                .map(tenantConfig -> {
-                    OidcCookieStateHandler cookieStateHandler = cookieStateHandler(tenantId, tenantConfig);
-                    /*
-                     * The map callback installs only a lightweight per-tenant slot; remote initialization runs after
-                     * computeIfAbsent returns. Same-tenant callers share one attempt, while different tenants initialize
-                     * independently. Retryable discovery failures remain cached until the configured retry interval.
-                     */
-                    TenantContextSlot context = contexts.computeIfAbsent(
-                            tenantId,
-                            _ -> new TenantContextSlot(tenantId,
-                                                       tenantConfig,
-                                                       cookieStateHandler,
-                                                       tenantContextFactory,
-                                                       clock));
-                    return context.get();
-                });
+        requireOpen();
+        TenantContextSlot cached = contexts.get(tenantId);
+        if (cached != null) {
+            return Optional.of(cached.get());
+        }
+        Optional<TenantContextSlot> slot;
+        lifecycleLock.lock();
+        try {
+            slot = tenantConfig(tenantId).map(tenantConfig -> contexts.computeIfAbsent(tenantId,
+                    _ -> new TenantContextSlot(tenantId, tenantConfig, cookieStateHandler(tenantId, tenantConfig))));
+        } finally {
+            lifecycleLock.unlock();
+        }
+        // Only slot installation is guarded by the lifecycle lock; initialization and remote I/O run outside it.
+        return slot.map(TenantContextSlot::get);
     }
 
     Optional<OidcCookieStateHandler> cookieStateHandler(String tenantId) {
-        return tenantConfig(tenantId).map(tenantConfig -> cookieStateHandler(tenantId, tenantConfig));
+        requireOpen();
+        OidcCookieStateHandler cached = cookieStateHandlers.get(tenantId);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+        lifecycleLock.lock();
+        try {
+            return tenantConfig(tenantId).map(tenantConfig -> cookieStateHandler(tenantId, tenantConfig));
+        } finally {
+            lifecycleLock.unlock();
+        }
     }
 
     int cachedTenantCount() {
         return contexts.size();
     }
 
+    void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("OIDC tenant runtime is closed");
+        }
+    }
+
+    void retainFeature() {
+        lifecycleLock.lock();
+        try {
+            requireOpen();
+            featureReferences++;
+        } finally {
+            lifecycleLock.unlock();
+        }
+    }
+
+    void releaseFeature() {
+        List<TenantContextSlot> toClose;
+        lifecycleLock.lock();
+        try {
+            if (featureReferences == 0) {
+                throw new IllegalStateException("OIDC feature runtime was not retained");
+            }
+            if (--featureReferences != 0) {
+                return;
+            }
+            toClose = closeLocked();
+        } finally {
+            lifecycleLock.unlock();
+        }
+        closeSlots(toClose);
+    }
+
+    void close() {
+        List<TenantContextSlot> toClose;
+        lifecycleLock.lock();
+        try {
+            toClose = closeLocked();
+        } finally {
+            lifecycleLock.unlock();
+        }
+        closeSlots(toClose);
+    }
+
+    private static void closeSlots(List<TenantContextSlot> slots) {
+        Throwable failure = null;
+        for (TenantContextSlot slot : slots) {
+            try {
+                slot.close();
+            } catch (RuntimeException | Error e) {
+                if (failure == null) {
+                    failure = e;
+                } else if (failure != e) {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        if (failure instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
+    private List<TenantContextSlot> closeLocked() {
+        if (closed) {
+            return List.of();
+        }
+        closed = true;
+        List<TenantContextSlot> result = List.copyOf(contexts.values());
+        contexts.clear();
+        cookieStateHandlers.clear();
+        return result;
+    }
+
     private Optional<OidcTenantConfig> tenantConfig(String tenantId) {
+        requireOpen();
         return Optional.ofNullable(config.tenants().get(tenantId));
     }
 
@@ -121,36 +214,32 @@ final class OidcTenantRuntimeRegistry {
                                                    _ -> OidcCookieStateHandler.create(tenantId, tenantConfig));
     }
 
-    private static final class TenantContextSlot {
+    private final class TenantContextSlot {
         private final String tenantId;
         private final OidcTenantConfig tenantConfig;
         private final OidcCookieStateHandler cookieStateHandler;
-        private final OidcTenantContextFactory tenantContextFactory;
-        private final Clock clock;
         private final ReentrantLock initializationLock = new ReentrantLock();
-        private volatile OidcTenantContext context;
+        private final AtomicReference<OidcTenantContext> context = new AtomicReference<>();
         private volatile Instant retryAfter;
 
         private TenantContextSlot(String tenantId,
                                   OidcTenantConfig tenantConfig,
-                                  OidcCookieStateHandler cookieStateHandler,
-                                  OidcTenantContextFactory tenantContextFactory,
-                                  Clock clock) {
+                                  OidcCookieStateHandler cookieStateHandler) {
             this.tenantId = tenantId;
             this.tenantConfig = tenantConfig;
             this.cookieStateHandler = cookieStateHandler;
-            this.tenantContextFactory = tenantContextFactory;
-            this.clock = clock;
         }
 
         private OidcTenantContext get() {
-            OidcTenantContext current = context;
+            requireOpen();
+            OidcTenantContext current = context.get();
             if (current != null && reusable(current, clock.instant())) {
                 return current;
             }
             initializationLock.lock();
             try {
-                current = context;
+                requireOpen();
+                current = context.get();
                 if (current != null && reusable(current, clock.instant())) {
                     return current;
                 }
@@ -159,10 +248,22 @@ final class OidcTenantRuntimeRegistry {
                 retryAfter = initialized.retryableFailure()
                         ? clock.instant().plus(tenantConfig.initializationRetryInterval())
                         : null;
-                context = initialized;
+                context.set(initialized);
+                if (closed) {
+                    // Close claims the published context atomically, including initialization finishing after shutdown.
+                    close();
+                    requireOpen();
+                }
                 return initialized;
             } finally {
                 initializationLock.unlock();
+            }
+        }
+
+        private void close() {
+            OidcTenantContext current = context.getAndSet(null);
+            if (current != null && current.ready()) {
+                current.webClient().closeResource();
             }
         }
 

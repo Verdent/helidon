@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import io.helidon.config.Config;
@@ -44,14 +45,18 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     private static final System.Logger LOGGER = System.getLogger(OidcFeature.class.getName());
 
     private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
+    private final boolean ownsRuntime;
     private final OidcAuthorizationResponseProcessor authorizationResponseProcessor;
     private final OidcLogoutHandler logoutHandler;
     private final OidcIdTokenValidator idTokenValidator;
 
-    private OidcFeature(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+    private OidcFeature(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry, boolean ownsRuntime) {
         OidcProviderConfig providerConfig = Objects.requireNonNull(config);
         OidcTenantRuntimeRegistry runtimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
         this.config = providerConfig;
+        this.tenantRuntimeRegistry = runtimeRegistry;
+        this.ownsRuntime = ownsRuntime;
         this.authorizationResponseProcessor = new OidcAuthorizationResponseProcessor(providerConfig, runtimeRegistry);
         this.logoutHandler = new OidcLogoutHandler(providerConfig, runtimeRegistry);
         this.idTokenValidator = new OidcIdTokenValidator();
@@ -60,6 +65,8 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     /**
      * Create an independent OIDC HTTP feature from configuration.
      * Use {@link #create(OidcProvider)} to share the tenant runtime with a security provider.
+     * This feature owns its runtime and releases it when its last active routing registration stops.
+     * A disposed feature cannot be started again; create a new feature for a new lifetime.
      *
      * @param config configuration
      * @return OIDC HTTP feature
@@ -71,27 +78,34 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     /**
      * Create an independent OIDC HTTP feature from provider configuration.
      * Use {@link #create(OidcProvider)} to share the tenant runtime with a security provider.
+     * This feature owns its runtime and releases it when its last active routing registration stops.
+     * A disposed feature cannot be started again; create a new feature for a new lifetime.
      *
      * @param config provider configuration
      * @return OIDC HTTP feature
      */
     public static OidcFeature create(OidcProviderConfig config) {
-        return new OidcFeature(config, OidcTenantRuntimeRegistry.create(config));
+        return new OidcFeature(config, OidcTenantRuntimeRegistry.create(config), true);
     }
 
     /**
      * Create an OIDC HTTP feature sharing the configuration and tenant runtime of an existing provider.
+     * The caller owns the provider and must close it after all consumers stop; stopping this feature does not close it.
      *
      * @param provider OIDC security provider
      * @return OIDC HTTP feature
      */
     public static OidcFeature create(OidcProvider provider) {
         Objects.requireNonNull(provider);
-        return new OidcFeature(provider.prototype(), provider.tenantRuntimeRegistry());
+        return new OidcFeature(provider.prototype(), provider.tenantRuntimeRegistry(), false);
     }
 
     @Override
     public void setup(HttpRouting.Builder routing) {
+        tenantRuntimeRegistry.requireOpen();
+        // Create lifecycle state per built routing, including copied/reused builders and direct setup(routing) calls.
+        HttpFeature lifecycle = target -> target.addFeature(new RuntimeLifecycle(tenantRuntimeRegistry, ownsRuntime));
+        routing.addFeature(lifecycle);
         redirectionEndpointPaths().forEach(path -> routing.get(path, this::processAuthorizationResponse));
         logoutEndpointPaths().forEach(path -> routing.route(Method.POST,
                                                             PathMatchers.exact(path),
@@ -141,6 +155,23 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
 
     Set<String> logoutEndpointPaths() {
         return logoutHandler.paths();
+    }
+
+    private static void debugUserInfoFailure(OidcTenantContext tenantContext, OidcUserInfoSupport.Result result) {
+        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            return;
+        }
+        String reason = result.diagnosticDescription()
+                .map(OidcDiagnostics::sanitizeLogValue)
+                .orElse("UserInfo failed");
+        String cause = result.cause()
+                .map(OidcDiagnostics::safeExceptionType)
+                .orElse("<none>");
+        LOGGER.log(System.Logger.Level.DEBUG,
+                   "OIDC UserInfo rejected: tenant="
+                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                           + ", reason=" + reason
+                           + ", cause=" + cause);
     }
 
     private void processAuthorizationResponse(ServerRequest request, ServerResponse response) {
@@ -251,20 +282,52 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         response.send();
     }
 
-    private static void debugUserInfoFailure(OidcTenantContext tenantContext, OidcUserInfoSupport.Result result) {
-        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-            return;
+    private static final class RuntimeLifecycle implements HttpFeature {
+        private final OidcTenantRuntimeRegistry registry;
+        private final boolean ownsRuntime;
+        private final ReentrantLock lock = new ReentrantLock();
+        private boolean active;
+
+        private RuntimeLifecycle(OidcTenantRuntimeRegistry registry, boolean ownsRuntime) {
+            this.registry = registry;
+            this.ownsRuntime = ownsRuntime;
         }
-        String reason = result.diagnosticDescription()
-                .map(OidcDiagnostics::sanitizeLogValue)
-                .orElse("UserInfo failed");
-        String cause = result.cause()
-                .map(OidcDiagnostics::safeExceptionType)
-                .orElse("<none>");
-        LOGGER.log(System.Logger.Level.DEBUG,
-                   "OIDC UserInfo rejected: tenant="
-                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
-                           + ", reason=" + reason
-                           + ", cause=" + cause);
+
+        @Override
+        public void setup(HttpRouting.Builder routing) {
+        }
+
+        @Override
+        public void beforeStart() {
+            lock.lock();
+            try {
+                if (active) {
+                    return;
+                }
+                if (ownsRuntime) {
+                    registry.retainFeature();
+                } else {
+                    registry.requireOpen();
+                }
+                active = true;
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @Override
+        public void afterStop() {
+            boolean release;
+            lock.lock();
+            try {
+                release = active && ownsRuntime;
+                active = false;
+            } finally {
+                lock.unlock();
+            }
+            if (release) {
+                registry.releaseFeature();
+            }
+        }
     }
 }

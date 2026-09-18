@@ -115,7 +115,11 @@ class OidcAuthorizationCodeFlowIT {
                             }
                             assertThat(idp.tokenRequests().size(), is(1));
                         } finally {
-                            rp.stop();
+                            try {
+                                rp.stop();
+                            } finally {
+                                provider.close();
+                            }
                         }
                     }
                 })));

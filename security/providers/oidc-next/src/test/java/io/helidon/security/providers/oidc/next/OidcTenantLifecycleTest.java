@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,7 +24,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -36,15 +39,192 @@ import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
+import io.helidon.webclient.api.WebClient;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcTenantLifecycleTest {
+    @Test
+    void closeDoesNotInitializeUnusedTenantsAndRejectsLaterAccess() {
+        AtomicInteger attempts = new AtomicInteger();
+        OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, config) -> {
+            attempts.incrementAndGet();
+            return OidcTenantContext.ready(tenantId, config);
+        });
+
+        registry.close();
+        registry.close();
+
+        assertThat(attempts.get(), is(0));
+        assertThat(registry.cachedTenantCount(), is(0));
+        assertThrows(IllegalStateException.class, () -> registry.tenantContext("tenant"));
+        assertThrows(IllegalStateException.class, () -> registry.cookieStateHandler("tenant"));
+        assertThrows(IllegalStateException.class,
+                     () -> registry.tenantConfig(OidcProviderTest.request(null, SecurityEnvironment.create())));
+    }
+
+    @Test
+    void closeReleasesEveryReadyClientOnceAndClearsContexts() {
+        AtomicInteger closes = new AtomicInteger();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("first", OidcTenantConfig.create())
+                .putTenant("second", OidcTenantConfig.create())
+                .putTenant("disabled", OidcTenantConfig.builder().enabled(false).buildPrototype())
+                .buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(config,
+                OidcTenantContextFactory.create((tenantId, tenant) -> OidcTenantContext.ready(tenantId, tenant,
+                        OidcProviderMetadata.fromStaticConfig(tenant), trackingClient(closes::incrementAndGet))));
+        config.tenants().keySet().forEach(registry::tenantContext);
+
+        registry.close();
+        registry.close();
+
+        assertThat(closes.get(), is(2));
+        assertThat(registry.cachedTenantCount(), is(0));
+    }
+
+    @Test
+    void closeAttemptsAllClientsEvenWhenCleanupFails() {
+        AtomicInteger closes = new AtomicInteger();
+        IllegalStateException first = new IllegalStateException("first close failure");
+        IllegalArgumentException second = new IllegalArgumentException("second close failure");
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("first", OidcTenantConfig.create())
+                .putTenant("second", OidcTenantConfig.create())
+                .putTenant("third", OidcTenantConfig.create())
+                .buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(config,
+                OidcTenantContextFactory.create((tenantId, tenant) -> OidcTenantContext.ready(tenantId, tenant,
+                        OidcProviderMetadata.fromStaticConfig(tenant), trackingClient(() -> {
+                            closes.incrementAndGet();
+                            if ("first".equals(tenantId)) {
+                                throw first;
+                            }
+                            if ("second".equals(tenantId)) {
+                                throw second;
+                            }
+                        }))));
+        config.tenants().keySet().forEach(registry::tenantContext);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, registry::close);
+
+        assertThat(closes.get(), is(3));
+        assertThat(thrown.getSuppressed().length, is(1));
+        assertThat(Set.of(thrown, thrown.getSuppressed()[0]), is(Set.of(first, second)));
+        registry.close();
+        assertThat(closes.get(), is(3));
+    }
+
+    @Test
+    void closeDoesNotRepeatFailedInitializationCleanup() {
+        AtomicInteger closes = new AtomicInteger();
+        OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, config) -> {
+            WebClient client = trackingClient(closes::incrementAndGet);
+            // Failed initialization owns cleanup before returning a context without runtime resources.
+            client.closeResource();
+            return OidcTenantContext.failed(tenantId, config, new IllegalArgumentException("invalid metadata"));
+        });
+        assertThat(registry.tenantContext("tenant").orElseThrow().state(), is(OidcTenantState.FAILED));
+        assertThat(closes.get(), is(1));
+
+        registry.close();
+        registry.close();
+
+        assertThat(closes.get(), is(1));
+    }
+
+    @Test
+    void closeDoesNotWaitForInitializationAndReleasesItsLateClient() throws Exception {
+        AtomicInteger closes = new AtomicInteger();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, config) -> {
+            OidcTenantContext ready = OidcTenantContext.ready(tenantId, config,
+                    OidcProviderMetadata.fromStaticConfig(config), trackingClient(closes::incrementAndGet));
+            entered.countDown();
+            await(finish);
+            return ready;
+        });
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> initialized = executor.submit(() -> registry.tenantContext("tenant"));
+            try {
+                assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                executor.submit(registry::close).get(2, TimeUnit.SECONDS);
+                assertThat(closes.get(), is(0));
+                assertThrows(IllegalStateException.class, () -> registry.tenantContext("tenant"));
+                finish.countDown();
+                ExecutionException failure = assertThrows(ExecutionException.class,
+                                                          () -> initialized.get(5, TimeUnit.SECONDS));
+                assertThat(failure.getCause(), instanceOf(IllegalStateException.class));
+                assertThat(closes.get(), is(1));
+                registry.close();
+                assertThat(closes.get(), is(1));
+            } finally {
+                finish.countDown();
+            }
+        }
+    }
+
+    @Test
+    void publicationAndConcurrentCloseNeverLoseOrDoubleCloseAClient() throws Exception {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int iteration = 0; iteration < 64; iteration++) {
+                AtomicInteger created = new AtomicInteger();
+                AtomicInteger closed = new AtomicInteger();
+                CountDownLatch start = new CountDownLatch(1);
+                OidcTenantRuntimeRegistry registry = registryWithInitializer((tenantId, config) -> {
+                    created.incrementAndGet();
+                    return OidcTenantContext.ready(tenantId, config,
+                            OidcProviderMetadata.fromStaticConfig(config), trackingClient(closed::incrementAndGet));
+                });
+                Future<?> initializer = executor.submit(() -> {
+                    await(start);
+                    try {
+                        registry.tenantContext("tenant");
+                    } catch (IllegalStateException e) {
+                        assertThat(e.getMessage(), is("OIDC tenant runtime is closed"));
+                    }
+                });
+                Future<?> firstClose = executor.submit(() -> {
+                    await(start);
+                    registry.close();
+                });
+                Future<?> secondClose = executor.submit(() -> {
+                    await(start);
+                    registry.close();
+                });
+                start.countDown();
+                initializer.get(5, TimeUnit.SECONDS);
+                firstClose.get(5, TimeUnit.SECONDS);
+                secondClose.get(5, TimeUnit.SECONDS);
+                assertThat(closed.get(), is(created.get()));
+                assertThat(registry.cachedTenantCount(), is(0));
+            }
+        }
+    }
+
+    @Test
+    void providerCloseIsTerminalAndIdempotent() {
+        OidcProvider provider = OidcProvider.create();
+        ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.create());
+
+        provider.close();
+        provider.close();
+
+        assertThrows(IllegalStateException.class, () -> provider.authenticate(request));
+        assertThrows(IllegalStateException.class,
+                     () -> provider.isOutboundSupported(request, outboundEnvironment(), EndpointConfig.create()));
+        assertThrows(IllegalStateException.class,
+                     () -> provider.outboundSecurity(request, outboundEnvironment(), EndpointConfig.create()));
+        assertThrows(IllegalStateException.class, () -> OidcFeature.create(provider));
+    }
+
     @Test
     void disabledTenantReturnsDisabledContextAndFailsPredictably() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
@@ -388,6 +568,18 @@ class OidcTenantLifecycleTest {
             OidcTenantContextFactory.TenantInitializer initializer) {
         return OidcTenantRuntimeRegistry.create(providerConfig(OidcTenantConfig.create()),
                                                 OidcTenantContextFactory.create(initializer));
+    }
+
+    private static WebClient trackingClient(Runnable onClose) {
+        // Test double of the public WebClient interface; no private implementation state is accessed.
+        return (WebClient) Proxy.newProxyInstance(WebClient.class.getClassLoader(), new Class<?>[] {WebClient.class},
+                (_, method, _) -> {
+                    if ("closeResource".equals(method.getName())) {
+                        onClose.run();
+                        return null;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 
     private static OidcProviderConfig providerConfig(OidcTenantConfig tenantConfig) {

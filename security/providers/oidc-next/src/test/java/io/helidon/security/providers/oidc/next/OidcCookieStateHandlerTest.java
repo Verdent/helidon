@@ -19,20 +19,56 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.http.SetCookie;
+import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
 
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 
 class OidcCookieStateHandlerTest {
     private static final String TENANT_ID = "tenant-a";
     private static final String CLIENT_ID = "client-a";
     private static final String PASSWORD = "a-test-password-long-enough";
     private static final Instant NOW = Instant.parse("2026-01-01T00:00:00Z");
+
+    @Test
+    void largeSessionFitsBrowserCookies() {
+        OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT_ID, tenant);
+        JwkKeys keys = JwkKeys.builder().resource(Resource.create("oidc-next-sign-jwk.json")).build();
+        SignedJwt signed = SignedJwt.sign(Jwt.builder()
+                                                 .subject("subject")
+                                                 .issuer("https://issuer.example")
+                                                 .addAudience(CLIENT_ID)
+                                                 .algorithm("RS256")
+                                                 .expirationTime(NOW.plusSeconds(3600))
+                                                 .build(),
+                                         keys.forKeyId("sign-rsa").orElseThrow());
+        OidcLocalAuthenticationResult session = OidcLocalAuthenticationResult.fromStoredValues(
+                OidcLocalAuthenticationState.builder()
+                        .tenantId(TENANT_ID)
+                        .idToken(new OidcValidatedIdToken(signed.tokenContent(), false, signed, signed.getJwt()))
+                        .accessToken("a".repeat(5000))
+                        .tokenType("Bearer")
+                        .createdAt(NOW)
+                        .expiresAt(NOW.plusSeconds(3600))
+                        .buildPrototype());
+
+        List<SetCookie> cookies = handler.createLocalAuthenticationResultCookies(session, Map.of(), NOW);
+
+        assertThat(cookies.size() > 1, is(true));
+        cookies.forEach(cookie -> assertThat(cookie.toString().length(), lessThanOrEqualTo(3800)));
+    }
 
     @Test
     void independentlyCreatedHandlersInteroperateAndKeysAreContextBound() {

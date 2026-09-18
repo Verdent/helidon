@@ -42,6 +42,7 @@ import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.SetCookie;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
@@ -53,6 +54,9 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
+import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
@@ -151,7 +155,8 @@ class OidcRefreshTokenManagerTest {
         CountDownLatch firstRequestStarted = new CountDownLatch(1);
         CountDownLatch secondRequestStarted = new CountDownLatch(1);
         CountDownLatch releaseFirstRequest = new CountDownLatch(1);
-        String successfulResponse = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
+        String refreshedAccessToken = "a".repeat(6000);
+        String successfulResponse = refreshResponse(refreshedAccessToken, ROTATED_REFRESH_TOKEN).toString();
         String invalidGrantResponse = JsonObject.builder().set("error", "invalid_grant").build().toString();
         TOKEN_ENDPOINT_RESPONDER.set((requestNumber, response) -> {
             if (requestNumber == 1) {
@@ -193,13 +198,21 @@ class OidcRefreshTokenManagerTest {
                 releaseFirstRequest.countDown();
             }
 
+            List<String> sharedChunkValues = null;
             for (Future<AuthenticationResponse> responseFuture : responses) {
                 AuthenticationResponse response = responseFuture.get(5, TimeUnit.SECONDS);
                 assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                List<String> values = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase()).stream()
+                        .map(SetCookie::parse).map(SetCookie::value).toList();
+                assertThat(values.size() > 1, is(true));
+                if (sharedChunkValues == null) {
+                    sharedChunkValues = values;
+                }
+                assertThat(values, is(sharedChunkValues));
                 OidcLocalAuthenticationResult result = storedLocalAuthenticationResult(response,
                                                                                         tenant,
                                                                                         cookieStateHandler);
-                assertThat(result.accessToken(), is(REFRESHED_ACCESS_TOKEN));
+                assertThat(result.accessToken(), is(refreshedAccessToken));
                 assertThat(result.refreshToken().orElse(""), is(ROTATED_REFRESH_TOKEN));
                 assertThat(result.browserSessionGeneration(), is(Optional.of(cookies.generation())));
             }
@@ -468,6 +481,123 @@ class OidcRefreshTokenManagerTest {
         assertThat(stored.expiresAt(), is(sessionExpiresAt));
         assertThat(stored.refreshToken().orElseThrow(), is(ROTATED_REFRESH_TOKEN));
         assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void lateChunkedRefreshCannotRestoreTheBrowserSessionAfterLogout(URI serverUri) throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        String successful = refreshResponse("a".repeat(6000), ROTATED_REFRESH_TOKEN).toString();
+        TOKEN_ENDPOINT_RESPONDER.set((_, response) -> {
+            started.countDown();
+            await(release);
+            sendTokenResponse(response, 200, successful);
+        });
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenant(serverUri)).logout(OidcLogoutConfig.create()).buildPrototype();
+        OidcProviderConfig config = OidcProviderConfig.builder().putTenant("default", tenant).buildPrototype();
+        OidcProvider provider = OidcProvider.create(config);
+        WebServer rp = WebServer.builder().port(0).routing(routing -> OidcFeature.create(config).setup(routing)).build().start();
+        URI rpUri = URI.create("http://localhost:" + rp.port());
+        WebClient client = WebClient.builder().baseUri(rpUri).build();
+        Instant now = Instant.now();
+        LocalAuthenticationCookies source = localAuthenticationCookies(tenant, now.minusSeconds(60),
+                                                                        now.plusSeconds(3600), now.minusSeconds(1));
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<AuthenticationResponse> pending = executor.submit(() -> authenticate(provider, source));
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS), is(true));
+                SetCookie newGeneration;
+                String sourceHeader = source.localAuthentication().name() + "=" + source.localAuthentication().value()
+                        + "; " + source.generationCookie().name() + "=" + source.generationCookie().value();
+                try (HttpClientResponse logout = client.post("/oidc/logout")
+                        .header(HeaderNames.ORIGIN, rpUri.toString()).header(HeaderNames.COOKIE, sourceHeader).request()) {
+                    assertThat(logout.status(), is(Status.NO_CONTENT_204));
+                    List<SetCookie> cookies = logout.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                            .map(SetCookie::parse).toList();
+                    assertThat(cookies.size(), is(18));
+                    newGeneration = cookies.stream().filter(cookie -> cookie.name().endsWith("-generation"))
+                            .findFirst().orElseThrow();
+                }
+                release.countDown();
+                AuthenticationResponse late = pending.get(5, TimeUnit.SECONDS);
+                assertThat(late.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                List<SetCookie> lateCookies = late.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase()).stream()
+                        .map(SetCookie::parse).toList();
+                assertThat(lateCookies.size() > 1, is(true));
+                assertThat(storedLocalAuthenticationResult(late, tenant).browserSessionGeneration(),
+                           is(Optional.of(source.generation())));
+                String afterLogout = String.join("; ", lateCookies.stream()
+                        .map(cookie -> cookie.name() + "=" + cookie.value()).toList())
+                        + "; " + newGeneration.name() + "=" + newGeneration.value();
+                AuthenticationResponse result = provider.authenticate(OidcProviderTest.request(null,
+                        SecurityEnvironment.builder().targetUri(ORIGINAL_URI)
+                                .header(HeaderNames.COOKIE.defaultCase(), afterLogout).build()));
+                assertThat(result.status() == SecurityResponse.SecurityStatus.SUCCESS, is(false));
+                assertThat(result.user().isEmpty(), is(true));
+                assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            client.closeResource();
+            rp.stop();
+        }
+    }
+
+    @Test
+    void oversizedRotatedSessionFailsWithoutRedeemingTheSourceAgain(URI serverUri) {
+        responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, "r".repeat(24000)).toString();
+        OidcTenantConfig tenant = tenant(serverUri);
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie source = localAuthenticationCookie(tenant, now.minusSeconds(60), now.plusSeconds(3600), now.minusSeconds(1));
+
+        for (int i = 0; i < 2; i++) {
+            AuthenticationResponse response = authenticate(provider, source);
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(response.statusCode().orElseThrow(), is(503));
+            assertThat(response.user().isEmpty(), is(true));
+            List<String> cleared = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
+            assertThat(cleared.size(), is(16));
+            cleared.stream().map(SetCookie::parse).forEach(cookie -> {
+                assertThat(cookie.value(), is(""));
+                assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+            });
+        }
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void refreshedSessionShrinksAndRemovesObsoleteChunks(URI serverUri) {
+        responseBody = refreshResponse("a".repeat(6000), ROTATED_REFRESH_TOKEN).toString();
+        OidcTenantConfig tenant = tenant(serverUri);
+        OidcProvider provider = provider(tenant);
+        Instant now = Instant.now();
+        SetCookie source = localAuthenticationCookie(tenant, now.minusSeconds(60), now.plusSeconds(3600), now.minusSeconds(1));
+        AuthenticationResponse first = authenticate(provider, source);
+        assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        List<SetCookie> largeCookies = first.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase()).stream()
+                .map(SetCookie::parse).toList();
+        assertThat(largeCookies.size() > 1, is(true));
+        String header = String.join("; ", largeCookies.stream().map(cookie -> cookie.name() + "=" + cookie.value()).toList());
+        responseBody = refreshResponse("small-token", "next-refresh-token").toString();
+
+        AuthenticationResponse second = provider.authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI).time(SecurityTime.builder().shiftBySeconds(700).build())
+                .header(HeaderNames.COOKIE.defaultCase(), header).build()));
+
+        assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertAccessToken(second, "small-token");
+        List<SetCookie> update = second.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase()).stream()
+                .map(SetCookie::parse).toList();
+        assertThat(update.size(), is(largeCookies.size()));
+        assertThat(update.getFirst().value().isEmpty(), is(false));
+        update.subList(1, update.size()).forEach(cookie -> {
+            assertThat(cookie.value(), is(""));
+            assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+        });
+        assertThat(RECORDED_REQUEST.get().formParameters().get("refresh_token"), is(List.of(ROTATED_REFRESH_TOKEN)));
+        assertThat(TOKEN_REQUEST_COUNT.get(), is(2));
     }
 
     @Test
@@ -1270,7 +1400,7 @@ class OidcRefreshTokenManagerTest {
         String idToken = signedIdToken(idTokenCustomizer);
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         OidcLocalAuthenticationState.builder()
                                 .tenantId("default")
                                 .idToken(new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()))
@@ -1283,7 +1413,7 @@ class OidcRefreshTokenManagerTest {
                                 .createdAt(createdAt)
                                 .expiresAt(expiresAt)
                                 .accessTokenExpiresAt(Optional.ofNullable(accessTokenExpiresAt))
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {
@@ -1431,10 +1561,11 @@ class OidcRefreshTokenManagerTest {
             OidcCookieStateHandler cookieStateHandler) {
         String localAuthenticationCookieName = tenant.cookies().localAuthenticationCookieName();
         List<String> setCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
-        assertThat(setCookies.size(), is(1));
-        SetCookie refreshedCookie = SetCookie.parse(setCookies.getFirst());
-        assertThat(refreshedCookie.name(), is(localAuthenticationCookieName));
-        return cookieStateHandler.readLocalAuthenticationResult(refreshedCookie.value(),
+        Map<String, List<String>> cookieSet = new LinkedHashMap<>();
+        setCookies.stream().map(SetCookie::parse)
+                .forEach(cookie -> cookieSet.put(cookie.name(), List.of(cookie.value())));
+        assertThat(cookieSet.containsKey(localAuthenticationCookieName), is(true));
+        return cookieStateHandler.readLocalAuthenticationResult(cookieSet,
                                                                 Instant.now(),
                                                                 OidcIdTokenDecryptor.create(tenant))
                 .orElseThrow();

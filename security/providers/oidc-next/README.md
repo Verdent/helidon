@@ -2213,7 +2213,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 
 ## Local Authentication Cookies
 
-Authorization Code Flow stores the authenticated result in a protected local authentication cookie.
+Authorization Code Flow stores one authenticated session in a bounded set of protected local authentication cookies.
+Small sessions use one cookie; larger sessions are automatically split after authenticated encryption and encoding.
+This is provider-neutral and does not change the tokens issued by the OpenID Provider.
 
 ```yaml
 cookies:
@@ -2221,6 +2223,11 @@ cookies:
   local-authentication-cookie-name: "__Host-helidon-oidc-auth"
   authentication-request-lifetime: "PT5M"
   local-authentication-lifetime: "PT1H"
+  max-cookie-size: 3800
+  max-chunks: 4
+  max-total-size: 12288
+  compression: NONE
+  max-session-size: 65536
   protection:
     password: "${OIDC_COOKIE_PASSWORD}"
 ```
@@ -2229,6 +2236,44 @@ Cookie lifetimes must be positive. Both names must be distinct valid HTTP cookie
 password, salt override, and iteration count on every service node that must accept the same browser session. This makes
 cookies readable without affinity, but safe coalescing of refresh-token rotation remains process-local as described
 below.
+
+The additional settings are directly on `OidcCookieConfig`, with equivalent programmatic builder methods. There is no
+`chunking` subnode. Root `cookies` is single-tenant shorthand; named tenants use `tenants.<name>.cookies`.
+
+| Setting | Meaning |
+| --- | --- |
+| `max-cookie-size` | Maximum serialized bytes of each session Set-Cookie field value, including its name and attributes. At most 4096; must leave room for framing and payload. |
+| `max-chunks` | Maximum physical cookies in one session, including the base, between 1 and 16. One disables multi-cookie sessions. Applies to reads and writes. |
+| `max-total-size` | Encoded session-cookie request-header budget, including names and separators. Also bounds outgoing session Set-Cookie headers, including required deletions. At most 65536; must accommodate clearing the fixed namespace. |
+| `compression` | `NONE` or `GZIP`, which is used only when smaller. NONE affects new writes; authenticated GZIP sessions remain readable. No provider-specific defaults or detection. |
+| `max-session-size` | Maximum UTF-8 session JSON bytes before compression and after authenticated decompression, between 1 and 1048576. Applies even without compression. |
+
+Leave header capacity for other application cookies, authentication-request state, browser generation, and other headers.
+The default 12-KiB budget is below Helidon's default 16-KiB HTTP/1 received-header limit, but smaller proxy limits must
+also be respected. Chunking does not reduce aggregate traffic or permit unlimited token sizes. Final serialized sizes,
+not raw token lengths, determine whether a session fits. Reducing configured limits can require reauthentication.
+
+The base cookie keeps the configured name; subsequent pieces use `.1` through `.15`. The finite namespace is reserved
+regardless of the configured count, and overlapping state/generation or different tenant session namespaces are rejected.
+The authenticated v2 framing binds the encoding, count, and update identity to the tenant/client/purpose-protected
+session. Missing, duplicate, mixed, or tampered required pieces cannot authenticate. Earlier unchunked v1 local-session
+values are not accepted by this format; authentication-request and generation cookies retain their existing format.
+
+Every piece shares the absolute local session expiration. Shrinking or replacing a session explicitly expires observed
+obsolete pieces. Logout, expired/corrupt sessions, and terminal refresh failures clear the entire sixteen-slot namespace
+even when the base/count is missing. Clearing uses a past Expires with the same host/path policy; unrelated cookie names
+are not reflected into deletion headers. Logout also rotates the separate browser-generation cookie, while ordinary
+refresh does not: a late refresh response must not authenticate against the new browser generation.
+
+Cookie updates are prepared and checked before success is reported. A session that cannot fit produces a controlled
+storage error rather than token truncation or a successful redirect followed by a login loop. If a completed refresh
+cannot be persisted, its source session is cleared and the cohort receives an unavailable result; the provider does not
+fall back to its predecessor refresh token. Ordinary transient upstream/admission failures retain their existing policy.
+
+GZIP is opt-in because compression can disclose information through ciphertext lengths when chosen plaintext shares a
+compression context with secrets. Assess the deployment before enabling it; this is cookie compression, not JOSE `zip`.
+Decompression occurs only after authentication and is size-bounded. See
+[RFC 8725 sections 2.4 and 3.6](https://www.rfc-editor.org/rfc/rfc8725.html#section-2.4).
 
 The local authentication result lifetime is capped by the configured `local-authentication-lifetime` and by token
 expiration. The provider uses the ID Token as the authentication source and exposes the access token through
@@ -2240,7 +2285,9 @@ expires. A terminal refresh failure, such as `invalid_grant`, removes the local 
 Concurrent requests carrying the same source authentication cookie share one refresh operation within a tenant runtime.
 The elected caller performs the Token Endpoint request, refreshed-token validation, and UserInfo retrieval. Admitted
 followers wait interruptibly without holding a cache or coordination lock, which allows virtual threads to park normally.
-All admitted cohort callers receive the same refreshed, retained, removal, or unavailable decision.
+All admitted cohort callers receive the same refreshed, retained, removal, or unavailable decision. A successful cohort
+also shares one prepared encrypted chunk set and retirement plan; followers do not independently encrypt different
+fragments of the same logical refresh result. Remaining cookie lifetimes are calculated when each response is emitted.
 
 A completed result remains reusable for a short grace interval so a request which reaches refresh just after rotation
 does not submit the now-invalid old refresh token. The key contains SHA-256 fingerprints rather than raw ID, access, or

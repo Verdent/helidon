@@ -18,7 +18,6 @@ package io.helidon.security.providers.oidc.next;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
@@ -45,30 +44,30 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse missingBearerToken(String realm) {
-        return missingBearerToken(realm, Optional.empty());
+        return missingBearerToken(realm, List.of());
     }
 
     static AuthenticationResponse missingBearerToken(String realm,
-                                                     Optional<String> localAuthenticationRemovalCookie) {
+                                                     List<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description("Bearer Token is required")
                 .responseHeader(WWW_AUTHENTICATE, bearerChallenge(realm));
-        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
-                HeaderNames.SET_COOKIE.defaultCase(),
-                cookie));
+        if (!localAuthenticationRemovalCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), localAuthenticationRemovalCookie);
+        }
         return builder.build();
     }
 
-    static AuthenticationResponse missingAuthenticationCredential(Optional<String> localAuthenticationRemovalCookie) {
+    static AuthenticationResponse missingAuthenticationCredential(List<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(401)
                 .description("Authentication is required");
-        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
-                HeaderNames.SET_COOKIE.defaultCase(),
-                cookie));
+        if (!localAuthenticationRemovalCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), localAuthenticationRemovalCookie);
+        }
         return builder.build();
     }
 
@@ -99,9 +98,9 @@ final class OidcResponseFactory {
     }
 
     static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request,
-                                                                 Optional<String> localAuthenticationRemovalCookie) {
+                                                                 List<String> localAuthenticationRemovalCookie) {
         List<String> cookies = new ArrayList<>(3);
-        localAuthenticationRemovalCookie.ifPresent(cookies::add);
+        cookies.addAll(localAuthenticationRemovalCookie);
         cookies.addAll(request.cookies());
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
@@ -113,22 +112,24 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse authorizationCodeFlowUnavailable(Optional<String> localAuthenticationRemovalCookie) {
+    static AuthenticationResponse authorizationCodeFlowUnavailable(List<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .statusCode(Status.SERVICE_UNAVAILABLE_503.code())
                 .description(AUTHORIZATION_CODE_FLOW_UNAVAILABLE_DESCRIPTION);
-        localAuthenticationRemovalCookie.ifPresent(cookie -> builder.responseHeader(
-                HeaderNames.SET_COOKIE.defaultCase(),
-                cookie));
+        if (!localAuthenticationRemovalCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), localAuthenticationRemovalCookie);
+        }
         return builder.build();
     }
 
-    static AuthenticationResponse localAuthenticationSucceeded(Subject subject, Optional<String> authenticationCookie) {
+    static AuthenticationResponse localAuthenticationSucceeded(Subject subject, List<String> authenticationCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.SUCCESS)
                 .user(subject);
-        authenticationCookie.ifPresent(cookie -> builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), cookie));
+        if (!authenticationCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), authenticationCookie);
+        }
         return builder.build();
     }
 
@@ -141,11 +142,14 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse optional(String description) {
-        return AuthenticationResponse.builder()
+    static AuthenticationResponse optional(String description, List<String> removalCookies) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.ABSTAIN)
-                .description(description)
-                .build();
+                .description(description);
+        if (!removalCookies.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), removalCookies);
+        }
+        return builder.build();
     }
 
     static AuthenticationResponse tenantUnavailable() {

@@ -18,12 +18,13 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
-import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.Jwt;
@@ -171,9 +172,11 @@ class OidcJweCriticalHeadersTest {
                             .createdAt(VALIDATION_TIME)
                             .expiresAt(VALIDATION_TIME.plusSeconds(600))
                             .buildPrototype());
-            SetCookie cookie = cookies.createLocalAuthenticationResultCookie(stored);
+            Map<String, List<String>> cookieSet = new LinkedHashMap<>();
+            cookies.createLocalAuthenticationResultCookies(stored, Map.of(), VALIDATION_TIME)
+                    .forEach(cookie -> cookieSet.put(cookie.name(), List.of(cookie.value())));
 
-            assertThat(cookies.readLocalAuthenticationResult(cookie.value(),
+            assertThat(cookies.readLocalAuthenticationResult(cookieSet,
                                                               VALIDATION_TIME,
                                                               nestedTenant.idTokenDecryptor()).isPresent(),
                        is(!critical));

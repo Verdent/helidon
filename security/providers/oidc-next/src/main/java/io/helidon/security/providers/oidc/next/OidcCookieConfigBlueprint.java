@@ -74,6 +74,59 @@ interface OidcCookieConfigBlueprint {
     Duration localAuthenticationLifetime();
 
     /**
+     * Maximum encoded size in bytes of one local-authentication Set-Cookie field value, including name and attributes.
+     * Must leave room for the cookie framing and payload and must not exceed 4096.
+     *
+     * @return maximum serialized cookie size
+     */
+    @Option.Configured
+    @Option.DefaultInt(3800)
+    int maxCookieSize();
+
+    /**
+     * Maximum local-authentication cookie pieces, including the base cookie, between 1 and 16.
+     * A value of one permits only single-cookie sessions. Applies to reads and writes.
+     *
+     * @return maximum cookie count
+     */
+    @Option.Configured
+    @Option.DefaultInt(4)
+    int maxChunks();
+
+    /**
+     * Maximum aggregate session-cookie request-header contribution in bytes, including names and separators.
+     * Also bounds outgoing session Set-Cookie headers, including required deletion headers, and must allow clearing
+     * the fixed session cookie namespace. Must not exceed 65536.
+     * Other application, authentication-request, and browser-generation cookies need separate header headroom.
+     *
+     * @return maximum encoded session-cookie header size
+     */
+    @Option.Configured
+    @Option.DefaultInt(12288)
+    int maxTotalSize();
+
+    /**
+     * Compression policy for new local-authentication sessions; independent of the identity provider.
+     * GZIP remains readable when writing compression is disabled. Decompression follows successful authentication
+     * and is bounded by {@link #maxSessionSize()}.
+     *
+     * @return compression policy
+     */
+    @Option.Configured
+    @Option.Default("NONE")
+    OidcCookieCompression compression();
+
+    /**
+     * Maximum UTF-8 session JSON size before compression and after authenticated decompression.
+     * Must be positive and no greater than 1048576 bytes. Applies even when compression is disabled.
+     *
+     * @return maximum decoded session size
+     */
+    @Option.Configured
+    @Option.DefaultInt(65536)
+    int maxSessionSize();
+
+    /**
      * Password-based cookie protection.
      * <p>
      * Authorization Code Flow requires this option because its Authentication Request and local authentication

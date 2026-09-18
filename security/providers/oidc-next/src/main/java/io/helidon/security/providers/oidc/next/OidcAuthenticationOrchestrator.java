@@ -87,7 +87,39 @@ final class OidcAuthenticationOrchestrator {
         if (policy.authenticationCookieAccepted()) {
             return authenticateAuthenticationCookie(context, policy);
         }
-        return authenticationFailure(context, policy, Optional.empty());
+        return authenticationFailure(context, policy, List.of());
+    }
+
+    private static List<String> removalCookies(OidcCookieStateHandler handler) {
+        return handler.removeLocalAuthenticationResultCookies().stream().map(Object::toString).toList();
+    }
+
+    private static void debugBearerTokenValidationFailure(OidcTenantContext tenantContext,
+                                                          OidcValidationResult<?> validationResult) {
+        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+            return;
+        }
+        String method = tenantContext.tokenValidation()
+                .method()
+                .map(Enum::name)
+                .orElse("none");
+        String description = validationResult.errorDescription()
+                .map(OidcDiagnostics::sanitizeLogValue)
+                .orElse("Bearer Token validation failed");
+        String cause = validationResult.cause()
+                .map(OidcDiagnostics::safeExceptionType)
+                .orElse("<none>");
+        LOGGER.log(System.Logger.Level.DEBUG,
+                   "OIDC Bearer token rejected: tenant="
+                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                           + ", method=" + method
+                           + ", reason=" + description
+                           + ", cause=" + cause);
+    }
+
+    private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {
+        return Map.of(OidcTokenValidationMethod.JWT, new OidcJwtAccessTokenValidator(),
+                      OidcTokenValidationMethod.INTROSPECTION, new OidcIntrospectionAccessTokenValidator());
     }
 
     private AuthenticationResponse authenticateAuthenticationCookie(OidcRequestContext context,
@@ -101,7 +133,7 @@ final class OidcAuthenticationOrchestrator {
 
     private AuthenticationResponse authenticationFailure(OidcRequestContext context,
                                                         OidcEndpointPolicy policy,
-                                                        Optional<String> localAuthenticationRemovalCookie) {
+                                                        List<String> localAuthenticationRemovalCookie) {
         return switch (policy.authenticationFailureResponse()) {
         case UNAUTHORIZED -> unauthorizedFailure(context, policy, localAuthenticationRemovalCookie);
         case AUTHORIZATION_CODE_REDIRECT -> authorizationCodeFlow(context, localAuthenticationRemovalCookie);
@@ -109,7 +141,7 @@ final class OidcAuthenticationOrchestrator {
     }
 
     private AuthenticationResponse authorizationCodeFlow(OidcRequestContext context,
-                                                          Optional<String> localAuthenticationRemovalCookie) {
+                                                          List<String> localAuthenticationRemovalCookie) {
         try {
             return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
                                                                       localAuthenticationRemovalCookie);
@@ -130,12 +162,12 @@ final class OidcAuthenticationOrchestrator {
 
     private AuthenticationResponse unauthorizedFailure(OidcRequestContext context,
                                                       OidcEndpointPolicy policy,
-                                                      Optional<String> localAuthenticationRemovalCookie) {
+                                                      List<String> localAuthenticationRemovalCookie) {
         String description = policy.bearerTokenAuthenticationEnabled()
                 ? "Bearer Token is required"
                 : "Authentication is required";
         if (config.optional()) {
-            return OidcResponseFactory.optional(description);
+            return OidcResponseFactory.optional(description, localAuthenticationRemovalCookie);
         }
         if (policy.bearerTokenAuthenticationEnabled()) {
             return OidcResponseFactory.missingBearerToken(context.bearerChallengeRealm(),
@@ -156,7 +188,9 @@ final class OidcAuthenticationOrchestrator {
         Optional<OidcLocalAuthenticationResult> localAuthenticationResult = readLocalAuthenticationResult(context,
                                                                                                           readyTenant);
         if (localAuthenticationResult.isEmpty()) {
-            return LocalAuthenticationOutcome.empty();
+            return cookieStateHandler.localAuthenticationCookiesPresent(context.cookies())
+                    ? LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler))
+                    : LocalAuthenticationOutcome.empty();
         }
         OidcLocalAuthenticationResult currentAuthenticationResult = localAuthenticationResult.orElseThrow();
         if (!browserSessionGenerationMatches(context, cookieStateHandler, currentAuthenticationResult)) {
@@ -166,20 +200,18 @@ final class OidcAuthenticationOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
                                    + ", reason=browser-session-generation-mismatch");
             }
-            return LocalAuthenticationOutcome.empty(
-                    Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie().toString()));
+            return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
         }
         OidcRefreshTokenManager.RefreshResult refreshResult = refreshTokenManager.refreshIfNeeded(
                 currentAuthenticationResult,
                 readyTenant,
-                context.environment().time().toInstant());
+                context.environment().time().toInstant(),
+                context.cookies());
+        List<String> removalCookie = refreshResult.removeCookie() ? removalCookies(cookieStateHandler) : List.of();
         if (refreshResult.unavailable()) {
             return LocalAuthenticationOutcome.response(
-                    OidcResponseFactory.authorizationCodeFlowUnavailable(Optional.empty()));
+                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookie));
         }
-        Optional<String> removalCookie = refreshResult.removeCookie()
-                ? Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie().toString())
-                : Optional.empty();
         Optional<OidcLocalAuthenticationResult> refreshedAuthenticationResult = refreshResult.authenticationResult();
         if (refreshedAuthenticationResult.isEmpty()) {
             return LocalAuthenticationOutcome.empty(removalCookie);
@@ -192,8 +224,7 @@ final class OidcAuthenticationOrchestrator {
                                    + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
                                    + ", reason=no-principal-claim");
             }
-            return LocalAuthenticationOutcome.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
-                                                                        .toString()));
+            return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
         }
         try {
             result.scope()
@@ -206,12 +237,19 @@ final class OidcAuthenticationOrchestrator {
                                    + ", reason=invalid-scope"
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
-            return LocalAuthenticationOutcome.empty(Optional.of(cookieStateHandler.removeLocalAuthenticationResultCookie()
-                                                                        .toString()));
+            return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
         }
-        Optional<String> authenticationCookie = refreshResult.refreshed()
-                ? Optional.of(cookieStateHandler.createLocalAuthenticationResultCookie(result).toString())
-                : Optional.empty();
+        List<String> authenticationCookie;
+        try {
+            authenticationCookie = refreshResult.refreshed()
+                    ? cookieStateHandler.localAuthenticationResultCookies(refreshResult.preparedSession().orElseThrow(),
+                                                                           context.environment().time().toInstant())
+                            .stream().map(Object::toString).toList()
+                    : List.of();
+        } catch (OidcCookieStateHandler.SessionCookieException _) {
+            return LocalAuthenticationOutcome.response(
+                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookies(cookieStateHandler)));
+        }
         return LocalAuthenticationOutcome.response(OidcResponseFactory.localAuthenticationSucceeded(
                 OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
                 authenticationCookie));
@@ -219,15 +257,8 @@ final class OidcAuthenticationOrchestrator {
 
     private Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(OidcRequestContext context,
                                                                                  OidcTenantContext readyTenant) {
-        String cookieName = readyTenant.cookieStateHandler()
-                .cookieConfig()
-                .localAuthenticationCookieName();
-        List<String> cookieValues = context.cookieValues(cookieName);
-        if (cookieValues.size() != 1) {
-            return Optional.empty();
-        }
         return readyTenant.cookieStateHandler()
-                .readLocalAuthenticationResult(cookieValues.getFirst(),
+                .readLocalAuthenticationResult(context.cookies(),
                                                context.environment().time().toInstant(),
                                                readyTenant.idTokenDecryptor())
                 .filter(result -> readyTenant.tenantId().equals(result.tenantId()));
@@ -249,25 +280,11 @@ final class OidcAuthenticationOrchestrator {
                 .isPresent();
     }
 
-    private record LocalAuthenticationOutcome(Optional<AuthenticationResponse> response, Optional<String> removalCookie) {
-        private static LocalAuthenticationOutcome response(AuthenticationResponse response) {
-            return new LocalAuthenticationOutcome(Optional.of(response), Optional.empty());
-        }
-
-        private static LocalAuthenticationOutcome empty() {
-            return empty(Optional.empty());
-        }
-
-        private static LocalAuthenticationOutcome empty(Optional<String> removalCookie) {
-            return new LocalAuthenticationOutcome(Optional.empty(), removalCookie);
-        }
-    }
-
     private AuthenticationResponse authenticateBearerToken(OidcRequestContext context) {
         Optional<String> bearerToken = context.bearerToken();
         if (bearerToken.isEmpty()) {
             if (config.optional()) {
-                return OidcResponseFactory.optional("Bearer Token is required");
+                return OidcResponseFactory.optional("Bearer Token is required", List.of());
             }
             return OidcResponseFactory.missingBearerToken(context.bearerChallengeRealm());
         }
@@ -306,31 +323,17 @@ final class OidcAuthenticationOrchestrator {
         return OidcResponseFactory.invalidBearerToken(tenantContext.bearerChallengeRealm());
     }
 
-    private static void debugBearerTokenValidationFailure(OidcTenantContext tenantContext,
-                                                          OidcValidationResult<?> validationResult) {
-        if (!LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-            return;
+    private record LocalAuthenticationOutcome(Optional<AuthenticationResponse> response, List<String> removalCookie) {
+        private static LocalAuthenticationOutcome response(AuthenticationResponse response) {
+            return new LocalAuthenticationOutcome(Optional.of(response), List.of());
         }
-        String method = tenantContext.tokenValidation()
-                .method()
-                .map(Enum::name)
-                .orElse("none");
-        String description = validationResult.errorDescription()
-                .map(OidcDiagnostics::sanitizeLogValue)
-                .orElse("Bearer Token validation failed");
-        String cause = validationResult.cause()
-                .map(OidcDiagnostics::safeExceptionType)
-                .orElse("<none>");
-        LOGGER.log(System.Logger.Level.DEBUG,
-                   "OIDC Bearer token rejected: tenant="
-                           + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
-                           + ", method=" + method
-                           + ", reason=" + description
-                           + ", cause=" + cause);
-    }
 
-    private static Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators() {
-        return Map.of(OidcTokenValidationMethod.JWT, new OidcJwtAccessTokenValidator(),
-                      OidcTokenValidationMethod.INTROSPECTION, new OidcIntrospectionAccessTokenValidator());
+        private static LocalAuthenticationOutcome empty() {
+            return empty(List.of());
+        }
+
+        private static LocalAuthenticationOutcome empty(List<String> removalCookie) {
+            return new LocalAuthenticationOutcome(Optional.empty(), removalCookie);
+        }
     }
 }

@@ -39,6 +39,7 @@ import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Method;
 import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
+import io.helidon.security.providers.oidc.next.OidcCookieConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -179,6 +180,7 @@ class KeycloakLogoutIT {
                                                 .clientSecret(KeycloakOidcIntegrationSupport.API_CLIENT_SECRET))
                                         .audienceValidationEnabled(false)
                                         .clockSkew(Duration.ofHours(1))))
+                        .cookies(OidcCookieConfig.builder(tenant.cookies()).maxCookieSize(1200).maxChunks(16).buildPrototype())
                         .userInfo(userInfo -> userInfo.enabled(false))
                         .logout(logout -> logout.endSession(endSession -> endSession.enabled(false)))
                         .webClient(WebClientConfig.builder()
@@ -202,16 +204,15 @@ class KeycloakLogoutIT {
             String initialAuthenticationCookie = browser.cookieValue(localAuthenticationCookieName).orElseThrow();
             String initialBrowserSessionGenerationCookie = browser.cookieValue(browserSessionGenerationCookieName)
                     .orElseThrow();
+            String initialCookieHeader = browser.cookieHeader().orElseThrow();
+            assertThat("the race must exercise a multi-cookie session",
+                       browser.cookieValue(localAuthenticationCookieName + ".1").isPresent(), is(true));
 
             refreshResponseGate.arm();
             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
             Future<ResourceResponse> refreshRequest = null;
             try {
-                refreshRequest = executor.submit(() -> requestResource(resourceUri,
-                                                                       localAuthenticationCookieName,
-                                                                       initialAuthenticationCookie,
-                                                                       browserSessionGenerationCookieName,
-                                                                       initialBrowserSessionGenerationCookie));
+                refreshRequest = executor.submit(() -> requestResource(resourceUri, initialCookieHeader));
                 refreshResponseGate.awaitKeycloakResponse();
                 assertThat(refreshResponseGate.interceptedCount(), is(1));
                 assertThat(refreshResponseGate.interceptedUri(), is(KeycloakOidcContainer.tokenEndpointUri()));
@@ -235,6 +236,9 @@ class KeycloakLogoutIT {
                 assertThat(isRemovalCookie(logoutGenerationCookie), is(false));
                 assertThat(logoutGenerationCookie.value().equals(initialBrowserSessionGenerationCookie), is(false));
                 assertThat(browser.cookieValue(localAuthenticationCookieName), is(Optional.empty()));
+                for (int index = 1; index < 16; index++) {
+                    assertThat(browser.cookieValue(localAuthenticationCookieName + "." + index), is(Optional.empty()));
+                }
                 assertThat(browser.cookieValue(browserSessionGenerationCookieName),
                            is(Optional.of(logoutGenerationCookie.value())));
                 assertThat("logout must finish before the refresh response is released",
@@ -283,20 +287,14 @@ class KeycloakLogoutIT {
         }
     }
 
-    private static ResourceResponse requestResource(URI resourceUri,
-                                                    String authenticationCookieName,
-                                                    String authenticationCookieValue,
-                                                    String generationCookieName,
-                                                    String generationCookieValue) {
+    private static ResourceResponse requestResource(URI resourceUri, String cookieHeader) {
         WebClient client = WebClient.builder()
                 .followRedirects(false)
                 .build();
         try {
             try (HttpClientResponse response = client.get()
                     .uri(resourceUri)
-                    .header(HeaderNames.COOKIE,
-                            authenticationCookieName + "=" + authenticationCookieValue + "; "
-                                    + generationCookieName + "=" + generationCookieValue)
+                    .header(HeaderNames.COOKIE, cookieHeader)
                     .readTimeout(Duration.ofSeconds(45))
                     .request()) {
                 String body = response.entity().hasEntity() ? response.as(String.class) : "";

@@ -506,7 +506,7 @@ final class KeycloakOidcIntegrationSupport {
             }
         }
 
-        private Optional<String> cookieHeader() {
+        Optional<String> cookieHeader() {
             if (cookies.isEmpty()) {
                 return Optional.empty();
             }

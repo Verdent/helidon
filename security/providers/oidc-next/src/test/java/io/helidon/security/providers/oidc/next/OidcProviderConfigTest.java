@@ -42,6 +42,7 @@ import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.config.spi.ConfigNode.ListNode;
 import io.helidon.config.spi.ConfigNode.ObjectNode;
+import io.helidon.security.Security;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundConfig;
@@ -671,6 +672,46 @@ class OidcProviderConfigTest {
 
         assertThat(feature.socket(), is("oidc"));
         assertThat(feature.socketRequired(), is(false));
+    }
+
+    @Test
+    void featureUsesExistingProviderConfigurationWithoutInitializingTenants() {
+        OidcProvider provider = OidcProvider.builder()
+                .providerName("browser")
+                .socket("oidc")
+                .socketRequired(false)
+                .issuer(ISSUER.toString())
+                .build();
+
+        OidcFeature feature = OidcFeature.create(provider);
+
+        assertThat(feature.name(), is("browser"));
+        assertThat(feature.socket(), is("oidc"));
+        assertThat(feature.socketRequired(), is(false));
+        assertThat(provider.tenantRuntimeRegistry().cachedTenantCount(), is(0));
+    }
+
+    @Test
+    void featureAcceptsProviderCreatedBySecurityConfiguration() {
+        Config config = Config.builder().sources(ConfigSources.create(Map.of(
+                "providers.0.name", "registered-oidc",
+                "providers.0.oidc-next.provider-name", "browser",
+                "providers.0.oidc-next.socket", "oidc"))).build();
+        Security security = Security.create(config);
+        OidcProvider provider = security.resolveAtnProvider("registered-oidc")
+                .map(OidcProvider.class::cast)
+                .orElseThrow();
+
+        OidcFeature feature = OidcFeature.create(provider);
+
+        assertThat(feature.name(), is("browser"));
+        assertThat(feature.socket(), is("oidc"));
+        assertThat(provider.tenantRuntimeRegistry().cachedTenantCount(), is(0));
+    }
+
+    @Test
+    void featureRequiresNonNullProvider() {
+        assertThrows(NullPointerException.class, () -> OidcFeature.create((OidcProvider) null));
     }
 
     @Test

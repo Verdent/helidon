@@ -163,11 +163,12 @@ final class OidcIntegrationSupport {
 
     static WebServer rpServer(OidcProviderConfig providerConfig,
                               Consumer<HttpRouting.Builder> routeCustomizer) {
+        OidcProvider provider = OidcProvider.create(providerConfig);
         Security security = Security.builder()
-                .addProvider(OidcProvider.create(providerConfig), "oidc-next")
+                .addProvider(provider, "oidc-next")
                 .build();
         HttpRouting.Builder routing = HttpRouting.builder();
-        OidcFeature.create(providerConfig).setup(routing);
+        OidcFeature.create(provider).setup(routing);
         routeCustomizer.accept(routing);
         return WebServer.builder()
                 .port(0)

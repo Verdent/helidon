@@ -21,8 +21,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -32,11 +38,16 @@ import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
+import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
@@ -146,6 +157,88 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
         assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void providerAndFeatureShareConcurrentTenantInitialization() throws Exception {
+        CountDownLatch discoveryStarted = new CountDownLatch(1);
+        CountDownLatch releaseDiscovery = new CountDownLatch(1);
+        CountDownLatch requestsStarted = new CountDownLatch(16);
+        AtomicInteger discoveries = new AtomicInteger();
+        String metadata = PROVIDER_METADATA.get();
+        WebServer metadataServer = WebServer.builder().port(0).routing(routing -> routing.get("/metadata", (_, response) -> {
+            if (discoveries.incrementAndGet() > 1) {
+                response.status(Status.SERVICE_UNAVAILABLE_503).send();
+                return;
+            }
+            discoveryStarted.countDown();
+            try {
+                assertThat(releaseDiscovery.await(10, TimeUnit.SECONDS), is(true));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata);
+        })).build().start();
+        try {
+            OidcTenantConfig tenant = OidcTenantConfig.builder()
+                    .issuer(issuer.toString())
+                    .clientId("client-id")
+                    .endpoints(endpoints -> endpoints.tlsRequired(false)
+                            .wellKnownUri(URI.create("http://localhost:" + metadataServer.port() + "/metadata")))
+                    .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/callback")))
+                    .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                    .buildPrototype();
+            OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder().putTenant("tenant", tenant).buildPrototype());
+            WebServer rp = WebServer.builder().port(0).addFeature(OidcFeature.create(provider)).build().start();
+            WebClient client = WebClient.create();
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                URI callback = URI.create("http://localhost:" + rp.port() + "/oidc/callback");
+                Instant now = Instant.now();
+                String state = OidcAuthorizationState.create("tenant",
+                        Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
+                SetCookie stateCookie = OidcCookieStateHandler.create("tenant", tenant)
+                        .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state,
+                                "nonce", "verifier", null, issuer.toString(), URI.create("/resource"), callback,
+                                now, now.plusSeconds(300)));
+                List<Future<AuthenticationResponse>> requests = new ArrayList<>();
+                for (int index = 0; index < 16; index++) {
+                    requests.add(executor.submit(() -> {
+                        requestsStarted.countDown();
+                        return provider.authenticate(OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
+                                SecurityEnvironment.create()));
+                    }));
+                }
+                try {
+                    assertThat(discoveryStarted.await(5, TimeUnit.SECONDS), is(true));
+                    Future<String> returned = executor.submit(() -> {
+                        try (HttpClientResponse response = client.get().uri(callback)
+                                .queryParam("error", "access_denied").queryParam("state", state)
+                                .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value()).request()) {
+                            assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                            return response.as(String.class);
+                        }
+                    });
+                    assertThat(requestsStarted.await(5, TimeUnit.SECONDS), is(true));
+                    releaseDiscovery.countDown();
+                    for (Future<AuthenticationResponse> request : requests) {
+                        assertThat(request.get(10, TimeUnit.SECONDS).statusCode().orElseThrow(), is(401));
+                    }
+                    assertThat(returned.get(10, TimeUnit.SECONDS),
+                               is("OpenID Provider returned an Authorization Error Response"));
+                    assertThat(discoveries.get(), is(1));
+                } finally {
+                    releaseDiscovery.countDown();
+                }
+            } finally {
+                releaseDiscovery.countDown();
+                client.closeResource();
+                rp.stop();
+            }
+        } finally {
+            releaseDiscovery.countDown();
+            metadataServer.stop();
+        }
     }
 
     @Test

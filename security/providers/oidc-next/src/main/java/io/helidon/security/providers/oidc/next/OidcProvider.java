@@ -35,12 +35,13 @@ import io.helidon.security.spi.OutboundSecurityProvider;
 public final class OidcProvider
         implements AuthenticationProvider, OutboundSecurityProvider, RuntimeType.Api<OidcProviderConfig> {
     private final OidcProviderConfig config;
+    private final OidcTenantRuntimeRegistry tenantRuntimeRegistry;
     private final OidcAuthenticationOrchestrator authentication;
     private final OidcOutboundOrchestrator outbound;
 
     private OidcProvider(OidcProviderConfig config) {
         this.config = Objects.requireNonNull(config);
-        OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(config);
+        this.tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(config);
         this.authentication = OidcAuthenticationOrchestrator.create(config, tenantRuntimeRegistry);
         this.outbound = new OidcOutboundOrchestrator(config, tenantRuntimeRegistry);
     }
@@ -119,5 +120,9 @@ public final class OidcProvider
                                                      SecurityEnvironment outboundEnv,
                                                      EndpointConfig outboundConfig) {
         return outbound.secure(providerRequest, outboundEnv, outboundConfig);
+    }
+
+    OidcTenantRuntimeRegistry tenantRuntimeRegistry() {
+        return tenantRuntimeRegistry;
     }
 }

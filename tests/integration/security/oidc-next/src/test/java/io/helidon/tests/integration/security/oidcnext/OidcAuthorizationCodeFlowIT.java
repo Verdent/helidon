@@ -27,13 +27,19 @@ import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.Security;
+import io.helidon.security.providers.oidc.next.OidcAuthenticationFailureResponse;
+import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
+import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
+import io.helidon.security.providers.oidc.next.OidcTenantConfig;
+import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.tests.integration.security.oidcnext.OidcIntegrationSupport.BrowserSession;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcRequest;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.security.SecurityFeature;
@@ -66,11 +72,12 @@ class OidcAuthorizationCodeFlowIT {
                         String callbackPath = path + "?channel=web&tag=one&tag=two&return=a%26b%3Dc%2Bd";
                         OidcProviderConfig config = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
                                 code -> code.redirectionEndpointUri(URI.create(callbackPath)));
-                        Security security = Security.builder().addProvider(OidcProvider.create(config), "oidc-next").build();
+                        OidcProvider provider = OidcProvider.create(config);
+                        Security security = Security.builder().addProvider(provider, "oidc-next").build();
                         HttpRouting.Builder routing = HttpRouting.builder();
                         // Exercise the provider's callback handoff as well as the actual callback handler.
                         routing.get(URI.create(callbackPath).getPath(), SecurityFeature.authenticate().authenticationOptional());
-                        OidcFeature.create(config).setup(routing);
+                        OidcFeature.create(provider).setup(routing);
                         OidcIntegrationSupport.protectedRoute(routing, "/orders");
                         WebServer rp = WebServer.builder().port(0)
                                 .addFeature(SecurityFeature.builder().security(security).build())
@@ -167,11 +174,73 @@ class OidcAuthorizationCodeFlowIT {
                     assertThat(response.as(String.class),
                                is(OidcIntegrationSupport.principalResponse(idp, "alice-id", "alice", "alice@example.org")));
                 }
-                assertThat(idp.metadataRequests().isEmpty(), is(false));
+                assertThat(idp.metadataRequests().size(), is(1));
                 assertThat(idp.jwksRequests().isEmpty(), is(false));
                 assertThat(idp.tokenRequests().size(), is(1));
             } finally {
                 rp.stop();
+            }
+        }
+    }
+
+    @Test
+    void browserAndBearerShareCachesWithoutSharingBetweenProviders() {
+        try (TestOidcServer idp = TestOidcServer.builder()
+                .client(OidcIntegrationSupport.CLIENT_ID, OidcIntegrationSupport.CLIENT_SECRET)
+                .user("alice", user -> user.subject("alice-id").claim("preferred_username", "alice"))
+                .defaultScopes("openid", "profile")
+                .tokenDefaults(tokens -> tokens.idToken(id -> id.includeUserClaims("preferred_username")))
+                .build()) {
+            OidcProviderConfig base = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp, _ -> { });
+            OidcTenantConfig tenant = OidcTenantConfig.builder(base.tenants().get("default"))
+                    .tokenTransport(transport -> transport.secureTransportRequired(false))
+                    .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                            .method(OidcTokenValidationMethod.JWT)
+                            .audience(OidcIntegrationSupport.CLIENT_ID)))
+                    .buildPrototype();
+            OidcProviderConfig config = OidcProviderConfig.builder().putTenant("default", tenant).buildPrototype();
+            OidcEndpointPolicyConfig browserPolicy = OidcEndpointPolicyConfig.builder()
+                    .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
+                    .authenticationFailureResponse(OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT)
+                    .buildPrototype();
+            WebServer first = OidcIntegrationSupport.rpServer(config, routing -> {
+                OidcIntegrationSupport.protectedRoute(routing, "/browser", browserPolicy);
+                OidcIntegrationSupport.protectedRoute(routing, "/api");
+            });
+            WebServer second = OidcIntegrationSupport.rpServer(config, routing -> {
+                OidcIntegrationSupport.protectedRoute(routing, "/browser", browserPolicy);
+                OidcIntegrationSupport.protectedRoute(routing, "/api");
+            });
+            WebClient client = WebClient.create();
+            try {
+                String accessToken = OidcIntegrationSupport.clientCredentialsToken(idp,
+                        OidcIntegrationSupport.CLIENT_ID, OidcIntegrationSupport.CLIENT_SECRET);
+                int initializedProviders = 0;
+                for (WebServer rp : List.of(first, second)) {
+                    try (BrowserSession browser = new BrowserSession()) {
+                        URI baseUri = OidcIntegrationSupport.rpBaseUri(rp);
+                        URI resource = baseUri.resolve("/browser");
+                        URI callback = authorizeWithoutBrowser(browser, resource);
+                        try (HttpClientResponse response = browser.get(callback)) {
+                            assertThat(response.status(), is(Status.SEE_OTHER_303));
+                        }
+                        try (HttpClientResponse response = browser.get(resource)) {
+                            assertThat(response.status(), is(Status.OK_200));
+                        }
+                        // Provider-side JWT validation must reuse keys loaded by the HTTP callback.
+                        try (HttpClientResponse response = client.get().uri(baseUri.resolve("/api"))
+                                .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
+                            assertThat(response.status(), is(Status.OK_200));
+                        }
+                        initializedProviders++;
+                        assertThat(idp.metadataRequests().size(), is(initializedProviders));
+                        assertThat(idp.jwksRequests().size(), is(initializedProviders));
+                    }
+                }
+            } finally {
+                client.closeResource();
+                first.stop();
+                second.stop();
             }
         }
     }

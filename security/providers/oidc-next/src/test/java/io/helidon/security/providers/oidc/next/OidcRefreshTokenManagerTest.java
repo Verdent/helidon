@@ -496,7 +496,7 @@ class OidcRefreshTokenManagerTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder(tenant(serverUri)).logout(OidcLogoutConfig.create()).buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder().putTenant("default", tenant).buildPrototype();
         OidcProvider provider = OidcProvider.create(config);
-        WebServer rp = WebServer.builder().port(0).routing(routing -> OidcFeature.create(config).setup(routing)).build().start();
+        WebServer rp = WebServer.builder().port(0).routing(routing -> OidcFeature.create(provider).setup(routing)).build().start();
         URI rpUri = URI.create("http://localhost:" + rp.port());
         WebClient client = WebClient.builder().baseUri(rpUri).build();
         Instant now = Instant.now();

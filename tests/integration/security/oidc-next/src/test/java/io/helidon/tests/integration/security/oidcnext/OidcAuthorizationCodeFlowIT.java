@@ -21,25 +21,99 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
+import io.helidon.security.Security;
+import io.helidon.security.providers.oidc.next.OidcFeature;
+import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.tests.integration.security.oidcnext.OidcIntegrationSupport.BrowserSession;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcRequest;
 import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webserver.WebServer;
+import io.helidon.webserver.http.HttpRouting;
+import io.helidon.webserver.security.SecurityFeature;
 
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcAuthorizationCodeFlowIT {
+    @TestFactory
+    Stream<DynamicTest> callbackStyleApplicationQueriesSurviveLoginAndSessionRestoration() {
+        return Stream.of("/oidc/callback", "/oidc/%63allback")
+                .flatMap(path -> Stream.of("state=pending&code=123", "state=pending&error=invalid-order")
+                .map(query -> dynamicTest(path + "?" + query, () -> {
+                    try (TestOidcServer idp = TestOidcServer.builder()
+                            .client(OidcIntegrationSupport.CLIENT_ID, client -> client
+                                    .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
+                            .user("alice", user -> user.subject("alice-id")
+                                    .claim("preferred_username", "alice")
+                                    .claim("email", "alice@example.org"))
+                            .defaultScopes("openid", "profile")
+                            .tokenDefaults(tokens -> tokens.idToken(id -> id.includeUserClaims("preferred_username")))
+                            .build()) {
+                        String callbackPath = path + "?channel=web&tag=one&tag=two&return=a%26b%3Dc%2Bd";
+                        OidcProviderConfig config = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
+                                code -> code.redirectionEndpointUri(URI.create(callbackPath)));
+                        Security security = Security.builder().addProvider(OidcProvider.create(config), "oidc-next").build();
+                        HttpRouting.Builder routing = HttpRouting.builder();
+                        // Exercise the provider's callback handoff as well as the actual callback handler.
+                        routing.get(URI.create(callbackPath).getPath(), SecurityFeature.authenticate().authenticationOptional());
+                        OidcFeature.create(config).setup(routing);
+                        OidcIntegrationSupport.protectedRoute(routing, "/orders");
+                        WebServer rp = WebServer.builder().port(0)
+                                .addFeature(SecurityFeature.builder().security(security).build())
+                                .addRouting(routing)
+                                .build().start();
+                        try (BrowserSession browser = new BrowserSession()) {
+                            URI baseUri = OidcIntegrationSupport.rpBaseUri(rp);
+                            URI resource = baseUri.resolve("/orders?" + query);
+                            URI callback = authorizeWithoutBrowser(browser, resource);
+                            UriQuery callbackQuery = UriQuery.create(callback);
+                            assertThat(callbackQuery.get("channel"), is("web"));
+                            assertThat(callbackQuery.all("tag"), is(List.of("one", "two")));
+                            assertThat(callbackQuery.get("return"), is("a&b=c+d"));
+                            try (HttpClientResponse response = browser.get(URI.create(callback + "&unknown=allowed"))) {
+                                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                                assertThat(location.isAbsolute(), is(false));
+                                assertThat(location.getPath(), is("/orders"));
+                                UriQuery restoredQuery = UriQuery.create(location);
+                                UriQuery originalQuery = UriQuery.create(query);
+                                assertThat(restoredQuery.names(), is(originalQuery.names()));
+                                originalQuery.names().forEach(name -> assertThat(restoredQuery.all(name),
+                                                                                 is(originalQuery.all(name))));
+                            }
+                            try (HttpClientResponse response = browser.get(resource)) {
+                                assertThat(response.status(), is(Status.OK_200));
+                                assertThat(response.as(String.class), is(OidcIntegrationSupport.principalResponse(idp,
+                                        "alice-id", "alice", "alice@example.org")));
+                                assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+                            }
+                            // An existing session must not turn a malformed callback into a new login or success.
+                            try (HttpClientResponse response = browser.get(baseUri.resolve(callbackPath + "&code=invalid"))) {
+                                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                                assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+                            }
+                            assertThat(idp.tokenRequests().size(), is(1));
+                        } finally {
+                            rp.stop();
+                        }
+                    }
+                })));
+    }
+
     @Test
     void requiredIdTokenEncryptionWithoutKeyFailsBeforeProviderRequests() {
         try (TestOidcServer idp = TestOidcServer.builder()

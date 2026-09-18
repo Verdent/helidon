@@ -17,7 +17,11 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+
+import io.helidon.common.uri.UriQuery;
 
 final class OidcEndpointUris {
     static final URI DEFAULT_REDIRECTION_ENDPOINT_URI = URI.create("/oidc/callback");
@@ -28,6 +32,39 @@ final class OidcEndpointUris {
     static URI redirectionEndpointUri(OidcAuthorizationCodeConfig authorizationCode) {
         return authorizationCode.redirectionEndpointUri()
                 .orElse(DEFAULT_REDIRECTION_ENDPOINT_URI);
+    }
+
+    static List<URI> redirectionEndpointUris(OidcProviderConfig config) {
+        return config.tenants().values().stream()
+                .filter(OidcTenantConfig::enabled)
+                .map(OidcTenantConfig::authorizationCode)
+                .flatMap(Optional::stream)
+                .filter(OidcAuthorizationCodeConfig::enabled)
+                .map(OidcEndpointUris::redirectionEndpointUri)
+                .toList();
+    }
+
+    static boolean redirectionEndpointMatches(URI callbackUri, UriQuery callbackQuery, URI expectedUri) {
+        if (!OidcUri.sameOrigin(callbackUri, expectedUri)
+                || !Objects.equals(OidcUri.path(callbackUri), OidcUri.path(expectedUri))) {
+            return false;
+        }
+
+        /*
+         * RFC 6749 sections 3.1.2 and 4.1.2: retain the redirection endpoint's query component when adding response
+         * parameters. Match configured values, including repetitions, without rejecting unknown response parameters.
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2
+         * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2
+         * Both URIs must be absolute. Protected transaction state binds callbacks to the original request origin.
+         * Use the original query parameters: UriInfo.toUri() reconstructs a decoded query and joins repeated values.
+         */
+        UriQuery expectedQuery = UriQuery.create(expectedUri);
+        for (String name : expectedQuery.names()) {
+            if (!callbackQuery.all(name, List::of).equals(expectedQuery.all(name))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static void requireEndpointOrWellKnown(Optional<URI> endpointUri,

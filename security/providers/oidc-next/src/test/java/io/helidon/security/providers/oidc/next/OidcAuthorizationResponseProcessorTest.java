@@ -23,15 +23,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcAuthorizationResponseProcessorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -790,6 +794,72 @@ class OidcAuthorizationResponseProcessorTest {
 
         assertThat(OidcFeature.create(config).redirectionEndpointPaths(),
                    is(Set.of("/oidc/callback", "/other/callback")));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackValidationPreservesFixedQueryAndAcceptsUnknownResponseParameters() {
+        return Stream.of("route=login&tag=one&tag=two&code=authorization-code&state=" + STATE,
+                         "code=authorization-code&tag=one&tag=two&route=login&unknown=allowed&state=" + STATE)
+                .map(query -> dynamicTest(query, () -> {
+                    URI expected = URI.create(REDIRECTION_ENDPOINT_URI + "?route=login&tag=one&tag=two");
+                    OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", expected);
+                    OidcAuthenticationRequestState state = authenticationRequestState("default", STATE, expected,
+                                                                                       NOW.plusSeconds(60));
+                    URI callback = URI.create("https://RP.EXAMPLE:443/oidc/callback?" + query);
+
+                    OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                            UriQuery.create(callback), cookies(tenant, state), callback, NOW);
+
+                    assertThat(result.stateValidated(), is(true));
+                    assertThat(result.authorizationCode().orElseThrow(), is("authorization-code"));
+                    assertThat(result.stateCookies().size(), is(1));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackValidationStillBindsTheProtectedEndpointIdentity() {
+        return Stream.of("https://other.example/oidc/callback?route=login&tag=one&tag=two",
+                         "http://rp.example/oidc/callback?route=login&tag=one&tag=two",
+                         "https://rp.example:8443/oidc/callback?route=login&tag=one&tag=two",
+                         "https://rp.example/oidc/callback/orders?route=login&tag=one&tag=two",
+                         "https://rp.example/oidc/callback/?route=login&tag=one&tag=two",
+                         "https://rp.example/oidc/callback?route=other&tag=one&tag=two",
+                         "https://rp.example/oidc/callback?route=login&route=login&tag=one&tag=two",
+                         "https://rp.example/oidc/callback?route=login&tag=one",
+                         "https://rp.example/oidc/callback?route=login&tag=one&tag=two&tag=three")
+                .map(endpoint -> dynamicTest(endpoint, () -> {
+                    URI expected = URI.create(REDIRECTION_ENDPOINT_URI + "?route=login&tag=one&tag=two");
+                    // Configuration is local, but the protected transaction binds the original absolute endpoint.
+                    OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password",
+                            URI.create("/oidc/callback?route=login&tag=one&tag=two"));
+                    OidcAuthenticationRequestState state = authenticationRequestState("default", STATE, expected,
+                                                                                       NOW.plusSeconds(60));
+                    URI callback = URI.create(endpoint + "&code=authorization-code&state=" + STATE);
+
+                    OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                            UriQuery.create(callback), cookies(tenant, state), callback, NOW);
+
+                    assertThat(result.invalid(), is(true));
+                    assertThat(result.description(),
+                               is("Authorization Response Redirection Endpoint does not match Authentication Request state"));
+                    assertThat(result.stateCookies().size(), is(1));
+                }));
+    }
+
+    @Test
+    void protectedCallbackStateRequiresAnAbsoluteRedirectionEndpoint() {
+        URI configured = URI.create("/oidc/callback");
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", configured);
+        OidcAuthenticationRequestState state = authenticationRequestState("default", STATE, configured,
+                                                                           NOW.plusSeconds(60));
+        URI callback = URI.create(REDIRECTION_ENDPOINT_URI + "?code=authorization-code&state=" + STATE);
+
+        OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                UriQuery.create(callback), cookies(tenant, state), callback, NOW);
+
+        assertThat(result.invalid(), is(true));
+        assertThat(result.description(),
+                   is("Authorization Response Redirection Endpoint does not match Authentication Request state"));
     }
 
     private static OidcAuthorizationResponseResult process(OidcProviderConfig config,

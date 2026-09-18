@@ -1036,6 +1036,14 @@ The default local callback path is resolved from the incoming request origin bef
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure
 `authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
 
+GET requests to enabled, configured callback endpoints are left to `OidcFeature` for Authorization Response validation.
+Recognition matches the requested URI's decoded path, the origin for absolute callback configuration, and any configured
+query values; it does not infer a callback from `state`, `code`, or `error` on other application routes. Fixed callback
+query parameters are retained, and additional response parameters are allowed. Missing or malformed response parameters
+are still rejected by the callback handler. Custom Security integrations must supply the actual request URI and query
+parameters through `SecurityEnvironment.targetUri` and `queryParams`; the WebServer integration already does so.
+Callback routes must remain reachable without an existing authenticated session.
+
 Pushed Authorization Requests (PAR) are enabled in `AUTO` mode by default for Authorization Code Flow. With PAR, the
 provider POSTs the Authentication Request parameters directly to the Authorization Server using the tenant WebClient,
 receives a short `request_uri`, and redirects the browser with only `client_id` and that `request_uri`. RFC 9126 says

@@ -19,6 +19,8 @@ package io.helidon.security.providers.oidc.next;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -144,7 +146,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                 Instant.now());
         result.stateCookies().forEach(response.headers()::addCookie);
         if (result.stateValidated()) {
-            processTokenEndpointExchange(result, response);
+            processTokenEndpointExchange(result, request.headers().cookies().toMap(), response);
             return;
         }
         if (result.authorizationError()) {
@@ -163,7 +165,9 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                 .send("Authorization Response is invalid");
     }
 
-    private void processTokenEndpointExchange(OidcAuthorizationResponseResult result, ServerResponse response) {
+    private void processTokenEndpointExchange(OidcAuthorizationResponseResult result,
+                                               Map<String, List<String>> requestCookies,
+                                               ServerResponse response) {
         OidcTenantContext tenantContext = result.tenantContext().orElseThrow();
         OidcAuthenticationRequestState state = result.authenticationRequestState().orElseThrow();
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
@@ -215,9 +219,20 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                         Instant.now(),
                         tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime())
                 .withBrowserSessionGeneration(state.browserSessionGeneration());
-        response.headers()
-                .addCookie(tenantContext.cookieStateHandler()
-                                   .createLocalAuthenticationResultCookie(localAuthenticationResult));
+        OidcCookieStateHandler cookieHandler = tenantContext.cookieStateHandler();
+        try {
+            cookieHandler.createLocalAuthenticationResultCookies(
+                            localAuthenticationResult,
+                            requestCookies,
+                            Instant.now())
+                    .forEach(response.headers()::addCookie);
+        } catch (OidcCookieStateHandler.SessionCookieException e) {
+            LOGGER.log(System.Logger.Level.DEBUG, "OIDC session storage failed: " + OidcDiagnostics.safeExceptionType(e));
+            cookieHandler.removeLocalAuthenticationResultCookies().forEach(response.headers()::addCookie);
+            response.status(Status.SERVICE_UNAVAILABLE_503)
+                    .send("OIDC session cannot be stored within the configured cookie limits");
+            return;
+        }
         response.status(Status.SEE_OTHER_303);
         /*
          * Spec: RFC 9700, 2.1 Redirection URI and 4.11.1 Client as Open Redirector

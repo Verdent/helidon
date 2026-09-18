@@ -24,6 +24,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.function.Consumer;
@@ -822,12 +823,12 @@ class OidcProviderTest {
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
         assertThat(cookie.name(), is("__Host-helidon-oidc-auth"));
         assertThat(cookie.value(), not(containsString(idToken)));
         assertThat(cookie.value(), not(containsString("access-token")));
@@ -836,7 +837,7 @@ class OidcProviderTest {
         assertThat(cookie.httpOnly(), is(true));
         assertThat(cookie.secure(), is(true));
         assertThat(cookie.sameSite().orElseThrow(), is(SetCookie.SameSite.LAX));
-        assertThat(cookie.maxAge().orElseThrow().getSeconds(), is(3600L));
+        assertThat(cookie.expires().orElseThrow().toInstant(), is(now.plusSeconds(3600)));
         assertThat(OidcCookieStateHandler.create("default", tenant)
                            .readLocalAuthenticationResult(tamperCookieValue(cookie.value()),
                                                           now,
@@ -876,14 +877,14 @@ class OidcProviderTest {
         Instant now = Instant.now();
         String idToken = signedIdToken(it -> it.preferredUsername(USERNAME));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
-        SetCookie authenticationCookie = cookieStateHandler.createLocalAuthenticationResultCookie(
+        SetCookie authenticationCookie = cookieStateHandler.createLocalAuthenticationResultCookies(
                 OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
                                 .browserSessionGeneration(currentGeneration.value())
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse matching = provider.authenticate(request(null, environmentWithCookie(
                 authenticationCookie.name() + "=" + authenticationCookie.value() + "; "
@@ -946,7 +947,7 @@ class OidcProviderTest {
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
         Instant now = Instant.now();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(encryptedIdToken,
                                                                           true,
@@ -954,7 +955,7 @@ class OidcProviderTest {
                                                                           signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
                 request(null, SecurityEnvironment.builder()
@@ -1006,12 +1007,12 @@ class OidcProviderTest {
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
                 request(null, SecurityEnvironment.builder()
@@ -1050,13 +1051,13 @@ class OidcProviderTest {
                 .setStrings("groups", List.of("userinfo-admin"))
                 .build();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
                                 .userInfo(userInfo)
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
                 request(null, SecurityEnvironment.builder()
@@ -1093,13 +1094,13 @@ class OidcProviderTest {
                         .build())
                 .build();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
                                 .userInfo(userInfo)
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
                 request(null, SecurityEnvironment.builder()
@@ -1145,12 +1146,12 @@ class OidcProviderTest {
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         Instant now = Instant.now();
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState("default",
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
                 request(null, SecurityEnvironment.builder()
@@ -1234,11 +1235,11 @@ class OidcProviderTest {
 
         assertThat(result.expiresAt(), is(now.plusSeconds(120)));
         assertThat(OidcCookieStateHandler.create("default", tenant)
-                           .createLocalAuthenticationResultCookie(result)
-                           .maxAge()
+                           .createLocalAuthenticationResultCookies(result, Map.of(), Instant.now()).getFirst()
+                           .expires()
                            .orElseThrow()
-                           .getSeconds(),
-                   is(120L));
+                           .toInstant(),
+                   is(now.plusSeconds(120)));
     }
 
     @Test
@@ -1430,12 +1431,12 @@ class OidcProviderTest {
                 .preferredUsername(USERNAME));
         SignedJwt signedJwt = SignedJwt.parseToken(idToken);
         return OidcCookieStateHandler.create(tenantId, tenant)
-                .createLocalAuthenticationResultCookie(OidcLocalAuthenticationResult.fromStoredValues(
+                .createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult.fromStoredValues(
                         localAuthenticationState(tenantId,
                                                  new OidcValidatedIdToken(idToken, false, signedJwt, signedJwt.getJwt()),
                                                  createdAt,
                                                  expiresAt)
-                                .buildPrototype()));
+                                .buildPrototype()), Map.of(), Instant.now()).getFirst();
     }
 
     private static OidcLocalAuthenticationState.Builder localAuthenticationState(String tenantId,

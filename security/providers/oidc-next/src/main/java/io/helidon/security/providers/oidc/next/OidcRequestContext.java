@@ -122,7 +122,7 @@ final class OidcRequestContext {
         return cookies().getOrDefault(name, List.of());
     }
 
-    private Map<String, List<String>> cookies() {
+    Map<String, List<String>> cookies() {
         if (cookies != null) {
             return cookies;
         }

@@ -253,6 +253,29 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateCookies(OidcCookieConfig cookies, Optional<String> clientId) {
+        if (cookies.maxChunks() < 1 || cookies.maxChunks() > OidcCookieStateHandler.MAX_SESSION_COOKIES) {
+            throw new IllegalArgumentException("cookies.max-chunks must be between 1 and 16");
+        }
+        if (cookies.maxCookieSize() < cookies.localAuthenticationCookieName().length() + 160
+                || cookies.maxCookieSize() > 4096) {
+            throw new IllegalArgumentException("cookies.max-cookie-size must leave room for framing and be at most 4096");
+        }
+        if (cookies.maxTotalSize() < 1 || cookies.maxTotalSize() > 65536) {
+            throw new IllegalArgumentException("cookies.max-total-size must be between 1 and 65536");
+        }
+        long removalSize = OidcCookieStateHandler.removeLocalAuthenticationResultCookies(cookies)
+                .stream().mapToLong(cookie -> cookie.toString().length() + 14L).sum();
+        if (removalSize > cookies.maxTotalSize()) {
+            throw new IllegalArgumentException("cookies.max-total-size must allow clearing the session cookie namespace");
+        }
+        if (cookies.maxSessionSize() < 1 || cookies.maxSessionSize() > 1048576) {
+            throw new IllegalArgumentException("cookies.max-session-size must be between 1 and 1048576");
+        }
+        for (int index = 1; index < OidcCookieStateHandler.MAX_SESSION_COOKIES; index++) {
+            if (cookies.authenticationRequestCookieName().equals(OidcCookieStateHandler.sessionCookieName(cookies, index))) {
+                throw new IllegalArgumentException("Authentication-request cookie name overlaps the session chunk namespace");
+            }
+        }
         validateCookieName(cookies.authenticationRequestCookieName(),
                            "cookies.authentication-request-cookie-name");
         validateCookieName(cookies.localAuthenticationCookieName(),

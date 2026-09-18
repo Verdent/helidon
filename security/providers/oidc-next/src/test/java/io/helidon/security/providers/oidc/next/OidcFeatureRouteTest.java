@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -532,6 +533,81 @@ class OidcFeatureRouteTest {
         } finally {
             client.closeResource();
             rpServer.stop();
+        }
+    }
+
+    @Test
+    void redirectionEndpointStoresLargeSessionsWithGenericCookiePolicies(URI serverUri) {
+        for (OidcCookieCompression compression : OidcCookieCompression.values()) {
+            String accessToken = "a".repeat(compression == OidcCookieCompression.GZIP ? 24000 : 6000);
+            tokenEndpointResponseBody = JsonObject.builder()
+                    .from(tokenEndpointResponse(signedIdToken(NONCE)))
+                    .set("access_token", accessToken)
+                    .set("refresh_token", "r".repeat(500))
+                    .build().toString();
+            OidcTenantConfig original = tenantConfig(serverUri);
+            OidcTenantConfig tenant = OidcTenantConfig.builder(original)
+                    .cookies(OidcCookieConfig.builder(original.cookies()).compression(compression).buildPrototype())
+                    .buildPrototype();
+            WebServer rp = oidcFeatureServer(providerConfig(tenant));
+            WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+            try {
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rp), tenant);
+                try (HttpClientResponse response = client.get("/oidc/callback")
+                        .followRedirects(false).queryParam("code", "authorization-code").queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value()).request()) {
+                    assertThat(response.status(), is(Status.SEE_OTHER_303));
+                    String base = tenant.cookies().localAuthenticationCookieName();
+                    List<SetCookie> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                            .map(SetCookie::parse)
+                            .filter(cookie -> cookie.name().equals(base) || cookie.name().startsWith(base + "."))
+                            .toList();
+                    assertThat(cookies.size() > 1, is(compression == OidcCookieCompression.NONE));
+                    cookies.forEach(cookie -> assertThat(cookie.toString().length() <= tenant.cookies().maxCookieSize(), is(true)));
+                    String cookieHeader = String.join("; ", cookies.stream()
+                            .map(cookie -> cookie.name() + "=" + cookie.value()).toList());
+                    AuthenticationResponse authentication = OidcProvider.create(providerConfig(tenant))
+                            .authenticate(OidcProviderTest.request(null, SecurityEnvironment.builder()
+                                    .targetUri(URI.create("https://rp.example/resource"))
+                                    .header(HeaderNames.COOKIE.defaultCase(), cookieHeader).build()));
+                    assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(authentication.user().orElseThrow().publicCredential(TokenCredential.class)
+                                       .orElseThrow().token(), is(accessToken));
+                }
+            } finally {
+                client.closeResource();
+                rp.stop();
+            }
+        }
+    }
+
+    @Test
+    void redirectionEndpointFailsCleanlyWhenSessionCannotFit(URI serverUri) {
+        tokenEndpointResponseBody = JsonObject.builder()
+                .from(tokenEndpointResponse(signedIdToken(NONCE)))
+                .set("access_token", "a".repeat(24000)).build().toString();
+        OidcTenantConfig tenant = tenantConfig(serverUri);
+        WebServer rp = oidcFeatureServer(providerConfig(tenant));
+        WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+        try {
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri(rp), tenant);
+            try (HttpClientResponse response = client.get("/oidc/callback")
+                    .followRedirects(false).queryParam("code", "authorization-code").queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value()).request()) {
+                assertThat(response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+                assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+                assertThat(response.as(String.class), is("OIDC session cannot be stored within the configured cookie limits"));
+                List<SetCookie> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues().stream()
+                        .map(SetCookie::parse).toList();
+                assertThat(cookies.size(), is(17));
+                cookies.forEach(cookie -> {
+                    assertThat(cookie.value(), is(""));
+                    assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+                });
+            }
+        } finally {
+            client.closeResource();
+            rp.stop();
         }
     }
 
@@ -1373,7 +1449,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
                 SetCookie generationCookie = assertBrowserSessionGenerationCookie(cookies, tenant, "default");
@@ -1455,7 +1531,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, "auth");
                 assertRemovalCookie(cookies, "state-b");
                 assertBrowserSessionGenerationCookie(cookies, tenantB, "tenant-b");
@@ -1489,7 +1565,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(6));
+                assertThat(cookies.size(), is(36));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
                 assertRemovalCookie(cookies, "auth-b");
@@ -1521,7 +1597,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(6));
+                assertThat(cookies.size(), is(36));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
                 assertRemovalCookie(cookies, "auth-b");
@@ -1559,7 +1635,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.status(), is(Status.NO_CONTENT_204));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, "auth-a");
                 assertRemovalCookie(cookies, "state-a");
                 assertBrowserSessionGenerationCookie(cookies, tenantA, "tenant-a");
@@ -1623,7 +1699,7 @@ class OidcFeatureRouteTest {
                 assertThat(query.first("state").orElse(""), is("logout-state"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
                 assertBrowserSessionGenerationCookie(cookies, tenant, "default");
@@ -1694,7 +1770,7 @@ class OidcFeatureRouteTest {
                     assertThat(response.as(String.class), is("Logout request is invalid"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
                 assertBrowserSessionGenerationCookie(cookies, tenant, "default");
@@ -1801,7 +1877,7 @@ class OidcFeatureRouteTest {
                 assertThat(response.as(String.class), is("id_token_hint is required for RP-Initiated Logout"));
 
                 List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
-                assertThat(cookies.size(), is(3));
+                assertThat(cookies.size(), is(18));
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
                 assertBrowserSessionGenerationCookie(cookies, tenant, "default");
@@ -2412,7 +2488,7 @@ class OidcFeatureRouteTest {
                         .accessTokenExpiresAt(now.plusSeconds(600))
                         .buildPrototype());
         return OidcCookieStateHandler.create(tenantId, tenant)
-                .createLocalAuthenticationResultCookie(result);
+                .createLocalAuthenticationResultCookies(result, Map.of(), Instant.now()).getFirst();
     }
 
     private static String cookieHeader(SetCookie first, SetCookie second) {

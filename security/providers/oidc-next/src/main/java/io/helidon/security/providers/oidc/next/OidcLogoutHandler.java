@@ -76,15 +76,9 @@ final class OidcLogoutHandler {
                     OidcCookieStateHandler cookieStateHandler = tenantRuntimeRegistry.cookieStateHandler(entry.getKey())
                             .orElseThrow();
                     OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
-                    Optional<OidcLocalAuthenticationResult> localAuthenticationResult = cookies
-                            .getOrDefault(cookieStateHandler.cookieConfig().localAuthenticationCookieName(), List.of())
-                            .stream()
-                            .flatMap(cookieValue -> cookieStateHandler.readLocalAuthenticationResult(cookieValue,
-                                                                                                    now,
-                                                                                                    idTokenDecryptor)
-                                    .stream())
-                            .filter(result -> entry.getKey().equals(result.tenantId()))
-                            .findFirst();
+                    Optional<OidcLocalAuthenticationResult> localAuthenticationResult = cookieStateHandler
+                            .readLocalAuthenticationResult(cookies, now, idTokenDecryptor)
+                            .filter(result -> entry.getKey().equals(result.tenantId()));
                     return new LogoutTenant(entry.getKey(),
                                             tenantConfig,
                                             cookieStateHandler,
@@ -102,11 +96,11 @@ final class OidcLogoutHandler {
         tenantsToClear.stream()
                 .map(LogoutTenant::cookieStateHandler)
                 .forEach(cookieStateHandler -> {
-                    String localAuthenticationCookieName = cookieStateHandler.cookieConfig()
-                            .localAuthenticationCookieName();
-                    if (changedCookieNames.add(localAuthenticationCookieName)) {
-                        response.headers().addCookie(cookieStateHandler.removeLocalAuthenticationResultCookie());
-                    }
+                    cookieStateHandler.removeLocalAuthenticationResultCookies().forEach(cookie -> {
+                        if (changedCookieNames.add(cookie.name())) {
+                            response.headers().addCookie(cookie);
+                        }
+                    });
                     String authenticationRequestCookieName = cookieStateHandler.cookieConfig()
                             .authenticationRequestCookieName();
                     if (changedCookieNames.add(authenticationRequestCookieName)) {

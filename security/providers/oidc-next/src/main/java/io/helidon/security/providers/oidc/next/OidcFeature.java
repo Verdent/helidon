@@ -58,7 +58,8 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     /**
-     * Create an OIDC HTTP feature from configuration.
+     * Create an independent OIDC HTTP feature from configuration.
+     * Use {@link #create(OidcProvider)} to share the tenant runtime with a security provider.
      *
      * @param config configuration
      * @return OIDC HTTP feature
@@ -68,13 +69,25 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     /**
-     * Create an OIDC HTTP feature from provider configuration.
+     * Create an independent OIDC HTTP feature from provider configuration.
+     * Use {@link #create(OidcProvider)} to share the tenant runtime with a security provider.
      *
      * @param config provider configuration
      * @return OIDC HTTP feature
      */
     public static OidcFeature create(OidcProviderConfig config) {
         return new OidcFeature(config, OidcTenantRuntimeRegistry.create(config));
+    }
+
+    /**
+     * Create an OIDC HTTP feature sharing the configuration and tenant runtime of an existing provider.
+     *
+     * @param provider OIDC security provider
+     * @return OIDC HTTP feature
+     */
+    public static OidcFeature create(OidcProvider provider) {
+        Objects.requireNonNull(provider);
+        return new OidcFeature(provider.prototype(), provider.tenantRuntimeRegistry());
     }
 
     @Override

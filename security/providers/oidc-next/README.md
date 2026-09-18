@@ -298,7 +298,8 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 ```
 
 When Authorization Code Flow or logout is enabled, register `OidcFeature` as a WebServer feature so the local routes are
-installed. This registration form also applies the configured `socket`:
+installed. Create the feature from the same `OidcProvider` instance registered with Security so authentication, callbacks,
+and logout share tenant initialization, clients, and caches. This registration form also applies the configured `socket`:
 
 ```java
 OidcProviderConfig config = OidcProviderConfig.builder()
@@ -313,17 +314,32 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
         .buildPrototype();
 
+OidcProvider oidcProvider = OidcProvider.create(config);
 Security security = Security.builder()
-        .addProvider(OidcProvider.create(config), config.providerName())
+        .addProvider(oidcProvider, config.providerName())
         .build();
 
 WebServer.builder()
         .addFeature(SecurityFeature.builder()
                 .security(security)
                 .build())
-        .addFeature(OidcFeature.create(config))
+        .addFeature(OidcFeature.create(oidcProvider))
         .build();
 ```
+
+If Security created the provider from configuration, retrieve that registered instance before creating the feature:
+
+```java
+OidcProvider oidcProvider = security.resolveAtnProvider("oidc-next")
+        .filter(OidcProvider.class::isInstance)
+        .map(OidcProvider.class::cast)
+        .orElseThrow(() -> new IllegalStateException("Configured authentication provider is not an OIDC provider"));
+OidcFeature feature = OidcFeature.create(oidcProvider);
+```
+
+Use the provider's registered Security name in the lookup. The configuration-only `OidcFeature.create(...)` factories
+remain available for independent feature instances; passing the same configuration to two factories does not share a
+runtime. Separately created providers remain independent, even if their configuration is identical.
 
 To register the local OIDC routes on a named WebServer socket, configure `socket` on the provider and register
 `OidcFeature` as a WebServer feature. The socket name must match a configured `server.sockets[].name`.

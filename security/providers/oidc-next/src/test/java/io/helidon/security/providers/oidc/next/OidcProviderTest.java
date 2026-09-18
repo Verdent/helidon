@@ -27,19 +27,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.CompositeProviderFlag;
+import io.helidon.security.CompositeProviderSelectionPolicy;
 import io.helidon.security.Grant;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
 import io.helidon.security.Role;
+import io.helidon.security.Security;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
@@ -49,16 +55,20 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.SecurityProviderService;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcProviderTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -1262,8 +1272,9 @@ class OidcProviderTest {
 
     @Test
     void authorizationResponseProcessingIsLeftToFeatureEndpoint() {
-        OidcProvider provider = OidcProvider.create();
+        OidcProvider provider = provider(authorizationCodeTenant());
         SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create(REDIRECTION_ENDPOINT_URI + "?code=authorization-code&state=stored-state"))
                 .queryParam("code", "authorization-code")
                 .queryParam("state", "stored-state")
                 .build();
@@ -1271,6 +1282,320 @@ class OidcProviderTest {
         AuthenticationResponse response = provider.authenticate(request(null, environment));
 
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackStyleQueryOnApplicationRouteDoesNotSuppressSession() {
+        return Stream.of("state=pending&code=123", "state=pending&error=invalid-order")
+                .map(query -> dynamicTest(query, () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant();
+                    OidcProvider provider = provider(tenant);
+                    Instant now = Instant.now();
+                    SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(URI.create("https://rp.example/orders?" + query))
+                            .path("/orders")
+                            .queryParams(UriQuery.create(query))
+                            .header("Cookie", cookie.name() + "=" + cookie.value())
+                            .build();
+
+                    AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+                    assertThat(response.responseHeaders().containsKey("Location"), is(false));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackStyleQueryOnApplicationRouteDoesNotSuppressLogin() {
+        return Stream.of("state=pending&code=123", "state=pending&error=invalid-order")
+                .map(query -> dynamicTest(query, () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant();
+                    OidcProvider provider = provider(tenant);
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(URI.create("https://rp.example/orders?" + query))
+                            .path("/orders")
+                            .queryParams(UriQuery.create(query))
+                            .build();
+
+                    AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+                    assertThat(response.statusCode().orElseThrow(), is(303));
+                    assertThat(authenticationRequestState(response, tenant).originalUri(),
+                               is(URI.create("/orders?" + query)));
+                    assertThat(authenticationRequestState(response, tenant).redirectionEndpointUri(),
+                               is(REDIRECTION_ENDPOINT_URI));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> configuredCallbackLeavesResponseValidationToFeature() {
+        return Stream.of("", "?code=authorization-code", "?state=stored-state", "?error=access_denied",
+                         "?state=stored-state&code=authorization-code&unknown=allowed",
+                         "?state=first&state=second&code=authorization-code")
+                .map(query -> dynamicTest(query.isEmpty() ? "missing response" : query, () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant();
+                    OidcProvider provider = provider(tenant);
+                    Instant now = Instant.now();
+                    SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+                    URI callback = URI.create(REDIRECTION_ENDPOINT_URI + query);
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(callback)
+                            .queryParams(UriQuery.create(callback))
+                            .header("Cookie", cookie.name() + "=" + cookie.value())
+                            .build();
+
+                    AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+                    assertThat(response.responseHeaders().isEmpty(), is(true));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackHandoffDoesNotMatchOtherEndpointIdentities() {
+        return Stream.of("https://other.example/oidc/callback",
+                         "http://rp.example/oidc/callback",
+                         "https://rp.example:8443/oidc/callback",
+                         "https://rp.example/oidc/callback/",
+                         "https://rp.example/oidc/callback/orders",
+                         "https://rp.example/oidc/Callback",
+                         "https://rp.example/oidc/callback-extra",
+                         "https://rp.example/other/../oidc/callback")
+                .map(endpoint -> dynamicTest(endpoint, () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant();
+                    OidcProvider provider = provider(tenant);
+                    Instant now = Instant.now();
+                    SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+                    URI uri = URI.create(endpoint + "?state=pending&code=123");
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(uri)
+                            .queryParams(UriQuery.create(uri))
+                            .header("Cookie", cookie.name() + "=" + cookie.value())
+                            .build();
+
+                    AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackHandoffPreservesFixedQueryValues() {
+        return Stream.of("route=login&tag=one&tag=two&state=s&code=c",
+                         "state=s&tag=one&tag=two&code=c&route=login&unknown=allowed")
+                .map(query -> dynamicTest(query, () -> {
+                    URI configured = URI.create(REDIRECTION_ENDPOINT_URI + "?route=login&tag=one&tag=two");
+                    OidcProvider provider = provider(authorizationCodeTenant(code -> code.redirectionEndpointUri(configured)));
+                    URI uri = URI.create("https://RP.EXAMPLE:443/oidc/callback?" + query);
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(uri)
+                            .queryParams(UriQuery.create(uri))
+                            .build();
+
+                    assertThat(provider.authenticate(request(null, environment)).status(),
+                               is(SecurityResponse.SecurityStatus.ABSTAIN));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackHandoffRequiresAllFixedQueryValues() {
+        return Stream.of("state=s&code=c",
+                         "route=other&tag=one&tag=two&state=s&code=c",
+                         "route=login&route=login&tag=one&tag=two&state=s&code=c",
+                         "route=login&tag=one&state=s&code=c",
+                         "route=login&tag=one&tag=two&tag=three&state=s&code=c")
+                .map(query -> dynamicTest(query, () -> {
+                    URI configured = URI.create(REDIRECTION_ENDPOINT_URI + "?route=login&tag=one&tag=two");
+                    OidcProvider provider = provider(authorizationCodeTenant(code -> code.redirectionEndpointUri(configured)));
+                    URI uri = URI.create(REDIRECTION_ENDPOINT_URI + "?" + query);
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(uri)
+                            .queryParams(UriQuery.create(uri))
+                            .build();
+
+                    AuthenticationResponse response = provider.authenticate(request(null, environment));
+
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+                    assertThat(response.statusCode().orElseThrow(), is(303));
+                }));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> callbackHandoffOnlyAppliesToGet() {
+        return Stream.of("POST", "HEAD", "PUT", "DELETE")
+                .map(method -> dynamicTest(method, () -> {
+                    OidcProvider provider = provider(authorizationCodeTenant());
+                    URI uri = URI.create(REDIRECTION_ENDPOINT_URI + "?state=s&code=c");
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(uri)
+                            .method(method)
+                            .queryParams(UriQuery.create(uri))
+                            .build();
+
+                    assertThat(provider.authenticate(request(null, environment)).status(),
+                               is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+                }));
+    }
+
+    @Test
+    void callbackHandoffUsesDefaultLocalEndpointAndRequestedUri() {
+        OidcProvider provider = provider(authorizationCodeTenant(_ -> { },
+                tenant -> tenant.authorizationCode(OidcAuthorizationCodeConfig.create())));
+        URI uri = URI.create("https://another-rp.example:8443/oidc/callback?state=s&code=c");
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(uri)
+                .path("/callback") // A nested route may expose a relative path; the requested URI identifies the endpoint.
+                .queryParams(UriQuery.create(uri))
+                .build();
+
+        assertThat(provider.authenticate(request(null, environment)).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+    }
+
+    @Test
+    void callbackHandoffDoesNotGuessEndpointWhenTargetUriIsMissing() {
+        OidcProvider provider = provider(authorizationCodeTenant());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .path("/oidc/callback")
+                .queryParam("state", "s")
+                .queryParam("code", "c")
+                .build();
+
+        assertThat(provider.authenticate(request(null, environment)).status(),
+                   is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+    }
+
+    @Test
+    void callbackHandoffIncludesOtherEnabledTenantsButNotDisabledFlows() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .defaultTenant("default")
+                .putTenant("default", tenant)
+                .putTenant("second", authorizationCodeTenant(code -> code
+                        .redirectionEndpointUri(URI.create("https://rp.example/second/callback"))))
+                .putTenant("disabled", authorizationCodeTenant(code -> code
+                        .redirectionEndpointUri(URI.create("https://rp.example/disabled/callback")),
+                        builder -> builder.enabled(false)))
+                .putTenant("disabled-flow", authorizationCodeTenant(code -> code.enabled(false)
+                        .redirectionEndpointUri(URI.create("https://rp.example/disabled-flow/callback"))))
+                .buildPrototype());
+
+        for (String path : List.of("/oidc/callback", "/second/callback", "/disabled/callback", "/disabled-flow/callback")) {
+            URI uri = URI.create("https://rp.example" + path + "?state=s&code=c");
+            SecurityEnvironment environment = SecurityEnvironment.builder()
+                    .targetUri(uri)
+                    .queryParams(UriQuery.create(uri))
+                    .build();
+            SecurityResponse.SecurityStatus expected = path.startsWith("/disabled")
+                    ? SecurityResponse.SecurityStatus.FAILURE_FINISH
+                    : SecurityResponse.SecurityStatus.ABSTAIN;
+
+            assertThat(path, provider.authenticate(request(null, environment)).status(), is(expected));
+        }
+    }
+
+    @Test
+    void callbackStyleQueryDoesNotDisableProtectedResourcePolicy() {
+        OidcProvider provider = providerWithTenant();
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create(REDIRECTION_ENDPOINT_URI + "?state=s&code=c"))
+                .queryParam("state", "s")
+                .queryParam("code", "c")
+                .build();
+
+        AuthenticationResponse response = provider.authenticate(request(OidcEndpointPolicy.protectedResource(), environment));
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElseThrow(), is(401));
+        assertThat(response.description().orElseThrow(), is("Bearer Token is required"));
+    }
+
+    @Test
+    void callbackHandoffPreservesConfiguredPathAliases() {
+        List<URI> endpoints = List.of(URI.create("https://rp.example/oidc/%7elogin"),
+                                      URI.create("https://rp.example/oidc/%7Elogin"));
+        OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .defaultTenant("default")
+                .putTenant("default", authorizationCodeTenant(code -> code.redirectionEndpointUri(endpoints.getFirst())))
+                .putTenant("second", authorizationCodeTenant(code -> code.redirectionEndpointUri(endpoints.getLast())))
+                .buildPrototype());
+
+        for (URI endpoint : endpoints) {
+            SecurityEnvironment environment = SecurityEnvironment.builder().targetUri(endpoint).build();
+
+            assertThat(endpoint.toString(), provider.authenticate(request(null, environment)).status(),
+                       is(SecurityResponse.SecurityStatus.ABSTAIN));
+        }
+    }
+
+    @Test
+    void callbackStyleQueryDoesNotSelectAnotherAuthenticationProvider() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        AuthenticationProvider fallback = _ -> {
+            fallbackCalls.incrementAndGet();
+            return AuthenticationResponse.abstain();
+        };
+        Security security = Security.builder()
+                .addProvider(provider(tenant), "oidc-next")
+                .addProvider(fallback, "fallback")
+                .providerSelectionPolicy(CompositeProviderSelectionPolicy.builder()
+                        .name("oidc-fallback")
+                        .isDefault(true)
+                        .addAuthenticationProvider("oidc-next", CompositeProviderFlag.SUFFICIENT)
+                        .addAuthenticationProvider("fallback", CompositeProviderFlag.OPTIONAL)
+                        .build())
+                .build();
+        URI uri = URI.create("https://rp.example/orders?state=pending&code=123");
+        SecurityContext context = security.contextBuilder("callback-routing")
+                .env(SecurityEnvironment.builder()
+                        .targetUri(uri)
+                        .queryParams(UriQuery.create(uri))
+                        .header("Cookie", cookie.name() + "=" + cookie.value())
+                        .build())
+                .build();
+
+        AuthenticationResponse response = context.authenticate();
+
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+        assertThat(fallbackCalls.get(), is(0));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> bearerValidationStillPrecedesCallbackHandoff() {
+        return Stream.of("/orders", "/oidc/callback")
+                .map(path -> dynamicTest(path, () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
+                            .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                                    .method(OidcTokenValidationMethod.JWT)
+                                    .audience("api://default")
+                                    .verificationJwk(ResourceConfig.builder()
+                                            .resourcePath("oidc-next-verify-public-jwk.json").buildPrototype()))));
+                    OidcProvider provider = provider(tenant);
+                    String token = signedIdToken(jwt -> jwt.type("at+jwt")
+                            .jwtId("jwt-id")
+                            .addPayloadClaim("client_id", "calling-client")
+                            .addAudience("api://default"));
+                    URI uri = URI.create("https://rp.example" + path + "?state=s&code=c");
+                    SecurityEnvironment environment = SecurityEnvironment.builder()
+                            .targetUri(uri)
+                            .transport("https")
+                            .queryParams(UriQuery.create(uri))
+                            .header("Authorization", "Bearer " + token)
+                            .build();
+
+                    assertThat(provider.authenticate(request(null, environment)).status(),
+                               is(SecurityResponse.SecurityStatus.SUCCESS));
+                    AuthenticationResponse invalid = provider.authenticate(request(null,
+                            environment.derive().header("Authorization", "Bearer invalid-token").build()));
+                    assertThat(invalid.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(invalid.statusCode().orElseThrow(), is(401));
+                }));
     }
 
     @Test

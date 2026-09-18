@@ -22,7 +22,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -121,14 +120,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     Set<String> redirectionEndpointPaths() {
-        Set<String> paths = config.tenants()
-                .values()
-                .stream()
-                .filter(OidcTenantConfig::enabled)
-                .map(OidcTenantConfig::authorizationCode)
-                .flatMap(Optional::stream)
-                .filter(OidcAuthorizationCodeConfig::enabled)
-                .map(OidcEndpointUris::redirectionEndpointUri)
+        Set<String> paths = OidcEndpointUris.redirectionEndpointUris(config).stream()
                 .map(OidcUri::path)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         return Collections.unmodifiableSet(paths);

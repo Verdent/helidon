@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,26 +55,6 @@ final class OidcRequestContext {
                 .or(() -> endpointConfigInstance(endpointConfig, OidcEndpointPolicyConfig.class)
                         .flatMap(this::endpointPolicy))
                 .or(() -> tenantContext.flatMap(OidcTenantContext::endpointPolicy));
-    }
-
-    private static <T> Optional<T> endpointConfigInstance(EndpointConfig endpointConfig, Class<T> clazz) {
-        Optional<T> exactInstance = endpointConfig.instance(clazz);
-        if (exactInstance.isPresent()) {
-            return exactInstance;
-        }
-        return endpointConfig.instanceKeys()
-                .stream()
-                .filter(clazz::isAssignableFrom)
-                .map(endpointConfig::instance)
-                .flatMap(Optional::stream)
-                .map(clazz::cast)
-                .findFirst();
-    }
-
-    private Optional<OidcEndpointPolicy> endpointPolicy(OidcEndpointPolicyConfig endpointPolicyConfig) {
-        return tenantContext
-                .filter(OidcTenantContext::ready)
-                .flatMap(tenant -> OidcEndpointPolicyResolver.resolve(tenant.tenantConfig(), endpointPolicyConfig));
     }
 
     Optional<OidcTenantContext> tenantContext() {
@@ -135,6 +116,37 @@ final class OidcRequestContext {
         return cookies;
     }
 
+    boolean redirectionEndpointRequest(List<URI> redirectionEndpointUris) {
+        URI targetUri = environment().targetUri();
+        // Route recognition is not response validation: malformed callbacks must also reach the HTTP feature.
+        return targetUri != null
+                && "GET".equals(environment().method())
+                && redirectionEndpointUris.stream()
+                        .anyMatch(uri -> OidcEndpointUris.redirectionEndpointMatches(targetUri,
+                                                                                    environment().queryParams(),
+                                                                                    targetUri.resolve(uri)));
+    }
+
+    private static <T> Optional<T> endpointConfigInstance(EndpointConfig endpointConfig, Class<T> clazz) {
+        Optional<T> exactInstance = endpointConfig.instance(clazz);
+        if (exactInstance.isPresent()) {
+            return exactInstance;
+        }
+        return endpointConfig.instanceKeys()
+                .stream()
+                .filter(clazz::isAssignableFrom)
+                .map(endpointConfig::instance)
+                .flatMap(Optional::stream)
+                .map(clazz::cast)
+                .findFirst();
+    }
+
+    private Optional<OidcEndpointPolicy> endpointPolicy(OidcEndpointPolicyConfig endpointPolicyConfig) {
+        return tenantContext
+                .filter(OidcTenantContext::ready)
+                .flatMap(tenant -> OidcEndpointPolicyResolver.resolve(tenant.tenantConfig(), endpointPolicyConfig));
+    }
+
     private void parseCookieHeader(String headerValue, Map<String, List<String>> result) {
         for (String token : headerValue.split(";")) {
             int valueStart = token.indexOf('=');
@@ -165,10 +177,4 @@ final class OidcRequestContext {
         bearerTokenExtractionResult = OidcBearerTokenExtractor.extract(environment(), tokenTransport);
         return bearerTokenExtractionResult;
     }
-
-    boolean authorizationResponsePresent() {
-        return environment().queryParams().contains("state")
-                && (environment().queryParams().contains("code") || environment().queryParams().contains("error"));
-    }
-
 }

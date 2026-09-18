@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +31,7 @@ final class OidcAuthenticationOrchestrator {
     private final OidcAuthenticationRequestFactory authenticationRequestFactory;
     private final OidcRefreshTokenManager refreshTokenManager;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
+    private final List<URI> redirectionEndpointUris;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
@@ -42,6 +44,7 @@ final class OidcAuthenticationOrchestrator {
         this.authenticationRequestFactory = authenticationRequestFactory;
         this.refreshTokenManager = refreshTokenManager;
         this.accessTokenValidators = accessTokenValidators;
+        this.redirectionEndpointUris = OidcEndpointUris.redirectionEndpointUris(config);
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
@@ -75,7 +78,7 @@ final class OidcAuthenticationOrchestrator {
         if (context.bearerTokenPresent()) {
             return authenticateBearerToken(context);
         }
-        if (context.authorizationResponsePresent()) {
+        if (context.redirectionEndpointRequest(redirectionEndpointUris)) {
             return AuthenticationResponse.abstain();
         }
 

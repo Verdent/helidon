@@ -91,7 +91,7 @@ final class OidcAuthorizationResponseProcessor {
         if (now.isAfter(state.expiresAt())) {
             return OidcAuthorizationResponseResult.invalid("Authentication Request state has expired", stateRemovalCookie);
         }
-        if (!redirectionEndpointMatches(redirectionEndpointUri, state.redirectionEndpointUri())) {
+        if (!OidcEndpointUris.redirectionEndpointMatches(redirectionEndpointUri, parameters, state.redirectionEndpointUri())) {
             return OidcAuthorizationResponseResult.invalid(
                     "Authorization Response Redirection Endpoint does not match Authentication Request state",
                     stateRemovalCookie);
@@ -267,22 +267,6 @@ final class OidcAuthorizationResponseProcessor {
             return Optional.of(ParameterValue.invalidParameter());
         }
         return Optional.of(ParameterValue.present(values.getFirst()));
-    }
-
-    private boolean redirectionEndpointMatches(URI callbackUri, URI expectedUri) {
-        if (!OidcUri.sameOrigin(callbackUri, expectedUri)
-                || !Objects.equals(OidcUri.path(callbackUri), OidcUri.path(expectedUri))) {
-            return false;
-        }
-
-        UriQuery expectedQuery = UriQuery.create(expectedUri);
-        UriQuery callbackQuery = UriQuery.create(callbackUri);
-        for (String name : expectedQuery.names()) {
-            if (!callbackQuery.all(name, List::of).equals(expectedQuery.all(name))) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private record ResolvedAuthenticationRequest(String tenantId,

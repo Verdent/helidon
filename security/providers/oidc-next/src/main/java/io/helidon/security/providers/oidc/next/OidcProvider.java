@@ -107,7 +107,11 @@ public final class OidcProvider
     @Override
     public AuthenticationResponse authenticate(ProviderRequest providerRequest) {
         tenantRuntimeRegistry.requireOpen();
-        return authentication.authenticate(providerRequest);
+        try {
+            return authentication.authenticate(providerRequest);
+        } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
+            return OidcResponseFactory.tenantUnavailable();
+        }
     }
 
     @Override
@@ -123,7 +127,11 @@ public final class OidcProvider
                                                      SecurityEnvironment outboundEnv,
                                                      EndpointConfig outboundConfig) {
         tenantRuntimeRegistry.requireOpen();
-        return outbound.secure(providerRequest, outboundEnv, outboundConfig);
+        try {
+            return outbound.secure(providerRequest, outboundEnv, outboundConfig);
+        } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
+            return OidcResponseFactory.tenantUnavailableForOutbound();
+        }
     }
 
     /**

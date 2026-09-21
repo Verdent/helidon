@@ -160,9 +160,16 @@ final class OidcLogoutHandler {
             return;
         }
 
-        Optional<URI> endSessionEndpointUri = tenantRuntimeRegistry.tenantContext(selectedEndSessionTenant.tenantId())
-                .filter(OidcTenantContext::ready)
-                .flatMap(tenantContext -> tenantContext.metadata().endSessionEndpointUri());
+        Optional<URI> endSessionEndpointUri;
+        try {
+            endSessionEndpointUri = tenantRuntimeRegistry.tenantContext(selectedEndSessionTenant.tenantId())
+                    .filter(OidcTenantContext::ready)
+                    .flatMap(tenantContext -> tenantContext.metadata().endSessionEndpointUri());
+        } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
+            // Local logout above still takes effect when provider initialization cannot be admitted.
+            response.status(Status.SERVICE_UNAVAILABLE_503).send("OIDC tenant initialization is temporarily unavailable");
+            return;
+        }
         if (endSessionEndpointUri.isEmpty()) {
             response.status(Status.BAD_GATEWAY_502)
                     .send("End Session Endpoint is unavailable");

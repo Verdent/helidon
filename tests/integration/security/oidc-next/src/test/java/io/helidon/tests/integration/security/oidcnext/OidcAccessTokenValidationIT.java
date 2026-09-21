@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -46,6 +47,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcAccessTokenValidationIT {
     private static final String SERVICE_CLIENT = "service-client";
@@ -53,6 +55,79 @@ class OidcAccessTokenValidationIT {
     private static final String USER_CLIENT = "user-client";
     private static final String USER_SECRET = "user-secret";
     private static final URI REDIRECT_URI = URI.create("http://localhost/callback");
+
+    @Test
+    void tenantInitializationBoundsFollowersWithoutAShortWaitDeadline() throws Exception {
+        for (int maxQueued : List.of(0, 1)) {
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            try (TestOidcServer idp = TestOidcServer.builder().client(SERVICE_CLIENT, SERVICE_SECRET)
+                    .defaultScopes("service.read")
+                    .endpoints(endpoints -> endpoints.metadata(context -> {
+                        entered.countDown();
+                        try {
+                            if (!release.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Test did not release discovery");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                        context.sendDefault();
+                    })).build()) {
+                String token = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+                OidcProviderConfig config = OidcIntegrationSupport.protectedResourceProviderConfig(
+                        idp, SERVICE_CLIENT, null, SERVICE_CLIENT, OidcTokenValidationMethod.JWT,
+                        tenant -> tenant.initializationMaxQueued(maxQueued)
+                                .endpoints(endpoints -> endpoints.wellKnownUri(idp.metadataUri()).tlsRequired(false)));
+                WebServer rp = OidcIntegrationSupport.rpServer(config,
+                        routing -> OidcIntegrationSupport.protectedRoute(routing, "/api"));
+                try {
+                    WebClient client = WebClient.builder().baseUri(OidcIntegrationSupport.rpBaseUri(rp)).build();
+                    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                        try {
+                            Future<String> leader = executor.submit(() -> client.get("/api")
+                                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).requestEntity(String.class));
+                            assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                            Future<String> follower = null;
+                            if (maxQueued > 0) {
+                                Future<String> admitted = executor.submit(() -> client.get("/api")
+                                        .header(HeaderNames.AUTHORIZATION, "Bearer " + token).requestEntity(String.class));
+                                assertThrows(TimeoutException.class, () -> admitted.get(1500, TimeUnit.MILLISECONDS));
+                                follower = admitted;
+                            }
+                            executor.submit(() -> {
+                                try (HttpClientResponse response = client.get("/api")
+                                        .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                                    assertThat(response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+                                    assertThat(response.headers().contains(HeaderNames.WWW_AUTHENTICATE), is(false));
+                                    assertThat(response.headers().contains(HeaderNames.SET_COOKIE), is(false));
+                                }
+                            }).get(2, TimeUnit.SECONDS);
+                            assertThat(leader.isDone(), is(false));
+                            assertThat(idp.metadataRequests().size(), is(1));
+                            release.countDown();
+                            String expected = OidcIntegrationSupport.principalResponse(idp, SERVICE_CLIENT, SERVICE_CLIENT, "");
+                            assertThat(leader.get(5, TimeUnit.SECONDS), is(expected));
+                            if (follower != null) {
+                                assertThat(follower.get(5, TimeUnit.SECONDS), is(expected));
+                            }
+                            try (HttpClientResponse response = client.get("/api")
+                                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                                assertThat(response.status(), is(Status.OK_200));
+                            }
+                            assertThat(idp.metadataRequests().size(), is(1));
+                        } finally {
+                            release.countDown();
+                            client.closeResource();
+                        }
+                    }
+                } finally {
+                    rp.stop();
+                }
+            }
+        }
+    }
 
     @Test
     void jwksAdmissionRejectionAndTimeoutReturn503AndThenRecover() throws Exception {

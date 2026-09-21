@@ -39,6 +39,9 @@ final class OidcTenantConfigDecorator
 
     @Override
     public void decorate(OidcTenantConfig.BuilderBase<?, ?> target) {
+        if (target.initializationMaxQueued() < 0) {
+            throw new IllegalArgumentException("initialization-max-queued must not be negative");
+        }
         if (!target.enabled()) {
             return;
         }

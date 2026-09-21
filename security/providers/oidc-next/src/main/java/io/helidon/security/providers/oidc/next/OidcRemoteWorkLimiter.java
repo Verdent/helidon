@@ -41,6 +41,40 @@ final class OidcRemoteWorkLimiter {
     }
 
     Optional<Permit> acquireActive() {
+        return acquireActive(true);
+    }
+
+    /**
+     * Acquire active capacity with the same queue bound, but no separate admission deadline.
+     * Waiting remains interruptible; the active operation retains its own I/O timeout policy.
+     *
+     * @return permit, or empty on capacity exhaustion or interruption
+     */
+    Optional<Permit> acquireActiveWithoutTimeout() {
+        return acquireActive(false);
+    }
+
+    Optional<Permit> acquireWaiter() {
+        return maxQueued == 0 ? Optional.empty() : acquire(queued, 0);
+    }
+
+    int activeCount() {
+        return maxConcurrent - active.availablePermits();
+    }
+
+    int queuedCount() {
+        return maxQueued - queued.availablePermits();
+    }
+
+    private static long saturatedNanos(Duration duration) {
+        try {
+            return duration.toNanos();
+        } catch (ArithmeticException _) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    private Optional<Permit> acquireActive(boolean timed) {
         if (Thread.currentThread().isInterrupted()) {
             return Optional.empty();
         }
@@ -57,21 +91,18 @@ final class OidcRemoteWorkLimiter {
         if (queuePermit.isEmpty()) {
             return Optional.empty();
         }
-        try (Permit ignored = queuePermit.orElseThrow()) {
-            return acquire(active, admissionTimeoutNanos);
+        try (Permit _ = queuePermit.orElseThrow()) {
+            if (timed) {
+                return acquire(active, admissionTimeoutNanos);
+            }
+            try {
+                active.acquire();
+                return Optional.of(new Permit(active));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
         }
-    }
-
-    Optional<Permit> acquireWaiter() {
-        return maxQueued == 0 ? Optional.empty() : acquire(queued, 0);
-    }
-
-    int activeCount() {
-        return maxConcurrent - active.availablePermits();
-    }
-
-    int queuedCount() {
-        return maxQueued - queued.availablePermits();
     }
 
     private Optional<Permit> acquire(Semaphore semaphore, long timeoutNanos) {
@@ -86,14 +117,6 @@ final class OidcRemoteWorkLimiter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Optional.empty();
-        }
-    }
-
-    private static long saturatedNanos(Duration duration) {
-        try {
-            return duration.toNanos();
-        } catch (ArithmeticException _) {
-            return Long.MAX_VALUE;
         }
     }
 

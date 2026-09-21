@@ -278,7 +278,9 @@ class OidcTokenExchangeGrantTest {
         releaseTokenResponse = new CountDownLatch(1);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch overloadObserved = new CountDownLatch(1);
+        // This cohort must reach Token Exchange admission rather than be rejected during tenant initialization.
         OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                .initializationMaxQueued(taskCount)
                 .tokenExchangeRemoteWork(remoteWork -> remoteWork
                         .maxConcurrent(maxConcurrent)
                         .maxQueued(maxQueued)

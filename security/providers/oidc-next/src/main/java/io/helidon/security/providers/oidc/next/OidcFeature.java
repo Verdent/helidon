@@ -175,11 +175,17 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     private void processAuthorizationResponse(ServerRequest request, ServerResponse response) {
-        OidcAuthorizationResponseResult result = authorizationResponseProcessor.process(
-                request.query(),
-                request.headers().cookies().toMap(),
-                request.requestedUri().toUri(),
-                Instant.now());
+        OidcAuthorizationResponseResult result;
+        try {
+            result = authorizationResponseProcessor.process(request.query(),
+                                                            request.headers().cookies().toMap(),
+                                                            request.requestedUri().toUri(),
+                                                            Instant.now());
+        } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
+            // No code was redeemed. Preserve the state cookie so this transaction can resume after initialization.
+            response.status(Status.SERVICE_UNAVAILABLE_503).send("OIDC tenant initialization is temporarily unavailable");
+            return;
+        }
         result.stateCookies().forEach(response.headers()::addCookie);
         if (result.stateValidated()) {
             processTokenEndpointExchange(result, request.headers().cookies().toMap(), response);

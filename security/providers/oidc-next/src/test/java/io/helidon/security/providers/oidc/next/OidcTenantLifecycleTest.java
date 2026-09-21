@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.EndpointConfig;
@@ -155,6 +156,19 @@ class OidcTenantLifecycleTest {
             Future<?> initialized = executor.submit(() -> registry.tenantContext("tenant"));
             try {
                 assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                AtomicReference<Thread> waitingThread = new AtomicReference<>();
+                CountDownLatch waiterStarted = new CountDownLatch(1);
+                Future<?> waiting = executor.submit(() -> {
+                    waitingThread.set(Thread.currentThread());
+                    waiterStarted.countDown();
+                    return registry.tenantContext("tenant");
+                });
+                assertThat(waiterStarted.await(5, TimeUnit.SECONDS), is(true));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (waitingThread.get().getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+                    Thread.sleep(5);
+                }
+                assertThat(waitingThread.get().getState(), is(Thread.State.WAITING));
                 executor.submit(registry::close).get(2, TimeUnit.SECONDS);
                 assertThat(closes.get(), is(0));
                 assertThrows(IllegalStateException.class, () -> registry.tenantContext("tenant"));
@@ -162,6 +176,10 @@ class OidcTenantLifecycleTest {
                 ExecutionException failure = assertThrows(ExecutionException.class,
                                                           () -> initialized.get(5, TimeUnit.SECONDS));
                 assertThat(failure.getCause(), instanceOf(IllegalStateException.class));
+                ExecutionException waiterFailure = assertThrows(ExecutionException.class,
+                                                                () -> waiting.get(5, TimeUnit.SECONDS));
+                assertThat(waiterFailure.getCause(), instanceOf(IllegalStateException.class));
+                assertThat(waiterFailure.getCause().getMessage(), is("OIDC tenant runtime is closed"));
                 assertThat(closes.get(), is(1));
                 registry.close();
                 assertThat(closes.get(), is(1));

@@ -50,7 +50,10 @@ import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.EndpointConfig;
 import io.helidon.security.Grant;
+import io.helidon.security.OutboundSecurityResponse;
+import io.helidon.security.ProviderRequest;
 import io.helidon.security.Role;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
@@ -100,6 +103,7 @@ class OidcFeatureRouteTest {
             Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
     private static final String NONCE = "nonce";
     private static final String PKCE_VERIFIER = "pkce-verifier";
+    private static final AtomicInteger TOKEN_REQUESTS = new AtomicInteger();
 
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
@@ -129,6 +133,7 @@ class OidcFeatureRouteTest {
     static void routing(HttpRouting.Builder routing) {
         OidcFeature.create(providerConfig()).setup(routing);
         routing.post("/token", (request, response) -> {
+            TOKEN_REQUESTS.incrementAndGet();
             TOKEN_CLIENT_ASSERTION.set(request.content().as(Parameters.class).first("client_assertion").orElse(""));
             tokenEndpointResponse(response);
         });
@@ -159,6 +164,7 @@ class OidcFeatureRouteTest {
         USER_INFO_AUTHORIZATION.set("");
         TOKEN_CLIENT_ASSERTION.set("");
         ATTACKER_TOKEN_REQUESTS.set(0);
+        TOKEN_REQUESTS.set(0);
     }
 
     @Test
@@ -337,6 +343,128 @@ class OidcFeatureRouteTest {
             assertThat(removalCookies.size(), is(1));
             assertThat(removalCookies.getFirst(), containsString("__Host-helidon-oidc-state="));
             assertThat(removalCookies.getFirst(), containsString("Expires="));
+        }
+    }
+
+    @Test
+    void tenantInitializationAdmissionPreservesCallbackTransactionsAndLocalLogout(URI serverUri) throws Exception {
+        for (boolean logout : List.of(false, true)) {
+            TOKEN_REQUESTS.set(0);
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            AtomicInteger discoveryRequests = new AtomicInteger();
+            JsonObject metadata = JsonObject.builder().set("issuer", ISSUER.toString())
+                    .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
+                    .set("token_endpoint", serverUri.resolve("token").toString())
+                    .set("jwks_uri", serverUri.resolve("jwks").toString())
+                    .set("end_session_endpoint", END_SESSION_ENDPOINT_URI.toString())
+                    .setStrings("response_types_supported", List.of("code"))
+                    .setStrings("code_challenge_methods_supported", List.of("S256"))
+                    .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                    .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                    .setStrings("grant_types_supported", List.of("authorization_code", "client_credentials", "refresh_token"))
+                    .build();
+            WebServer discovery = WebServer.builder().port(0).routing(routing -> routing.get("/metadata", (_, response) -> {
+                discoveryRequests.incrementAndGet();
+                entered.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test did not release discovery");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+                response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.toString());
+            })).build().start();
+            try {
+                OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri,
+                        code -> code.redirectionEndpointUri(URI.create("/oidc/callback"))))
+                        .endpoints(endpoints -> endpoints.tlsRequired(false)
+                                .wellKnownUri(URI.create("http://localhost:" + discovery.port() + "/metadata")))
+                        .logout(config -> config.endSession(endSession -> endSession.idTokenHintRequired(false)))
+                        .initializationMaxQueued(0).buildPrototype();
+                try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                    WebServer rp = WebServer.builder().port(0).addFeature(OidcFeature.create(provider)).build().start();
+                    try {
+                        WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).followRedirects(false).build();
+                        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                            try {
+                                Future<OidcTenantContext> leader = executor.submit(() -> provider.tenantRuntimeRegistry()
+                                        .tenantContext("default").orElseThrow());
+                                assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                                ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.builder()
+                                        .targetUri(URI.create("https://rp.example/resource")).build());
+                                AuthenticationResponse authentication = provider.authenticate(request);
+                                assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                                assertThat(authentication.statusCode().orElseThrow(), is(503));
+                                assertThat(authentication.user().isEmpty(), is(true));
+                                assertThat(authentication.responseHeaders().isEmpty(), is(true));
+                                EndpointConfig outboundConfig = EndpointConfig.builder()
+                                        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                                        .build();
+                                SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
+                                        .targetUri(URI.create("https://downstream.example/service")).build();
+                                assertThat(provider.isOutboundSupported(request, outboundEnv, outboundConfig), is(true));
+                                OutboundSecurityResponse outbound = provider.outboundSecurity(request, outboundEnv,
+                                                                                               outboundConfig);
+                                assertThat(outbound.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                                assertThat(outbound.description().orElseThrow(), is("OIDC tenant is unavailable"));
+                                Thread.currentThread().interrupt();
+                                try {
+                                    assertThat(provider.authenticate(request).statusCode().orElseThrow(), is(503));
+                                    assertThat(Thread.currentThread().isInterrupted(), is(true));
+                                } finally {
+                                    Thread.interrupted();
+                                }
+
+                                SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                                SetCookie session = localAuthenticationCookie(tenant, "default");
+                                for (boolean recovering : List.of(false, true)) {
+                                    if (recovering) {
+                                        release.countDown();
+                                        OidcTenantContext ready = leader.get(5, TimeUnit.SECONDS);
+                                        assertThat(ready.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                                                   ready.ready(), is(true));
+                                    }
+                                    try (HttpClientResponse response = logout
+                                            ? client.post("/oidc/logout").header(HeaderNames.ORIGIN, sameOrigin(rp))
+                                                    .header(HeaderNames.COOKIE, session.name() + "=" + session.value()).request()
+                                            : client.get("/oidc/callback").queryParam("state", STATE).queryParam("code", "code")
+                                                    .header(HeaderNames.COOKIE, state.name() + "=" + state.value()).request()) {
+                                        assertThat(response.status(),
+                                                   is(recovering ? Status.SEE_OTHER_303 : Status.SERVICE_UNAVAILABLE_503));
+                                        if (!recovering) {
+                                            assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+                                            assertThat(response.as(String.class), containsString("temporarily unavailable"));
+                                        }
+                                        if (logout) {
+                                            List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                                            assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                                            assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                                        } else if (recovering) {
+                                            assertThat(localAuthenticationCookie(response, tenant).value().isEmpty(), is(false));
+                                        } else {
+                                            // The same state and code can still be redeemed after initialization finishes.
+                                            assertThat(response.headers().contains(HeaderNames.SET_COOKIE), is(false));
+                                        }
+                                    }
+                                    assertThat(TOKEN_REQUESTS.get(), is(recovering && !logout ? 1 : 0));
+                                }
+                                assertThat(discoveryRequests.get(), is(1));
+                            } finally {
+                                release.countDown();
+                                client.closeResource();
+                            }
+                        }
+                    } finally {
+                        rp.stop();
+                    }
+                }
+            } finally {
+                release.countDown();
+                discovery.stop();
+            }
         }
     }
 

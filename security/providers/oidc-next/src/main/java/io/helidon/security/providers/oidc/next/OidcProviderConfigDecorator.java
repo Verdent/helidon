@@ -29,6 +29,7 @@ final class OidcProviderConfigDecorator
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
                                                                         "initialization-retry-interval",
+                                                                        "initialization-max-queued",
                                                                         "issuer",
                                                                         "client-id",
                                                                         "client-secret",
@@ -49,6 +50,7 @@ final class OidcProviderConfigDecorator
                                                                         "cookies");
     private static final Duration DEFAULT_INITIALIZATION_RETRY_INTERVAL =
             OidcTenantConfig.builder().initializationRetryInterval();
+    private static final int DEFAULT_INITIALIZATION_MAX_QUEUED = OidcTenantConfig.builder().initializationMaxQueued();
     private static final OidcClientAssertionConfig DEFAULT_CLIENT_ASSERTION = OidcClientAssertionConfig.create();
     private static final OidcIdTokenConfig DEFAULT_ID_TOKEN = OidcIdTokenConfig.create();
     private static final OidcJwkSetConfig DEFAULT_JWK_SET = OidcJwkSetConfig.create();
@@ -146,6 +148,7 @@ final class OidcProviderConfigDecorator
     private static boolean rootTenantOptionsChanged(OidcProviderConfig.BuilderBase<?, ?> target) {
         return !target.enabled()
                 || !DEFAULT_INITIALIZATION_RETRY_INTERVAL.equals(target.initializationRetryInterval())
+                || DEFAULT_INITIALIZATION_MAX_QUEUED != target.initializationMaxQueued()
                 || target.issuer().isPresent()
                 || target.clientId().isPresent()
                 || target.clientSecret().isPresent()
@@ -170,6 +173,7 @@ final class OidcProviderConfigDecorator
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .enabled(target.enabled())
                 .initializationRetryInterval(target.initializationRetryInterval())
+                .initializationMaxQueued(target.initializationMaxQueued())
                 .idToken(target.idToken())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())

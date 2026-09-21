@@ -1116,7 +1116,9 @@ class OidcClientCredentialsGrantTest {
         tokenRequestStarted = new CountDownLatch(1);
         releaseTokenResponse = new CountDownLatch(1);
         CountDownLatch start = new CountDownLatch(1);
-        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
+        // Isolate discovery/token coalescing from the separate tenant-initialization admission bound.
+        OidcProvider provider = endpointPolicyProvider(OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                                                              .initializationMaxQueued(taskCount).buildPrototype());
         EndpointConfig endpointConfig = clientCredentialsEndpointConfig();
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {

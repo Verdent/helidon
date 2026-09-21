@@ -47,6 +47,20 @@ interface OidcTenantConfigOptionsBlueprint {
     Duration initializationRetryInterval();
 
     /**
+     * Maximum number of callers waiting for this tenant's shared initialization attempt.
+     * <p>
+     * One caller initializes the tenant. Admitted followers wait interruptibly for that attempt, without a separate
+     * admission timeout; network I/O retains the tenant WebClient's configured timeouts. Ready contexts and failures
+     * retained during retry backoff bypass admission. Zero rejects followers while initialization is occupied.
+     * Rejected or interrupted callers receive an unavailable outcome without changing shared initialization state.
+     *
+     * @return maximum queued initialization callers
+     */
+    @Option.Configured
+    @Option.DefaultInt(128)
+    int initializationMaxQueued();
+
+    /**
      * Issuer Identifier expected for this tenant.
      * <p>
      * The issuer is stored as the exact OpenID Connect issuer string. Use {@link #issuerUri()} only for URI syntax,

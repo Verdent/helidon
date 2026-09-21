@@ -28,6 +28,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import io.helidon.security.ProviderRequest;
 
 final class OidcTenantRuntimeRegistry {
+    private static final System.Logger LOGGER = System.getLogger(OidcTenantRuntimeRegistry.class.getName());
+
     private final OidcProviderConfig config;
     private final OidcTenantResolver tenantResolver;
     private final OidcTenantContextFactory tenantContextFactory;
@@ -214,11 +216,19 @@ final class OidcTenantRuntimeRegistry {
                                                    _ -> OidcCookieStateHandler.create(tenantId, tenantConfig));
     }
 
+    static final class UnavailableException extends IllegalStateException {
+        private UnavailableException() {
+            super(Thread.currentThread().isInterrupted()
+                          ? "Interrupted while waiting for OIDC tenant initialization"
+                          : "OIDC tenant initialization capacity is exhausted");
+        }
+    }
+
     private final class TenantContextSlot {
         private final String tenantId;
         private final OidcTenantConfig tenantConfig;
         private final OidcCookieStateHandler cookieStateHandler;
-        private final ReentrantLock initializationLock = new ReentrantLock();
+        private final OidcRemoteWorkLimiter initializationAdmission;
         private final AtomicReference<OidcTenantContext> context = new AtomicReference<>();
         private volatile Instant retryAfter;
 
@@ -228,6 +238,10 @@ final class OidcTenantRuntimeRegistry {
             this.tenantId = tenantId;
             this.tenantConfig = tenantConfig;
             this.cookieStateHandler = cookieStateHandler;
+            this.initializationAdmission = new OidcRemoteWorkLimiter(OidcRemoteWorkConfig.builder()
+                                                                            .maxConcurrent(1)
+                                                                            .maxQueued(tenantConfig.initializationMaxQueued())
+                                                                            .buildPrototype());
         }
 
         private OidcTenantContext get() {
@@ -236,8 +250,19 @@ final class OidcTenantRuntimeRegistry {
             if (current != null && reusable(current, clock.instant())) {
                 return current;
             }
-            initializationLock.lock();
-            try {
+            Optional<OidcRemoteWorkLimiter.Permit> permit = initializationAdmission.acquireActiveWithoutTimeout();
+            if (permit.isEmpty()) {
+                requireOpen();
+                UnavailableException failure = new UnavailableException();
+                if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                               "OIDC tenant initialization admission failed: tenant="
+                                       + OidcDiagnostics.sanitizeLogValue(tenantId) + ", reason=" + failure.getMessage());
+                }
+                // This caller's rejection is not an initialization failure and must not be published or cached.
+                throw failure;
+            }
+            try (OidcRemoteWorkLimiter.Permit _ = permit.orElseThrow()) {
                 requireOpen();
                 current = context.get();
                 if (current != null && reusable(current, clock.instant())) {
@@ -255,8 +280,6 @@ final class OidcTenantRuntimeRegistry {
                     requireOpen();
                 }
                 return initialized;
-            } finally {
-                initializationLock.unlock();
             }
         }
 

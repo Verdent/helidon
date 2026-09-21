@@ -41,11 +41,14 @@ class OidcProviderRootOptionsTest {
     private static final List<Map<String, String>> ROOT_OPTIONS = List.of(
             Map.of("initialization-retry-interval", "PT2S"),
             Map.of("initialization-retry-interval", "PT10S"),
+            Map.of("initialization-max-queued", "0"),
+            Map.of("initialization-max-queued", "128"),
             Map.of("token-exchange-remote-work.max-concurrent", "3"),
             Map.of("token-exchange-remote-work.max-concurrent", "32"));
     private static final Map<String, String> ALL_TENANT_OPTIONS = Map.ofEntries(
             Map.entry("enabled", "false"),
             Map.entry("initialization-retry-interval", "PT2S"),
+            Map.entry("initialization-max-queued", "7"),
             Map.entry("issuer", "https://issuer.example"),
             Map.entry("client-id", "root-client"),
             Map.entry("client-secret", "root-secret"),
@@ -70,15 +73,18 @@ class OidcProviderRootOptionsTest {
         OidcProviderConfig provider = OidcProviderConfig.builder()
                 .issuer("https://issuer.example")
                 .initializationRetryInterval(RETRY_INTERVAL)
+                .initializationMaxQueued(7)
                 .tokenExchangeRemoteWork(REMOTE_WORK)
                 .buildPrototype();
         OidcTenantConfig tenant = provider.tenants().get("default");
 
         assertThat(tenant.initializationRetryInterval(), is(RETRY_INTERVAL));
+        assertThat(tenant.initializationMaxQueued(), is(7));
         assertThat(tenant.tokenExchangeRemoteWork(), is(REMOTE_WORK));
         assertTenantOptions(tenant, OidcTenantConfig.builder()
                 .issuer("https://issuer.example")
                 .initializationRetryInterval(RETRY_INTERVAL)
+                .initializationMaxQueued(7)
                 .tokenExchangeRemoteWork(REMOTE_WORK)
                 .buildPrototype());
     }
@@ -87,6 +93,7 @@ class OidcProviderRootOptionsTest {
     void rootConfigPreservesOperationalOptions() {
         Config config = config(Map.of("issuer", "https://issuer.example",
                                       "initialization-retry-interval", "PT2S",
+                                      "initialization-max-queued", "7",
                                       "token-exchange-remote-work.max-concurrent", "3",
                                       "token-exchange-remote-work.max-queued", "2",
                                       "token-exchange-remote-work.admission-timeout", "PT0.025S"));
@@ -105,6 +112,31 @@ class OidcProviderRootOptionsTest {
 
         assertThat(provider.defaultTenant(), is(Optional.of("default")));
         assertThat(provider.tenants().get("default").initializationRetryInterval(), is(RETRY_INTERVAL));
+    }
+
+    @Test
+    void rootBuilderRecognizesInitializationQueueLimitAlone() {
+        OidcProviderConfig provider = OidcProviderConfig.builder().initializationMaxQueued(0).buildPrototype();
+
+        assertThat(provider.defaultTenant(), is(Optional.of("default")));
+        assertThat(provider.tenants().get("default").initializationMaxQueued(), is(0));
+        assertThat(OidcTenantConfig.create().initializationMaxQueued(), is(128));
+    }
+
+    @Test
+    void invalidInitializationQueueLimitsAreRejectedForRootNamedAndDisabledTenants() {
+        for (boolean enabled : List.of(false, true)) {
+            assertThrows(IllegalArgumentException.class,
+                         () -> OidcTenantConfig.builder().enabled(enabled).initializationMaxQueued(-1).buildPrototype());
+            assertThrows(IllegalArgumentException.class,
+                         () -> OidcProviderConfig.builder().enabled(enabled).initializationMaxQueued(-1).buildPrototype());
+            for (String prefix : List.of("", "tenants.named.")) {
+                IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                        () -> OidcProviderConfig.create(config(Map.of(prefix + "enabled", Boolean.toString(enabled),
+                                                                     prefix + "initialization-max-queued", "-1"))));
+                assertThat(failure.getMessage(), containsString("initialization-max-queued must not be negative"));
+            }
+        }
     }
 
     @Test
@@ -143,6 +175,7 @@ class OidcProviderRootOptionsTest {
     void rootBuilderRejectsChangedOperationalOptionsAlongsideNamedTenants() {
         List<Consumer<OidcProviderConfig.Builder>> options = List.of(
                 builder -> builder.initializationRetryInterval(RETRY_INTERVAL),
+                builder -> builder.initializationMaxQueued(7),
                 builder -> builder.tokenExchangeRemoteWork(REMOTE_WORK));
         for (Consumer<OidcProviderConfig.Builder> option : options) {
             OidcProviderConfig.Builder builder = OidcProviderConfig.builder()
@@ -159,12 +192,14 @@ class OidcProviderRootOptionsTest {
     void explicitNamedTenantOptionsArePreserved() {
         OidcProviderConfig provider = OidcProviderConfig.create(config(Map.of(
                 "tenants.named.initialization-retry-interval", "PT2S",
+                "tenants.named.initialization-max-queued", "7",
                 "tenants.named.token-exchange-remote-work.max-concurrent", "3",
                 "tenants.named.token-exchange-remote-work.max-queued", "2",
                 "tenants.named.token-exchange-remote-work.admission-timeout", "PT0.025S")));
 
         assertThat(provider.defaultTenant(), is(Optional.of("named")));
         assertThat(provider.tenants().get("named").initializationRetryInterval(), is(RETRY_INTERVAL));
+        assertThat(provider.tenants().get("named").initializationMaxQueued(), is(7));
         assertThat(provider.tenants().get("named").tokenExchangeRemoteWork(), is(REMOTE_WORK));
     }
 
@@ -175,6 +210,7 @@ class OidcProviderRootOptionsTest {
         assertThat(OidcProviderConfig.create().tenants().isEmpty(), is(true));
         assertThat(OidcProviderConfig.builder()
                 .initializationRetryInterval(defaults.initializationRetryInterval())
+                .initializationMaxQueued(defaults.initializationMaxQueued())
                 .tokenExchangeRemoteWork(defaults.tokenExchangeRemoteWork())
                 .buildPrototype().tenants().isEmpty(), is(true));
     }
@@ -213,6 +249,7 @@ class OidcProviderRootOptionsTest {
         OidcProviderConfig root = OidcProviderConfig.builder()
                 .enabled(expected.enabled())
                 .initializationRetryInterval(expected.initializationRetryInterval())
+                .initializationMaxQueued(expected.initializationMaxQueued())
                 .issuer(expected.issuer().orElseThrow())
                 .clientId(expected.clientId().orElseThrow())
                 .clientSecret(expected.clientSecret().orElseThrow())
@@ -239,13 +276,14 @@ class OidcProviderRootOptionsTest {
     @Test
     void rootOperationalOptionsSupportTenantNamingBuilderReuseAndCopies() {
         OidcProviderConfig.Builder builder = OidcProviderConfig.builder().defaultTenant("selected")
-                .initializationRetryInterval(RETRY_INTERVAL).tokenExchangeRemoteWork(REMOTE_WORK);
+                .initializationRetryInterval(RETRY_INTERVAL).initializationMaxQueued(7).tokenExchangeRemoteWork(REMOTE_WORK);
         OidcProviderConfig first = builder.buildPrototype();
         OidcProviderConfig second = builder.buildPrototype();
         OidcProviderConfig copy = OidcProviderConfig.builder().from(first).buildPrototype();
 
         assertThat(first.defaultTenant(), is(Optional.of("selected")));
         assertThat(first.tenants().get("selected").initializationRetryInterval(), is(RETRY_INTERVAL));
+        assertThat(first.tenants().get("selected").initializationMaxQueued(), is(7));
         assertThat(first.tenants().get("selected").tokenExchangeRemoteWork(), is(REMOTE_WORK));
         assertThat(second.tenants(), is(first.tenants()));
         assertThat(copy.tenants(), is(first.tenants()));

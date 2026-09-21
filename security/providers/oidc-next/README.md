@@ -506,12 +506,28 @@ Authorization Server outage or an invalid response that is later corrected. Dete
 metadata compatibility failures are not retried; correct the configuration or provider metadata and recreate the
 provider.
 
+Tenant contexts are initialized on first use, with one initialization attempt per tenant. `initialization-max-queued`
+bounds the callers waiting behind that attempt (default `128`); zero rejects followers while initialization is occupied,
+and negative values are rejected. Admitted callers wait interruptibly for the shared outcome, with no separate admission
+timeout. In particular, they are not subject to the JWKS admission timeout. Network work retains the tenant WebClient's
+configured connect/read timeouts; this setting does not establish a total initialization deadline or start background work.
+
+Ready contexts and failures retained during retry backoff bypass admission. Queue exhaustion or interruption of a waiting
+caller affects only that caller: it neither cancels the active initialization nor replaces its result or changes the retry interval.
+Authentication returns HTTP 503 without an invalid-token challenge, and outbound security reports an unavailable failure.
+Callback admission failure returns 503 before code redemption and preserves the state cookie so the same unexpired
+transaction can be retried. RP-Initiated Logout returns 503 if it cannot initialize the tenant for end-session discovery,
+while retaining local session-cookie removal and browser-session generation rotation already performed by logout.
+These limits apply independently per tenant, only to tenant initialization; deferred outbound metadata resolution and
+token acquisition retain their own policies.
+
 ```yaml
 security:
   providers:
     - oidc-next:
         issuer: "https://issuer.example"
         initialization-retry-interval: "PT10S"
+        initialization-max-queued: 128
 ```
 
 Programmatic equivalent:
@@ -520,6 +536,7 @@ Programmatic equivalent:
 OidcProviderConfig config = OidcProviderConfig.builder()
         .issuer("https://issuer.example")
         .initializationRetryInterval(Duration.ofSeconds(10))
+        .initializationMaxQueued(128)
         .buildPrototype();
 ```
 
@@ -2883,14 +2900,16 @@ Provider options:
 Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for
 multi-tenant applications:
 
-Both forms apply `initialization-retry-interval` and `token-exchange-remote-work` to the effective runtime tenant.
-In configuration files, either option also identifies root single-tenant configuration when it is the only tenant option
-present. Root tenant options are not shared defaults for named tenants; do not combine them with `tenants`.
+Both forms apply `initialization-retry-interval`, `initialization-max-queued`, and `token-exchange-remote-work` to the
+effective runtime tenant. In configuration files, any of these options identifies root single-tenant configuration when
+it is the only tenant option present. Root tenant options are not shared defaults for named tenants; do not combine them
+with `tenants`.
 
 | Key | Description |
 | --- | --- |
 | `enabled` | Whether this tenant is enabled. Defaults to `true`. |
 | `initialization-retry-interval` | Minimum interval before retrying a failed well-known metadata load during tenant initialization or lazy endpoint-level outbound grant discovery. Defaults to `PT10S`. Deterministic local configuration or metadata compatibility failures are not retried. |
+| `initialization-max-queued` | Maximum waiting callers per tenant initialization attempt, in addition to its one initializer. Defaults to `128`; zero rejects followers while busy. Waiting is interruptible, with no separate admission deadline. Ready contexts and held failures bypass admission. |
 | `issuer` | Expected Issuer Identifier string. Issuer identity comparisons use this exact string value. |
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. For `CLIENT_SECRET_JWT`, its UTF-8 representation must contain at least 32, 48, or 64 octets for `HS256`, `HS384`, or `HS512`. |

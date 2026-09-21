@@ -17,15 +17,83 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class OidcRemoteWorkLimiterTest {
+    @Test
+    void untimedAdmissionIgnoresTheConfiguredTimeoutAndReclaimsPermits() throws Exception {
+        OidcRemoteWorkLimiter limiter = limiter(1, 1);
+        CompletableFuture<Boolean> completed = new CompletableFuture<>();
+        OidcRemoteWorkLimiter.Permit leader = limiter.acquireActiveWithoutTimeout().orElseThrow();
+        try {
+            Thread.ofVirtual().start(() -> {
+                var permit = limiter.acquireActiveWithoutTimeout();
+                permit.ifPresent(OidcRemoteWorkLimiter.Permit::close);
+                completed.complete(permit.isPresent());
+            });
+            awaitQueued(limiter, 1);
+            assertThrows(TimeoutException.class, () -> completed.get(50, TimeUnit.MILLISECONDS));
+            assertThat(limiter.acquireActiveWithoutTimeout().isEmpty(), is(true));
+        } finally {
+            leader.close();
+        }
+        assertThat(completed.get(5, TimeUnit.SECONDS), is(true));
+        assertThat(limiter.activeCount(), is(0));
+        assertThat(limiter.queuedCount(), is(0));
+    }
+
+    @Test
+    void untimedAdmissionIsInterruptibleAndReleasesItsQueueSlot() throws Exception {
+        OidcRemoteWorkLimiter limiter = limiter(1, 1);
+        AtomicBoolean admitted = new AtomicBoolean(true);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        try (var _ = limiter.acquireActiveWithoutTimeout().orElseThrow()) {
+            Thread follower = Thread.ofVirtual().start(() -> {
+                var permit = limiter.acquireActiveWithoutTimeout();
+                admitted.set(permit.isPresent());
+                interrupted.set(Thread.currentThread().isInterrupted());
+                permit.ifPresent(OidcRemoteWorkLimiter.Permit::close);
+            });
+            awaitQueued(limiter, 1);
+            follower.interrupt();
+            follower.join(Duration.ofSeconds(5));
+            assertThat(follower.isAlive(), is(false));
+            assertThat(admitted.get(), is(false));
+            assertThat(interrupted.get(), is(true));
+            assertThat(limiter.activeCount(), is(1));
+            assertThat(limiter.queuedCount(), is(0));
+        }
+        assertThat(limiter.activeCount(), is(0));
+    }
+
+    @Test
+    void untimedAdmissionPreservesPreInterruptionAndZeroQueueSemantics() {
+        OidcRemoteWorkLimiter limiter = limiter(1, 0);
+        Thread.currentThread().interrupt();
+        try {
+            assertThat(limiter.acquireActiveWithoutTimeout().isEmpty(), is(true));
+            assertThat(Thread.currentThread().isInterrupted(), is(true));
+            assertThat(limiter.activeCount(), is(0));
+        } finally {
+            Thread.interrupted();
+        }
+        try (var _ = limiter.acquireActiveWithoutTimeout().orElseThrow()) {
+            assertThat(limiter.acquireActiveWithoutTimeout().isEmpty(), is(true));
+            assertThat(limiter.queuedCount(), is(0));
+        }
+        assertThat(limiter.activeCount(), is(0));
+    }
+
     @Test
     void boundsActiveAndQueuedPermitsAndReclaimsCapacity() {
         OidcRemoteWorkLimiter limiter = limiter(2, 2);

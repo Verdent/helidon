@@ -1077,7 +1077,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         CountDownLatch overloadObserved = new CountDownLatch(1);
         introspectionRequestsStarted = new CountDownLatch(maxConcurrent);
         releaseIntrospectionResponses = new CountDownLatch(1);
-        OidcProvider provider = provider(tenant -> tenant.protectedResource(resource -> resource
+        // This cohort must reach introspection admission rather than be rejected during tenant initialization.
+        OidcProvider provider = provider(tenant -> tenant.initializationMaxQueued(taskCount).protectedResource(resource -> resource
                 .tokenValidation(validation -> validation
                         .method(OidcTokenValidationMethod.INTROSPECTION)
                         .audience(AUDIENCE)

@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
 import io.helidon.common.tls.Tls;
@@ -452,7 +453,9 @@ class OidcClientCredentialsGrantTest {
                 .issuer(issuer.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(assertion -> assertion.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("RS256"))
                 .endpoints(endpoints -> endpoints.tlsRequired(false))
@@ -1612,7 +1615,9 @@ class OidcClientCredentialsGrantTest {
         return OidcTenantConfig.builder()
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("RS256"))
                 .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)

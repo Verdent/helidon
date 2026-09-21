@@ -173,7 +173,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.Security;
 import io.helidon.security.Subject;
@@ -1294,6 +1294,8 @@ Tokens and signed-only ID Tokens should fail.
 An enabled tenant with `encryption-required: true` must configure `decryption-jwk`; otherwise configuration fails before
 tenant initialization or any login requests. When encryption is not required, decryption keys remain optional, and
 configuring a key alone does not prohibit signed-only ID Tokens.
+The key uses the [private-key source policy](#private-key-sources): local paths, classpath resources, or supplied content;
+URI sources are rejected before opening.
 
 Provider-wide discovery capabilities do not request encryption for the client. Align the decryption key, allowed
 algorithms, and `encryption-required` setting with the client registration. Ignoring unused discovery encryption
@@ -1359,7 +1361,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .allowedAlgorithms(List.of("RS256"))
                 .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256", "RSA-OAEP"))
                 .allowedContentEncryptionAlgorithms(List.of("A256GCM", "A128CBC-HS256"))
-                .decryptionJwk(Resource.create("rp-id-token-decryption-jwks.json"))
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("rp-id-token-decryption-jwks.json")
+                        .buildPrototype())
                 .encryptionRequired(true))
         .authorizationCode(authorizationCode -> authorizationCode
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
@@ -1523,7 +1527,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                         .signingAlgorithm("RS256")
                         .encryptionAlgorithm("RSA-OAEP-256")
                         .contentEncryptionAlgorithm("A256GCM")
-                        .decryptionJwk(Resource.create("userinfo-decryption-jwks.json")))
+                        .decryptionJwk(ResourceConfig.builder()
+                                .resourcePath("userinfo-decryption-jwks.json")
+                                .buildPrototype()))
                 .storagePolicy(OidcUserInfoStoragePolicy.MAPPED)
                 .attributeClaimPaths(List.of("email", "department")))
         .cookies(cookies -> cookies
@@ -1739,18 +1745,41 @@ The same authentication methods can be used for Token Introspection, but introsp
 `protected-resource.token-validation.introspection`. If `introspection.client-assertion` is omitted, the tenant
 `client-assertion` is reused. For introspection assertions, the `aud` claim is the Introspection Endpoint URI.
 
-Private assertion key resources are buffered through Common's `Resource` when the client assertion configuration is
-built, before runtime consumers share it. This closes the original stream and enables repeated and concurrent reads
-for inherited assertions, deferred endpoint clients, and provider/feature initialization. Each authentication-support
-instance parses its signing key from the buffered resource and retains that key for its requests.
+Private assertion keys use a Common `ResourceConfig` description, not an already-open stream. Each authentication-support
+instance opens its own local resource, parses the signing key, and retains that key for its requests. Repeated or
+concurrent consumers therefore do not share a single-use stream, including inherited introspection authentication,
+deferred endpoint clients, and provider/feature initialization.
 
 Only key material is reused, not a signed assertion. Every JWT client authentication request still creates a unique `jti`
 and computes `iat` and `exp` for that request, with the effective client identity, endpoint audience, key selection, and
 signing algorithm. This
 preserves [OIDC Core section 9](https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication) assertion
-single-use semantics. The original `Resource` and its normal Common ownership/mutability contract are retained; treat
-its contents as read-only while the configuration is in use. To rotate private assertion material, use a new resource
-and configuration. Do not concurrently consume an unbuffered input resource while building the configuration.
+single-use semantics.
+
+### Private key sources
+
+`client-assertion.jwk`, `id-token.decryption-jwk`, and `user-info.jwt.decryption-jwk` accept these Common resource forms:
+
+- `path`: a filesystem path.
+- `resource-path`: a classpath resource.
+- `content-plain`: supplied private JWK Set JSON.
+- `content`: Base64-encoded private JWK Set JSON.
+
+URI sources are rejected before opening, including HTTPS and file URIs; use `path` for a file. A URI cannot be hidden
+alongside another source. This policy also applies to independently built sub-configurations and disabled tenants;
+`endpoints.tls-required: false` does not relax it. These private keys are separate from the OpenID Provider's public
+`jwks-uri`, whose normal WebClient retrieval is unchanged.
+
+Programmatic setters take `ResourceConfig`. Build it with `buildPrototype()`, as in the examples, rather than `build()`,
+which creates an open `Resource`. Configuration retains the description without opening the key source. Keep files and
+classpath resources available when new runtime consumers are created. Each consumer retains its parsed key; changing a
+file does not automatically reload existing consumers. Use fresh consumers/providers for deliberate key rotation.
+Use supplied content when all consumers must use the same immutable key material.
+
+A secure external secret store may be used by explicitly retrieving its private JWK Set through the application's
+controlled secret-loading mechanism and supplying `content-plain` or `content`. Do not log the private material or its
+resource description when it contains inline content. This is the provider's local-source policy, not an OIDC requirement
+to store keys on disk; the standards require protecting private-key confidentiality.
 
 ### JOSE Key Strength And Optional JWK Algorithms
 
@@ -1880,7 +1909,9 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .clientId(System.getenv("OIDC_CLIENT_ID"))
         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
         .clientAssertion(clientAssertion -> clientAssertion
-                .jwk(Resource.create("private-client-jwks.json"))
+                .jwk(ResourceConfig.builder()
+                        .resourcePath("private-client-jwks.json")
+                        .buildPrototype())
                 .keyId("client-signing-key")
                 .algorithm("RS256"))
         .authorizationCode(authorizationCode -> authorizationCode
@@ -2869,7 +2900,7 @@ ID Token options:
 | `allowed-content-encryption-algorithms` | Allowed JWE `enc` algorithms for encrypted ID Tokens. Defaults to `[ "A256GCM", "A128CBC-HS256" ]`. |
 | `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
-| `decryption-jwk` | Private JWK Set resource used to decrypt encrypted ID Tokens before normal signed ID Token validation. RSA moduli must contain at least 2048 bits; a declared JWK `alg` must match the JWE header. |
+| `decryption-jwk` | Private JWK Set resource configuration for ID Token decryption. Supports path, classpath, and supplied content; URI sources are rejected before opening. RSA moduli must contain at least 2048 bits; a declared JWK `alg` must match the JWE header. |
 | `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. An enabled tenant must configure `decryption-jwk` when this is `true`; otherwise configuration fails. |
 
 Client assertion options:
@@ -2878,7 +2909,7 @@ Client assertion options:
 | --- | --- |
 | `algorithm` | JWS `alg` header used to sign the client assertion. Defaults to `HS256` for `CLIENT_SECRET_JWT`. For `PRIVATE_KEY_JWT`, a configured value may select a compatible algorithm when JWK `alg` is omitted; a declared JWK `alg` must match exactly. |
 | `key-id` | JWS `kid` header. For `PRIVATE_KEY_JWT`, selects the signing key and is required when `jwk` contains multiple keys. For `CLIENT_SECRET_JWT`, written to the assertion header when configured. |
-| `jwk` | Private JWK Set resource, buffered when configuration is built for repeatable runtime reads. Treat its contents as read-only; rotation requires a new resource/configuration. RSA moduli must contain at least 2048 bits. JWK `alg` is optional. |
+| `jwk` | Private JWK Set resource configuration. Supports path, classpath, and supplied content; URI sources are rejected before opening. Each consumer loads its own resource and retains its parsed key. RSA moduli must contain at least 2048 bits. JWK `alg` is optional. |
 | `lifetime` | Assertion lifetime used to calculate `exp`. Defaults to `PT1M`. |
 
 JWK Set options:
@@ -2955,7 +2986,7 @@ UserInfo JWT options:
 | `signing-algorithm` | Exact `userinfo_signed_response_alg` registered for this client. `none` and `HS*` are rejected. Selected RSA keys require at least 2048-bit moduli; an omitted JWK `alg` remains unconstrained. |
 | `encryption-algorithm` | Exact `userinfo_encrypted_response_alg` registered for this client. |
 | `content-encryption-algorithm` | Exact `userinfo_encrypted_response_enc`. Defaults to `A128CBC-HS256` when encryption is configured. |
-| `decryption-jwk` | Confidential private RP JWK Set resource used for UserInfo decryption. Required with `encryption-algorithm`; RSA moduli must contain at least 2048 bits and a declared JWK `alg` must match. |
+| `decryption-jwk` | Confidential private RP JWK Set resource configuration for UserInfo decryption. Supports path, classpath, and supplied content; URI sources are rejected before opening. Required with `encryption-algorithm`; RSA moduli must contain at least 2048 bits and a declared JWK `alg` must match. |
 | `clock-skew` | Clock skew for optional signed UserInfo JWT time claims. Defaults to `PT1M`. |
 
 Logout options:

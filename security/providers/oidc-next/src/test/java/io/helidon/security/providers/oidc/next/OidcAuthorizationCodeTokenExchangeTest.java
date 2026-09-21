@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
 import io.helidon.common.tls.Tls;
@@ -904,8 +905,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                                .clientId(CLIENT_ID)
                                                                .tokenEndpointAuthenticationMethod(
                                                                        OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                                                               .clientAssertion(it -> it.jwk(Resource.create(
-                                                                               "oidc-next-sign-public-jwk.json"))
+                                                               .clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                                                                       .resourcePath("oidc-next-sign-public-jwk.json")
+                                                                       .buildPrototype())
                                                                        .algorithm("RS256")
                                                                        .keyId("sign-rsa"))
                                                                .endpoints(it -> it
@@ -1153,7 +1155,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .algorithm("RS256")
                         .keyId("sign-rsa"))
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -1175,7 +1179,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .clientAssertion(it -> {
-                    it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                    it.jwk(ResourceConfig.builder()
+                            .resourcePath("oidc-next-sign-jwk.json")
+                            .buildPrototype())
                             .algorithm(algorithm);
                     if (keyId != null) {
                         it.keyId(keyId);

@@ -200,6 +200,8 @@ class OidcProviderConfigTest {
         assertThat(jwkSet.refreshInterval().isEmpty(), is(true));
         assertThat(jwkSet.failureRetryInterval(), is(Duration.ofSeconds(10)));
         assertThat(jwkSet.staleOnError(), is(true));
+        assertThat(jwkSet.maxQueued(), is(128));
+        assertThat(jwkSet.admissionTimeout(), is(Duration.ofSeconds(1)));
         assertThat(remoteWork.maxConcurrent(), is(32));
         assertThat(remoteWork.maxQueued(), is(128));
         assertThat(remoteWork.admissionTimeout(), is(Duration.ofSeconds(1)));

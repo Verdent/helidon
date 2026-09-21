@@ -25,9 +25,35 @@ import io.helidon.builder.api.Prototype;
 /**
  * JSON Web Key Set loading and reload policy.
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcJwkSetConfigDecorator.class)
 @Prototype.Configured
 interface OidcJwkSetConfigBlueprint {
+    /**
+     * Maximum number of callers waiting for JWK Set load or refresh coordination.
+     * <p>
+     * Each key-set manager admits one caller at a time and coalesces its waiting callers using the published outcome.
+     * Cache hits bypass admission. This limit applies independently to the provider's JWK Set and a configured local
+     * access-token verification set. Zero rejects callers immediately when coordination is occupied.
+     *
+     * @return maximum queued callers
+     */
+    @Option.Configured
+    @Option.DefaultInt(128)
+    int maxQueued();
+
+    /**
+     * Maximum time an admitted waiting caller may spend obtaining JWK Set load or refresh coordination.
+     * <p>
+     * Queue capacity is reserved without waiting. Waiting is interruptible and does not cancel the shared load.
+     * This is not the key-source I/O timeout; remote loads use the tenant WebClient timeouts. Zero configures fail-fast
+     * admission. Exhaustion, timeout, and interruption are unavailable outcomes, not invalid-token decisions.
+     *
+     * @return coordination admission timeout
+     */
+    @Option.Configured
+    @Option.Default("PT1S")
+    Duration admissionTimeout();
+
     /**
      * Whether an unknown JWT {@code kid} should trigger a JWK Set reload attempt.
      *

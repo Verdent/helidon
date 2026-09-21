@@ -735,6 +735,78 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void jwksOverloadAfterSuccessfulRefreshClearsTheSessionAndDoesNotRedeemTheSourceAgain(URI serverUri) throws Exception {
+        for (String validation : List.of("access-token", "id-token", "user-info")) {
+            for (boolean expired : List.of(false, true)) {
+                TOKEN_REQUEST_COUNT.set(0);
+                CountDownLatch entered = new CountDownLatch(1);
+                CountDownLatch release = new CountDownLatch(1);
+                WebServer keys = WebServer.builder().port(0).routing(routing -> routing.get("/jwks", (_, response) -> {
+                    entered.countDown();
+                    await(release);
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(verifyJwkSet);
+                })).build().start();
+                OidcTenantConfig base = switch (validation) {
+                case "access-token" -> tenantWithJwtAccessTokenValidation(serverUri);
+                case "user-info" -> tenantWithUserInfo(serverUri, info -> info.jwt(jwt -> jwt.signingAlgorithm("RS256")));
+                default -> tenant(serverUri);
+                };
+                OidcTenantConfig tenant = OidcTenantConfig.builder(base)
+                        .endpoints(OidcEndpointConfig.builder(base.endpoints())
+                                           .jwksUri(URI.create("http://localhost:" + keys.port() + "/jwks")).buildPrototype())
+                        .jwkSet(jwkSet -> jwkSet.maxQueued(0)).buildPrototype();
+                responseBody = switch (validation) {
+                case "access-token" -> refreshResponse(signedAccessToken(_ -> { }), ROTATED_REFRESH_TOKEN).toString();
+                case "id-token" -> refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, "openid profile", 600,
+                                                    signedIdToken(token -> token.nonce(null))).toString();
+                default -> refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN).toString();
+                };
+                if ("user-info".equals(validation)) {
+                    userInfoResponseContentType = "application/jwt";
+                    userInfoResponseBody = SignedJwt.sign(Jwt.builder().algorithm("RS256").keyId("verify-rsa")
+                                                                  .issuer(ISSUER.toString()).subject(SUBJECT)
+                                                                  .addAudience(CLIENT_ID).build(),
+                                                          signKeys.forKeyId("sign-rsa").orElseThrow()).tokenContent();
+                }
+                try (OidcProvider provider = provider(tenant);
+                     ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                    OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+                    assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                               context.ready(), is(true));
+                    Future<?> load = executor.submit(() -> context.jwkSetManager().jwkKeys());
+                    try {
+                        assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                        Instant now = Instant.now();
+                        SetCookie source = localAuthenticationCookie(tenant, now.minusSeconds(60), now.plusSeconds(3600),
+                                                                     expired ? now.minusSeconds(1) : now.plusSeconds(30));
+                        for (int i = 0; i < 2; i++) {
+                            AuthenticationResponse response = authenticate(provider, source);
+                            assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                            assertThat(response.statusCode().orElseThrow(), is(503));
+                            assertThat(response.user().isEmpty(), is(true));
+                            assertThat(response.responseHeaders().containsKey(HeaderNames.LOCATION.defaultCase()), is(false));
+                            List<String> cookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase());
+                            assertThat(cookies.isEmpty(), is(false));
+                            cookies.stream().map(SetCookie::parse).forEach(cookie -> assertThat(cookie.value(), is("")));
+                            assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+                        }
+                        release.countDown();
+                        load.get(5, TimeUnit.SECONDS);
+                        AuthenticationResponse late = authenticate(provider, source);
+                        assertThat(late.statusCode().orElseThrow(), is(503));
+                        assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+                    } finally {
+                        release.countDown();
+                    }
+                } finally {
+                    release.countDown();
+                    keys.stop();
+                }
+            }
+        }
+    }
+
+    @Test
     void browserRefreshDoesNotRequireCustomApiPrincipalClaim(URI serverUri) {
         String refreshedAccessToken = signedAccessToken(_ -> { });
         responseBody = refreshResponse(refreshedAccessToken, ROTATED_REFRESH_TOKEN).toString();

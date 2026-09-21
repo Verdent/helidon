@@ -160,7 +160,7 @@ final class OidcRefreshTokenManager {
                                                        .prepareLocalAuthenticationResult(refreshed, sourceCookies));
             } catch (OidcCookieStateHandler.SessionCookieException e) {
                 logFailure("Refreshed OIDC session exceeds cookie storage capacity", Optional.of(e));
-                return RefreshResult.storageFailure();
+                return RefreshResult.unavailableAfterRefresh();
             }
         }
 
@@ -190,6 +190,11 @@ final class OidcRefreshTokenManager {
                                          String description,
                                          Optional<Throwable> cause) {
         logFailure(description, cause);
+        if (cause.filter(OidcJwkSetManager.UnavailableException.class::isInstance).isPresent()) {
+            // The grant succeeded, but its issued tokens could not be validated. RFC 6749 section 6 permits rotation;
+            // do not keep a possibly spent source refresh token or authenticate unvalidated replacement tokens.
+            return RefreshResult.unavailableAfterRefresh();
+        }
         return keepOrRemoveLocalAuthentication(current, expiresAt, now);
     }
 
@@ -300,11 +305,11 @@ final class OidcRefreshTokenManager {
         }
 
         boolean removeCookie() {
-            return outcome == Outcome.REMOVE_COOKIE || outcome == Outcome.STORAGE_FAILURE;
+            return outcome == Outcome.REMOVE_COOKIE || outcome == Outcome.UNAVAILABLE_REMOVE_COOKIE;
         }
 
         boolean unavailable() {
-            return outcome == Outcome.UNAVAILABLE || outcome == Outcome.STORAGE_FAILURE;
+            return outcome == Outcome.UNAVAILABLE || outcome == Outcome.UNAVAILABLE_REMOVE_COOKIE;
         }
 
         private static RefreshResult authenticated(OidcLocalAuthenticationResult authenticationResult) {
@@ -324,8 +329,8 @@ final class OidcRefreshTokenManager {
             return new RefreshResult(Optional.empty(), Optional.empty(), Outcome.UNAVAILABLE);
         }
 
-        private static RefreshResult storageFailure() {
-            return new RefreshResult(Optional.empty(), Optional.empty(), Outcome.STORAGE_FAILURE);
+        private static RefreshResult unavailableAfterRefresh() {
+            return new RefreshResult(Optional.empty(), Optional.empty(), Outcome.UNAVAILABLE_REMOVE_COOKIE);
         }
 
         private boolean authenticationActiveAt(Instant now) {
@@ -342,7 +347,7 @@ final class OidcRefreshTokenManager {
             REFRESHED,
             REMOVE_COOKIE,
             UNAVAILABLE,
-            STORAGE_FAILURE
+            UNAVAILABLE_REMOVE_COOKIE
         }
     }
 }

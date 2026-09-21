@@ -156,6 +156,8 @@ final class OidcIdTokenValidator {
             if (!signatureErrors.isValid()) {
                 return OidcValidationResult.failure("ID Token signature is invalid");
             }
+        } catch (OidcJwkSetManager.UnavailableException e) {
+            return OidcValidationResult.unavailable("ID Token signature keys are temporarily unavailable", e);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("ID Token signature keys are unavailable", e);
         }

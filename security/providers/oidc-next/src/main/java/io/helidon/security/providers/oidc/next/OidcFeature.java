@@ -229,8 +229,10 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                 state,
                 validationTime);
         if (!idTokenResult.succeeded()) {
-            response.status(Status.BAD_GATEWAY_502)
-                    .send("ID Token is invalid");
+            response.status(idTokenResult.unavailable() ? Status.SERVICE_UNAVAILABLE_503 : Status.BAD_GATEWAY_502)
+                    .send(idTokenResult.unavailable()
+                                  ? "ID Token verification is temporarily unavailable"
+                                  : "ID Token is invalid");
             return;
         }
 
@@ -241,7 +243,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                                                                                   validationTime);
         if (!userInfoResult.succeeded()) {
             debugUserInfoFailure(tenantContext, userInfoResult);
-            response.status(Status.BAD_GATEWAY_502)
+            response.status(userInfoResult.unavailable() ? Status.SERVICE_UNAVAILABLE_503 : Status.BAD_GATEWAY_502)
                     .send(userInfoResult.errorDescription().orElseThrow());
             return;
         }

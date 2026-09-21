@@ -19,6 +19,10 @@ package io.helidon.tests.integration.security.oidcnext;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,6 +53,73 @@ class OidcAccessTokenValidationIT {
     private static final String USER_CLIENT = "user-client";
     private static final String USER_SECRET = "user-secret";
     private static final URI REDIRECT_URI = URI.create("http://localhost/callback");
+
+    @Test
+    void jwksAdmissionRejectionAndTimeoutReturn503AndThenRecover() throws Exception {
+        for (int maxQueued : List.of(0, 1)) {
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            AtomicInteger requests = new AtomicInteger();
+            try (TestOidcServer idp = TestOidcServer.builder().client(SERVICE_CLIENT, SERVICE_SECRET)
+                    .defaultScopes("service.read")
+                    .endpoints(endpoints -> endpoints.jwks(context -> {
+                        requests.incrementAndGet();
+                        entered.countDown();
+                        try {
+                            if (!release.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Test did not release JWKS");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                        context.sendDefault();
+                    })).build()) {
+                String token = OidcIntegrationSupport.clientCredentialsToken(idp, SERVICE_CLIENT, SERVICE_SECRET);
+                OidcProviderConfig config = OidcIntegrationSupport.protectedResourceProviderConfig(
+                        idp, SERVICE_CLIENT, null, SERVICE_CLIENT, OidcTokenValidationMethod.JWT,
+                        tenant -> tenant.jwkSet(jwkSet -> jwkSet.maxQueued(maxQueued)
+                                .admissionTimeout(Duration.ofMillis(50))));
+                WebServer rp = OidcIntegrationSupport.rpServer(config,
+                        routing -> OidcIntegrationSupport.protectedRoute(routing, "/api"));
+                WebClient client = WebClient.builder().baseUri(OidcIntegrationSupport.rpBaseUri(rp)).build();
+                try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                    Future<String> leader = executor.submit(() -> {
+                        try (HttpClientResponse response = client.get("/api")
+                                .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                            assertThat(response.status(), is(Status.OK_200));
+                            return response.as(String.class);
+                        }
+                    });
+                    try {
+                        assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                        Future<?> rejected = executor.submit(() -> {
+                            try (HttpClientResponse response = client.get("/api")
+                                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                                assertThat(response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+                                assertThat(response.headers().contains(HeaderNames.WWW_AUTHENTICATE), is(false));
+                            }
+                        });
+                        rejected.get(2, TimeUnit.SECONDS);
+                        assertThat(requests.get(), is(1));
+                        assertThat(leader.isDone(), is(false));
+                        release.countDown();
+                        assertThat(leader.get(5, TimeUnit.SECONDS),
+                                   is(OidcIntegrationSupport.principalResponse(idp, SERVICE_CLIENT, SERVICE_CLIENT, "")));
+                        try (HttpClientResponse response = client.get("/api")
+                                .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                            assertThat(response.status(), is(Status.OK_200));
+                        }
+                        assertThat(requests.get(), is(1));
+                    } finally {
+                        release.countDown();
+                        client.closeResource();
+                        rp.stop();
+                    }
+                }
+            }
+        }
+    }
 
     @Test
     void protectedResourceValidatesJwtAccessTokenThroughJwks() {

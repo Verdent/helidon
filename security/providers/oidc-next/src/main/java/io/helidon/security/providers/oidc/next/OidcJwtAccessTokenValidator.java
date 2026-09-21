@@ -67,6 +67,8 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             if (!signatureErrors.isValid()) {
                 return OidcValidationResult.failure("Bearer Token signature is invalid");
             }
+        } catch (OidcJwkSetManager.UnavailableException e) {
+            return OidcValidationResult.unavailable("Bearer Token signature keys are temporarily unavailable", e);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("Bearer Token signature keys are unavailable", e);
         }

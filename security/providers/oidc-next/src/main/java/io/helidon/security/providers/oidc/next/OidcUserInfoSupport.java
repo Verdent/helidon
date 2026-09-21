@@ -66,6 +66,11 @@ final class OidcUserInfoSupport {
             }
             OidcValidationResult<JsonObject> validationResult = jwtProcessor.orElseThrow()
                     .validate(endpointResult.jwt().orElseThrow(), tenantContext, idToken, validationTime);
+            if (validationResult.unavailable()) {
+                return Result.unavailable("UserInfo verification is temporarily unavailable",
+                                          validationResult.errorDescription().orElse("UserInfo JWT validation unavailable"),
+                                          validationResult.cause().orElse(null));
+            }
             if (!validationResult.succeeded()) {
                 return Result.failure("UserInfo response is invalid",
                                       validationResult.errorDescription().orElse("UserInfo JWT validation failed"),
@@ -180,7 +185,8 @@ final class OidcUserInfoSupport {
     record Result(Optional<JsonObject> userInfo,
                   Optional<String> failureDescription,
                   Optional<String> diagnosticDescription,
-                  Optional<Throwable> cause) {
+                  Optional<Throwable> cause,
+                  boolean unavailable) {
         Result {
             userInfo = Objects.requireNonNull(userInfo);
             failureDescription = Objects.requireNonNull(failureDescription);
@@ -188,8 +194,16 @@ final class OidcUserInfoSupport {
             cause = Objects.requireNonNull(cause);
         }
 
+        boolean succeeded() {
+            return failureDescription.isEmpty();
+        }
+
+        Optional<String> errorDescription() {
+            return failureDescription;
+        }
+
         private static Result success(Optional<JsonObject> userInfo) {
-            return new Result(userInfo, Optional.empty(), Optional.empty(), Optional.empty());
+            return new Result(userInfo, Optional.empty(), Optional.empty(), Optional.empty(), false);
         }
 
         private static Result failure(String errorDescription) {
@@ -204,15 +218,16 @@ final class OidcUserInfoSupport {
             return new Result(Optional.empty(),
                               Optional.of(errorDescription),
                               Optional.of(diagnosticDescription),
-                              Optional.ofNullable(cause));
+                              Optional.ofNullable(cause),
+                              false);
         }
 
-        boolean succeeded() {
-            return failureDescription.isEmpty();
-        }
-
-        Optional<String> errorDescription() {
-            return failureDescription;
+        private static Result unavailable(String errorDescription, String diagnosticDescription, Throwable cause) {
+            return new Result(Optional.empty(),
+                              Optional.of(errorDescription),
+                              Optional.of(diagnosticDescription),
+                              Optional.ofNullable(cause),
+                              true);
         }
     }
 }

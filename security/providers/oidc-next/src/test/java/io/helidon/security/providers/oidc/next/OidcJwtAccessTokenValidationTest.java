@@ -783,6 +783,39 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void jwksOverloadIsUnavailableWithoutAnInvalidTokenChallengeAndRecovers() throws Exception {
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseResponse = new CountDownLatch(1);
+        remoteJwkSetRequestLatch.set(requestStarted);
+        remoteJwkSetResponseLatch.set(releaseResponse);
+        remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet)));
+        try (OidcProvider provider = provider(true, true, remoteJwksUri,
+                                             tenant -> tenant.jwkSet(jwkSet -> jwkSet.maxQueued(0)))) {
+            OidcJwkSetManager manager = provider.tenantRuntimeRegistry().tenantContext("default")
+                    .orElseThrow().accessTokenJwkSetManager();
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                Future<JwkKeys> leader = executor.submit(() -> manager.jwkKeys());
+                try {
+                    assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
+                    String token = signedToken(_ -> { });
+                    AuthenticationResponse rejected = authenticate(provider, token);
+                    assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(rejected.statusCode().orElseThrow(), is(503));
+                    assertThat(rejected.user().isEmpty(), is(true));
+                    assertThat(rejected.responseHeaders().containsKey(HeaderNames.WWW_AUTHENTICATE.defaultCase()), is(false));
+                    assertThat(remoteJwkSetRequests.get(), is(1));
+                    releaseResponse.countDown();
+                    leader.get(5, TimeUnit.SECONDS);
+                    assertThat(authenticate(provider, token).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(remoteJwkSetRequests.get(), is(1));
+                } finally {
+                    releaseResponse.countDown();
+                }
+            }
+        }
+    }
+
+    @Test
     void concurrentColdJwkSetLoadIsSingleFlight() throws Exception {
         int threads = 32;
         CountDownLatch start = new CountDownLatch(1);
@@ -816,8 +849,11 @@ class OidcJwtAccessTokenValidationTest {
     void concurrentColdJwkSetFailureIsCoalescedUntilRecoveryWindow() throws Exception {
         int threads = 1_000;
         MutableClock clock = MutableClock.create(TEST_INSTANT);
+        // This test isolates failure coalescing; separate tests exercise the configured admission bound.
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .failureRetryInterval(Duration.ofSeconds(10))
+                .maxQueued(threads)
+                .admissionTimeout(Duration.ofSeconds(10))
                 .buildPrototype();
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch requestStarted = new CountDownLatch(1);

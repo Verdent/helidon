@@ -28,6 +28,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.json.JsonObject;
@@ -128,7 +129,7 @@ class OidcJweAlgorithmConfigTest {
                 "user-info.jwt.encryption-algorithm", "", algorithm,
                 tenant -> tenant.userInfo(userInfo -> userInfo.jwt(jwt -> jwt.encryptionAlgorithm(algorithm)
                         .contentEncryptionAlgorithm("A256GCM")
-                        .decryptionJwk(Resource.create("test decryption keys", PRIVATE_KEYS))))));
+                        .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())))));
     }
 
     @TestFactory
@@ -137,7 +138,7 @@ class OidcJweAlgorithmConfigTest {
                 "user-info.jwt.content-encryption-algorithm", "", algorithm,
                 tenant -> tenant.userInfo(userInfo -> userInfo.jwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP")
                         .contentEncryptionAlgorithm(algorithm)
-                        .decryptionJwk(Resource.create("test decryption keys", PRIVATE_KEYS))))));
+                        .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())))));
     }
 
     @TestFactory
@@ -223,7 +224,7 @@ class OidcJweAlgorithmConfigTest {
                         .allowedContentEncryptionAlgorithms(List.of("A256GCM")))
                 .userInfo(userInfo -> userInfo.jwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP")
                         .contentEncryptionAlgorithm("A256GCM")
-                        .decryptionJwk(Resource.create("test decryption keys", PRIVATE_KEYS))))
+                        .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())))
                 .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")));
     }
 
@@ -297,11 +298,11 @@ class OidcJweAlgorithmConfigTest {
 
     private static OidcTenantContext tenant(String algorithm, Optional<String> encryption, boolean signedUserInfo) {
         OidcIdTokenConfig.Builder idToken = OidcIdTokenConfig.builder()
-                .decryptionJwk(Resource.create("test ID Token keys", PRIVATE_KEYS))
+                .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())
                 .encryptionRequired(true).allowedEncryptionAlgorithms(List.of(algorithm));
         encryption.ifPresent(enc -> idToken.allowedContentEncryptionAlgorithms(List.of(enc)));
         OidcUserInfoJwtConfig.Builder userInfo = OidcUserInfoJwtConfig.builder()
-                .decryptionJwk(Resource.create("test UserInfo keys", PRIVATE_KEYS)).encryptionAlgorithm(algorithm);
+                .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype()).encryptionAlgorithm(algorithm);
         encryption.ifPresent(userInfo::contentEncryptionAlgorithm);
         if (signedUserInfo) {
             userInfo.signingAlgorithm("RS256");

@@ -33,6 +33,7 @@ import javax.net.ssl.X509KeyManager;
 import javax.net.ssl.X509TrustManager;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.pki.Keys;
 import io.helidon.common.socket.SocketOptions;
 import io.helidon.common.tls.Tls;
@@ -447,7 +448,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.clientId().orElse(""), is("client-id"));
         assertThat(tenant.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT));
-        assertThat(tenant.idToken().decryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(tenant.idToken().decryptionJwk().orElseThrow().resourcePath().orElseThrow(), is("oidc-next-sign-jwk.json"));
         assertThat(tenant.idToken().allowedEncryptionAlgorithms(), is(List.of("RSA-OAEP")));
         assertThat(tenant.idToken().allowedContentEncryptionAlgorithms(), is(List.of("A256GCM")));
         assertThat(tenant.idToken().clockSkew(), is(Duration.ofMinutes(2)));
@@ -455,7 +456,7 @@ class OidcProviderConfigTest {
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
         assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));
-        assertThat(tenant.clientAssertion().jwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(tenant.clientAssertion().jwk().orElseThrow().resourcePath().orElseThrow(), is("oidc-next-sign-jwk.json"));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().lifetime(), is(Duration.ofMinutes(2)));
         assertThat(tenant.jwkSet().unknownKeyIdRefreshEnabled(), is(false));
@@ -532,7 +533,7 @@ class OidcProviderConfigTest {
         assertThat(userInfoJwt.signingAlgorithm().orElseThrow(), is("RS256"));
         assertThat(userInfoJwt.encryptionAlgorithm().orElseThrow(), is("RSA-OAEP-256"));
         assertThat(userInfoJwt.contentEncryptionAlgorithm().orElseThrow(), is("A256GCM"));
-        assertThat(userInfoJwt.decryptionJwk().orElseThrow().location(), is("oidc-next-encrypt-jwk.json"));
+        assertThat(userInfoJwt.decryptionJwk().orElseThrow().resourcePath().orElseThrow(), is("oidc-next-encrypt-jwk.json"));
         assertThat(userInfoJwt.clockSkew(), is(Duration.ofMinutes(2)));
         assertThat(providerConfig.toString().contains("oidc-next-encrypt-jwk.json"), is(false));
         assertThat(tenant.subjectMapping().principalIdNamespace().orElseThrow(), is("test-authority"));
@@ -568,7 +569,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
         assertThat(tenant.clientId().orElseThrow(), is("client-id"));
         assertThat(tenant.clientSecret().orElseThrow(), is("client-secret-value"));
-        assertThat(tenant.idToken().decryptionJwk().orElseThrow().location(), is("oidc-next-sign-jwk.json"));
+        assertThat(tenant.idToken().decryptionJwk().orElseThrow().resourcePath().orElseThrow(), is("oidc-next-sign-jwk.json"));
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(15)));
         assertThat(tenant.endpoints().jwksUri().orElseThrow(), is(JWKS_URI));
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
@@ -1022,14 +1023,20 @@ class OidcProviderConfigTest {
         assertInvalidUserInfoJwt(jwt -> jwt.contentEncryptionAlgorithm("A256GCM"), "requires encryption-algorithm");
         assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256"), "decryption-jwk");
         assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("ECDH-ES")
-                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")),
+                                         .decryptionJwk(ResourceConfig.builder()
+                                                 .resourcePath("oidc-next-encrypt-jwk.json")
+                                                 .buildPrototype()),
                                  "encryption-algorithm is not supported");
         assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256")
                                          .contentEncryptionAlgorithm("unsupported")
-                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")),
+                                         .decryptionJwk(ResourceConfig.builder()
+                                                 .resourcePath("oidc-next-encrypt-jwk.json")
+                                                 .buildPrototype()),
                                  "content-encryption-algorithm is not supported");
         assertInvalidUserInfoJwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP-256")
-                                         .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                                         .decryptionJwk(ResourceConfig.builder()
+                                                 .resourcePath("oidc-next-encrypt-jwk.json")
+                                                 .buildPrototype())
                                          .clockSkew(Duration.ofSeconds(-1)),
                                  "clock-skew");
     }
@@ -1042,7 +1049,9 @@ class OidcProviderConfigTest {
         OidcTenantConfig encrypted = userInfoTenantBuilder()
                 .userInfo(userInfo -> userInfo.jwt(jwt -> jwt
                         .encryptionAlgorithm("RSA-OAEP-256")
-                        .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))))
+                        .decryptionJwk(ResourceConfig.builder()
+                                .resourcePath("oidc-next-encrypt-jwk.json")
+                                .buildPrototype())))
                 .buildPrototype();
 
         assertThat(signed.userInfo().orElseThrow().jwt().orElseThrow().signingAlgorithm().orElseThrow(), is("RS256"));
@@ -2280,7 +2289,9 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("RS256"))
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
@@ -2520,7 +2531,9 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(it -> it.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("HS256"))
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)

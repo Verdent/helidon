@@ -22,7 +22,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 
 /**
  * ID Token validation and decryption configuration.
@@ -32,7 +32,7 @@ import io.helidon.common.configurable.Resource;
  * @see <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">
  * OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata</a>
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcIdTokenConfigDecorator.class)
 @Prototype.Configured
 interface OidcIdTokenConfigBlueprint {
     /**
@@ -105,18 +105,22 @@ interface OidcIdTokenConfigBlueprint {
     Duration clockSkew();
 
     /**
-     * Private JWK Set resource used to decrypt encrypted ID Tokens.
+     * Private JWK Set resource configuration used to decrypt encrypted ID Tokens.
      * <p>
      * This is local RP/client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
      * verification keys used after the encrypted ID Token is decrypted. RSA keys must have a modulus of at least
      * 2048 bits. A declared JWK {@code alg} must match the JWE header; an omitted JWK {@code alg} remains unconstrained.
      * Required when {@link #encryptionRequired()} is {@code true} for an enabled tenant; otherwise optional.
+     * Filesystem paths, classpath resources, and supplied plaintext or Base64 content are supported. URI sources are
+     * rejected before opening, including when this configuration is built independently of a tenant.
+     * Each decryptor loads its own resource and retains its parsed keys; local sources must remain available when new
+     * consumers are created. Supplied content can come from an explicitly managed secure external secret store.
      *
-     * @return ID Token decryption JWK Set resource
+     * @return ID Token decryption JWK Set resource configuration
      */
     @Option.Configured("decryption-jwk")
     @Option.Confidential
-    Optional<Resource> decryptionJwk();
+    Optional<ResourceConfig> decryptionJwk();
 
     /**
      * Whether ID Tokens must be encrypted.

@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import io.helidon.common.Errors;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
@@ -39,7 +40,7 @@ import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
 
 /**
- * Central JOSE algorithm and key-strength policy for OIDC operations.
+ * Central JOSE algorithm, key-strength, and local key-source policy for OIDC operations.
  * <p>
  * RFC 7518 requires HMAC keys to contain at least as many bits as the hash output and RSA keys to contain at least
  * 2048 bits. RFC 7517 makes the JWK {@code alg} member optional. A declared algorithm therefore constrains a key, while
@@ -58,6 +59,18 @@ final class OidcJoseKeyPolicy {
             "RSA-OAEP-256");
 
     private OidcJoseKeyPolicy() {
+    }
+
+    static void validateLocalKeyResource(ResourceConfig resource, String configKey) {
+        // Inspect the description before building a Resource; URI-backed Resource construction already opens the URL.
+        if (resource.uri().isPresent()) {
+            throw new IllegalArgumentException(configKey + " does not support URI sources; use path, resource-path, "
+                                                       + "content, or content-plain");
+        }
+        if (resource.path().isEmpty() && resource.resourcePath().isEmpty()
+                && resource.content().isEmpty() && resource.contentPlain().isEmpty()) {
+            throw new IllegalArgumentException(configKey + " must configure path, resource-path, content, or content-plain");
+        }
     }
 
     static void validateClientSecret(String clientSecret, String algorithm, String description) {

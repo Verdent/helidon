@@ -16,10 +16,10 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.HashSet;
@@ -30,10 +30,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.configurable.ResourceException;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.security.jwt.Jwt;
@@ -46,10 +46,10 @@ import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
-import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -68,8 +68,8 @@ class OidcClientAssertionReuseTest {
     }
 
     @Test
-    void unbufferedKeyResourceSupportsTokenAndInheritedIntrospection() throws Exception {
-        OidcTenantConfig tenant = tenant(Resource.create(KEY_RESOURCE));
+    void classpathKeyDescriptionSupportsTokenAndInheritedIntrospection() throws Exception {
+        OidcTenantConfig tenant = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
 
         OidcClientAuthenticationSupport token = OidcClientAuthenticationSupport.tokenEndpoint(tenant);
         OidcClientAuthenticationSupport introspection = OidcClientAuthenticationSupport.introspectionEndpoint(tenant);
@@ -87,8 +87,8 @@ class OidcClientAssertionReuseTest {
     }
 
     @Test
-    void repeatedConstructionSupportsTheSameUnbufferedConfiguration() throws Exception {
-        OidcTenantConfig tenant = tenant(Resource.create(KEY_RESOURCE));
+    void repeatedConstructionSupportsTheSameResourceConfiguration() throws Exception {
+        OidcTenantConfig tenant = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
         OidcClientAuthenticationSupport first = OidcClientAuthenticationSupport.tokenEndpoint(tenant);
         OidcClientAuthenticationSupport second = OidcClientAuthenticationSupport.tokenEndpoint(tenant);
         WebClient client = WebClient.create();
@@ -105,9 +105,8 @@ class OidcClientAssertionReuseTest {
     }
 
     @Test
-    void alreadyBufferedKeyResourcesStillWork() throws Exception {
-        Resource resource = Resource.create(KEY_RESOURCE);
-        resource.cacheBytes();
+    void suppliedKeyContentSupportsBothEndpoints() throws Exception {
+        ResourceConfig resource = ResourceConfig.builder().contentPlain(Resource.create(KEY_RESOURCE).string()).buildPrototype();
         OidcTenantConfig tenant = tenant(resource);
         OidcClientAuthenticationSupport token = OidcClientAuthenticationSupport.tokenEndpoint(tenant);
         OidcClientAuthenticationSupport introspection = OidcClientAuthenticationSupport.introspectionEndpoint(tenant);
@@ -122,12 +121,8 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void concurrentVirtualThreadsCreateIndependentAssertionsFromSharedConfiguration() throws Exception {
-        CountingStream stream = new CountingStream(Resource.create(KEY_RESOURCE).bytes());
-        Resource resource = Resource.create("private signing key", stream);
+        ResourceConfig resource = ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype();
         OidcTenantConfig tenant = tenant(resource);
-        assertThat(tenant.clientAssertion().jwk().orElseThrow(), sameInstance(resource));
-        assertThat(stream.reads.get(), is(1));
-        assertThat(stream.closes.get(), is(1));
         CountDownLatch start = new CountDownLatch(1);
         WebClient client = WebClient.create();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -158,13 +153,11 @@ class OidcClientAssertionReuseTest {
             start.countDown();
             client.closeResource();
         }
-        assertThat(stream.reads.get(), is(1));
-        assertThat(stream.closes.get(), is(1));
     }
 
     @Test
     void copiedConfigurationKeepsIndependentAlgorithmAndLifetime() throws Exception {
-        OidcTenantConfig tokenTenant = tenant(Resource.create(KEY_RESOURCE));
+        OidcTenantConfig tokenTenant = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
         OidcClientAssertionConfig override = OidcClientAssertionConfig.builder(tokenTenant.clientAssertion())
                 .algorithm("RS512")
                 .lifetime(Duration.ofSeconds(20))
@@ -196,7 +189,7 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void invalidKeySelectionDoesNotPreventOtherResourceConsumers() throws Exception {
-        OidcTenantConfig valid = tenant(Resource.create(KEY_RESOURCE));
+        OidcTenantConfig valid = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
         OidcTenantConfig invalid = OidcTenantConfig.builder(valid)
                 .clientAssertion(OidcClientAssertionConfig.builder(valid.clientAssertion())
                                          .keyId("sign-oct")
@@ -214,7 +207,7 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void sharedKeyMaterialDoesNotShareClientIdentity() throws Exception {
-        OidcTenantConfig original = tenant(Resource.create(KEY_RESOURCE));
+        OidcTenantConfig original = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
         OidcTenantConfig other = OidcTenantConfig.builder(original).clientId("other-client").buildPrototype();
         WebClient client = WebClient.create();
         try {
@@ -231,7 +224,8 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void parAssertionUsesIssuerAudienceAndRemainsFresh() throws Exception {
-        OidcClientAuthenticationSupport support = OidcClientAuthenticationSupport.tokenEndpoint(tenant(Resource.create(KEY_RESOURCE)));
+        OidcClientAuthenticationSupport support = OidcClientAuthenticationSupport.tokenEndpoint(
+                tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype()));
         URI parEndpoint = URI.create("https://issuer.example/par");
         URI issuer = URI.create("https://issuer.example");
         WebClient client = WebClient.create();
@@ -256,38 +250,36 @@ class OidcClientAssertionReuseTest {
     }
 
     @Test
-    void bufferingFailureClosesSourceAndRejectsConfiguration() {
-        AtomicInteger closes = new AtomicInteger();
-        InputStream broken = new InputStream() {
-            @Override
-            public int read() throws IOException {
-                throw new IOException("source read failure");
-            }
+    void failedLocalLoadDoesNotPoisonTheResourceDescription(@TempDir Path directory) throws Exception {
+        Path path = directory.resolve("signing.jwk");
+        OidcTenantConfig tenant = tenant(ResourceConfig.builder().path(path).buildPrototype());
+        assertThrows(ResourceException.class, () -> OidcClientAuthenticationSupport.tokenEndpoint(tenant));
+        Files.write(path, Resource.create(KEY_RESOURCE).bytes());
 
-            @Override
-            public void close() {
-                closes.incrementAndGet();
-            }
-        };
-
-        assertThrows(ResourceException.class, () -> OidcClientAssertionConfig.builder()
-                .jwk(Resource.create("broken signing key", broken))
-                .buildPrototype());
-        assertThat(closes.get(), is(1));
+        WebClient client = WebClient.create();
+        try {
+            assertClaims(tokenAssertion(OidcClientAuthenticationSupport.tokenEndpoint(tenant), client), TOKEN_CLIENT, TOKEN_ENDPOINT);
+        } finally {
+            client.closeResource();
+        }
     }
 
     @Test
-    void alreadyConsumedUnbufferedResourceIsRejectedBeforePublication() throws IOException {
-        Resource resource = Resource.create(KEY_RESOURCE);
-        try (InputStream input = resource.stream()) {
+    void consumedResourceDoesNotAffectAnotherConsumerOfTheDescription() throws Exception {
+        ResourceConfig resource = ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype();
+        try (InputStream input = resource.build().stream()) {
             input.readAllBytes();
         }
-
-        assertThrows(IllegalStateException.class,
-                     () -> OidcClientAssertionConfig.builder().jwk(resource).buildPrototype());
+        WebClient client = WebClient.create();
+        try {
+            assertClaims(tokenAssertion(OidcClientAuthenticationSupport.tokenEndpoint(tenant(resource)), client),
+                         TOKEN_CLIENT, TOKEN_ENDPOINT);
+        } finally {
+            client.closeResource();
+        }
     }
 
-    private static OidcTenantConfig tenant(Resource resource) {
+    private static OidcTenantConfig tenant(ResourceConfig resource) {
         return OidcTenantConfig.builder()
                 .issuer("https://issuer.example")
                 .clientId(TOKEN_CLIENT)
@@ -343,27 +335,5 @@ class OidcClientAssertionReuseTest {
         assertThat(Duration.between(assertion.issueTime().orElseThrow(), assertion.expirationTime().orElseThrow()),
                    is(lifetime));
         assertThat(assertion.payloadClaimsJson().keySet(), is(Set.of("iss", "sub", "aud", "jti", "iat", "exp")));
-    }
-
-    private static final class CountingStream extends ByteArrayInputStream {
-        private final AtomicInteger reads = new AtomicInteger();
-        private final AtomicInteger closes = new AtomicInteger();
-
-        private CountingStream(byte[] bytes) {
-            super(bytes);
-        }
-
-        @Override
-        public byte[] readAllBytes() {
-            assertThat(closes.get(), is(0));
-            reads.incrementAndGet();
-            return super.readAllBytes();
-        }
-
-        @Override
-        public void close() throws IOException {
-            closes.incrementAndGet();
-            super.close();
-        }
     }
 }

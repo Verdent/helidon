@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
@@ -1481,7 +1482,9 @@ class OidcWellKnownMetadataLoadingTest {
                 .signingAlgorithm("RS256")
                 .encryptionAlgorithm("RSA-OAEP-256")
                 .contentEncryptionAlgorithm("A256GCM")
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()));
 
         OidcTenantContext context = tenantContext(tenantConfig);
 
@@ -1511,7 +1514,9 @@ class OidcWellKnownMetadataLoadingTest {
                                       .toString());
         OidcTenantContext encryptionContext = tenantContext(userInfoJwtTenant(jwt -> jwt
                 .encryptionAlgorithm("RSA-OAEP-256")
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype())));
 
         assertThat(encryptionContext.state(), is(OidcTenantState.FAILED));
         assertThat(encryptionContext.failureCause().orElseThrow().getMessage(),
@@ -1527,7 +1532,9 @@ class OidcWellKnownMetadataLoadingTest {
                                       .toString());
         OidcTenantContext context = tenantContext(userInfoJwtTenant(jwt -> jwt
                 .encryptionAlgorithm("RSA-OAEP-256")
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype())));
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(),
@@ -2207,10 +2214,8 @@ class OidcWellKnownMetadataLoadingTest {
                 .orElseThrow();
     }
 
-    private static Resource idTokenDecryptionKeys() {
-        Resource keys = Resource.create("oidc-next-encrypt-jwk.json");
-        keys.cacheBytes();
-        return keys;
+    private static ResourceConfig idTokenDecryptionKeys() {
+        return ResourceConfig.builder().resourcePath("oidc-next-encrypt-jwk.json").buildPrototype();
     }
 
     private static void assertReadyTenant(OidcTenantConfig tenant) {
@@ -2233,7 +2238,9 @@ class OidcWellKnownMetadataLoadingTest {
         OidcClientAssertionConfig.Builder assertion = OidcClientAssertionConfig.builder()
                 .algorithm(privateKey ? "RS256" : "HS256");
         if (privateKey) {
-            assertion.jwk(Resource.create("oidc-next-sign-jwk.json")).keyId("sign-rsa");
+            assertion.jwk(ResourceConfig.builder()
+                    .resourcePath("oidc-next-sign-jwk.json")
+                    .buildPrototype()).keyId("sign-rsa");
         }
         assertionCustomizer.accept(assertion);
         return OidcTenantConfig.builder()

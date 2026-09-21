@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.Jwt;
@@ -212,11 +213,15 @@ class OidcJweCriticalHeadersTest {
                         .jwksUri(jwksUri)
                         .tlsRequired(false))
                 .authorizationCode(config -> config.redirectionEndpointUri(REQUEST_STATE.redirectionEndpointUri()))
-                .idToken(config -> config.decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))
+                .idToken(config -> config.decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))
                 .userInfo(userInfo -> userInfo.jwt(config -> {
                     config.encryptionAlgorithm("RSA-OAEP-256")
                             .contentEncryptionAlgorithm("A256GCM")
-                            .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"));
+                            .decryptionJwk(ResourceConfig.builder()
+                                    .resourcePath("oidc-next-encrypt-jwk.json")
+                                    .buildPrototype());
                     if (signedUserInfo) {
                         config.signingAlgorithm("RS256");
                     }

@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -920,7 +921,9 @@ class OidcRefreshTokenManagerTest {
         OidcTenantConfig tenant = tenantWithUserInfo(serverUri, userInfo -> userInfo.jwt(jwt -> jwt
                 .encryptionAlgorithm("RSA-OAEP-256")
                 .contentEncryptionAlgorithm("A256GCM")
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype())));
         Instant now = Instant.now();
         SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
                                                                         now.minusSeconds(60),

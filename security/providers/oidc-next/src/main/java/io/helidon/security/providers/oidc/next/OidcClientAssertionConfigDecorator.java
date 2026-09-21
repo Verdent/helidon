@@ -17,13 +17,11 @@
 package io.helidon.security.providers.oidc.next;
 
 import io.helidon.builder.api.Prototype;
-import io.helidon.common.configurable.Resource;
 
 final class OidcClientAssertionConfigDecorator
         implements Prototype.BuilderDecorator<OidcClientAssertionConfig.BuilderBase<?, ?>> {
     @Override
     public void decorate(OidcClientAssertionConfig.BuilderBase<?, ?> target) {
-        // Buffer before runtime consumers share the configuration. bytes() also rejects an already-consumed source.
-        target.jwk().ifPresent(Resource::bytes);
+        target.jwk().ifPresent(resource -> OidcJoseKeyPolicy.validateLocalKeyResource(resource, "client-assertion.jwk"));
     }
 }

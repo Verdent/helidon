@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
@@ -334,14 +334,14 @@ class OidcJoseKeyPolicyTest {
         return builder.build();
     }
 
-    private static Resource rsaResource(KeyPair keyPair) {
+    private static ResourceConfig rsaResource(KeyPair keyPair) {
         RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
         RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
         String json = "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"rsa\",\"n\":\""
                 + base64Url(publicKey.getModulus())
                 + "\",\"e\":\"" + base64Url(publicKey.getPublicExponent())
                 + "\",\"d\":\"" + base64Url(privateKey.getPrivateExponent()) + "\"}]}";
-        return Resource.create("RSA test JWK", json);
+        return ResourceConfig.builder().description("RSA test JWK").contentPlain(json).buildPrototype();
     }
 
     private static String base64Url(BigInteger value) {

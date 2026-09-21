@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.json.JsonObject;
@@ -330,10 +331,11 @@ final class OidcClientAuthenticationSupport {
     }
 
     private static Jwk privateKeyJwk(OidcClientAssertionConfig assertion, String endpointName) {
+        ResourceConfig resource = assertion.jwk().orElseThrow(() -> new IllegalArgumentException(
+                "client-assertion.jwk must be configured for PRIVATE_KEY_JWT " + endpointName + " authentication"));
+        OidcJoseKeyPolicy.validateLocalKeyResource(resource, "client-assertion.jwk");
         JwkKeys keys = JwkKeys.builder()
-                .resource(assertion.jwk().orElseThrow(() -> new IllegalArgumentException(
-                        "client-assertion.jwk must be configured for PRIVATE_KEY_JWT "
-                                + endpointName + " authentication")))
+                .resource(resource.build())
                 .build();
         Optional<String> keyId = assertion.keyId();
         if (keyId.isPresent()) {

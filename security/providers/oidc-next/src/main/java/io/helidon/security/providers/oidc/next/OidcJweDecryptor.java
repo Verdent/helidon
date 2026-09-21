@@ -19,7 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.util.List;
 import java.util.Optional;
 
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.JwtHeaders;
 import io.helidon.security.jwt.jwk.Jwk;
@@ -34,7 +34,7 @@ final class OidcJweDecryptor {
         this.tokenDescription = tokenDescription;
     }
 
-    static OidcJweDecryptor create(Optional<Resource> decryptionJwk,
+    static OidcJweDecryptor create(Optional<ResourceConfig> decryptionJwk,
                                    String configKey,
                                    String tokenDescription) {
         return new OidcJweDecryptor(decryptionJwk.map(resource -> loadKeys(resource, configKey)), tokenDescription);
@@ -59,6 +59,18 @@ final class OidcJweDecryptor {
                 .orElseThrow(() -> new IllegalStateException(tokenDescription + " JWE alg header is missing"));
         validateDecryptionKeyUse(selectedKey, algorithm);
         return EncryptedJwt.parseToken(headers, token).decryptPayload(keys, selectedKey);
+    }
+
+    private static JwkKeys loadKeys(ResourceConfig resource, String configKey) {
+        OidcJoseKeyPolicy.validateLocalKeyResource(resource, configKey);
+        JwkKeys keys = JwkKeys.builder()
+                .resource(resource.build())
+                .build();
+        if (keys.keys().isEmpty()) {
+            throw new IllegalArgumentException(configKey + " must contain at least one JWK");
+        }
+        keys.keys().forEach(key -> OidcJoseKeyPolicy.validateConfiguredRsaKey(key, configKey));
+        return keys;
     }
 
     private Jwk selectDecryptionKey(JwtHeaders headers, JwkKeys keys) {
@@ -104,17 +116,5 @@ final class OidcJweDecryptor {
         OidcJoseKeyPolicy.validateRsaDecryptionKey(key,
                                                   algorithm,
                                                   tokenDescription + " decryption JWK");
-    }
-
-    private static JwkKeys loadKeys(Resource resource, String configKey) {
-        resource.cacheBytes();
-        JwkKeys keys = JwkKeys.builder()
-                .resource(resource)
-                .build();
-        if (keys.keys().isEmpty()) {
-            throw new IllegalArgumentException(configKey + " must contain at least one JWK");
-        }
-        keys.keys().forEach(key -> OidcJoseKeyPolicy.validateConfiguredRsaKey(key, configKey));
-        return keys;
     }
 }

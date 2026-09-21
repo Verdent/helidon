@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
@@ -94,7 +95,9 @@ class OidcIdTokenValidatorTest {
         String encryptedIdToken = encryptedIdToken(signedIdToken);
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(idToken -> idToken
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -109,7 +112,9 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
         var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))));
 
         assertThat(result.succeeded(), is(true));
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
@@ -131,7 +136,9 @@ class OidcIdTokenValidatorTest {
         String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })), "cty", "JWT");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "Encrypted ID Token must be a Nested JWT with cty=JWT");
     }
@@ -141,7 +148,9 @@ class OidcIdTokenValidatorTest {
         String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype())
                 .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256")))));
 
         assertFailure(result, "Encrypted ID Token JWE alg header is not allowed: RSA-OAEP");
@@ -152,7 +161,9 @@ class OidcIdTokenValidatorTest {
         String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype())
                 .allowedContentEncryptionAlgorithms(List.of("A128CBC-HS256")))));
 
         assertFailure(result, "Encrypted ID Token JWE enc header is not allowed: A256GCM");
@@ -165,7 +176,9 @@ class OidcIdTokenValidatorTest {
                                                         "encrypt-rsa");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "Encrypted ID Token JWE kid is required when multiple decryption keys exist");
     }
@@ -178,7 +191,9 @@ class OidcIdTokenValidatorTest {
                                                         "unknown-rsa");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "ID Token decryption key is not configured for kid: unknown-rsa");
     }
@@ -191,7 +206,9 @@ class OidcIdTokenValidatorTest {
                                                         "sign-rsa");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "ID Token decryption JWK use must be enc");
     }
@@ -204,7 +221,9 @@ class OidcIdTokenValidatorTest {
                                                         "sign-oct");
 
         var result = validate(encryptedIdToken, tenantConfig(it -> it.idToken(config -> config
-                .decryptionJwk(Resource.create("oidc-next-sign-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "ID Token decryption JWK key_ops must allow unwrapKey or decrypt");
     }
@@ -214,7 +233,9 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
 
         var result = validate(idToken, tenantConfig(it -> it.idToken(config -> config.encryptionRequired(true)
-                .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))));
+                .decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))));
 
         assertFailure(result, "ID Token encryption is required");
     }

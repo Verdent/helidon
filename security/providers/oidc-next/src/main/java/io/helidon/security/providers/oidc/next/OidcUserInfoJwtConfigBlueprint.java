@@ -21,7 +21,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 
 /**
  * UserInfo JWT response configuration matching the values negotiated during client registration.
@@ -29,7 +29,7 @@ import io.helidon.common.configurable.Resource;
  * @see <a href="https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata">
  * OpenID Connect Dynamic Client Registration 1.0, 2 Client Metadata</a>
  */
-@Prototype.Blueprint
+@Prototype.Blueprint(decorator = OidcUserInfoJwtConfigDecorator.class)
 @Prototype.Configured
 interface OidcUserInfoJwtConfigBlueprint {
     /**
@@ -80,16 +80,20 @@ interface OidcUserInfoJwtConfigBlueprint {
     Optional<String> contentEncryptionAlgorithm();
 
     /**
-     * Private RP JWK Set resource used to decrypt encrypted UserInfo responses.
+     * Private RP JWK Set resource configuration used to decrypt encrypted UserInfo responses.
      * <p>
      * RSA keys must have a modulus of at least 2048 bits. A declared JWK {@code alg} must match the registered JWE
      * algorithm; an omitted JWK {@code alg} remains unconstrained.
+     * Filesystem paths, classpath resources, and supplied plaintext or Base64 content are supported. URI sources are
+     * rejected before opening, including when this configuration is built independently of a tenant.
+     * Each decryptor loads its own resource and retains its parsed keys; local sources must remain available when new
+     * consumers are created. Supplied content can come from an explicitly managed secure external secret store.
      *
-     * @return UserInfo decryption JWK Set resource
+     * @return UserInfo decryption JWK Set resource configuration
      */
     @Option.Configured("decryption-jwk")
     @Option.Confidential
-    Optional<Resource> decryptionJwk();
+    Optional<ResourceConfig> decryptionJwk();
 
     /**
      * Clock skew used when validating optional time claims in signed UserInfo JWTs.

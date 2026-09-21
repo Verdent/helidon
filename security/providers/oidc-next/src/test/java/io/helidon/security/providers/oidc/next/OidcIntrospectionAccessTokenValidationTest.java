@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
@@ -258,7 +259,9 @@ class OidcIntrospectionAccessTokenValidationTest {
         OidcProvider provider = provider(tenant -> tenant
                 .clearClientSecret()
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(assertion -> assertion.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("RS256"))
                 .endpoints(endpoints -> endpoints
@@ -1195,7 +1198,9 @@ class OidcIntrospectionAccessTokenValidationTest {
         OidcClientAssertionConfig.Builder assertionBuilder = OidcClientAssertionConfig.builder()
                 .algorithm(privateKey ? "RS256" : "HS256");
         if (privateKey) {
-            assertionBuilder.jwk(Resource.create("oidc-next-sign-jwk.json")).keyId("sign-rsa");
+            assertionBuilder.jwk(ResourceConfig.builder()
+                    .resourcePath("oidc-next-sign-jwk.json")
+                    .buildPrototype()).keyId("sign-rsa");
         }
         OidcClientAssertionConfig assertion = assertionBuilder.buildPrototype();
         discoveryResponseBody = JsonObject.builder()

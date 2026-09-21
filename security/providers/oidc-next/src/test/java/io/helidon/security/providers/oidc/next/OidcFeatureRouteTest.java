@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 
 import io.helidon.common.configurable.AllowList;
 import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
@@ -338,7 +339,9 @@ class OidcFeatureRouteTest {
                                                                               URI.create("/oidc/callback"))))
                 .clearClientSecret()
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
-                .clientAssertion(assertion -> assertion.jwk(Resource.create("oidc-next-sign-jwk.json"))
+                .clientAssertion(assertion -> assertion.jwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-sign-jwk.json")
+                        .buildPrototype())
                         .keyId("sign-rsa")
                         .algorithm("RS256"))
                 .buildPrototype();
@@ -670,7 +673,9 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointRouteRejectsCriticalEncryptedIdToken(URI serverUri) throws Exception {
         OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri))
-                .idToken(config -> config.decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json")))
+                .idToken(config -> config.decryptionJwk(ResourceConfig.builder()
+                        .resourcePath("oidc-next-encrypt-jwk.json")
+                        .buildPrototype()))
                 .buildPrototype();
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
@@ -778,8 +783,9 @@ class OidcFeatureRouteTest {
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,
                                                            userInfo -> userInfo.jwt(jwt -> jwt
                                                                    .encryptionAlgorithm("RSA-OAEP-256")
-                                                                   .decryptionJwk(Resource.create(
-                                                                           "oidc-next-encrypt-jwk.json"))));
+                                                                   .decryptionJwk(ResourceConfig.builder()
+                                                                           .resourcePath("oidc-next-encrypt-jwk.json")
+                                                                           .buildPrototype())));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             URI callbackUri = callbackUri(rpServer);
@@ -822,8 +828,9 @@ class OidcFeatureRouteTest {
                                                                    .signingAlgorithm("RS256")
                                                                    .encryptionAlgorithm("RSA-OAEP-256")
                                                                    .contentEncryptionAlgorithm("A256GCM")
-                                                                   .decryptionJwk(Resource.create(
-                                                                           "oidc-next-encrypt-jwk.json"))));
+                                                                   .decryptionJwk(ResourceConfig.builder()
+                                                                           .resourcePath("oidc-next-encrypt-jwk.json")
+                                                                           .buildPrototype())));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             URI callbackUri = callbackUri(rpServer);
@@ -931,8 +938,9 @@ class OidcFeatureRouteTest {
                                                            userInfo -> userInfo.jwt(jwt -> jwt
                                                                    .encryptionAlgorithm("RSA-OAEP-256")
                                                                    .contentEncryptionAlgorithm("A256GCM")
-                                                                   .decryptionJwk(Resource.create(
-                                                                           "oidc-next-encrypt-jwk.json"))));
+                                                                   .decryptionJwk(ResourceConfig.builder()
+                                                                           .resourcePath("oidc-next-encrypt-jwk.json")
+                                                                           .buildPrototype())));
         String validEncrypted = encryptedUserInfo(SUBJECT,
                                                   EncryptedJwt.SupportedAlgorithm.RSA_OAEP_256,
                                                   EncryptedJwt.SupportedEncryption.A256GCM,
@@ -1072,8 +1080,9 @@ class OidcFeatureRouteTest {
                                                                    .signingAlgorithm("RS256")
                                                                    .encryptionAlgorithm("RSA-OAEP-256")
                                                                    .contentEncryptionAlgorithm("A256GCM")
-                                                                   .decryptionJwk(Resource.create(
-                                                                           "oidc-next-encrypt-jwk.json"))));
+                                                                   .decryptionJwk(ResourceConfig.builder()
+                                                                           .resourcePath("oidc-next-encrypt-jwk.json")
+                                                                           .buildPrototype())));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             URI callbackUri = callbackUri(rpServer);
@@ -1714,7 +1723,9 @@ class OidcFeatureRouteTest {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(
                   endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
                   builder -> builder.idToken(idToken -> idToken
-                          .decryptionJwk(Resource.create("oidc-next-encrypt-jwk.json"))));
+                          .decryptionJwk(ResourceConfig.builder()
+                                  .resourcePath("oidc-next-encrypt-jwk.json")
+                                  .buildPrototype())));
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
         try {
             String signedIdToken = signedIdToken(NONCE);

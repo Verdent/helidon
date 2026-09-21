@@ -21,7 +21,7 @@ import java.util.Optional;
 
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
-import io.helidon.common.configurable.Resource;
+import io.helidon.common.configurable.ResourceConfig;
 
 /**
  * Client assertion configuration.
@@ -70,22 +70,25 @@ interface OidcClientAssertionConfigBlueprint {
     Optional<String> keyId();
 
     /**
-     * Private JWK Set resource used to sign a {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} client assertion.
+     * Private JWK Set resource configuration used to sign a
+     * {@link OidcClientAuthenticationMethod#PRIVATE_KEY_JWT} client assertion.
      * <p>
      * This is local client key material. It is not the OpenID Provider {@code jwks_uri}, which contains public
      * verification keys. RSA keys must have a modulus of at least 2048 bits. The JWK {@code alg} member is optional; when
      * present, it constrains the configured or default signing algorithm.
      * <p>
-     * Building this configuration buffers the resource and closes its original stream, allowing repeated and concurrent
-     * reads during runtime initialization. The resource retains its normal Common Resource ownership and mutability
-     * contract; treat its contents as read-only once the configuration is shared. Use a new resource/configuration to
-     * rotate key material. Every PRIVATE_KEY_JWT authentication request still gets a fresh JWT assertion.
+     * Filesystem paths, classpath resources, and supplied plaintext or Base64 content are supported. URI sources are
+     * rejected before opening, including when this configuration is built independently of a tenant.
+     * Configuration retains the resource description, not an open stream. Each authentication-support instance loads
+     * its own resource and retains the parsed key; local sources must remain available when new consumers are created.
+     * Supplied content can be used for material obtained explicitly from a secure external secret store.
+     * Every PRIVATE_KEY_JWT authentication request still gets a fresh JWT assertion.
      *
-     * @return private JWK Set resource
+     * @return private JWK Set resource configuration
      */
     @Option.Configured
     @Option.Confidential
-    Optional<Resource> jwk();
+    Optional<ResourceConfig> jwk();
 
     /**
      * Client assertion lifetime used to calculate the JWT {@code exp} claim from the current time.

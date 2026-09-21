@@ -687,6 +687,8 @@ security:
           refresh-interval: "PT1H"
           failure-retry-interval: "PT10S"
           stale-on-error: true
+          max-queued: 128
+          admission-timeout: "PT1S"
         protected-resource:
           token-validation:
             method: JWT
@@ -713,11 +715,28 @@ during token validation and refreshes only when a request needs keys after the i
 callers observe the same failed refresh outcome during that interval instead of each starting another HTTP request. When
 cached keys exist, `stale-on-error` decides whether they remain usable while the failure is held.
 
-Refreshes are coordinated as single-flight operations for concurrent requests. The cached-key fast path does not take
-the refresh lock. When many virtual threads hit a cold cache, expired cache, or unknown `kid` at the same time, only one
-thread loads the JWK Set from the remote endpoint for that refresh opportunity. With `stale-on-error: true`, requests
-may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
+Refreshes are coordinated as single-flight operations for concurrent requests. Valid cached-key hits bypass admission.
+When many virtual threads hit a cold cache, expired cache, or unknown `kid` at the same time, one admitted caller loads
+the JWK Set for that refresh opportunity and admitted followers reuse its published outcome. With `stale-on-error: true`,
+requests may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
 requests to fail until `failure-retry-interval` permits another reload attempt.
+
+`max-queued` bounds waiting callers (default 128), in addition to the one admitted coordinator. `admission-timeout`
+limits how long a caller that reserved a queue slot may wait for coordination (default `PT1S`). Setting either to zero
+provides fail-fast admission while coordination is occupied. Negative values are rejected. These flat `jwk-set` settings
+apply independently to the provider JWK Set and a configured local `token-validation.verification-jwk` set.
+
+Waiting is interruptible; cancelling or timing out a follower does not cancel the shared load. The admission timeout is
+separate from the tenant WebClient's network timeouts and does not terminate an admitted load. Queue rejection, timeout,
+and interruption do not replace cached keys, reset refresh throttles, or get cached as key-load failures. In particular,
+`stale-on-error` does not turn local admission failure into acceptance of keys whose required refresh is still pending.
+
+JWKS admission failure yields HTTP 503 for Protected Resource JWT validation, without an `invalid_token` challenge.
+ID Token and signed UserInfo callback validation also return 503 and do not establish a session. Restart sign-in from
+the application after a callback failure; do not retry a consumed authorization code. If admission prevents validation
+after a successful refresh grant, the session cookies are removed and the request returns 503: replacement tokens have
+not been validated, and the source refresh token may already have rotated. Other refresh-failure recovery policies are
+unchanged. Existing key-load failures continue to follow the configured retry/stale policy.
 
 JWS defines the `kid` header as optional. When it is present, OIDC Next selects that exact key and may refresh for an
 unknown value according to the policy above. For a JWT access token without `kid`, OIDC Next filters the complete JWK Set
@@ -2921,6 +2940,8 @@ JWK Set options:
 | `refresh-interval` | Optional lazy JWK Set refresh interval. If configured, cached keys older than this interval are refreshed during token validation. No background thread is started. |
 | `failure-retry-interval` | Minimum interval before retrying a failed JWK Set load. Defaults to `PT10S`; concurrent callers observe the same failure during the interval. |
 | `stale-on-error` | Whether cached keys may still be used when a reload fails. Defaults to `true`; initial loading still fails when no cached keys exist. |
+| `max-queued` | Maximum callers waiting for JWK Set coordination, independently per key-set manager. Defaults to `128`; zero fails fast while busy. Cache hits bypass admission. |
+| `admission-timeout` | Maximum wait for admitted JWK Set coordination callers. Defaults to `PT1S`; zero fails fast while busy. Waiting is interruptible and does not cancel the shared load or replace WebClient I/O timeouts. |
 
 Authorization Code Flow options:
 

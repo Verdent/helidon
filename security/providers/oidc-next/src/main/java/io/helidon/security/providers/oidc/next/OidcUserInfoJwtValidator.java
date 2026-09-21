@@ -73,6 +73,8 @@ final class OidcUserInfoJwtValidator {
             if (!signatureErrors.isValid()) {
                 return OidcValidationResult.failure("UserInfo JWT signature is invalid");
             }
+        } catch (OidcJwkSetManager.UnavailableException e) {
+            return OidcValidationResult.unavailable("UserInfo JWT signature keys are temporarily unavailable", e);
         } catch (RuntimeException e) {
             return OidcValidationResult.failure("UserInfo JWT signature keys are unavailable", e);
         }

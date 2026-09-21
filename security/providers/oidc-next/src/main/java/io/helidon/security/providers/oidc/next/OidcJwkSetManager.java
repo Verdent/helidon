@@ -21,7 +21,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import io.helidon.common.configurable.ResourceConfig;
@@ -34,7 +33,7 @@ final class OidcJwkSetManager {
     private final OidcJwkSetConfig config;
     private final Supplier<JwkKeys> keyLoader;
     private final Clock clock;
-    private final ReentrantLock refreshLock = new ReentrantLock();
+    private final OidcRemoteWorkLimiter refreshAdmission;
     private volatile JwkSetState state = JwkSetState.empty();
     private Instant lastUnknownKeyIdRefreshAttempt;
 
@@ -48,6 +47,11 @@ final class OidcJwkSetManager {
         this.config = config;
         this.keyLoader = keyLoader;
         this.clock = clock;
+        this.refreshAdmission = new OidcRemoteWorkLimiter(OidcRemoteWorkConfig.builder()
+                                                                .maxConcurrent(1)
+                                                                .maxQueued(config.maxQueued())
+                                                                .admissionTimeout(config.admissionTimeout())
+                                                                .buildPrototype());
     }
 
     static OidcJwkSetManager create(String tenantId,
@@ -98,6 +102,9 @@ final class OidcJwkSetManager {
             return currentAfterRefreshFailure(current);
         }
 
+        if (current.refreshFailure() != null && !failureRetryIntervalElapsed(current)) {
+            throw current.refreshFailure();
+        }
         return initialJwkKeys(current);
     }
 
@@ -123,47 +130,28 @@ final class OidcJwkSetManager {
     }
 
     private JwkKeys initialJwkKeys(JwkSetState observed) {
-        refreshLock.lock();
-        try {
+        try (OidcRemoteWorkLimiter.Permit _ = acquireRefresh()) {
             JwkSetState current = state;
             if (current != observed) {
                 return publishedOutcome(current);
             }
-            if (current.keys() != null) {
-                return refreshRequired(current)
-                        ? refreshJwkKeys(current.keys())
-                        : currentAfterRefreshFailure(current);
-            }
-            if (current.refreshFailure() != null && !failureRetryIntervalElapsed(current)) {
-                throw current.refreshFailure();
-            }
-            try {
-                return refreshJwkKeys();
-            } catch (RuntimeException e) {
-                recordRefreshFailure(e);
-                throw e;
-            }
-        } finally {
-            refreshLock.unlock();
+            return loadInitialJwkKeys(current);
         }
     }
 
     private JwkKeys refreshExpiredJwkKeys(JwkSetState observed) {
-        refreshLock.lock();
-        try {
+        try (OidcRemoteWorkLimiter.Permit _ = acquireRefresh()) {
             JwkSetState current = state;
             if (current != observed) {
                 return publishedOutcome(current);
             }
             if (current.keys() == null) {
-                return initialJwkKeys(current);
+                return loadInitialJwkKeys(current);
             }
             if (!refreshRequired(current)) {
                 return currentAfterRefreshFailure(current);
             }
             return refreshJwkKeys(current.keys());
-        } finally {
-            refreshLock.unlock();
         }
     }
 
@@ -171,15 +159,14 @@ final class OidcJwkSetManager {
         if (!config.unknownKeyIdRefreshEnabled()) {
             return staleKeys;
         }
-        refreshLock.lock();
-        try {
+        try (OidcRemoteWorkLimiter.Permit _ = acquireRefresh()) {
             JwkSetState currentState = state;
             if (currentState != observed) {
                 return publishedOutcome(currentState);
             }
             JwkKeys current = currentState.keys();
             if (current == null) {
-                current = initialJwkKeys(currentState);
+                current = loadInitialJwkKeys(currentState);
                 currentState = state;
             }
             if (current.forKeyId(keyId).isPresent()) {
@@ -199,8 +186,27 @@ final class OidcJwkSetManager {
                 recordRefreshFailure(e);
                 return staleOrThrow(current, e);
             }
-        } finally {
-            refreshLock.unlock();
+        }
+    }
+
+    private OidcRemoteWorkLimiter.Permit acquireRefresh() {
+        // One active permit replaces the refresh lock; rejection must not publish a load failure or permit stale keys.
+        return refreshAdmission.acquireActive().orElseThrow(UnavailableException::new);
+    }
+
+    private JwkKeys loadInitialJwkKeys(JwkSetState current) {
+        // Called only by the admitted coordinator; never reacquire its non-reentrant permit.
+        if (current.keys() != null) {
+            return refreshRequired(current) ? refreshJwkKeys(current.keys()) : currentAfterRefreshFailure(current);
+        }
+        if (current.refreshFailure() != null && !failureRetryIntervalElapsed(current)) {
+            throw current.refreshFailure();
+        }
+        try {
+            return refreshJwkKeys();
+        } catch (RuntimeException e) {
+            recordRefreshFailure(e);
+            throw e;
         }
     }
 
@@ -288,6 +294,14 @@ final class OidcJwkSetManager {
         Instant lastAttempt = current.lastAttempt();
         return lastAttempt == null
                 || !clock.instant().isBefore(lastAttempt.plus(config.failureRetryInterval()));
+    }
+
+    static final class UnavailableException extends IllegalStateException {
+        private UnavailableException() {
+            super(Thread.currentThread().isInterrupted()
+                          ? "Interrupted while waiting for JWK Set loading"
+                          : "JWK Set loading capacity or admission timeout exceeded");
+        }
     }
 
     private record JwkSetState(JwkKeys keys,

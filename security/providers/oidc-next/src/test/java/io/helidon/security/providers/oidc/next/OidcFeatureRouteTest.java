@@ -22,10 +22,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -40,7 +45,10 @@ import io.helidon.http.HeaderValues;
 import io.helidon.http.RequestedUriDiscoveryContext;
 import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
+import io.helidon.json.JsonArray;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
+import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -329,6 +337,98 @@ class OidcFeatureRouteTest {
             assertThat(removalCookies.size(), is(1));
             assertThat(removalCookies.getFirst(), containsString("__Host-helidon-oidc-state="));
             assertThat(removalCookies.getFirst(), containsString("Expires="));
+        }
+    }
+
+    @Test
+    void jwksAdmissionFailuresReturn503ForIdTokenAndSignedUserInfoWithoutIssuingASession(URI serverUri) throws Exception {
+        for (boolean signedUserInfo : List.of(false, true)) {
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            AtomicInteger requests = new AtomicInteger();
+            JsonObject original = JsonParser.create(verifyJwkSet).readJsonObject();
+            List<JsonValue> keys = new ArrayList<>(original.arrayValue("keys").orElseThrow().values());
+            JsonObject rotatingKey = keys.stream().map(JsonValue::asObject)
+                    .filter(key -> key.stringValue("kid").filter("verify-rsa"::equals).isPresent())
+                    .findFirst().orElseThrow();
+            keys.add(JsonObject.builder().from(rotatingKey).set("kid", "rotated-rsa").build());
+            String rotatedKeys = JsonObject.builder().set("keys", JsonArray.create(keys)).build().toString();
+            WebServer keyServer = WebServer.builder().port(0).routing(routing -> routing.get("/jwks", (_, response) -> {
+                int request = requests.incrementAndGet();
+                if (request == (signedUserInfo ? 2 : 1)) {
+                    entered.countDown();
+                    try {
+                        if (!release.await(10, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Test did not release JWKS response");
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                }
+                response.header(HeaderValues.CONTENT_TYPE_JSON).send(request == 1 ? verifyJwkSet : rotatedKeys);
+            })).build().start();
+            URI keyUri = URI.create("http://localhost:" + keyServer.port() + "/jwks");
+            OidcTenantConfig base = signedUserInfo
+                    ? tenantConfigWithUserInfo(serverUri, keyUri, info -> info.jwt(jwt -> jwt.signingAlgorithm("RS256")))
+                    : tenantConfig(serverUri);
+            OidcTenantConfig tenant = OidcTenantConfig.builder(base)
+                    .endpoints(OidcEndpointConfig.builder(base.endpoints()).jwksUri(keyUri).buildPrototype())
+                    .authorizationCode(OidcAuthorizationCodeConfig.builder(base.authorizationCode().orElseThrow())
+                                               .redirectionEndpointUri(URI.create("/oidc/callback")).buildPrototype())
+                    .jwkSet(jwkSet -> jwkSet.maxQueued(0).unknownKeyIdRefreshInterval(Duration.ZERO)).buildPrototype();
+            if (signedUserInfo) {
+                userInfoEndpointContentType = "application/jwt";
+                userInfoEndpointResponseBody = signedUserInfo("RS256", "rotated-rsa", SUBJECT, ISSUER.toString(),
+                                                             CLIENT_ID, _ -> { });
+            }
+            try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                WebServer rp = WebServer.builder().port(0).addFeature(OidcFeature.create(provider)).build().start();
+                WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).followRedirects(false).build();
+                try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                    OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+                    assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                               context.ready(), is(true));
+                    OidcJwkSetManager manager = context.jwkSetManager();
+                    if (signedUserInfo) {
+                        manager.jwkKeys();
+                    }
+                    Future<?> leader = executor.submit(() -> signedUserInfo
+                            ? manager.jwkKeys(Optional.of("rotated-rsa"))
+                            : manager.jwkKeys());
+                    try {
+                        assertThat(entered.await(5, TimeUnit.SECONDS), is(true));
+                        SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                        try (HttpClientResponse response = client.get("/oidc/callback").queryParam("state", STATE)
+                                .queryParam("code", "first-code")
+                                .header(HeaderNames.COOKIE, state.name() + "=" + state.value()).request()) {
+                            assertThat(response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+                            assertThat(response.as(String.class), containsString("temporarily unavailable"));
+                            assertNoLocalAuthenticationCookie(response, tenant);
+                        }
+                        assertThat(requests.get(), is(signedUserInfo ? 2 : 1));
+                        release.countDown();
+                        leader.get(5, TimeUnit.SECONDS);
+                        // Start a new authentication transaction; do not retry a consumed authorization code.
+                        String freshState = authorizationState("default", 99);
+                        SetCookie freshCookie = authenticationRequestCookie("default", freshState, ISSUER.toString(),
+                                                                            callbackUri(rp), tenant);
+                        try (HttpClientResponse response = client.get("/oidc/callback").queryParam("state", freshState)
+                                .queryParam("code", "new-code")
+                                .header(HeaderNames.COOKIE, freshCookie.name() + "=" + freshCookie.value()).request()) {
+                            assertThat(response.status(), is(Status.SEE_OTHER_303));
+                            assertThat(localAuthenticationCookie(response, tenant).value().isEmpty(), is(false));
+                        }
+                    } finally {
+                        release.countDown();
+                        client.closeResource();
+                        rp.stop();
+                    }
+                }
+            } finally {
+                release.countDown();
+                keyServer.stop();
+            }
         }
     }
 

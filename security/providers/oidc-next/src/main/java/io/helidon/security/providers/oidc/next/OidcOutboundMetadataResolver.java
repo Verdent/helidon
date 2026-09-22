@@ -37,6 +37,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * A transient load failure is retained until the tenant initialization retry interval elapses. A deterministic metadata
  * failure is retained permanently. Grant-specific capability validation happens after shared resolution so unsupported
  * Client Credentials Grant metadata does not prevent the same tenant from using Token Exchange, or vice versa.
+ * <p>
+ * Production callers enter resolution only from an elected Client Credentials or Token Exchange loader, after that
+ * loader has acquired its tenant-owned active permit. Callers reaching this slot are therefore bounded by the combined
+ * active limits of those grants; same-key token followers wait outside the resolver under their grant's queue bound.
+ * Keep that admission boundary when adding callers rather than placing unadmitted remote work before it.
  */
 final class OidcOutboundMetadataResolver {
     private final Clock clock;

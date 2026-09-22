@@ -18,6 +18,10 @@ package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -55,6 +59,79 @@ class OidcOutboundFlowIT {
     private static final String DOWNSTREAM_AUDIENCE = "api://orders";
     private static final String DOWNSTREAM_RESOURCE = "https://orders.example.com";
     private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+
+    @Test
+    void clientCredentialsOverloadAddsNoCredentialAndRecoversThroughWebClient() throws Exception {
+        CountDownLatch tokenEntered = new CountDownLatch(1);
+        CountDownLatch releaseToken = new CountDownLatch(1);
+        AtomicInteger authenticatedDownstream = new AtomicInteger();
+        AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
+        WebServer downstream = WebServer.builder().port(0).routing(routing -> routing.get("/orders/42", (request, response) -> {
+            String authorization = request.headers().first(HeaderNames.AUTHORIZATION).orElse("");
+            if (!authorization.startsWith("Bearer ")) {
+                response.status(Status.UNAUTHORIZED_401).send("Bearer token required");
+                return;
+            }
+            authenticatedDownstream.incrementAndGet();
+            downstreamAuthorization.set(authorization);
+            response.send("downstream");
+        })).build().start();
+        try (TestOidcServer idp = idp(INBOUND_AUDIENCE).allowedScopes("orders.read")
+                .endpoints(endpoints -> endpoints.token(context -> {
+                    if (context.request().formParam("scope").filter("orders.read"::equals).isPresent()) {
+                        tokenEntered.countDown();
+                        try {
+                            if (!releaseToken.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Test did not release the Token Endpoint");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                    context.sendDefault();
+                })).build()) {
+            String inboundToken = OidcIntegrationSupport.clientCredentialsToken(idp, CLIENT_ID, CLIENT_SECRET);
+            OidcProviderConfig config = protectedResourceProviderConfig(idp, clientCredentialsTarget(),
+                    tenant -> tenant.clientCredentialsRemoteWork(work -> work.maxConcurrent(1).maxQueued(0)));
+            WebServer rp = proxyServer(config, downstream);
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                try {
+                    Future<?> leader = executor.submit(() -> callProxy(rp, inboundToken));
+                    assertThat(tokenEntered.await(5, TimeUnit.SECONDS), is(true));
+                    executor.submit(() -> {
+                        WebClient client = WebClient.builder().baseUri(OidcIntegrationSupport.rpBaseUri(rp)).build();
+                        try {
+                            try (HttpClientResponse response = client.get("/proxy")
+                                    .header(HeaderNames.AUTHORIZATION, "Bearer " + inboundToken).request()) {
+                                // WebClientSecurity currently proceeds on provider FAILURE; the protected resource must reject
+                                // the missing credential. This check also permits a future fail-closed client integration.
+                                assertThat(response.status().family(), not(Status.Family.SUCCESSFUL));
+                            }
+                        } finally {
+                            client.closeResource();
+                        }
+                    }).get(2, TimeUnit.SECONDS);
+                    assertThat(authenticatedDownstream.get(), is(0));
+                    assertThat(idp.tokenRequests().size(), is(2)); // Inbound setup token plus one active outbound grant.
+                    assertThat(leader.isDone(), is(false));
+                    releaseToken.countDown();
+                    leader.get(5, TimeUnit.SECONDS);
+                    assertThat(authenticatedDownstream.get(), is(1));
+                    assertThat(downstreamAuthorization.get(), not("Bearer " + inboundToken));
+                    callProxy(rp, inboundToken);
+                    assertThat(authenticatedDownstream.get(), is(2));
+                    assertThat(idp.tokenRequests().size(), is(2));
+                } finally {
+                    releaseToken.countDown();
+                    rp.stop();
+                }
+            }
+        } finally {
+            releaseToken.countDown();
+            downstream.stop();
+        }
+    }
 
     @Test
     void outboundTargetPropagatesCurrentBearerTokenThroughWebClient() {

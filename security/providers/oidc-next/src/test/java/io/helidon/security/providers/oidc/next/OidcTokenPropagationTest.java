@@ -22,11 +22,21 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
+import io.helidon.common.configurable.Resource;
+import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.Tls;
+import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderNames;
+import io.helidon.http.HeaderValues;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.Principal;
 import io.helidon.security.ProviderRequest;
@@ -35,20 +45,36 @@ import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.api.WebClientConfig;
+import io.helidon.webserver.WebServer;
 
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcTokenPropagationTest {
     private static final String ACCESS_TOKEN = "access-token";
     private static final String EXISTING_HEADER_NAME = "X-Existing";
     private static final String EXISTING_HEADER_VALUE = "existing-value";
+
+    @TestFactory
+    Stream<DynamicTest> propagatedTokensRetainTheirCertificateBindingOnTheDownstreamConnection() {
+        return Stream.of(OidcTokenValidationMethod.JWT, OidcTokenValidationMethod.INTROSPECTION)
+                .flatMap(method -> Stream.of(true, false).map(bound -> dynamicTest(method + " bound=" + bound,
+                        () -> verifyDownstreamCertificateBinding(method, bound))));
+    }
 
     @Test
     void tokenPropagationOnlyAppliesToMatchingOutboundTarget() {
@@ -369,6 +395,123 @@ class OidcTokenPropagationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
                    is(List.of("Bearer " + ACCESS_TOKEN)));
+    }
+
+    private static void verifyDownstreamCertificateBinding(OidcTokenValidationMethod method, boolean bound) {
+        Keys callerKeys = Keys.builder()
+                .keystore(store -> store.passphrase("password").keystore(Resource.create("client.p12"))).build();
+        Keys serverKeys = Keys.builder()
+                .keystore(store -> store.passphrase("password").keystore(Resource.create("server.p12"))).build();
+        String callerThumbprint = OidcTestCertificates.thumbprint(callerKeys.publicCert().orElseThrow());
+        String otherThumbprint = OidcTestCertificates.thumbprint(serverKeys.publicCert().orElseThrow());
+        Tls serverTls = Tls.builder().privateKey(serverKeys).privateKeyCertChain(serverKeys)
+                .trust(callerKeys.certChain()).clientAuth(TlsClientAuth.OPTIONAL).build();
+        Tls callerTls = Tls.builder().privateKey(callerKeys).privateKeyCertChain(callerKeys)
+                .trust(serverKeys.certChain()).build();
+        Tls otherTls = Tls.builder().privateKey(serverKeys).privateKeyCertChain(serverKeys)
+                .trust(serverKeys.certChain()).build();
+        Tls noCertificateTls = Tls.builder().trust(serverKeys.certChain()).build();
+        Jwt.Builder claims = Jwt.builder().issuer("https://issuer.example").subject("user1").addAudience("api://orders")
+                .algorithm("RS256").keyId("verify-rsa").type("at+jwt").jwtId("propagation-test")
+                .issueTime(Instant.now()).expirationTime(Instant.now().plusSeconds(600))
+                .addPayloadClaim("client_id", "calling-client");
+        if (bound) {
+            claims.addPayloadClaim("cnf", JsonObject.builder().set("x5t#S256", callerThumbprint).build());
+        }
+        Jwt jwt = claims.build();
+        String token = method == OidcTokenValidationMethod.JWT
+                ? SignedJwt.sign(jwt, JwkKeys.builder().resource(Resource.create("oidc-next-sign-jwk.json"))
+                        .build().forKeyId("sign-rsa").orElseThrow()).tokenContent()
+                : "opaque-propagated-token";
+        JsonObject introspection = JsonObject.builder().from(jwt.payloadJsonObject())
+                .set("active", true).set("token_type", "Bearer").build();
+        String jwks = Resource.create("oidc-next-verify-public-jwk.json").string();
+        WebServer issuer = WebServer.builder().port(0).tls(serverTls).routing(routing -> routing
+                .get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(jwks))
+                .post("/introspect", (request, response) -> {
+                    assertThat(request.content().as(Parameters.class).first("token").orElseThrow(), is(token));
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(introspection.toString());
+                })).build().start();
+        try {
+            URI issuerUri = URI.create("https://localhost:" + issuer.port());
+            OidcTenantConfig tenant = OidcTenantConfig.builder().issuer("https://issuer.example")
+                    .clientId("resource-client").clientSecret("resource-secret")
+                    // OP/AS TLS credentials do not configure the application's downstream connection.
+                    .webClient(WebClientConfig.builder().tls(callerTls).buildPrototype())
+                    .endpoints(endpoints -> endpoints.jwksUri(issuerUri.resolve("/jwks"))
+                            .introspectionEndpointUri(issuerUri.resolve("/introspect")))
+                    .protectedResource(resource -> resource.tokenValidation(validation -> validation.method(method)
+                            .audience("api://orders")
+                            .certificateBoundAccessTokens(binding -> binding
+                                    .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
+                    .buildPrototype();
+            OutboundTarget target = OutboundTarget.builder("orders").addHost("localhost").addTransport("https")
+                    .addPath("/orders/.*").customObject(OidcOutboundTargetConfig.class, OidcOutboundTargetConfig.builder()
+                            .tokenPropagationEnabled(true).audience("api://orders").buildPrototype()).build();
+            try (OidcProvider forwardingProvider = provider(tenant, target);
+                 OidcProvider receivingProvider = provider(tenant)) {
+                SecurityEnvironment inbound = SecurityEnvironment.builder().targetUri(URI.create("https://service.example"))
+                        .header(HeaderNames.AUTHORIZATION.defaultCase(), "Bearer " + token)
+                        .addAttribute("remotePeer", OidcTestCertificates.peerInfo(callerKeys.publicCert().orElseThrow())).build();
+                AuthenticationResponse authenticated = forwardingProvider.authenticate(OidcProviderTest.request(null, inbound));
+                assertThat(authenticated.description().orElse("No authentication description"), authenticated.status(),
+                           is(SecurityResponse.SecurityStatus.SUCCESS));
+                ProviderRequest request = providerRequest(authenticated.user().orElseThrow());
+                AtomicReference<String> peerThumbprint = new AtomicReference<>();
+                WebServer downstream = WebServer.builder().port(0).tls(serverTls).routing(routing -> routing
+                        .get("/orders/42", (received, response) -> {
+                            peerThumbprint.set(received.remotePeer().tlsCertificates()
+                                    .map(chain -> OidcTestCertificates.thumbprint(chain[0])).orElse("absent"));
+                            AuthenticationResponse result = receivingProvider.authenticate(OidcProviderTest.request(null,
+                                    SecurityEnvironment.builder().targetUri(URI.create("https://downstream.example/orders/42"))
+                                            .header(HeaderNames.AUTHORIZATION.defaultCase(),
+                                                    received.headers().first(HeaderNames.AUTHORIZATION).orElseThrow())
+                                            .addAttribute("remotePeer", received.remotePeer()).build()));
+                            result.responseHeaders().getOrDefault(HeaderNames.WWW_AUTHENTICATE.defaultCase(), List.of())
+                                    .forEach(value -> response.header(HeaderNames.WWW_AUTHENTICATE, value));
+                            response.status(result.statusCode().orElse(200)).send(result.status().name());
+                        })).build().start();
+                try {
+                    URI downstreamUri = URI.create("https://localhost:" + downstream.port() + "/orders/42");
+                    // Like WebClientSecurity, derived metadata may still describe the incoming peer, not outgoing proof.
+                    SecurityEnvironment outbound = inbound.derive().clearHeaders().targetUri(downstreamUri)
+                            .transport("https").path("/orders/42").method("GET").build();
+                    for (EndpointConfig policy : List.of(EndpointConfig.create(), EndpointConfig.builder()
+                            .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+                            .build())) {
+                        var propagated = forwardingProvider.outboundSecurity(request, outbound, policy);
+                        assertThat(propagated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                        String authorization = propagated.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase())
+                                .getFirst();
+                        assertThat(authorization, is("Bearer " + token));
+                        for (var transport : Map.of(callerThumbprint, callerTls,
+                                                    otherThumbprint, otherTls,
+                                                    "absent", noCertificateTls).entrySet()) {
+                            WebClient client = WebClient.builder().tls(transport.getValue()).build();
+                            try {
+                                try (HttpClientResponse response = client.get(downstreamUri.toString())
+                                        .header(HeaderNames.AUTHORIZATION, authorization).request()) {
+                                    boolean validProof = !bound || transport.getKey().equals(callerThumbprint);
+                                    assertThat(response.status(), is(validProof ? Status.OK_200 : Status.UNAUTHORIZED_401));
+                                    assertThat(response.as(String.class), is(validProof ? "SUCCESS" : "FAILURE"));
+                                    assertThat(peerThumbprint.get(), is(transport.getKey()));
+                                    if (!validProof) {
+                                        assertThat(response.headers().first(HeaderNames.WWW_AUTHENTICATE).orElseThrow(),
+                                                   containsString("error=\"invalid_token\""));
+                                    }
+                                }
+                            } finally {
+                                client.closeResource();
+                            }
+                        }
+                    }
+                } finally {
+                    downstream.stop();
+                }
+            }
+        } finally {
+            issuer.stop();
+        }
     }
 
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {

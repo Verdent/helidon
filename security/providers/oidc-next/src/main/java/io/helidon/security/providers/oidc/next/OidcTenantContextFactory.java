@@ -985,8 +985,9 @@ final class OidcTenantContextFactory {
         OidcTokenValidationConfig tokenValidation = tenantConfig.protectedResource()
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
+        // Conditional validation also accepts unbound tokens, so it does not require an issuance capability.
         if (tokenValidation.certificateBoundAccessTokens().mode()
-                == OidcCertificateBoundAccessTokenMode.DISABLED) {
+                != OidcCertificateBoundAccessTokenMode.REQUIRED) {
             return;
         }
 

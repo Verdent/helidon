@@ -72,8 +72,9 @@ class OidcTokenPropagationTest {
     @TestFactory
     Stream<DynamicTest> propagatedTokensRetainTheirCertificateBindingOnTheDownstreamConnection() {
         return Stream.of(OidcTokenValidationMethod.JWT, OidcTokenValidationMethod.INTROSPECTION)
-                .flatMap(method -> Stream.of(true, false).map(bound -> dynamicTest(method + " bound=" + bound,
-                        () -> verifyDownstreamCertificateBinding(method, bound))));
+                .flatMap(method -> Stream.of(true, false).flatMap(bound -> Stream.of("static", "omitted", "false", "true")
+                        .map(metadataSupport -> dynamicTest(method + " bound=" + bound + " metadata=" + metadataSupport,
+                                () -> verifyDownstreamCertificateBinding(method, bound, metadataSupport)))));
     }
 
     @Test
@@ -397,7 +398,9 @@ class OidcTokenPropagationTest {
                    is(List.of("Bearer " + ACCESS_TOKEN)));
     }
 
-    private static void verifyDownstreamCertificateBinding(OidcTokenValidationMethod method, boolean bound) {
+    private static void verifyDownstreamCertificateBinding(OidcTokenValidationMethod method,
+                                                          boolean bound,
+                                                          String metadataSupport) {
         Keys callerKeys = Keys.builder()
                 .keystore(store -> store.passphrase("password").keystore(Resource.create("client.p12"))).build();
         Keys serverKeys = Keys.builder()
@@ -426,7 +429,10 @@ class OidcTokenPropagationTest {
         JsonObject introspection = JsonObject.builder().from(jwt.payloadJsonObject())
                 .set("active", true).set("token_type", "Bearer").build();
         String jwks = Resource.create("oidc-next-verify-public-jwk.json").string();
+        AtomicReference<String> providerMetadata = new AtomicReference<>();
         WebServer issuer = WebServer.builder().port(0).tls(serverTls).routing(routing -> routing
+                .get("/.well-known/openid-configuration", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+                        .send(providerMetadata.get()))
                 .get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(jwks))
                 .post("/introspect", (request, response) -> {
                     assertThat(request.content().as(Parameters.class).first("token").orElseThrow(), is(token));
@@ -434,12 +440,26 @@ class OidcTokenPropagationTest {
                 })).build().start();
         try {
             URI issuerUri = URI.create("https://localhost:" + issuer.port());
+            JsonObject.Builder metadata = JsonObject.builder().set("issuer", "https://issuer.example")
+                    .set("jwks_uri", issuerUri.resolve("/jwks").toString())
+                    .set("introspection_endpoint", issuerUri.resolve("/introspect").toString())
+                    .setStrings("introspection_endpoint_auth_methods_supported", List.of("client_secret_basic"));
+            if ("true".equals(metadataSupport) || "false".equals(metadataSupport)) {
+                metadata.set("tls_client_certificate_bound_access_tokens", Boolean.parseBoolean(metadataSupport));
+            }
+            providerMetadata.set(metadata.build().toString());
             OidcTenantConfig tenant = OidcTenantConfig.builder().issuer("https://issuer.example")
                     .clientId("resource-client").clientSecret("resource-secret")
                     // OP/AS TLS credentials do not configure the application's downstream connection.
                     .webClient(WebClientConfig.builder().tls(callerTls).buildPrototype())
-                    .endpoints(endpoints -> endpoints.jwksUri(issuerUri.resolve("/jwks"))
-                            .introspectionEndpointUri(issuerUri.resolve("/introspect")))
+                    .endpoints(endpoints -> {
+                        if ("static".equals(metadataSupport)) {
+                            endpoints.jwksUri(issuerUri.resolve("/jwks"))
+                                    .introspectionEndpointUri(issuerUri.resolve("/introspect"));
+                        } else {
+                            endpoints.wellKnownUri(issuerUri.resolve("/.well-known/openid-configuration"));
+                        }
+                    })
                     .protectedResource(resource -> resource.tokenValidation(validation -> validation.method(method)
                             .audience("api://orders")
                             .certificateBoundAccessTokens(binding -> binding

@@ -996,9 +996,10 @@ The certificate is propagated by the Helidon WebServer security integration thro
 It does not trust forwarded certificate headers. The thumbprint is computed as SHA-256 over the DER certificate bytes and
 base64url-encoded without padding, matching the RFC 8705 `x5t#S256` definition.
 
-When well-known metadata is loaded and certificate-bound validation is enabled, the metadata must advertise
-`tls_client_certificate_bound_access_tokens: true`. RFC 8705 defines this metadata member as optional and says the
-default is `false` when it is omitted.
+When well-known metadata is loaded, `REQUIRED` mode requires
+`tls_client_certificate_bound_access_tokens: true`. `IF_PRESENT` accepts an omitted or false capability flag because it
+also accepts unbound tokens; any token containing `cnf.x5t#S256` still requires matching certificate proof. RFC 8705
+defines this issuer capability metadata member as optional, with a default of `false` when omitted.
 
 This option applies to Protected Resource Bearer Token validation. Refreshed Authorization Code Flow access-token
 validation continues to reject sender-constrained access tokens because the inbound browser TLS certificate is not the

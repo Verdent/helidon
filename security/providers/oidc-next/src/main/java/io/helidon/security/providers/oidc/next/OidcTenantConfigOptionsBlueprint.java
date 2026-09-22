@@ -163,6 +163,19 @@ interface OidcTenantConfigOptionsBlueprint {
     OidcJwkSetConfig jwkSet();
 
     /**
+     * Admission limits for outbound Client Credentials token acquisition performed by this tenant.
+     * <p>
+     * One active permit covers endpoint resolution, including deferred discovery when needed, and the Token Endpoint
+     * request. Limits are shared across this tenant's outbound targets and endpoint policies. Valid cached tokens bypass
+     * admission. Admitted same-key followers wait interruptibly for the shared result without a separate wait deadline.
+     *
+     * @return Client Credentials remote-work limits
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcRemoteWorkConfig clientCredentialsRemoteWork();
+
+    /**
      * Admission limits for RFC 8693 Token Exchange operations performed by this tenant.
      *
      * @return Token Exchange remote-work limits

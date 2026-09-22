@@ -34,9 +34,24 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcSingleFlightCacheTest {
+    private final OidcRemoteWorkLimiter limiter = new OidcRemoteWorkLimiter(OidcRemoteWorkConfig.create());
+
+    @Test
+    void admissionAndRejectionHandlingCannotBeOmitted() {
+        OidcSingleFlightCache<String, String, String> cache = new OidcSingleFlightCache<>();
+        assertThrows(NullPointerException.class, () -> cache.resolve("key", _ -> true, value -> value,
+                () -> {
+                    throw new AssertionError("Missing admission must fail before loading");
+                }, null, () -> "rejected"));
+        assertThrows(NullPointerException.class, () -> cache.resolve("key", _ -> true, value -> value,
+                () -> {
+                    throw new AssertionError("Missing rejection handling must fail before loading");
+                }, limiter, null));
+    }
+
     @Test
     void cachedValueIsReusedUntilInvalid() {
         OidcSingleFlightCache<String, CachedValue, String> cache = new OidcSingleFlightCache<>(10);
@@ -64,12 +79,12 @@ class OidcSingleFlightCacheTest {
                                      _ -> true,
                                      CachedValue::result,
                                      () -> OidcSingleFlightCache.Resolution.doNotCache(
-                                             "failure-" + loads.incrementAndGet()));
+                                             "failure-" + loads.incrementAndGet()), limiter, () -> "rejected");
         String second = cache.resolve("key",
                                       _ -> true,
                                       CachedValue::result,
                                       () -> OidcSingleFlightCache.Resolution.doNotCache(
-                                              "failure-" + loads.incrementAndGet()));
+                                              "failure-" + loads.incrementAndGet()), limiter, () -> "rejected");
 
         assertThat(first, is("failure-1"));
         assertThat(second, is("failure-2"));
@@ -108,7 +123,7 @@ class OidcSingleFlightCacheTest {
             List<Future<String>> futures = new ArrayList<>(taskCount);
             for (int i = 0; i < taskCount; i++) {
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     return cache.resolve("key",
                                          _ -> true,
                                          CachedValue::result,
@@ -118,12 +133,12 @@ class OidcSingleFlightCacheTest {
                                              await(releaseLoader);
                                              CachedValue value = new CachedValue("loaded", 1);
                                              return OidcSingleFlightCache.Resolution.cache(value, value.result());
-                                         });
+                                         }, limiter, () -> "rejected");
                 }));
             }
 
             start.countDown();
-            assertTrue(loaderStarted.await(5, TimeUnit.SECONDS));
+            assertThat(loaderStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseLoader.countDown();
             for (Future<String> future : futures) {
                 assertThat(future.get(), is("loaded"));
@@ -150,7 +165,7 @@ class OidcSingleFlightCacheTest {
                                                                          bothLoadersStarted,
                                                                          releaseLoaders));
             try {
-                assertTrue(bothLoadersStarted.await(5, TimeUnit.SECONDS));
+                assertThat(bothLoadersStarted.await(5, TimeUnit.SECONDS), is(true));
             } finally {
                 releaseLoaders.countDown();
             }
@@ -188,7 +203,7 @@ class OidcSingleFlightCacheTest {
                     },
                     limiter,
                     () -> "rejected"));
-            assertTrue(loaderStarted.await(5, TimeUnit.SECONDS));
+            assertThat(loaderStarted.await(5, TimeUnit.SECONDS), is(true));
 
             Thread follower = Thread.ofVirtual().start(() -> followerResult.set(cache.resolve(
                     "key",
@@ -230,52 +245,9 @@ class OidcSingleFlightCacheTest {
         }
     }
 
-    private static String resolve(OidcSingleFlightCache<String, CachedValue, String> cache,
-                                  String key,
-                                  AtomicInteger generation,
-                                  AtomicInteger loads) {
-        return cache.resolve(key,
-                             value -> value.generation() == generation.get(),
-                             CachedValue::result,
-                             () -> {
-                                 loads.incrementAndGet();
-                                 CachedValue value = new CachedValue(key + "-" + generation.get(), generation.get());
-                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
-                             });
-    }
-
-    private static String resolveBlocked(OidcSingleFlightCache<String, CachedValue, String> cache,
-                                         String key,
-                                         CountDownLatch bothLoadersStarted,
-                                         CountDownLatch releaseLoaders) {
-        return cache.resolve(key,
-                             _ -> true,
-                             CachedValue::result,
-                             () -> {
-                                 bothLoadersStarted.countDown();
-                                 await(releaseLoaders);
-                                 CachedValue value = new CachedValue(key, 1);
-                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
-                             });
-    }
-
-    private static String resolve(OidcSingleFlightCache<String, CachedValue, String> cache,
-                                  String key,
-                                  AtomicInteger generation,
-                                  Map<String, AtomicInteger> loads) {
-        return cache.resolve(key,
-                             value -> value.generation() == generation.get(),
-                             CachedValue::result,
-                             () -> {
-                                 int load = loads.computeIfAbsent(key, _ -> new AtomicInteger()).incrementAndGet();
-                                 CachedValue value = new CachedValue(key + "-" + load, generation.get());
-                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
-                             });
-    }
-
     private static void await(CountDownLatch latch) {
         try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertThat(latch.await(5, TimeUnit.SECONDS), is(true));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for test latch", e);
@@ -288,6 +260,49 @@ class OidcSingleFlightCacheTest {
             Thread.onSpinWait();
         }
         assertThat(limiter.queuedCount(), is(expected));
+    }
+
+    private String resolve(OidcSingleFlightCache<String, CachedValue, String> cache,
+                           String key,
+                           AtomicInteger generation,
+                           AtomicInteger loads) {
+        return cache.resolve(key,
+                             value -> value.generation() == generation.get(),
+                             CachedValue::result,
+                             () -> {
+                                 loads.incrementAndGet();
+                                 CachedValue value = new CachedValue(key + "-" + generation.get(), generation.get());
+                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
+                             }, limiter, () -> "rejected");
+    }
+
+    private String resolveBlocked(OidcSingleFlightCache<String, CachedValue, String> cache,
+                                  String key,
+                                  CountDownLatch bothLoadersStarted,
+                                  CountDownLatch releaseLoaders) {
+        return cache.resolve(key,
+                             _ -> true,
+                             CachedValue::result,
+                             () -> {
+                                 bothLoadersStarted.countDown();
+                                 await(releaseLoaders);
+                                 CachedValue value = new CachedValue(key, 1);
+                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
+                             }, limiter, () -> "rejected");
+    }
+
+    private String resolve(OidcSingleFlightCache<String, CachedValue, String> cache,
+                           String key,
+                           AtomicInteger generation,
+                           Map<String, AtomicInteger> loads) {
+        return cache.resolve(key,
+                             value -> value.generation() == generation.get(),
+                             CachedValue::result,
+                             () -> {
+                                 int load = loads.computeIfAbsent(key, _ -> new AtomicInteger()).incrementAndGet();
+                                 CachedValue value = new CachedValue(key + "-" + load, generation.get());
+                                 return OidcSingleFlightCache.Resolution.cache(value, value.result());
+                             }, limiter, () -> "rejected");
     }
 
     private record CachedValue(String result, int generation) {

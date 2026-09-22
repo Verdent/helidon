@@ -192,6 +192,10 @@ final class OidcTenantContext {
         return runtimeResources().remoteWorkLimiters().tokenExchange();
     }
 
+    OidcRemoteWorkLimiter clientCredentialsRemoteWorkLimiter() {
+        return runtimeResources().remoteWorkLimiters().clientCredentials();
+    }
+
     OidcRefreshCoordinator<OidcRefreshTokenManager.RefreshResult> refreshCoordinator() {
         return runtimeResources().refreshCoordinator()
                 .orElseThrow(() -> new IllegalStateException(
@@ -291,6 +295,7 @@ final class OidcTenantContext {
     }
 
     private record RemoteWorkLimiters(OidcRemoteWorkLimiter introspection,
+                                      OidcRemoteWorkLimiter clientCredentials,
                                       OidcRemoteWorkLimiter tokenExchange) {
         private static RemoteWorkLimiters create(OidcTenantConfig tenantConfig) {
             OidcRemoteWorkConfig introspectionConfig = tenantConfig.protectedResource()
@@ -299,6 +304,7 @@ final class OidcTenantContext {
                     .map(OidcIntrospectionConfig::remoteWork)
                     .orElseGet(OidcRemoteWorkConfig::create);
             return new RemoteWorkLimiters(new OidcRemoteWorkLimiter(introspectionConfig),
+                                          new OidcRemoteWorkLimiter(tenantConfig.clientCredentialsRemoteWork()),
                                           new OidcRemoteWorkLimiter(tenantConfig.tokenExchangeRemoteWork()));
         }
     }

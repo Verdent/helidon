@@ -43,6 +43,10 @@ class OidcProviderRootOptionsTest {
             Map.of("initialization-retry-interval", "PT10S"),
             Map.of("initialization-max-queued", "0"),
             Map.of("initialization-max-queued", "128"),
+            Map.of("client-credentials-remote-work.max-concurrent", "3"),
+            Map.of("client-credentials-remote-work.max-concurrent", "32"),
+            Map.of("client-credentials-remote-work.max-queued", "0"),
+            Map.of("client-credentials-remote-work.admission-timeout", "PT0S"),
             Map.of("token-exchange-remote-work.max-concurrent", "3"),
             Map.of("token-exchange-remote-work.max-concurrent", "32"));
     private static final Map<String, String> ALL_TENANT_OPTIONS = Map.ofEntries(
@@ -57,6 +61,7 @@ class OidcProviderRootOptionsTest {
             Map.entry("client-assertion.lifetime", "PT20S"),
             Map.entry("webclient.connect-timeout", "PT2S"),
             Map.entry("jwk-set.refresh-interval", "PT11M"),
+            Map.entry("client-credentials-remote-work.max-concurrent", "3"),
             Map.entry("token-exchange-remote-work.max-concurrent", "3"),
             Map.entry("endpoints.token-endpoint-uri", "https://issuer.example/token"),
             Map.entry("protected-resource.challenge-realm", "root-realm"),
@@ -74,17 +79,20 @@ class OidcProviderRootOptionsTest {
                 .issuer("https://issuer.example")
                 .initializationRetryInterval(RETRY_INTERVAL)
                 .initializationMaxQueued(7)
+                .clientCredentialsRemoteWork(REMOTE_WORK)
                 .tokenExchangeRemoteWork(REMOTE_WORK)
                 .buildPrototype();
         OidcTenantConfig tenant = provider.tenants().get("default");
 
         assertThat(tenant.initializationRetryInterval(), is(RETRY_INTERVAL));
         assertThat(tenant.initializationMaxQueued(), is(7));
+        assertThat(tenant.clientCredentialsRemoteWork(), is(REMOTE_WORK));
         assertThat(tenant.tokenExchangeRemoteWork(), is(REMOTE_WORK));
         assertTenantOptions(tenant, OidcTenantConfig.builder()
                 .issuer("https://issuer.example")
                 .initializationRetryInterval(RETRY_INTERVAL)
                 .initializationMaxQueued(7)
+                .clientCredentialsRemoteWork(REMOTE_WORK)
                 .tokenExchangeRemoteWork(REMOTE_WORK)
                 .buildPrototype());
     }
@@ -94,6 +102,9 @@ class OidcProviderRootOptionsTest {
         Config config = config(Map.of("issuer", "https://issuer.example",
                                       "initialization-retry-interval", "PT2S",
                                       "initialization-max-queued", "7",
+                                      "client-credentials-remote-work.max-concurrent", "3",
+                                      "client-credentials-remote-work.max-queued", "2",
+                                      "client-credentials-remote-work.admission-timeout", "PT0.025S",
                                       "token-exchange-remote-work.max-concurrent", "3",
                                       "token-exchange-remote-work.max-queued", "2",
                                       "token-exchange-remote-work.admission-timeout", "PT0.025S"));
@@ -112,6 +123,53 @@ class OidcProviderRootOptionsTest {
 
         assertThat(provider.defaultTenant(), is(Optional.of("default")));
         assertThat(provider.tenants().get("default").initializationRetryInterval(), is(RETRY_INTERVAL));
+    }
+
+    @Test
+    void rootBuilderRecognizesClientCredentialsLimitsAloneAndDefaultsRemainConsistent() {
+        OidcProviderConfig provider = OidcProviderConfig.builder().clientCredentialsRemoteWork(REMOTE_WORK).buildPrototype();
+        assertThat(provider.defaultTenant(), is(Optional.of("default")));
+        assertThat(provider.tenants().get("default").clientCredentialsRemoteWork(), is(REMOTE_WORK));
+        OidcRemoteWorkConfig defaults = OidcTenantConfig.create().clientCredentialsRemoteWork();
+        assertThat(defaults.maxConcurrent(), is(32));
+        assertThat(defaults.maxQueued(), is(128));
+        assertThat(defaults.admissionTimeout(), is(Duration.ofSeconds(1)));
+    }
+
+    @Test
+    void invalidClientCredentialsLimitsFailForRootAndNamedTenants() {
+        for (Map<String, String> invalid : List.of(Map.of("max-concurrent", "0"), Map.of("max-concurrent", "-1"),
+                                                  Map.of("max-queued", "-1"), Map.of("admission-timeout", "PT-1S"))) {
+            for (String prefix : List.of("", "tenants.named.")) {
+                Map<String, String> values = new LinkedHashMap<>();
+                invalid.forEach((name, value) -> values.put(prefix + "client-credentials-remote-work." + name, value));
+                assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.create(config(values)));
+            }
+        }
+        assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
+                .clientCredentialsRemoteWork(work -> work.maxConcurrent(0)).buildPrototype());
+        assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .clientCredentialsRemoteWork(work -> work.maxQueued(-1)).buildPrototype());
+    }
+
+    @Test
+    void runtimeClientCredentialsLimiterUsesRootConfigurationIndependentlyOfTokenExchange() {
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .clientCredentialsRemoteWork(work -> work.maxConcurrent(1).maxQueued(0)).buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(config);
+        try {
+            OidcTenantContext context = registry.tenantContext("default").orElseThrow();
+            OidcRemoteWorkLimiter limiter = context.clientCredentialsRemoteWorkLimiter();
+            try (var _ = limiter.acquireActive().orElseThrow()) {
+                assertThat(limiter.acquireActive().isEmpty(), is(true));
+                try (var _ = context.tokenExchangeRemoteWorkLimiter().acquireActive().orElseThrow()) {
+                    assertThat(context.tokenExchangeRemoteWorkLimiter().activeCount(), is(1));
+                }
+            }
+            assertThat(limiter.activeCount(), is(0));
+        } finally {
+            registry.close();
+        }
     }
 
     @Test
@@ -176,6 +234,7 @@ class OidcProviderRootOptionsTest {
         List<Consumer<OidcProviderConfig.Builder>> options = List.of(
                 builder -> builder.initializationRetryInterval(RETRY_INTERVAL),
                 builder -> builder.initializationMaxQueued(7),
+                builder -> builder.clientCredentialsRemoteWork(REMOTE_WORK),
                 builder -> builder.tokenExchangeRemoteWork(REMOTE_WORK));
         for (Consumer<OidcProviderConfig.Builder> option : options) {
             OidcProviderConfig.Builder builder = OidcProviderConfig.builder()
@@ -193,6 +252,9 @@ class OidcProviderRootOptionsTest {
         OidcProviderConfig provider = OidcProviderConfig.create(config(Map.of(
                 "tenants.named.initialization-retry-interval", "PT2S",
                 "tenants.named.initialization-max-queued", "7",
+                "tenants.named.client-credentials-remote-work.max-concurrent", "3",
+                "tenants.named.client-credentials-remote-work.max-queued", "2",
+                "tenants.named.client-credentials-remote-work.admission-timeout", "PT0.025S",
                 "tenants.named.token-exchange-remote-work.max-concurrent", "3",
                 "tenants.named.token-exchange-remote-work.max-queued", "2",
                 "tenants.named.token-exchange-remote-work.admission-timeout", "PT0.025S")));
@@ -200,6 +262,7 @@ class OidcProviderRootOptionsTest {
         assertThat(provider.defaultTenant(), is(Optional.of("named")));
         assertThat(provider.tenants().get("named").initializationRetryInterval(), is(RETRY_INTERVAL));
         assertThat(provider.tenants().get("named").initializationMaxQueued(), is(7));
+        assertThat(provider.tenants().get("named").clientCredentialsRemoteWork(), is(REMOTE_WORK));
         assertThat(provider.tenants().get("named").tokenExchangeRemoteWork(), is(REMOTE_WORK));
     }
 
@@ -211,6 +274,7 @@ class OidcProviderRootOptionsTest {
         assertThat(OidcProviderConfig.builder()
                 .initializationRetryInterval(defaults.initializationRetryInterval())
                 .initializationMaxQueued(defaults.initializationMaxQueued())
+                .clientCredentialsRemoteWork(defaults.clientCredentialsRemoteWork())
                 .tokenExchangeRemoteWork(defaults.tokenExchangeRemoteWork())
                 .buildPrototype().tenants().isEmpty(), is(true));
     }
@@ -258,6 +322,7 @@ class OidcProviderRootOptionsTest {
                 .clientAssertion(expected.clientAssertion())
                 .webClient(expected.webClient())
                 .jwkSet(expected.jwkSet())
+                .clientCredentialsRemoteWork(expected.clientCredentialsRemoteWork())
                 .tokenExchangeRemoteWork(expected.tokenExchangeRemoteWork())
                 .endpoints(expected.endpoints())
                 .protectedResource(expected.protectedResource().orElseThrow())
@@ -276,7 +341,8 @@ class OidcProviderRootOptionsTest {
     @Test
     void rootOperationalOptionsSupportTenantNamingBuilderReuseAndCopies() {
         OidcProviderConfig.Builder builder = OidcProviderConfig.builder().defaultTenant("selected")
-                .initializationRetryInterval(RETRY_INTERVAL).initializationMaxQueued(7).tokenExchangeRemoteWork(REMOTE_WORK);
+                .initializationRetryInterval(RETRY_INTERVAL).initializationMaxQueued(7)
+                .clientCredentialsRemoteWork(REMOTE_WORK).tokenExchangeRemoteWork(REMOTE_WORK);
         OidcProviderConfig first = builder.buildPrototype();
         OidcProviderConfig second = builder.buildPrototype();
         OidcProviderConfig copy = OidcProviderConfig.builder().from(first).buildPrototype();
@@ -284,6 +350,7 @@ class OidcProviderRootOptionsTest {
         assertThat(first.defaultTenant(), is(Optional.of("selected")));
         assertThat(first.tenants().get("selected").initializationRetryInterval(), is(RETRY_INTERVAL));
         assertThat(first.tenants().get("selected").initializationMaxQueued(), is(7));
+        assertThat(first.tenants().get("selected").clientCredentialsRemoteWork(), is(REMOTE_WORK));
         assertThat(first.tenants().get("selected").tokenExchangeRemoteWork(), is(REMOTE_WORK));
         assertThat(second.tenants(), is(first.tenants()));
         assertThat(copy.tenants(), is(first.tenants()));

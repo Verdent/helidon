@@ -2039,8 +2039,8 @@ Different service nodes may acquire and cache their own tokens, and neither requ
 required. The caches start no background threads and need no external lifecycle management.
 
 Concurrent misses for the same complete cache key are coalesced within one provider instance. One caller performs the
-Token Endpoint request while the other callers wait for that same result. Different keys do not share a result and can
-run concurrently; Token Exchange concurrency is subject to the per-tenant admission limit described below. A successful
+Token Endpoint request while admitted followers wait for that same result. Different keys do not share a result and can
+run concurrently, subject to the separate per-tenant Client Credentials and Token Exchange admission limits. A successful
 token is retained only when it has a positive `expires_in` and remains valid beyond the configured tenant clock skew.
 OAuth failures, responses without a reusable lifetime, and already-expired responses are shared only with callers waiting
 for that request and are not cached. Expired entries are never returned; they are replaced by a later successful load or
@@ -2048,8 +2048,26 @@ removed by normal bounded LRU eviction.
 
 The coordination path is designed for virtual-thread callers. Token Endpoint I/O runs outside the LRU cache locks and
 outside `ConcurrentHashMap` update callbacks. Callers waiting for the same key hold no cache or map lock, so a slow Token
-Endpoint request does not serialize unrelated keys through a cache critical section. Token Exchange may deliberately
-queue unrelated keys at its configured admission limit.
+Endpoint request does not serialize unrelated keys through a cache critical section. Both grant types may deliberately
+queue unrelated keys at their configured admission limits.
+
+Client Credentials admission is configured through `client-credentials-remote-work`, alongside `token-exchange-remote-work`
+at provider root or under `tenants.<tenant-id>`. Its defaults are `max-concurrent: 32`, `max-queued: 128`, and
+`admission-timeout: PT1S`. One active permit covers the complete acquisition, including deferred metadata resolution when
+needed and the Token Endpoint request. Capacity is shared across all this tenant's outbound targets and endpoint policies,
+but independent of other tenants and other grant categories. Valid cached tokens bypass admission.
+
+The queue is shared by new operations awaiting active capacity and followers of an existing same-key operation. Queue
+slots are reserved immediately. `max-queued: 0` allows new operations with available active capacity but does not allow
+waiting, including same-key followers. The admission timeout limits only a new operation's wait for an active permit;
+it is not a deadline for an admitted same-key follower or for network I/O. Followers wait interruptibly for the shared
+result, with no additional one-second cutoff. Interrupting a follower does not cancel the shared operation.
+
+Rejection or interruption produces the existing outbound `FAILURE`, with no generated Authorization header. It is not
+cached as a token result and does not cause an expired token to be forwarded. DEBUG logging distinguishes local admission
+failure from Token Endpoint failure. Consumers must honor the outbound failure: the current shared `WebClientSecurity`
+integration traces provider failure but continues the HTTP request, so it does not automatically abort transmission or
+map admission failure to HTTP 503. Downstream authentication and application error handling remain necessary.
 
 ### Token Response Lifetimes
 
@@ -2083,6 +2101,11 @@ Deferred discovery is coordinated once per configured tenant. Concurrent cache m
 successful result is reused by both endpoint-level grant types. A token-cache hit does not perform discovery at all, so a
 later metadata-endpoint outage does not prevent reuse of an otherwise valid cached token. Waiting metadata followers are
 interruptible and do not cancel the shared request.
+
+Only an admitted Client Credentials or Token Exchange loader reaches deferred discovery. Consequently, the number of
+callers inside resolution is bounded by the sum of those grants' configured active limits; same-key token followers stay
+outside resolution and consume their grant's bounded queue instead. The limits apply before metadata access, including
+retry attempts. No additional discovery-specific limiter or queue setting is needed for these entry paths.
 
 A transient metadata load failure is shared and held for the tenant's `initialization-retry-interval`; one later caller
 retries after that interval. Successfully loaded metadata is retained for the lifetime of the `OidcProvider` and is not
@@ -2138,6 +2161,10 @@ security:
         client-id: "${OIDC_CLIENT_ID}"
         client-secret: "${OIDC_CLIENT_SECRET}"
         token-endpoint-auth-method: CLIENT_SECRET_BASIC
+        client-credentials-remote-work:
+          max-concurrent: 32
+          max-queued: 128
+          admission-timeout: "PT1S"
         endpoints:
           token-endpoint-uri: "https://issuer.example/token"
         outbound:
@@ -2900,7 +2927,8 @@ Provider options:
 Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for
 multi-tenant applications:
 
-Both forms apply `initialization-retry-interval`, `initialization-max-queued`, and `token-exchange-remote-work` to the
+Both forms apply `initialization-retry-interval`, `initialization-max-queued`, `client-credentials-remote-work`, and
+`token-exchange-remote-work` to the
 effective runtime tenant. In configuration files, any of these options identifies root single-tenant configuration when
 it is the only tenant option present. Root tenant options are not shared defaults for named tenants; do not combine them
 with `tenants`.
@@ -2918,6 +2946,7 @@ with `tenants`.
 | `id-token` | ID Token validation and decryption configuration. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |
 | `jwk-set` | JSON Web Key Set reload policy used for ID Token and JWT access-token signature validation. |
+| `client-credentials-remote-work` | Per-tenant admission limits for Client Credentials acquisition across outbound targets and endpoint policies, including any deferred metadata resolution. |
 | `token-exchange-remote-work` | Per-tenant admission limits shared by RFC 8693 Token Exchange operations for all outbound targets. |
 | `endpoints` | OpenID Provider and Authorization Server endpoint configuration. |
 | `protected-resource` | Bearer Token Protected Resource configuration. |
@@ -3105,7 +3134,8 @@ Introspection options:
 | `remote-work` | Per-tenant admission limits for Introspection Endpoint requests. |
 
 Remote work options are used by `authorization-code.refresh-remote-work`,
-`protected-resource.token-validation.introspection.remote-work`, and `token-exchange-remote-work`:
+`protected-resource.token-validation.introspection.remote-work`, `client-credentials-remote-work`, and
+`token-exchange-remote-work`:
 
 | Key | Description |
 | --- | --- |

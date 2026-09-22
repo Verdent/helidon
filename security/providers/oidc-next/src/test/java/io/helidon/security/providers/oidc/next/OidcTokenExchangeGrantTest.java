@@ -30,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -84,7 +85,10 @@ class OidcTokenExchangeGrantTest {
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static volatile CountDownLatch tokenRequestStarted;
     private static volatile CountDownLatch releaseTokenResponse;
+    private static volatile CountDownLatch metadataRequestStarted;
+    private static volatile CountDownLatch releaseMetadataResponse;
 
+    private static volatile int metadataResponseStatus;
     private static volatile int responseStatus;
     private static volatile String responseBody;
     private static volatile String providerMetadata;
@@ -98,7 +102,15 @@ class OidcTokenExchangeGrantTest {
     static void routing(HttpRouting.Builder routing) {
         routing.get("/.well-known/openid-configuration", (request, response) -> {
             METADATA_REQUEST_COUNT.incrementAndGet();
-            response.header(HeaderValues.CONTENT_TYPE_JSON)
+            CountDownLatch started = metadataRequestStarted;
+            if (started != null) {
+                started.countDown();
+            }
+            CountDownLatch release = releaseMetadataResponse;
+            if (release != null) {
+                await(release);
+            }
+            response.status(metadataResponseStatus).header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(providerMetadata);
         });
         routing.post("/token", OidcTokenExchangeGrantTest::handleTokenEndpoint);
@@ -109,6 +121,7 @@ class OidcTokenExchangeGrantTest {
         issuer = URI.create(serverUri.toString().substring(0, serverUri.toString().length() - 1));
         tokenEndpointUri = serverUri.resolve("token");
         responseStatus = 200;
+        metadataResponseStatus = 200;
         responseBody = tokenExchangeResponse("exchanged-access-token", 600).toString();
         providerMetadata = JsonObject.builder()
                 .set("issuer", issuer.toString())
@@ -126,6 +139,103 @@ class OidcTokenExchangeGrantTest {
         RECORDED_REQUEST.set(null);
         tokenRequestStarted = null;
         releaseTokenResponse = null;
+        metadataRequestStarted = null;
+        releaseMetadataResponse = null;
+    }
+
+    @Test
+    void grantAdmissionBoundsMixedDeferredDiscoveryAndInterruptionDoesNotCancelItsLoader() throws Exception {
+        for (boolean metadataFails : List.of(false, true)) {
+            METADATA_REQUEST_COUNT.set(0);
+            REQUEST_COUNT.set(0);
+            metadataRequestStarted = new CountDownLatch(1);
+            releaseMetadataResponse = new CountDownLatch(1);
+            metadataResponseStatus = metadataFails ? 503 : 200;
+            providerMetadata = JsonObject.builder().set("issuer", issuer.toString())
+                    .set("token_endpoint", tokenEndpointUri.toString())
+                    .setStrings("grant_types_supported", List.of("client_credentials", TOKEN_EXCHANGE_GRANT))
+                    .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                    .build().toString();
+            OidcRemoteWorkConfig limits = OidcRemoteWorkConfig.builder().maxConcurrent(2).maxQueued(0).buildPrototype();
+            OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                    .clientCredentialsRemoteWork(limits).tokenExchangeRemoteWork(limits).buildPrototype();
+            try (OidcProvider provider = endpointPolicyProvider(tenant);
+                 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                try {
+                    OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+                    assertThat(context.ready(), is(true));
+                    assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+                    OidcRemoteWorkLimiter cc = context.clientCredentialsRemoteWorkLimiter();
+                    OidcRemoteWorkLimiter exchange = context.tokenExchangeRemoteWorkLimiter();
+                    EndpointConfig first = clientCredentialsEndpointConfig("first");
+                    EndpointConfig second = clientCredentialsEndpointConfig("second");
+                    Future<OutboundSecurityResponse> loader = executor.submit(() -> provider.outboundSecurity(
+                            providerRequest(), outboundEnvironment(), first));
+                    assertThat(metadataRequestStarted.await(5, TimeUnit.SECONDS), is(true));
+                    AtomicReference<Thread> cancelledThread = new AtomicReference<>();
+                    AtomicBoolean interrupted = new AtomicBoolean();
+                    Future<OutboundSecurityResponse> cancelled = executor.submit(() -> {
+                        cancelledThread.set(Thread.currentThread());
+                        OutboundSecurityResponse result = provider.outboundSecurity(providerRequest(), outboundEnvironment(),
+                                                                                    second);
+                        interrupted.set(Thread.currentThread().isInterrupted());
+                        return result;
+                    });
+                    Future<OutboundSecurityResponse> exchangeOne = executor.submit(() -> provider.outboundSecurity(
+                            providerRequest("subject-one"), outboundEnvironment(), tokenExchangeEndpointConfig()));
+                    Future<OutboundSecurityResponse> exchangeTwo = executor.submit(() -> provider.outboundSecurity(
+                            providerRequest("subject-two"), outboundEnvironment(), tokenExchangeEndpointConfig()));
+                    awaitActive(cc, 2);
+                    awaitActive(exchange, 2);
+                    OutboundSecurityResponse ccOverflow = executor.submit(() -> provider.outboundSecurity(providerRequest(),
+                            outboundEnvironment(), clientCredentialsEndpointConfig("overflow"))).get(2, TimeUnit.SECONDS);
+                    OutboundSecurityResponse exchangeOverflow = executor.submit(() -> provider.outboundSecurity(
+                            providerRequest("subject-overflow"), outboundEnvironment(), tokenExchangeEndpointConfig()))
+                            .get(2, TimeUnit.SECONDS);
+                    assertThat(ccOverflow.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(exchangeOverflow.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(ccOverflow.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                    assertThat(exchangeOverflow.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                    assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+                    assertThat(REQUEST_COUNT.get(), is(0));
+
+                    cancelledThread.get().interrupt();
+                    assertThat(cancelled.get(5, TimeUnit.SECONDS).status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(interrupted.get(), is(true));
+                    assertThat(cc.activeCount(), is(1));
+                    assertThat(loader.isDone(), is(false));
+                    Future<OutboundSecurityResponse> replacement = executor.submit(() -> provider.outboundSecurity(
+                            providerRequest(), outboundEnvironment(), second));
+                    awaitActive(cc, 2);
+                    assertThat(exchange.activeCount(), is(2));
+                    assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+                    releaseMetadataResponse.countDown();
+                    for (Future<OutboundSecurityResponse> result : List.of(loader, replacement, exchangeOne, exchangeTwo)) {
+                        OutboundSecurityResponse response = result.get(5, TimeUnit.SECONDS);
+                        assertThat(response.status(), is(metadataFails
+                                                                 ? SecurityResponse.SecurityStatus.FAILURE
+                                                                 : SecurityResponse.SecurityStatus.SUCCESS));
+                        if (metadataFails) {
+                            assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                        }
+                    }
+                    assertThat(cc.activeCount(), is(0));
+                    assertThat(exchange.activeCount(), is(0));
+                    assertThat(cc.queuedCount(), is(0));
+                    assertThat(exchange.queuedCount(), is(0));
+                    OutboundSecurityResponse repeated = provider.outboundSecurity(providerRequest(), outboundEnvironment(),
+                                                                                  first);
+                    assertThat(repeated.status(), is(metadataFails
+                                                             ? SecurityResponse.SecurityStatus.FAILURE
+                                                             : SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+                    assertThat(REQUEST_COUNT.get(), is(metadataFails ? 0 : 4));
+                    assertThat(context.ready(), is(true));
+                } finally {
+                    releaseMetadataResponse.countDown();
+                }
+            }
+        }
     }
 
     @Test
@@ -683,6 +793,19 @@ class OidcTokenExchangeGrantTest {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenant)
                                            .buildPrototype());
+    }
+
+    private static EndpointConfig clientCredentialsEndpointConfig(String scope) {
+        return EndpointConfig.builder().customObject(OidcOutboundPolicy.class,
+                OidcOutboundPolicy.clientCredentialsGrant(List.of(scope), List.of())).build();
+    }
+
+    private static void awaitActive(OidcRemoteWorkLimiter limiter, int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (limiter.activeCount() != count && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+        assertThat(limiter.activeCount(), is(count));
     }
 
     private static EndpointConfig tokenExchangeEndpointConfig() {

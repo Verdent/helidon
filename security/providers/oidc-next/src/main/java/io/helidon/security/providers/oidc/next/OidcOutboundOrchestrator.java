@@ -238,6 +238,7 @@ final class OidcOutboundOrchestrator {
                     scope,
                     resources,
                     now,
+                    tenantContext.clientCredentialsRemoteWorkLimiter(),
                     () -> outboundMetadataResolver.clientCredentialsEndpointClient(tenantContext));
         } catch (RuntimeException e) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
@@ -254,7 +255,7 @@ final class OidcOutboundOrchestrator {
                 LOGGER.log(System.Logger.Level.DEBUG,
                            "OIDC Client Credentials Grant failed: tenant="
                                    + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
-                                   + ", reason=token-endpoint-failure");
+                                   + ", reason=" + OidcDiagnostics.sanitizeLogValue(tokenResult.description()));
             }
             return OidcResponseFactory.clientCredentialsGrantFailed();
         }

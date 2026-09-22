@@ -49,7 +49,7 @@ import io.helidon.common.LruCache;
  * The coordination path is safe for virtual-thread callers. No potentially blocking application or network operation
  * runs while holding an LRU lock or from inside a {@link ConcurrentMap} update callback. A waiting caller waits
  * interruptibly for the elected loader's future while holding no cache or map lock, so it can park without blocking
- * unrelated keys. When a remote-work limiter is supplied, it bounds both active loads and waiting callers. The map
+ * unrelated keys. A required remote-work limiter bounds both active loads and waiting callers. The map
  * operations themselves are deliberately limited to short {@code putIfAbsent} and conditional {@code remove} calls.
  *
  * @param <K> cache key type
@@ -87,7 +87,12 @@ final class OidcSingleFlightCache<K, V, R> {
     }
 
     /**
-     * Returns a valid cached result or loads one resolution for all concurrent callers of the same key.
+     * Resolves a value with explicit admission control for the loader and same-key followers.
+     * <p>
+     * A cache hit consumes no permit. An elected loader must obtain an active permit before invoking the remote loader.
+     * A same-key follower must obtain a queued permit before waiting interruptibly for the elected loader. Rejected or
+     * interrupted callers receive the uncached result supplied by {@code rejectedResultFactory}; they do not cancel the
+     * shared load.
      * <p>
      * The cache-validity predicate belongs to the caller because token validity depends on request time and tenant clock
      * skew. An invalid value is never returned. It may remain in the bounded LRU until a successful load replaces it or
@@ -98,27 +103,6 @@ final class OidcSingleFlightCache<K, V, R> {
      * cannot block cache access or unrelated keys through a cache lock. Explicit admission control may intentionally
      * queue unrelated remote loads. The loader must not recursively resolve the same key through this cache, because it
      * would wait for its own incomplete future.
-     *
-     * @param key key identifying both the reusable value and an active load
-     * @param valid predicate that determines whether a cached value is reusable for this request
-     * @param cachedResultFactory maps a reusable value to the result expected by the caller
-     * @param loader performs the remote load and decides whether its result is reusable
-     * @return a cached result or the result of the single load for this key
-     */
-    R resolve(K key,
-              Predicate<V> valid,
-              Function<V, R> cachedResultFactory,
-              Supplier<Resolution<V, R>> loader) {
-        return resolve(key, valid, cachedResultFactory, loader, null, null);
-    }
-
-    /**
-     * Resolves a value with explicit admission control for the loader and same-key followers.
-     * <p>
-     * A cache hit consumes no permit. An elected loader must obtain an active permit before invoking the remote loader.
-     * A same-key follower must obtain a queued permit before waiting interruptibly for the elected loader. Rejected or
-     * interrupted callers receive the uncached result supplied by {@code rejectedResultFactory}; they do not cancel the
-     * shared load.
      *
      * @param key key identifying both the reusable value and an active load
      * @param valid predicate that determines whether a cached value is reusable for this request
@@ -138,9 +122,8 @@ final class OidcSingleFlightCache<K, V, R> {
         Objects.requireNonNull(valid);
         Objects.requireNonNull(cachedResultFactory);
         Objects.requireNonNull(loader);
-        if (limiter != null) {
-            Objects.requireNonNull(rejectedResultFactory);
-        }
+        Objects.requireNonNull(limiter);
+        Objects.requireNonNull(rejectedResultFactory);
 
         Optional<V> cached = cachedValue(key, valid);
         if (cached.isPresent()) {
@@ -165,17 +148,13 @@ final class OidcSingleFlightCache<K, V, R> {
             }
 
             Resolution<V, R> resolution;
-            if (limiter == null) {
-                resolution = Objects.requireNonNull(loader.get());
+            Optional<OidcRemoteWorkLimiter.Permit> active = limiter.acquireActive();
+            if (active.isEmpty()) {
+                R rejected = Objects.requireNonNull(rejectedResultFactory.get());
+                resolution = Resolution.doNotCache(rejected);
             } else {
-                Optional<OidcRemoteWorkLimiter.Permit> active = limiter.acquireActive();
-                if (active.isEmpty()) {
-                    R rejected = Objects.requireNonNull(rejectedResultFactory.get());
-                    resolution = Resolution.doNotCache(rejected);
-                } else {
-                    try (OidcRemoteWorkLimiter.Permit ignored = active.orElseThrow()) {
-                        resolution = Objects.requireNonNull(loader.get());
-                    }
+                try (OidcRemoteWorkLimiter.Permit _ = active.orElseThrow()) {
+                    resolution = Objects.requireNonNull(loader.get());
                 }
             }
             resolution.cacheValue().ifPresent(value -> values.put(key, value));
@@ -193,22 +172,15 @@ final class OidcSingleFlightCache<K, V, R> {
     private R await(CompletableFuture<Resolution<V, R>> existing,
                     OidcRemoteWorkLimiter limiter,
                     Supplier<R> rejectedResultFactory) {
-        OidcRemoteWorkLimiter.Permit waiter = null;
-        if (limiter != null) {
-            Optional<OidcRemoteWorkLimiter.Permit> admission = limiter.acquireWaiter();
-            if (admission.isEmpty()) {
-                return Objects.requireNonNull(rejectedResultFactory.get());
-            }
-            waiter = admission.orElseThrow();
+        Optional<OidcRemoteWorkLimiter.Permit> admission = limiter.acquireWaiter();
+        if (admission.isEmpty()) {
+            return Objects.requireNonNull(rejectedResultFactory.get());
         }
-        try {
+        try (OidcRemoteWorkLimiter.Permit _ = admission.orElseThrow()) {
             return existing.get().result();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
-            if (rejectedResultFactory != null) {
-                return Objects.requireNonNull(rejectedResultFactory.get());
-            }
-            throw new IllegalStateException("Interrupted while waiting for OIDC single-flight result", e);
+            return Objects.requireNonNull(rejectedResultFactory.get());
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException runtimeException) {
@@ -218,10 +190,6 @@ final class OidcSingleFlightCache<K, V, R> {
                 throw error;
             }
             throw new IllegalStateException("OIDC single-flight load failed", cause);
-        } finally {
-            if (waiter != null) {
-                waiter.close();
-            }
         }
     }
 

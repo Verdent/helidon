@@ -1116,9 +1116,11 @@ class OidcClientCredentialsGrantTest {
         tokenRequestStarted = new CountDownLatch(1);
         releaseTokenResponse = new CountDownLatch(1);
         CountDownLatch start = new CountDownLatch(1);
-        // Isolate discovery/token coalescing from the separate tenant-initialization admission bound.
+        // Isolate discovery/token coalescing from the separately tested initialization and grant-admission bounds.
         OidcProvider provider = endpointPolicyProvider(OidcTenantConfig.builder(confidentialTenantFromWellKnown())
-                                                              .initializationMaxQueued(taskCount).buildPrototype());
+                                                              .initializationMaxQueued(taskCount)
+                                                              .clientCredentialsRemoteWork(work -> work.maxQueued(taskCount))
+                                                              .buildPrototype());
         EndpointConfig endpointConfig = clientCredentialsEndpointConfig();
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -1145,6 +1147,64 @@ class OidcClientCredentialsGrantTest {
 
         assertThat(METADATA_REQUEST_COUNT.get(), is(1));
         assertThat(REQUEST_COUNT.get(), is(1));
+    }
+
+    @Test
+    void deferredMetadataRetryUsesGrantAdmissionAndLocalRejectionDoesNotChangeBackoff() throws Exception {
+        MutableClock clock = new MutableClock(Instant.parse("2026-09-21T00:00:00Z"));
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenantFromWellKnown())
+                .initializationRetryInterval(Duration.ofSeconds(10))
+                .clientCredentialsRemoteWork(work -> work.maxConcurrent(1).maxQueued(0)).buildPrototype();
+        OidcProviderConfig config = OidcProviderConfig.builder().putTenant("default", tenant).buildPrototype();
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(config);
+        OidcOutboundOrchestrator outbound = new OidcOutboundOrchestrator(config, registry,
+                                                                       new OidcOutboundMetadataResolver(clock));
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            try {
+                OidcTenantContext context = registry.tenantContext("default").orElseThrow();
+                assertThat(context.ready(), is(true));
+                assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+                metadataResponseStatus = 503;
+                EndpointConfig first = clientCredentialsEndpointConfig();
+                EndpointConfig other = EndpointConfig.builder().customObject(OidcOutboundPolicy.class,
+                        OidcOutboundPolicy.clientCredentialsGrant(List.of("other"), List.of())).build();
+                assertThat(outbound.secure(providerRequest(), outboundEnvironment(), first).status(),
+                           is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+                metadataResponseStatus = 200;
+                clock.advance(Duration.ofSeconds(9));
+                assertThat(outbound.secure(providerRequest(), outboundEnvironment(), other).status(),
+                           is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(METADATA_REQUEST_COUNT.get(), is(1));
+                clock.advance(Duration.ofSeconds(1));
+                metadataRequestStarted = new CountDownLatch(1);
+                releaseMetadataResponse = new CountDownLatch(1);
+                Future<OutboundSecurityResponse> retry = executor.submit(
+                        () -> outbound.secure(providerRequest(), outboundEnvironment(), first));
+                assertThat(metadataRequestStarted.await(5, TimeUnit.SECONDS), is(true));
+                OutboundSecurityResponse rejected = executor.submit(
+                        () -> outbound.secure(providerRequest(), outboundEnvironment(), other)).get(2, TimeUnit.SECONDS);
+                assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(rejected.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                assertThat(METADATA_REQUEST_COUNT.get(), is(2));
+                assertThat(REQUEST_COUNT.get(), is(0));
+                assertThat(context.clientCredentialsRemoteWorkLimiter().activeCount(), is(1));
+                releaseMetadataResponse.countDown();
+                assertThat(retry.get(5, TimeUnit.SECONDS).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                assertThat(outbound.secure(providerRequest(), outboundEnvironment(), other).status(),
+                           is(SecurityResponse.SecurityStatus.SUCCESS));
+                assertThat(METADATA_REQUEST_COUNT.get(), is(2));
+                assertThat(REQUEST_COUNT.get(), is(2));
+                assertThat(context.clientCredentialsRemoteWorkLimiter().activeCount(), is(0));
+                assertThat(context.clientCredentialsRemoteWorkLimiter().queuedCount(), is(0));
+                assertThat(context.ready(), is(true));
+            } finally {
+                if (releaseMetadataResponse != null) {
+                    releaseMetadataResponse.countDown();
+                }
+                registry.close();
+            }
+        }
     }
 
     @Test

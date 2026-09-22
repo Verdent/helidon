@@ -41,6 +41,7 @@ final class OidcClientCredentialsTokenManager {
                                   Optional<String> scope,
                                   List<String> resources,
                                   Instant now,
+                                  OidcRemoteWorkLimiter remoteWorkLimiter,
                                   Supplier<OidcEndpointClient> endpointClientSupplier) {
         List<String> resourceList = List.copyOf(resources);
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""), resourceList);
@@ -48,7 +49,11 @@ final class OidcClientCredentialsTokenManager {
         return tokens.resolve(cacheKey,
                               cachedToken -> cachedToken.activeAt(now, clockSkew),
                               cachedToken -> OidcTokenEndpointResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(endpointClientSupplier, scope, resourceList, now, clockSkew));
+                              () -> loadToken(endpointClientSupplier, scope, resourceList, now, clockSkew),
+                              remoteWorkLimiter,
+                              () -> OidcTokenEndpointResult.failure(Thread.currentThread().isInterrupted()
+                                          ? "Interrupted while waiting for Client Credentials Grant"
+                                          : "Client Credentials Grant capacity or admission timeout exceeded"));
     }
 
     private OidcSingleFlightCache.Resolution<CachedToken, OidcTokenEndpointResult> loadToken(

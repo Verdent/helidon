@@ -55,11 +55,13 @@ import io.helidon.webserver.testing.junit5.SetUpRoute;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
@@ -133,6 +135,48 @@ class OidcWellKnownMetadataLoadingTest {
         redirectLocation = null;
         wellKnownContentType = "application/json";
         wellKnownStatus = null;
+    }
+
+    @Test
+    void certificateBoundAccessTokenMetadataDependsOnValidationMode() {
+        List<Executable> tests = new ArrayList<>();
+        for (OidcTokenValidationMethod method : List.of(OidcTokenValidationMethod.JWT, OidcTokenValidationMethod.INTROSPECTION)) {
+            for (OidcCertificateBoundAccessTokenMode mode : OidcCertificateBoundAccessTokenMode.values()) {
+                for (String advertised : List.of("omitted", "false", "true")) {
+                    tests.add(() -> {
+                        JsonObject.Builder metadata = providerMetadataBuilder();
+                        boolean supported = "true".equals(advertised);
+                        if (!"omitted".equals(advertised)) {
+                            metadata.set("tls_client_certificate_bound_access_tokens", supported);
+                        }
+                        PROVIDER_METADATA.set(metadata.build().toString());
+                        int requests = WELL_KNOWN_REQUESTS.get();
+                        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                                .issuer(issuer.toString()).clientId("client-id").clientSecret("client-secret")
+                                .endpoints(endpoints -> endpoints.tlsRequired(false))
+                                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                                        .method(method).audience("api://default")
+                                        .certificateBoundAccessTokens(binding -> binding.mode(mode))))
+                                .buildPrototype();
+                        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                .putTenant("tenant", tenant).buildPrototype())) {
+                            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+                            boolean ready = mode != OidcCertificateBoundAccessTokenMode.REQUIRED || supported;
+                            assertThat(method + " " + mode + " advertised=" + advertised, context.ready(), is(ready));
+                            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
+                            if (ready) {
+                                assertThat(context.metadata().tlsClientCertificateBoundAccessTokens(), is(supported));
+                            } else {
+                                assertThat(context.state(), is(OidcTenantState.FAILED));
+                                assertThat(context.failureCause().orElseThrow().getMessage(),
+                                           is("well-known metadata tls_client_certificate_bound_access_tokens must be true"));
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        assertAll(tests);
     }
 
     @Test
@@ -2107,47 +2151,6 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
-    }
-
-    @Test
-    void certificateBoundAccessTokenTenantRequiresWellKnownMetadataSupport() {
-        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .endpoints(it -> it.tlsRequired(false))
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience("api://default")
-                        .certificateBoundAccessTokens(certificateBound -> certificateBound
-                                .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
-                .buildPrototype();
-
-        OidcTenantContext context = tenantContext(tenantConfig);
-
-        assertThat(context.state(), is(OidcTenantState.FAILED));
-        assertThat(context.failureCause().orElseThrow().getMessage(),
-                   is("well-known metadata tls_client_certificate_bound_access_tokens must be true"));
-    }
-
-    @Test
-    void certificateBoundAccessTokenTenantAcceptsWellKnownMetadataSupport() {
-        PROVIDER_METADATA.set(providerMetadataBuilder()
-                                      .set("tls_client_certificate_bound_access_tokens", true)
-                                      .build()
-                                      .toString());
-        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .endpoints(it -> it.tlsRequired(false))
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience("api://default")
-                        .certificateBoundAccessTokens(certificateBound -> certificateBound
-                                .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
-                .buildPrototype();
-
-        OidcTenantContext context = tenantContext(tenantConfig);
-
-        assertThat(context.ready(), is(true));
-        assertThat(context.metadata().tlsClientCertificateBoundAccessTokens(), is(true));
     }
 
     private OidcTenantConfig authorizationCodeTenantConfig() {

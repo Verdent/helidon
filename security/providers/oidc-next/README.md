@@ -1978,8 +1978,9 @@ security:
 
 Outbound target selection uses Helidon's common `OutboundTarget` model. Configure targets as the provider-level
 `outbound` list. A target can match by transport, host, path, and method. The matching target selects the OIDC outbound
-action; the resolved tenant supplies the issuer, client credentials, Token Endpoint, and TLS settings used to perform
-that action.
+action. For token acquisition, the resolved tenant supplies the issuer, client credentials, Token Endpoint, and TLS
+settings for OpenID Provider or Authorization Server calls. The application's HTTP client separately configures TLS
+for its downstream resource requests; Token Propagation only prepares their Authorization header.
 
 Token Propagation sends the current user `TokenCredential` as `Authorization: Bearer <access-token>`. It is never applied
 without a matching outbound target. By default, the matching outbound target must also configure the downstream
@@ -2027,6 +2028,24 @@ security:
 Set `audience-validation-enabled: false` on an outbound target only for testing, local development, or legacy opaque-token
 deployments where this provider cannot inspect token claims. With validation disabled, matching target rules still apply,
 but the provider cannot locally verify that the token was meant for the downstream resource.
+
+Certificate-bound tokens retain their binding when propagated. For direct resource access,
+[RFC 8705 section 3](https://www.rfc-editor.org/rfc/rfc8705.html#section-3) requires the downstream connection to use mutual
+TLS with the certificate associated with the token and proof of possession of its private key. The
+`Authorization: Bearer` header remains correct. A different certificate is rejected with `401 invalid_token`; requiring
+a client certificate at the TLS layer can instead reject a missing certificate before HTTP processing.
+
+Configure the application's downstream `WebClient` TLS identity independently. Tenant `webclient.tls` is used for OP/AS
+calls and does not configure that application client. Neither an incoming peer certificate nor successful propagation
+proves possession of the private key on the outgoing connection. `oidc-next` does not select or transfer proof keys, strip
+token bindings, or automatically exchange tokens. If the service cannot provide the required proof, propagation alone
+cannot make that call work. Explicit Token Exchange is an alternative only if issuer policy permits it and issues a
+token suitable for the downstream call.
+
+[RFC 8705 section 6.5](https://www.rfc-editor.org/rfc/rfc8705.html#section-6.5) also permits TLS termination at an
+intermediary, but securing certificate metadata between that intermediary and the resource is a separate integration.
+Token Propagation does not provide it; `oidc-next` protected-resource validation does not trust forwarded certificate
+headers. An outbound `SUCCESS` means headers were prepared, not that downstream authentication has succeeded.
 
 Client Credentials Grant obtains an access token from the Token Endpoint with `grant_type=client_credentials` and applies
 the same Token Endpoint client authentication settings as Authorization Code Flow and refresh-token requests. The token is
@@ -2906,6 +2925,7 @@ Common checks:
 | UserInfo failures | Check that `user-info-endpoint-uri` or metadata `userinfo_endpoint` is available and that the UserInfo `sub` matches the ID Token `sub`. |
 | Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
 | Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |
+| Propagation succeeds but downstream rejects a certificate-bound token | Check the actual downstream HTTP client's TLS certificate against `cnf.x5t#S256`. Tenant `webclient.tls` and the incoming caller's TLS identity do not configure outgoing proof. Without the matching private-key proof, use an explicitly authorized alternative such as Token Exchange rather than copying the token alone. |
 | Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, advertised grant and client-authentication capabilities, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. Endpoint-level policies retain successfully loaded metadata for the provider lifetime; recreate the provider after a deterministic metadata capability change. For transient discovery failures, check `initialization-retry-interval`. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
 | mTLS or certificate-bound token failures | Check WebServer client certificate configuration, tenant `webclient.tls`, mTLS endpoint aliases, HTTPS endpoint requirements, and the token/introspection `cnf.x5t#S256` thumbprint. |
 

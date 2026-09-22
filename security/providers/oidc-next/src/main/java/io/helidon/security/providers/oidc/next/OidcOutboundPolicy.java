@@ -27,6 +27,14 @@ import io.helidon.security.providers.common.OutboundTarget;
  * <p>
  * Use this type as an {@link io.helidon.security.EndpointConfig} custom object when an outbound rule should apply to a
  * single outbound security request instead of a configured outbound target.
+ * <p>
+ * Token Propagation prepares the Authorization header; it does not configure the downstream HTTP client's TLS identity.
+ * For direct resource access with RFC 8705 certificate-bound tokens, that client must provide the matching certificate
+ * and private-key proof using mutual TLS. Successful propagation does not establish that this requirement is satisfied. Tenant
+ * {@code webclient.tls} settings apply to OpenID Provider and Authorization Server calls, not the application's
+ * downstream client. Propagation neither transfers proof keys nor automatically exchanges the token.
+ *
+ * @see <a href="https://www.rfc-editor.org/rfc/rfc8705.html#section-3">RFC 8705, section 3</a>
  */
 public final class OidcOutboundPolicy {
     private final boolean tokenPropagation;

@@ -31,6 +31,10 @@ import io.helidon.builder.api.Prototype;
 interface OidcOutboundTargetConfigBlueprint {
     /**
      * Whether Token Propagation is enabled for this outbound target.
+     * <p>
+     * Propagation prepares the Authorization header only. Direct access with certificate-bound tokens requires matching
+     * mutual-TLS proof on the application's downstream connection; tenant {@code webclient.tls} does not configure it.
+     * See {@link io.helidon.security.providers.oidc.next.OidcOutboundPolicy} for the transport requirements.
      *
      * @return whether Token Propagation is enabled
      */

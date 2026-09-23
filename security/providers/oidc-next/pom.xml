@@ -60,6 +60,10 @@
         </dependency>
         <dependency>
             <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common-socket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.common</groupId>
             <artifactId>helidon-common-tls</artifactId>
         </dependency>
         <dependency>
@@ -78,6 +82,10 @@
         <dependency>
             <groupId>io.helidon.json</groupId>
             <artifactId>helidon-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.http</groupId>
+            <artifactId>helidon-http</artifactId>
         </dependency>
         <dependency>
             <groupId>io.helidon.http.media</groupId>
@@ -123,7 +131,7 @@
         </dependency>
         <dependency>
             <groupId>org.hamcrest</groupId>
-            <artifactId>hamcrest-core</artifactId>
+            <artifactId>hamcrest-all</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -135,6 +143,37 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>check-dependencies</id>
+                        <phase>verify</phase>
+                        <configuration>
+                            <ignoredUsedUndeclaredDependencies>
+                                <!-- ConfigValue inherits OptionalValue from Config's re-exported Mapper API. -->
+                                <dependency>io.helidon.common:helidon-common-mapper</dependency>
+                                <!-- WebClient deliberately re-exports its API and supplies the HTTP/1 provider. -->
+                                <dependency>io.helidon.webclient:helidon-webclient-api</dependency>
+                                <!-- Test calls use media types/entities re-exported by the HTTP and WebServer APIs. -->
+                                <dependency>io.helidon.common:helidon-common-media-type</dependency>
+                                <dependency>io.helidon.http.media:helidon-http-media</dependency>
+                            </ignoredUsedUndeclaredDependencies>
+                            <ignoredUnusedDeclaredDependencies>
+                                <!-- Runtime providers are not detected by bytecode dependency analysis. -->
+                                <dependency>io.helidon.webclient:helidon-webclient</dependency>
+                                <dependency>io.helidon.http.media:helidon-http-media-json</dependency>
+                            </ignoredUnusedDeclaredDependencies>
+                            <ignoredNonTestScopedDependencies>
+                                <!-- These re-exported APIs are also required by the production module graph. -->
+                                <dependency>io.helidon.common:helidon-common-media-type</dependency>
+                                <dependency>io.helidon.http.media:helidon-http-media</dependency>
+                            </ignoredNonTestScopedDependencies>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

@@ -2132,9 +2132,11 @@ retries after that interval. Successfully loaded metadata is retained for the li
 periodically refreshed. Recreate the provider to adopt a later metadata capability or endpoint change. Static Token
 Endpoint configuration also remains static for the provider lifetime.
 
-Before any Token Endpoint request, deferred metadata is validated with the same rules as provider-level targets. Client
-Credentials requires `grant_types_supported` to include `client_credentials`; Token Exchange must be included when that
-metadata member is present. Both grants validate `token_endpoint_auth_methods_supported` and, for JWT client
+Before any Token Endpoint request, deferred metadata is validated with the same rules as provider-level targets.
+The discovered `grant_types_supported` list must include `client_credentials` for Client Credentials Grant or
+`urn:ietf:params:oauth:grant-type:token-exchange` for Token Exchange. If omitted, the RFC 8414 default
+`["authorization_code", "implicit"]` applies and does not advertise either grant.
+Both grants validate `token_endpoint_auth_methods_supported` and, for JWT client
 authentication, `token_endpoint_auth_signing_alg_values_supported`. An unsupported combination returns the grant's
 controlled outbound failure without contacting the Token Endpoint.
 
@@ -2220,8 +2222,9 @@ the same outbound target.
 Token Exchange uses the same tenant Token Endpoint, WebClient, TLS, and client authentication settings as Authorization
 Code Flow and Client Credentials Grant. Configure `client-id`, either `endpoints.token-endpoint-uri` or well-known metadata
 that provides the Token Endpoint, and a Token Endpoint authentication method other than `NONE`. When well-known metadata
-includes `grant_types_supported`, it must include `urn:ietf:params:oauth:grant-type:token-exchange`; if that optional
-metadata member is omitted, static configuration can still proceed.
+is loaded, `grant_types_supported` must include `urn:ietf:params:oauth:grant-type:token-exchange`. Omitting that member
+uses the RFC 8414 default `["authorization_code", "implicit"]`, so Token Exchange is rejected before a Token Endpoint
+request. Wholly static Token Endpoint configuration without discovery does not require advertised grant metadata.
 
 The first Token Exchange implementation intentionally supports only issued Bearer access tokens. The Token Endpoint
 successful response must contain `issued_token_type=urn:ietf:params:oauth:token-type:access_token` and

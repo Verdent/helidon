@@ -670,13 +670,13 @@ final class OidcTenantContextFactory {
          * Spec: RFC 8693, 7.1 OAuth URI Registration
          * https://www.rfc-editor.org/rfc/rfc8693.html#section-7.1
          * Quote: "URN: urn:ietf:params:oauth:grant-type:token-exchange"
+         *
+         * Omission uses the authorization_code/implicit default, not unrestricted grant support.
          */
-        metadata.grantTypesSupported()
-                .filter(grantTypes -> !grantTypes.contains(TOKEN_EXCHANGE_GRANT))
-                .ifPresent(grantTypes -> {
-                    throw new IllegalStateException(
-                            "well-known metadata grant_types_supported must include " + TOKEN_EXCHANGE_GRANT);
-                });
+        if (!metadata.grantTypesSupported().orElse(DEFAULT_GRANT_TYPES_SUPPORTED).contains(TOKEN_EXCHANGE_GRANT)) {
+            throw new IllegalStateException(
+                    "well-known metadata grant_types_supported must include " + TOKEN_EXCHANGE_GRANT);
+        }
     }
 
     private static void validateTokenEndpointAuthenticationMetadata(OidcTenantConfig tenantConfig,

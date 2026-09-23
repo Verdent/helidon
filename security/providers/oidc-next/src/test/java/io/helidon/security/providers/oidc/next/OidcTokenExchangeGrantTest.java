@@ -40,6 +40,7 @@ import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.Principal;
@@ -58,12 +59,14 @@ import io.helidon.webserver.testing.junit5.SetUpRoute;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -651,44 +654,79 @@ class OidcTokenExchangeGrantTest {
     }
 
     @Test
-    void advertisedWellKnownGrantTypesMustIncludeTokenExchange() {
-        providerMetadata = JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .setStrings("grant_types_supported", List.of("client_credentials"))
-                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
-                .build()
-                .toString();
-        OidcProvider provider = provider(confidentialTenantFromWellKnown(), tokenExchangeTarget());
-
-        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
-                                                                      outboundEnvironment(),
-                                                                      EndpointConfig.create());
-
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), is("OIDC tenant is unavailable"));
-        assertThat(REQUEST_COUNT.get(), is(0));
+    void discoveredGrantTypesControlConfiguredAndDeferredTokenExchange() {
+        JsonObject baseMetadata = JsonParser.create(providerMetadata).readJsonObject();
+        List<Optional<List<String>>> grantLists = List.of(Optional.empty(),
+                                                         Optional.of(List.of("authorization_code", "implicit")),
+                                                         Optional.of(List.of()),
+                                                         Optional.of(List.of("client_credentials")),
+                                                         Optional.of(List.of(TOKEN_EXCHANGE_GRANT)),
+                                                         Optional.of(List.of("authorization_code", "client_credentials",
+                                                                             TOKEN_EXCHANGE_GRANT)));
+        List<Executable> tests = new ArrayList<>();
+        for (boolean endpointPolicy : List.of(false, true)) {
+            for (Optional<List<String>> grants : grantLists) {
+                tests.add(() -> {
+                    String scenario = "endpointPolicy=" + endpointPolicy + " grants=" + grants;
+                    JsonObject.Builder metadata = JsonObject.builder().from(baseMetadata).unset("grant_types_supported");
+                    grants.ifPresent(values -> metadata.setStrings("grant_types_supported", values));
+                    providerMetadata = metadata.build().toString();
+                    METADATA_REQUEST_COUNT.set(0);
+                    REQUEST_COUNT.set(0);
+                    RECORDED_REQUEST.set(null);
+                    boolean supported = grants.filter(values -> values.contains(TOKEN_EXCHANGE_GRANT)).isPresent();
+                    SecurityResponse.SecurityStatus expectedStatus = supported
+                            ? SecurityResponse.SecurityStatus.SUCCESS : SecurityResponse.SecurityStatus.FAILURE;
+                    OidcTenantConfig tenant = confidentialTenantFromWellKnown();
+                    EndpointConfig endpoint = endpointPolicy ? tokenExchangeEndpointConfig() : EndpointConfig.create();
+                    try (OidcProvider provider = endpointPolicy
+                            ? endpointPolicyProvider(tenant) : provider(tenant, tokenExchangeTarget())) {
+                        for (int attempt = 0; attempt < 2; attempt++) {
+                            OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                                        outboundEnvironment(), endpoint);
+                            assertAll(() -> assertThat(scenario, response.status(), is(expectedStatus)),
+                                      () -> assertThat(scenario, METADATA_REQUEST_COUNT.get(), is(1)),
+                                      () -> assertThat(scenario, REQUEST_COUNT.get(), is(supported ? 1 : 0)));
+                            if (supported) {
+                                assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                                           is(List.of("Bearer exchanged-access-token")));
+                            } else {
+                                assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()),
+                                           is(false));
+                                assertThat(response.description().orElseThrow(), is(endpointPolicy
+                                        ? "Token Exchange failed" : "OIDC tenant is unavailable"));
+                            }
+                        }
+                        assertThat(provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow().ready(),
+                                   is(endpointPolicy || supported));
+                    }
+                });
+            }
+        }
+        assertAll(tests);
     }
 
     @Test
-    void endpointPolicyRejectsUnsupportedTokenExchangeGrantBeforeTokenRequest() {
-        providerMetadata = JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .setStrings("grant_types_supported", List.of("client_credentials"))
-                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
-                .build()
-                .toString();
-        OidcProvider provider = endpointPolicyProvider(confidentialTenantFromWellKnown());
-
-        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
-                                                                      outboundEnvironment(),
-                                                                      tokenExchangeEndpointConfig());
-
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), is("Token Exchange failed"));
-        assertThat(METADATA_REQUEST_COUNT.get(), is(1));
-        assertThat(REQUEST_COUNT.get(), is(0));
+    void staticTokenExchangeDoesNotRequireDiscoveryGrantMetadata() {
+        metadataResponseStatus = 503;
+        providerMetadata = "unavailable discovery must not be contacted";
+        OidcTenantConfig tenant = OidcTenantConfig.builder(confidentialTenant()).issuer(issuer.toString()).buildPrototype();
+        for (boolean endpointPolicy : List.of(false, true)) {
+            REQUEST_COUNT.set(0);
+            EndpointConfig endpoint = endpointPolicy ? tokenExchangeEndpointConfig() : EndpointConfig.create();
+            try (OidcProvider provider = endpointPolicy
+                    ? endpointPolicyProvider(tenant) : provider(tenant, tokenExchangeTarget())) {
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                                  outboundEnvironment(), endpoint);
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                               is(List.of("Bearer exchanged-access-token")));
+                }
+                assertThat(METADATA_REQUEST_COUNT.get(), is(0));
+                assertThat(REQUEST_COUNT.get(), is(1));
+            }
+        }
     }
 
     @Test

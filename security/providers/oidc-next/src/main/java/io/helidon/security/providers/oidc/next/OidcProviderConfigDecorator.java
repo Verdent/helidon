@@ -23,9 +23,12 @@ import java.util.Map;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.config.Config;
+import io.helidon.webclient.api.WebClientConfig;
 
 final class OidcProviderConfigDecorator
         implements Prototype.BuilderDecorator<OidcProviderConfig.BuilderBase<?, ?>> {
+    static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
+
     private static final String DEFAULT_SINGLE_TENANT_ID = "default";
     private static final List<String> ROOT_TENANT_CONFIG_KEYS = List.of("enabled",
                                                                         "initialization-retry-interval",
@@ -156,7 +159,7 @@ final class OidcProviderConfigDecorator
                 || target.tokenEndpointAuthenticationMethod().isPresent()
                 || !DEFAULT_ID_TOKEN.equals(target.idToken())
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
-                || OidcWebClientFactory.optionsChanged(target.webClient())
+                || target.webClient() != DEFAULT_WEBCLIENT
                 || !DEFAULT_JWK_SET.equals(target.jwkSet())
                 || !DEFAULT_REMOTE_WORK.equals(target.clientCredentialsRemoteWork())
                 || !DEFAULT_REMOTE_WORK.equals(target.tokenExchangeRemoteWork())
@@ -172,6 +175,10 @@ final class OidcProviderConfigDecorator
     }
 
     private static OidcTenantConfig singleTenant(OidcProviderConfig.BuilderBase<?, ?> target) {
+        if (target.webClient() == DEFAULT_WEBCLIENT) {
+            // Keep the marker out of tenants and retain a fresh default for repeated builds of this builder.
+            target.webClient(WebClientConfig.create());
+        }
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .enabled(target.enabled())
                 .initializationRetryInterval(target.initializationRetryInterval())

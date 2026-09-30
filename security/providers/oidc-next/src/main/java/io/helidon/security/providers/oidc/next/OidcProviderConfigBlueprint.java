@@ -27,6 +27,7 @@ import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
 import io.helidon.security.spi.SecurityProvider;
+import io.helidon.webclient.api.WebClientConfig;
 
 /**
  * Configuration of the new OIDC security provider.
@@ -35,6 +36,17 @@ import io.helidon.security.spi.SecurityProvider;
 @Prototype.Configured(value = OidcProviderService.PROVIDER_CONFIG_KEY, root = false)
 @Prototype.Provides({SecurityProvider.class, AuthenticationProvider.class, OutboundSecurityProvider.class})
 interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, Prototype.Factory<OidcProvider> {
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The provider-root shortcut uses a stable default to distinguish an explicitly supplied client configuration
+     * without enumerating WebClient options. Named tenants retain the regular WebClient default.
+     */
+    @Override
+    @Option.Configured("webclient")
+    @Option.DefaultCode("OidcProviderConfigDecorator.DEFAULT_WEBCLIENT")
+    WebClientConfig webClient();
 
     /**
      * Provider name used by Helidon Security.

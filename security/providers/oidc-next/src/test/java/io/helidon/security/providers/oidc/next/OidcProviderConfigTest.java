@@ -49,6 +49,7 @@ import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.Proxy;
+import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 
@@ -620,6 +621,14 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void separateRootBuildersHaveIndependentDefaultWebClientConfigs() {
+        OidcProviderConfig first = OidcProviderConfig.builder().issuer(ISSUER.toString()).buildPrototype();
+        OidcProviderConfig second = OidcProviderConfig.builder().issuer(ISSUER.toString()).buildPrototype();
+
+        assertThat(first.tenants().get("default").webClient() == second.tenants().get("default").webClient(), is(false));
+    }
+
+    @Test
     void singleTenantRootBuilderDetectsNestedOnlyConfiguration() {
         OidcProviderConfig providerConfig = OidcProviderConfig.builder()
                 .webClient(WebClientConfig.builder()
@@ -630,6 +639,92 @@ class OidcProviderConfigTest {
 
         assertThat(providerConfig.defaultTenant().orElseThrow(), is("default"));
         assertThat(tenant.webClient().connectTimeout().orElseThrow(), is(Duration.ofSeconds(2)));
+    }
+
+    @Test
+    void singleTenantRootBuilderKeepsWebClientSharedCacheSetting() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .webClient(WebClientConfig.builder().shareConnectionCache(false).buildPrototype())
+                .buildPrototype();
+
+        assertThat(providerConfig.tenants().containsKey("default"), is(true));
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+        assertThat(tenant.webClient().shareConnectionCache(), is(false));
+        WebClient webClient = OidcWebClientFactory.create(tenant);
+        try {
+            assertThat(webClient.prototype().shareConnectionCache(), is(false));
+        } finally {
+            webClient.closeResource();
+        }
+    }
+
+    @Test
+    void singleTenantRootBuilderKeepsWebClientCacheSizeSetting() {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .webClient(WebClientConfig.builder().connectionCacheSize(17).buildPrototype())
+                .buildPrototype();
+
+        assertThat(providerConfig.tenants().containsKey("default"), is(true));
+        assertThat(providerConfig.tenants().get("default").webClient().connectionCacheSize(), is(17));
+    }
+
+    @Test
+    void rootWebClientSettingCannotBeSilentlyIgnoredWithNamedTenants() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.builder()
+                                                               .webClient(WebClientConfig.builder()
+                                                                                  .shareConnectionCache(false)
+                                                                                  .buildPrototype())
+                                                               .putTenant("named", OidcTenantConfig.create())
+                                                               .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("Root tenant configuration cannot be combined with tenants"));
+    }
+
+    @Test
+    void singleTenantRootWebClientCanBeReusedAndCopied() {
+        OidcProviderConfig.Builder builder = OidcProviderConfig.builder()
+                .webClient(WebClientConfig.builder().shareConnectionCache(false).buildPrototype());
+
+        OidcProviderConfig first = builder.buildPrototype();
+        OidcProviderConfig second = builder.buildPrototype();
+        OidcProviderConfig copy = OidcProviderConfig.builder().from(first).buildPrototype();
+
+        assertThat(first.tenants().get("default").webClient().shareConnectionCache(), is(false));
+        assertThat(second.tenants().get("default"), is(first.tenants().get("default")));
+        assertThat(copy.tenants().get("default"), is(first.tenants().get("default")));
+    }
+
+    @Test
+    void singleTenantRootConfigKeepsWebClientPoolSettings() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("webclient.share-connection-cache", "false",
+                                                     "webclient.connection-cache-size", "17")))
+                .build();
+
+        OidcProviderConfig providerConfig = OidcProviderConfig.create(config);
+        OidcTenantConfig tenant = providerConfig.tenants().get("default");
+
+        assertThat(tenant.webClient().shareConnectionCache(), is(false));
+        assertThat(tenant.webClient().connectionCacheSize(), is(17));
+    }
+
+    @Test
+    void namedTenantKeepsWebClientPoolSettings() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .webClient(WebClientConfig.builder()
+                                   .shareConnectionCache(false)
+                                   .connectionCacheSize(17)
+                                   .buildPrototype())
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("named", tenant)
+                .buildPrototype();
+
+        assertThat(providerConfig.tenants().size(), is(1));
+        assertThat(providerConfig.defaultTenant().orElseThrow(), is("named"));
+        assertThat(providerConfig.tenants().get("named").webClient().shareConnectionCache(), is(false));
+        assertThat(providerConfig.tenants().get("named").webClient().connectionCacheSize(), is(17));
     }
 
     @Test

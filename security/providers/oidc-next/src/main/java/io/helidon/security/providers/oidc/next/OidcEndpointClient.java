@@ -240,7 +240,7 @@ final class OidcEndpointClient {
                                                                                clientIdAlreadyPresent);
 
             try (HttpClientResponse response = request.submit(form.build())) {
-                if (response.status() == Status.CREATED_201) {
+                if (response.status().code() == Status.CREATED_201_CODE) {
                     if (!OidcHttpResponseValidation.hasJsonContentType(response)) {
                         return OidcPushedAuthorizationRequestResult.failure(
                                 "Pushed Authorization Request Endpoint response is invalid");

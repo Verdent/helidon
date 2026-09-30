@@ -32,6 +32,7 @@ final class OidcProviderMetadata {
     private final Optional<URI> mutualTlsTokenEndpointUri;
     private final Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri;
     private final Optional<URI> mutualTlsIntrospectionEndpointUri;
+    private final Optional<URI> mutualTlsUserInfoEndpointUri;
     private final Optional<URI> jwkSetUri;
     private final Optional<List<String>> responseTypesSupported;
     private final Optional<List<String>> grantTypesSupported;
@@ -67,6 +68,7 @@ final class OidcProviderMetadata {
                                  Optional<URI> mutualTlsTokenEndpointUri,
                                  Optional<URI> mutualTlsPushedAuthorizationRequestEndpointUri,
                                  Optional<URI> mutualTlsIntrospectionEndpointUri,
+                                 Optional<URI> mutualTlsUserInfoEndpointUri,
                                  Optional<URI> jwkSetUri,
                                  Optional<List<String>> responseTypesSupported,
                                  Optional<List<String>> grantTypesSupported,
@@ -101,6 +103,7 @@ final class OidcProviderMetadata {
         this.mutualTlsTokenEndpointUri = mutualTlsTokenEndpointUri;
         this.mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsPushedAuthorizationRequestEndpointUri;
         this.mutualTlsIntrospectionEndpointUri = mutualTlsIntrospectionEndpointUri;
+        this.mutualTlsUserInfoEndpointUri = mutualTlsUserInfoEndpointUri;
         this.jwkSetUri = jwkSetUri;
         this.responseTypesSupported = responseTypesSupported.map(List::copyOf);
         this.grantTypesSupported = grantTypesSupported.map(List::copyOf);
@@ -144,6 +147,7 @@ final class OidcProviderMetadata {
                                         Optional.empty(),
                                         Optional.empty(),
                                         Optional.empty(),
+                                        Optional.empty(),
                                         endpoints.jwksUri(),
                                         Optional.empty(),
                                         Optional.empty(),
@@ -182,6 +186,7 @@ final class OidcProviderMetadata {
                                         mutualTlsEndpointUri(json, "token_endpoint"),
                                         mutualTlsEndpointUri(json, "pushed_authorization_request_endpoint"),
                                         mutualTlsEndpointUri(json, "introspection_endpoint"),
+                                        mutualTlsEndpointUri(json, "userinfo_endpoint"),
                                         jwkSetUri,
                                         stringArrayValue(json, "response_types_supported"),
                                         stringArrayValue(json, "grant_types_supported"),
@@ -227,6 +232,7 @@ final class OidcProviderMetadata {
                                                 .or(wellKnown::mutualTlsPushedAuthorizationRequestEndpointUri),
                                         mutualTlsIntrospectionEndpointUri
                                                 .or(wellKnown::mutualTlsIntrospectionEndpointUri),
+                                        mutualTlsUserInfoEndpointUri.or(() -> wellKnown.mutualTlsUserInfoEndpointUri),
                                         mergedJwkSetUri,
                                         responseTypesSupported.or(wellKnown::responseTypesSupported),
                                         grantTypesSupported.or(wellKnown::grantTypesSupported),
@@ -289,6 +295,10 @@ final class OidcProviderMetadata {
 
     Optional<URI> tokenEndpointUri() {
         return tokenEndpointUri;
+    }
+
+    Optional<URI> tokenEndpointUri(boolean outboundMutualTls) {
+        return outboundMutualTls ? mutualTlsTokenEndpointUri.or(() -> tokenEndpointUri) : tokenEndpointUri;
     }
 
     Optional<URI> mutualTlsTokenEndpointUri() {
@@ -355,6 +365,10 @@ final class OidcProviderMetadata {
         return userInfoEndpointUri;
     }
 
+    Optional<URI> userInfoEndpointUri(boolean outboundMutualTls) {
+        return outboundMutualTls ? mutualTlsUserInfoEndpointUri.or(() -> userInfoEndpointUri) : userInfoEndpointUri;
+    }
+
     Optional<List<String>> userInfoSigningAlgorithmsSupported() {
         return userInfoSigningAlgorithmsSupported;
     }
@@ -373,6 +387,12 @@ final class OidcProviderMetadata {
 
     Optional<URI> pushedAuthorizationRequestEndpointUri() {
         return pushedAuthorizationRequestEndpointUri;
+    }
+
+    Optional<URI> pushedAuthorizationRequestEndpointUri(boolean outboundMutualTls) {
+        return outboundMutualTls
+                ? mutualTlsPushedAuthorizationRequestEndpointUri.or(() -> pushedAuthorizationRequestEndpointUri)
+                : pushedAuthorizationRequestEndpointUri;
     }
 
     boolean authorizationResponseIssuerParameterSupported() {

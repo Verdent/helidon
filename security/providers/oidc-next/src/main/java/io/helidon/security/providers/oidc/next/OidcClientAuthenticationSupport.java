@@ -102,6 +102,16 @@ final class OidcClientAuthenticationSupport {
                                                    "Introspection Endpoint");
     }
 
+    static boolean outboundMutualTls(OidcTenantConfig tenantConfig) {
+        return tenantConfig.outboundMutualTls()
+                || usesMutualTls(tokenEndpointAuthenticationMethod(tenantConfig));
+    }
+
+    static boolean usesMutualTls(OidcClientAuthenticationMethod method) {
+        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
+                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+    }
+
     void applyTokenEndpointAuthentication(URI tokenEndpointUri,
                                           Parameters.Builder form,
                                           HttpClientRequest request) {
@@ -209,8 +219,7 @@ final class OidcClientAuthenticationSupport {
     }
 
     boolean usesMutualTls() {
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+        return usesMutualTls(method);
     }
 
     Optional<String> clientAssertionAlgorithm() {

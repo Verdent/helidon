@@ -86,7 +86,9 @@ final class OidcTenantContextFactory {
                 if (wellKnownMetadataLoaded) {
                     try {
                         metadata = new OidcProviderMetadataLoader(webClient)
-                                .load(staticMetadata, tenantConfig.endpoints().tlsRequired());
+                                .load(staticMetadata,
+                                      tenantConfig.endpoints().tlsRequired()
+                                              || OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig));
                     } catch (OidcProviderMetadataLoader.RetryableDiscoveryException e) {
                         return failed(tenantId, tenantConfig, webClient, e, true);
                     }
@@ -244,7 +246,7 @@ final class OidcTenantContextFactory {
         metadata.tokenEndpointUri()
                 .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
-                                         tokenEndpointTlsRequired(tenantConfig)),
+                                         OidcClientAuthenticationConfigValidator.tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata token_endpoint must be present for "
@@ -383,7 +385,7 @@ final class OidcTenantContextFactory {
                 .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(
                         uri,
                         tenantConfig.endpoints().tlsRequired()));
-        if (mutualTlsTokenEndpointAuthentication(tenantConfig)) {
+        if (OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)) {
             pushedAuthorizationRequestEndpointUri(tenantConfig, metadata)
                     .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri, true));
         }
@@ -521,11 +523,8 @@ final class OidcTenantContextFactory {
 
     private static Optional<URI> pushedAuthorizationRequestEndpointUri(OidcTenantConfig tenantConfig,
                                                                        OidcProviderMetadata metadata) {
-        if (mutualTlsTokenEndpointAuthentication(tenantConfig)) {
-            return metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
-                    .or(metadata::pushedAuthorizationRequestEndpointUri);
-        }
-        return metadata.pushedAuthorizationRequestEndpointUri();
+        return metadata.pushedAuthorizationRequestEndpointUri(
+                OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig));
     }
 
     private static void validateOptionalIdTokenEncryptionMetadata(OidcTenantConfig tenantConfig,
@@ -592,7 +591,7 @@ final class OidcTenantContextFactory {
         metadata.tokenEndpointUri()
                 .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
-                                         tokenEndpointTlsRequired(tenantConfig)),
+                                         OidcClientAuthenticationConfigValidator.tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata token_endpoint must be present for "
@@ -647,7 +646,7 @@ final class OidcTenantContextFactory {
         metadata.tokenEndpointUri()
                 .ifPresentOrElse(uri -> OidcEndpointUris.validateTokenEndpointUri(
                                          uri,
-                                         tokenEndpointTlsRequired(tenantConfig)),
+                                         OidcClientAuthenticationConfigValidator.tokenEndpointTlsRequired(tenantConfig)),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata token_endpoint must be present for Token Exchange");
@@ -730,17 +729,6 @@ final class OidcTenantContextFactory {
         }
     }
 
-    private static boolean tokenEndpointTlsRequired(OidcTenantConfig tenantConfig) {
-        return tenantConfig.endpoints().tlsRequired() || mutualTlsTokenEndpointAuthentication(tenantConfig);
-    }
-
-    private static boolean mutualTlsTokenEndpointAuthentication(OidcTenantConfig tenantConfig) {
-        OidcClientAuthenticationMethod method =
-                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
-    }
-
     private static boolean introspectionEndpointTlsRequired(OidcTenantConfig tenantConfig) {
         return tenantConfig.endpoints().tlsRequired() || mutualTlsIntrospectionEndpointAuthentication(tenantConfig);
     }
@@ -748,8 +736,7 @@ final class OidcTenantContextFactory {
     private static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTenantConfig tenantConfig) {
         OidcClientAuthenticationMethod method =
                 OidcClientAuthenticationSupport.introspectionEndpointAuthenticationMethod(tenantConfig);
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+        return OidcClientAuthenticationSupport.usesMutualTls(method);
     }
 
     private static void validateJwtMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
@@ -882,10 +869,11 @@ final class OidcTenantContextFactory {
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
          * Quote: "`userinfo_endpoint` OPTIONAL. URL of the OP's UserInfo Endpoint."
          */
-        metadata.userInfoEndpointUri()
+        boolean outboundMutualTls = OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig);
+        metadata.userInfoEndpointUri(outboundMutualTls)
                 .ifPresentOrElse(uri -> OidcEndpointUris.validateUserInfoEndpointUri(
                                          uri,
-                                         tenantConfig.endpoints().tlsRequired()),
+                                         tenantConfig.endpoints().tlsRequired() || outboundMutualTls),
                                  () -> {
                                      throw new IllegalStateException(
                                              "well-known metadata userinfo_endpoint must be present for UserInfo");
@@ -960,7 +948,7 @@ final class OidcTenantContextFactory {
     }
 
     static void validateMutualTlsMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        if (!mutualTlsTokenEndpointAuthentication(tenantConfig)) {
+        if (!OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)) {
             return;
         }
 
@@ -971,8 +959,7 @@ final class OidcTenantContextFactory {
          * that, when present, an OAuth client intending to do mutual TLS uses in preference to the conventional
          * endpoints."
          */
-        metadata.mutualTlsTokenEndpointUri()
-                .or(metadata::tokenEndpointUri)
+        metadata.tokenEndpointUri(true)
                 .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(uri, true));
     }
 

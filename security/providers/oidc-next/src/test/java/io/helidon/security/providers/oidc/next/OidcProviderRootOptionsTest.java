@@ -43,6 +43,7 @@ class OidcProviderRootOptionsTest {
             Map.of("initialization-retry-interval", "PT10S"),
             Map.of("initialization-max-queued", "0"),
             Map.of("initialization-max-queued", "128"),
+            Map.of("outbound-mutual-tls", "false"),
             Map.of("client-credentials-remote-work.max-concurrent", "3"),
             Map.of("client-credentials-remote-work.max-concurrent", "32"),
             Map.of("client-credentials-remote-work.max-queued", "0"),
@@ -57,6 +58,7 @@ class OidcProviderRootOptionsTest {
             Map.entry("client-id", "root-client"),
             Map.entry("client-secret", "root-secret"),
             Map.entry("token-endpoint-auth-method", "CLIENT_SECRET_POST"),
+            Map.entry("outbound-mutual-tls", "true"),
             Map.entry("id-token.clock-skew", "PT30S"),
             Map.entry("client-assertion.lifetime", "PT20S"),
             Map.entry("webclient.connect-timeout", "PT2S"),
@@ -318,6 +320,7 @@ class OidcProviderRootOptionsTest {
                 .clientId(expected.clientId().orElseThrow())
                 .clientSecret(expected.clientSecret().orElseThrow())
                 .tokenEndpointAuthenticationMethod(expected.tokenEndpointAuthenticationMethod().orElseThrow())
+                .outboundMutualTls(expected.outboundMutualTls())
                 .idToken(expected.idToken())
                 .clientAssertion(expected.clientAssertion())
                 .webClient(expected.webClient())

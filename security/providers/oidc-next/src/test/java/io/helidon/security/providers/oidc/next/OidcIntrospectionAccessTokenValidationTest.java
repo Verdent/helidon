@@ -247,9 +247,12 @@ class OidcIntrospectionAccessTokenValidationTest {
                            OidcClientAuthenticationSupport.introspectionEndpoint(mutualTlsTenant)),
                    is(Optional.of(conventionalIntrospectionEndpointUri)));
 
-        OidcTenantConfig conventionalTenant = introspectionTenant(
-                OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
-                conventionalIntrospectionEndpointUri);
+        OidcTenantConfig conventionalTenant = OidcTenantConfig.builder()
+                .from(introspectionTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+                                          conventionalIntrospectionEndpointUri))
+                .outboundMutualTls(true)
+                .buildPrototype();
+        assertThat(OidcClientAuthenticationSupport.outboundMutualTls(conventionalTenant), is(true));
         assertThat(OidcIntrospectionAccessTokenValidator.introspectionEndpointUri(
                            metadata,
                            OidcClientAuthenticationSupport.introspectionEndpoint(conventionalTenant)),

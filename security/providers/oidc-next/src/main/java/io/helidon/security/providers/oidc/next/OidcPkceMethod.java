@@ -33,9 +33,11 @@ public enum OidcPkceMethod {
     /**
      * {@code plain}.
      * <p>
-     * The {@code code_challenge} is the unmodified {@code code_verifier}. This is defined by RFC 7636 for
-     * compatibility with Authorization Servers that do not support {@link #S256}; use it only for legacy
-     * confidential-client integrations.
+     * The {@code code_challenge} is the unmodified {@code code_verifier}, which exposes the verifier in the
+     * Authorization Request. OIDC-next supports {@link #S256}, so explicitly choosing {@code plain} for a
+     * confidential client is an intentional compatibility exception, not a method choice compliant with RFC 7636
+     * section 4.2. A legacy Authorization Server's lack of {@code S256} support does not satisfy the RFC's exception
+     * for a client technically incapable of using it.
      */
     PLAIN("plain"),
 

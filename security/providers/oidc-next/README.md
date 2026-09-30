@@ -61,8 +61,8 @@ The supported standards surface is intentionally scoped:
   endpoint error parsing, scopes, and client authentication. Authorization Server behavior is not implemented.
 - OAuth 2.0 Bearer Token Usage, RFC 6750: Protected Resource Bearer authentication from the Authorization header and,
   when explicitly enabled, the query parameter. Ambiguous or insecure Bearer token requests are rejected.
-- PKCE, RFC 7636: `S256` is the default. `plain` is available only for confidential-client compatibility; public clients
-  must use PKCE with `S256`.
+- PKCE, RFC 7636: `S256` is the default. Public clients must use PKCE with `S256`. An explicit `plain` compatibility
+  option remains available for confidential clients, but selecting it with this S256-capable RP departs from RFC 7636.
 - Token Introspection, RFC 7662: Protected Resource access-token validation with authenticated introspection requests.
   Introspection response caching is not enabled by default.
 - Token Exchange, RFC 8693: outbound Bearer access-token to Bearer access-token exchange. SAML, ID Token exchange,
@@ -1303,9 +1303,14 @@ can limit acceptable resources to those originally granted or a subset. `oidc-ne
 subset configuration for the token exchange or refresh, because a static login config cannot identify which
 resource-specific token an application needs later at runtime.
 
-Use `pkce-method: plain` only for compatibility with a legacy authorization server that cannot process `S256`.
-Public clients, where `token-endpoint-auth-method` is `NONE`, must use `S256`; the provider rejects `plain` in that
-mode.
+Keep the default `pkce-method: S256`. An authenticated confidential client may explicitly select `plain` only as a
+compatibility escape hatch for a legacy authorization server. This is **not an RFC 7636-compliant method choice for
+OIDC-next**: section 4.2 requires clients capable of `S256` to use it, even if a server cannot process it. A server
+supporting RFC 7636 is required to implement `S256`. With `plain`, the authorization request carries the verifier
+itself as `code_challenge`; someone who can observe that request can learn the verifier, so this choice loses PKCE's
+protection against request disclosure. It can still protect against interception of the authorization response alone,
+and confidential-client authentication remains a separate defense. There is no automatic fallback from `S256` to
+`plain`. Public clients, where `token-endpoint-auth-method` is `NONE`, cannot select `plain`.
 
 ```yaml
 client-secret: "${OIDC_CLIENT_SECRET}"
@@ -3069,7 +3074,7 @@ Authorization Code Flow options:
 | `refresh-result-retention` | Grace interval for reusing a completed outcome with the exact source session. Defaults to `PT5S`; must be between `PT1S` and `PT1M`, inclusive. |
 | `refresh-result-cache-capacity` | Strict maximum number of completed source-session outcomes retained during the grace interval. Defaults to `1024` and must be positive. Active operations are tracked separately. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
-| `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`; `plain` is for legacy confidential-client compatibility only. |
+| `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`. Explicit `plain` is a confidential-client compatibility escape hatch, not RFC 7636-compliant for this S256-capable RP; it exposes the verifier in the authorization request. |
 
 Request Object options:
 

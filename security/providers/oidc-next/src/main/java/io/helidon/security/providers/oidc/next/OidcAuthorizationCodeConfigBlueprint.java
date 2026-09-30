@@ -155,9 +155,11 @@ interface OidcAuthorizationCodeConfigBlueprint {
     /**
      * PKCE code challenge method.
      * <p>
-     * Defaults to {@link OidcPkceMethod#S256}. Use {@link OidcPkceMethod#PLAIN} only for confidential-client
-     * compatibility with a legacy Authorization Server that cannot process {@code S256}. Public clients, where Token
-     * Endpoint authentication is {@link OidcClientAuthenticationMethod#NONE}, must use {@link OidcPkceMethod#S256}.
+     * Defaults to {@link OidcPkceMethod#S256}. {@link OidcPkceMethod#PLAIN} is an explicit compatibility exception
+     * available only to authenticated confidential clients; this S256-capable RP using {@code plain} does not follow
+     * RFC 7636 section 4.2, even if a legacy Authorization Server cannot process {@code S256}. Plain exposes the
+     * verifier in the Authorization Request. Public clients, where Token Endpoint authentication is
+     * {@link OidcClientAuthenticationMethod#NONE}, must use {@link OidcPkceMethod#S256}.
      *
      * @return PKCE method
      */

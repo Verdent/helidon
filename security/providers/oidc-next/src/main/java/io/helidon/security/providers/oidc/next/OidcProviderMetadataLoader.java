@@ -52,7 +52,7 @@ final class OidcProviderMetadataLoader {
              * `application/json` content type that contains a set of Claims as its members that are a subset of the
              * Metadata values defined in Section 3."
             */
-            if (response.status() != Status.OK_200) {
+            if (response.status().code() != Status.OK_200_CODE) {
                 throw new IllegalStateException("well-known metadata is unavailable: uri="
                                                         + OidcDiagnostics.safeUri(wellKnownUri)
                                                         + ", status=" + response.status().code());

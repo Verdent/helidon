@@ -16,7 +16,15 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +34,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -1588,6 +1597,59 @@ class OidcWellKnownMetadataLoadingTest {
                    is("well-known metadata is unavailable: uri="
                               + issuer.resolve("/.well-known/openid-configuration")
                               + ", status=201"));
+    }
+
+    @Test
+    void tenantLoadsWellKnownMetadataWhen200HasCustomReasonPhrase() {
+        wellKnownStatus = Status.create(200, "Metadata Available");
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.failureCause().map(Throwable::toString).orElse("ready"), context.ready(), is(true));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void metadataLoaderAccepts200WithoutReasonPhrase() throws Exception {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+                ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            URI rawIssuer = new URI("http", null, listener.getInetAddress().getHostAddress(),
+                                    listener.getLocalPort(), null, null, null);
+            Future<?> served = executor.submit(() -> {
+                try (Socket socket = listener.accept()) {
+                    socket.setSoTimeout(10_000);
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(),
+                                                                                      StandardCharsets.ISO_8859_1));
+                    for (String line = reader.readLine(); line != null && !line.isEmpty(); line = reader.readLine()) {
+                        // Consume the HTTP request headers before responding.
+                    }
+                    byte[] json = JsonObject.builder().set("issuer", rawIssuer.toString()).build().toString()
+                            .getBytes(StandardCharsets.UTF_8);
+                    String response = "HTTP/1.1 200 \r\nContent-Type: application/json\r\nContent-Length: "
+                            + json.length + "\r\nConnection: close\r\n\r\n";
+                    socket.getOutputStream().write(response.getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().write(json);
+                    socket.getOutputStream().flush();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+            OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                    .issuer(rawIssuer.toString())
+                    .endpoints(it -> it.tlsRequired(false))
+                    .buildPrototype();
+            WebClient client = WebClient.create();
+            try {
+                OidcProviderMetadata metadata = new OidcProviderMetadataLoader(client)
+                        .load(OidcProviderMetadata.fromStaticConfig(tenantConfig), false);
+
+                assertThat(metadata.issuer(), is(Optional.of(rawIssuer.toString())));
+                served.get(10, TimeUnit.SECONDS);
+            } finally {
+                client.closeResource();
+            }
+        }
     }
 
     @Test

@@ -1283,6 +1283,9 @@ login or when the login access token must be issued for a specific protected res
 target service "to which access is being requested" and says the value "MUST be an absolute URI" and "MUST NOT include a
 fragment component." The provider validates those URI rules, rejects blanks, padded values, and duplicates, and sends one
 `resource` query parameter per configured value.
+Percent-encode any non-ASCII or disallowed URI characters in the resource itself (for example, use `filter%5Bx%5D`
+instead of `filter[x]`). The provider does not rewrite resource identifiers because their exact value may be registered
+with the Authorization Server.
 
 Resources are not emitted by default and are not derived from the incoming browser URL. The browser URL is the RP page
 that initiated login; the RFC 8707 resource is the protected resource or API where the resulting access token will be
@@ -3067,7 +3070,7 @@ Authorization Code Flow options:
 | `redirection-endpoint-uri` | Client callback URI sent as `redirect_uri`. Defaults to local path `/oidc/callback`, resolved from the incoming request origin. May also be configured as an absolute URI. |
 | `scopes` | Authentication Request scopes. Defaults to `[ "openid" ]`, must contain `openid`, and each value must be one RFC 6749 `scope-token`. |
 | `prompts` | Optional Authentication Request prompt values. Values are serialized into the `prompt` parameter as a space-delimited list. `none` cannot be combined with any other value. When `scopes` contains `offline_access`, the provider sends `prompt=consent` when prompts are omitted and appends `consent` to configured prompts that do not already contain it. |
-| `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an absolute URI without a fragment; blanks, padded values, and duplicates are rejected. |
+| `resources` | Optional RFC 8707 resource indicators for Authorization Code Flow. Values are emitted only when configured, as repeated `resource` parameters on the Authentication Request, authorization-code token request, and refresh-token requests. Each value must be an RFC 3986 absolute URI without a fragment; percent-encode disallowed URI characters. Blanks, padded values, and duplicates are rejected; identifiers are not rewritten. |
 | `pushed-authorization-requests` | RFC 9126 Pushed Authorization Request mode: `DISABLED`, `AUTO`, or `REQUIRED`. Defaults to `AUTO`. `AUTO` uses PAR when a PAR endpoint is configured or already-loaded metadata advertises it, and requires PAR when loaded metadata requires it. `REQUIRED` may load metadata to discover the endpoint. |
 | `request-object` | RFC 9101 signed or signed-then-encrypted Request Object configuration. Defaults to `AUTO` mode without signing key material, so no Request Object is sent unless `signing-jwk` is configured or loaded metadata requires signed Request Objects. |
 | `refresh-remote-work` | Per-tenant admission limits for local-session refresh. One leader refreshes a source session and admitted same-session followers share its result. |

@@ -1950,6 +1950,22 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowRejectsInvalidResourceUriGrammar() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .resources(List.of("https://api.example/items?filter[x]=y")))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("authorization-code.resources"));
+        assertThat(thrown.getMessage(), containsString("invalid resource URI"));
+    }
+
+    @Test
     void authorizationCodeFlowRequiresCookieProtection() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())

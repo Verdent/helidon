@@ -42,6 +42,41 @@ class OidcOutboundPolicyTest {
     }
 
     @Test
+    void resourceIndicatorsRejectNonRfc3986Uris() {
+        for (String resource : List.of("https://api.example/items?currency=£",
+                                       "https://api.example/items?filter[x]=y",
+                                       "https://api.example/£",
+                                       "https://api.example/items[0]",
+                                       "https://api.example:abc/items",
+                                       "https://user@other@api.example/items",
+                                       "https://münich.example/items",
+                                       "urn:example:part[0]",
+                                       "urn:example:£")) {
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                                                              () -> OidcOutboundPolicy.clientCredentialsGrant(
+                                                                      List.of(), List.of(resource)),
+                                                              resource);
+            assertThat(exception.getMessage(), containsString("Client Credentials Grant resources"));
+            assertThat(exception.getMessage(), containsString("invalid resource URI"));
+        }
+    }
+
+    @Test
+    void resourceIndicatorsPreserveValidRfc3986Uris() {
+        for (String resource : List.of("https://api.example/items?currency=%C2%A3",
+                                       "https://api.example/items?filter%5Bx%5D=y",
+                                       "https://api.example/items?query=a/b?c",
+                                       "https://%65xample.com/items",
+                                       "https://[2001:db8::1]:443/items",
+                                       "urn:example:contacts?role=a=b&literal=+",
+                                       "urn:example:%C2%A3",
+                                       "file:///tmp/oidc-resource")) {
+            OidcOutboundPolicy policy = OidcOutboundPolicy.clientCredentialsGrant(List.of(), List.of(resource));
+            assertThat(policy.clientCredentialsResources(), is(List.of(resource)));
+        }
+    }
+
+    @Test
     void tokenExchangeForResourceValidatesResource() {
         var policy = OidcOutboundPolicy.tokenExchangeForResource(List.of("orders.read"),
                                                                  "https://orders.example.com");

@@ -231,7 +231,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         URI redirectionEndpointUri = URI.create(
                 "https://rp.example/oidc/callback?channel=a&redirect_injected=b+plus&pct=%25&currency=£");
         List<String> resources = List.of(
-                "https://api.example/items?type=a&resource_injected=b+plus&pct=%25&currency=£",
+                "https://api.example/items?type=a&resource_injected=b+plus&pct=%25&currency=%C2%A3",
                 "urn:example:contacts?role=a=b&literal=+");
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())

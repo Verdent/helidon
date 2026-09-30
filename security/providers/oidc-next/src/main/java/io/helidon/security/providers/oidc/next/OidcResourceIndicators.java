@@ -21,6 +21,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import io.helidon.common.uri.UriValidator;
+
 final class OidcResourceIndicators {
     private OidcResourceIndicators() {
     }
@@ -52,6 +54,62 @@ final class OidcResourceIndicators {
             }
             if (uri.getRawFragment() != null) {
                 throw new IllegalArgumentException(configKey + " must not contain URI fragments");
+            }
+            try {
+                // RFC 3986 query syntax covers path pchars too; URI parsing isolates authority and fragment.
+                if (uri.isOpaque()) {
+                    UriValidator.validateQuery(uri.getRawSchemeSpecificPart());
+                } else {
+                    String authority = uri.getRawAuthority();
+                    if (authority != null) {
+                        validateAuthority(authority);
+                    }
+                    String path = uri.getRawPath();
+                    if (path != null) {
+                        UriValidator.validateQuery(path);
+                    }
+                    String query = uri.getRawQuery();
+                    if (query != null) {
+                        UriValidator.validateQuery(query);
+                    }
+                }
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(configKey + " contains an invalid resource URI: " + resource, e);
+            }
+        }
+    }
+
+    private static void validateAuthority(String authority) {
+        // RFC 3986 authority = [ userinfo "@" ] host [ ":" port ]; URI parsing already separates '/' and '?'.
+        int at = authority.indexOf('@');
+        if (at >= 0) {
+            UriValidator.validateQuery(authority.substring(0, at));
+            authority = authority.substring(at + 1);
+        }
+        int hostEnd;
+        if (authority.startsWith("[")) {
+            int closingBracket = authority.indexOf(']');
+            if (closingBracket < 0) {
+                throw new IllegalArgumentException("Invalid resource URI host literal");
+            }
+            hostEnd = closingBracket + 1;
+        } else {
+            int colon = authority.indexOf(':');
+            hostEnd = colon < 0 ? authority.length() : colon;
+        }
+        String host = authority.substring(0, hostEnd);
+        if (!host.isEmpty()) {
+            UriValidator.validateHost(host);
+        }
+        if (hostEnd < authority.length()) {
+            if (authority.charAt(hostEnd) != ':') {
+                throw new IllegalArgumentException("Invalid resource URI authority port");
+            }
+            for (int i = hostEnd + 1; i < authority.length(); i++) {
+                char c = authority.charAt(i);
+                if (c < '0' || c > '9') {
+                    throw new IllegalArgumentException("Invalid resource URI authority port");
+                }
             }
         }
     }

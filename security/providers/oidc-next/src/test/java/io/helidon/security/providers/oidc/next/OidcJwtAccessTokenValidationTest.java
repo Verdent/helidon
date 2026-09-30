@@ -107,6 +107,7 @@ class OidcJwtAccessTokenValidationTest {
 
     private URI remoteJwksUri;
     private URI wellKnownUri;
+    private URI discoveryIssuer;
     @TempDir
     private Path tempDir;
 
@@ -158,6 +159,7 @@ class OidcJwtAccessTokenValidationTest {
     void setUp(URI serverUri) {
         remoteJwksUri = serverUri.resolve("jwks");
         wellKnownUri = serverUri.resolve(".well-known/openid-configuration");
+        discoveryIssuer = URI.create(serverUri.getScheme() + "://" + serverUri.getRawAuthority());
         wellKnownRequests.set(0);
         remoteJwkSetRequests.set(0);
         wellKnownWebClientHeader.set("");
@@ -493,7 +495,7 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void wellKnownMetadataJwksEndpointAuthenticatesSubject() {
-        String token = signedToken(_ -> { });
+        String token = signedToken(jwt -> jwt.issuer(discoveryIssuer.toString()));
 
         AuthenticationResponse response = authenticate(
                 wellKnownProvider(tenant -> tenant.webClient(tenantWebClient())),
@@ -511,7 +513,7 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
                 {"keys":[{"kty":"oct","kid":"verify-oct","k":"FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ"}]}
                 """)));
-        String token = signedToken(_ -> { });
+        String token = signedToken(jwt -> jwt.issuer(discoveryIssuer.toString()));
 
         AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
@@ -524,7 +526,7 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
                 {"keys":[{"kty":"RSA","kid":"verify-rsa","d":"private"}]}
                 """)));
-        String token = signedToken(_ -> { });
+        String token = signedToken(jwt -> jwt.issuer(discoveryIssuer.toString()));
 
         AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
@@ -1354,8 +1356,12 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        providerMetadata.set(JsonObject.builder()
+                                     .set("issuer", discoveryIssuer.toString())
+                                     .set("jwks_uri", remoteJwksUri.toString())
+                                     .build().toString());
         OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
-                .issuer(ISSUER.toString())
+                .issuer(discoveryIssuer.toString())
                 .endpoints(it -> it.wellKnownUri(wellKnownUri)
                         .tlsRequired(false))
                 .protectedResource(it -> it.tokenValidation(validation -> validation

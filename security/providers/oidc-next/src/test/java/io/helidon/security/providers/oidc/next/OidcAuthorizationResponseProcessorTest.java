@@ -33,9 +33,11 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcAuthorizationResponseProcessorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -336,6 +338,96 @@ class OidcAuthorizationResponseProcessorTest {
                                                          NOW);
 
         assertThat(result.stateValidated(), is(true));
+    }
+
+    @Test
+    void sharedIssuerCannotSelectDifferentTokenEndpoints() {
+        OidcTenantConfig honest = authorizationCodeTenant("honest-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig attacker = OidcTenantConfig.builder(
+                authorizationCodeTenant("other-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(ISSUER.resolve("/authorize"))
+                        .tokenEndpointUri(URI.create("https://attacker.example/token"))
+                        .jwksUri(ISSUER.resolve("/jwks")))
+                .buildPrototype();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.builder()
+                                                               .putTenant("honest", honest)
+                                                               .putTenant("attacker", attacker)
+                                                               .buildPrototype());
+        assertThat(thrown.getMessage(), containsString("issuer"));
+    }
+
+    @Test
+    void differentCallbacksCannotAllowAnIssuerCollision() {
+        OidcTenantConfig honest = authorizationCodeTenant("honest-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig attacker = OidcTenantConfig.builder(
+                authorizationCodeTenant("other-cookie-password", OTHER_REDIRECTION_ENDPOINT_URI))
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(ISSUER.resolve("/authorize"))
+                        .tokenEndpointUri(URI.create("https://attacker.example/token"))
+                        .jwksUri(ISSUER.resolve("/jwks")))
+                .buildPrototype();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.builder()
+                                                               .putTenant("honest", honest)
+                                                               .putTenant("attacker", attacker)
+                                                               .buildPrototype());
+        assertThat(thrown.getMessage(), containsString("issuer"));
+    }
+
+    @Test
+    void differentClientRegistrationsCanShareOneIssuersEndpoints() {
+        OidcTenantConfig first = authorizationCodeTenant("first-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig second = OidcTenantConfig.builder(
+                authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .clientId("second-client-id")
+                .clientSecret("second-client-secret")
+                .buildPrototype();
+
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("first", first)
+                .putTenant("second", second)
+                .buildPrototype();
+
+        assertThat(config.tenants().size(), is(2));
+        assertThat(config.tenants().get("second").clientId().orElseThrow(), is("second-client-id"));
+    }
+
+    @Test
+    void metadataOnlyTenantCannotMaskAConflictingStaticIssuerBinding() {
+        OidcTenantConfig discovered = metadataOnlyAuthorizationCodeTenant();
+        OidcTenantConfig conflicting = OidcTenantConfig.builder(
+                authorizationCodeTenant("other-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(ISSUER.resolve("/authorize"))
+                        .tokenEndpointUri(URI.create("https://attacker.example/token"))
+                        .jwksUri(ISSUER.resolve("/jwks")))
+                .buildPrototype();
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcProviderConfig.builder()
+                                                               .putTenant("discovered", discovered)
+                                                               .putTenant("conflicting", conflicting)
+                                                               .buildPrototype());
+        assertThat(thrown.getMessage(), containsString("issuer"));
+    }
+
+    @Test
+    void metadataOnlyClientRegistrationsForSameIssuerCanShareAWellKnownSource() {
+        OidcTenantConfig first = metadataOnlyAuthorizationCodeTenant();
+        OidcTenantConfig second = OidcTenantConfig.builder(metadataOnlyAuthorizationCodeTenant())
+                .clientId("second-client-id")
+                .buildPrototype();
+
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("first", first)
+                .putTenant("second", second)
+                .buildPrototype();
+
+        assertThat(config.tenants().size(), is(2));
     }
 
     @Test
@@ -933,6 +1025,15 @@ class OidcAuthorizationResponseProcessorTest {
 
     private static OidcTenantConfig authorizationCodeTenant(String cookiePassword, URI redirectionEndpointUri) {
         return authorizationCodeTenant(ISSUER, cookiePassword, redirectionEndpointUri);
+    }
+
+    private static OidcTenantConfig metadataOnlyAuthorizationCodeTenant() {
+        return OidcTenantConfig.builder()
+                .clientId("client-id")
+                .endpoints(endpoints -> endpoints.wellKnownUri(ISSUER.resolve("/.well-known/openid-configuration")))
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
     }
 
     private static OidcTenantConfig authorizationCodeTenant(URI issuer,

@@ -499,6 +499,14 @@ This is the OpenID Connect Discovery location. The provider does not automatical
 `/.well-known/oauth-authorization-server` location; configure `endpoints.well-known-uri` explicitly when an OAuth
 Authorization Server metadata endpoint must be used instead.
 
+For metadata that is actually fetched, the returned `issuer` must identify the issuer URL from which that well-known
+URI was constructed. Both the OpenID Connect appended location and the RFC 8414 inserted location are accepted, including
+issuers with a path. A configured `issuer` must also match the returned value exactly. A metadata URL on another host or
+at a nonstandard location cannot assert the issuer, even if it was explicitly configured as `well-known-uri` or
+`endpoints.tls-required` is disabled. When `issuer` is configured, an inconsistent discovery location is refused before
+any metadata request; metadata-only tenants check the location against the returned issuer before accepting its contents.
+An unused well-known URI is not fetched or subject to this check.
+
 Before any metadata request, the selected well-known URI is checked against `endpoints.tls-required`, including discovery
 needed only for missing JWKS or required PAR metadata when other endpoints are configured statically. A TLS-policy
 violation fails without a request and is not retried. Explicit HTTP opt-out behavior is unchanged; an unused well-known
@@ -2810,6 +2818,12 @@ resolved endpoint policy.
 ## Tenant Resolution
 
 For one tenant, no `default-tenant` or `tenant-resolution` is required.
+
+Enabled Authorization Code tenants that might accept the same issuer must have matching configured Authorization and
+Token Endpoint sources: use the same explicit endpoint URIs on each tenant, or discover both endpoints on each tenant.
+Conflicting or ambiguous combinations are rejected before any tenant initializes, even when the callback URIs differ.
+Multiple client registrations for the same OP can still use different client IDs, credentials, scopes, cookies and
+callbacks. A returned `iss` cannot safely distinguish tenants whose identical issuer points to different token endpoints.
 
 For multiple tenants, configure a default tenant:
 

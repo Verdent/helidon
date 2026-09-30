@@ -36,6 +36,8 @@ final class OidcProviderMetadataLoader {
                 .orElseThrow(() -> new IllegalArgumentException("well-known-uri is not configured"));
         // Validate the actual discovery target even when static endpoints satisfied configuration validation.
         OidcEndpointUris.validateWellKnownUri(wellKnownUri, tlsRequired);
+        staticMetadata.issuer()
+                .ifPresent(issuer -> OidcEndpointUris.validateWellKnownMetadataIssuer(wellKnownUri, issuer));
         OidcProviderMetadata wellKnownMetadata;
         try (HttpClientResponse response = webClient.get()
                 .uri(wellKnownUri)
@@ -73,7 +75,9 @@ final class OidcProviderMetadataLoader {
                                                           + OidcDiagnostics.safeUri(wellKnownUri),
                                                   e);
         }
-        return staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
+        OidcProviderMetadata metadata = staticMetadata.mergeWellKnownMetadata(wellKnownMetadata);
+        OidcEndpointUris.validateWellKnownMetadataIssuer(wellKnownUri, wellKnownMetadata.issuer().orElseThrow());
+        return metadata;
     }
 
     static final class RetryableDiscoveryException extends IllegalStateException {

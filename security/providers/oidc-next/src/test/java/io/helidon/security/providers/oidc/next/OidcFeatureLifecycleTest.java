@@ -236,7 +236,7 @@ class OidcFeatureLifecycleTest {
     void providerClosePreservesJvmSharedConnections() {
         AtomicReference<String> discoveryConnection = new AtomicReference<>();
         WebServer discovery = WebServer.builder().port(0).routing(routing -> routing
-                .get("/metadata", (request, response) -> {
+                .get("/.well-known/openid-configuration", (request, response) -> {
                     discoveryConnection.set(request.socketId());
                     response.headers().contentType(HttpMediaTypes.JSON);
                     response.send(metadata(URI.create("http://localhost:" + request.localPeer().port())).toString());
@@ -270,7 +270,7 @@ class OidcFeatureLifecycleTest {
                         .issuer(issuer.toString())
                         .clientId("client-id")
                         .endpoints(endpoints -> endpoints.tlsRequired(false)
-                                .wellKnownUri(issuer.resolve("/metadata")))
+                                .wellKnownUri(issuer.resolve("/.well-known/openid-configuration")))
                         .webClient(WebClientConfig.builder().shareConnectionCache(sharedPool).buildPrototype())
                         .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/callback")))
                         .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))

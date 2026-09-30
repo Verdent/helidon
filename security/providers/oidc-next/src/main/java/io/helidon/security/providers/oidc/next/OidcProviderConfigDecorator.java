@@ -90,6 +90,8 @@ final class OidcProviderConfigDecorator
             }
         });
 
+        OidcMixUpProtection.validateIssuerBindings(target.tenants());
+
         Map<String, String> sessionNamespaces = new HashMap<>();
         for (OidcTenantConfig tenant : target.tenants().values()) {
             if (!tenant.enabled()) {

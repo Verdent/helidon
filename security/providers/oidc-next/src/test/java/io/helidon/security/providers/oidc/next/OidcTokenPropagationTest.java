@@ -414,33 +414,36 @@ class OidcTokenPropagationTest {
         Tls otherTls = Tls.builder().privateKey(serverKeys).privateKeyCertChain(serverKeys)
                 .trust(serverKeys.certChain()).build();
         Tls noCertificateTls = Tls.builder().trust(serverKeys.certChain()).build();
-        Jwt.Builder claims = Jwt.builder().issuer("https://issuer.example").subject("user1").addAudience("api://orders")
-                .algorithm("RS256").keyId("verify-rsa").type("at+jwt").jwtId("propagation-test")
-                .issueTime(Instant.now()).expirationTime(Instant.now().plusSeconds(600))
-                .addPayloadClaim("client_id", "calling-client");
-        if (bound) {
-            claims.addPayloadClaim("cnf", JsonObject.builder().set("x5t#S256", callerThumbprint).build());
-        }
-        Jwt jwt = claims.build();
-        String token = method == OidcTokenValidationMethod.JWT
-                ? SignedJwt.sign(jwt, JwkKeys.builder().resource(Resource.create("oidc-next-sign-jwk.json"))
-                        .build().forKeyId("sign-rsa").orElseThrow()).tokenContent()
-                : "opaque-propagated-token";
-        JsonObject introspection = JsonObject.builder().from(jwt.payloadJsonObject())
-                .set("active", true).set("token_type", "Bearer").build();
         String jwks = Resource.create("oidc-next-verify-public-jwk.json").string();
         AtomicReference<String> providerMetadata = new AtomicReference<>();
+        AtomicReference<String> token = new AtomicReference<>();
+        AtomicReference<String> introspection = new AtomicReference<>();
         WebServer issuer = WebServer.builder().port(0).tls(serverTls).routing(routing -> routing
                 .get("/.well-known/openid-configuration", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                         .send(providerMetadata.get()))
                 .get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(jwks))
                 .post("/introspect", (request, response) -> {
-                    assertThat(request.content().as(Parameters.class).first("token").orElseThrow(), is(token));
-                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(introspection.toString());
+                    assertThat(request.content().as(Parameters.class).first("token").orElseThrow(), is(token.get()));
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(introspection.get());
                 })).build().start();
         try {
             URI issuerUri = URI.create("https://localhost:" + issuer.port());
-            JsonObject.Builder metadata = JsonObject.builder().set("issuer", "https://issuer.example")
+            Jwt.Builder claims = Jwt.builder().issuer(issuerUri.toString()).subject("user1").addAudience("api://orders")
+                    .algorithm("RS256").keyId("verify-rsa").type("at+jwt").jwtId("propagation-test")
+                    .issueTime(Instant.now()).expirationTime(Instant.now().plusSeconds(600))
+                    .addPayloadClaim("client_id", "calling-client");
+            if (bound) {
+                claims.addPayloadClaim("cnf", JsonObject.builder().set("x5t#S256", callerThumbprint).build());
+            }
+            Jwt jwt = claims.build();
+            String encodedToken = method == OidcTokenValidationMethod.JWT
+                    ? SignedJwt.sign(jwt, JwkKeys.builder().resource(Resource.create("oidc-next-sign-jwk.json"))
+                            .build().forKeyId("sign-rsa").orElseThrow()).tokenContent()
+                    : "opaque-propagated-token";
+            token.set(encodedToken);
+            introspection.set(JsonObject.builder().from(jwt.payloadJsonObject())
+                                      .set("active", true).set("token_type", "Bearer").build().toString());
+            JsonObject.Builder metadata = JsonObject.builder().set("issuer", issuerUri.toString())
                     .set("jwks_uri", issuerUri.resolve("/jwks").toString())
                     .set("introspection_endpoint", issuerUri.resolve("/introspect").toString())
                     .setStrings("introspection_endpoint_auth_methods_supported", List.of("client_secret_basic"));
@@ -448,7 +451,7 @@ class OidcTokenPropagationTest {
                 metadata.set("tls_client_certificate_bound_access_tokens", Boolean.parseBoolean(metadataSupport));
             }
             providerMetadata.set(metadata.build().toString());
-            OidcTenantConfig tenant = OidcTenantConfig.builder().issuer("https://issuer.example")
+            OidcTenantConfig tenant = OidcTenantConfig.builder().issuer(issuerUri.toString())
                     .clientId("resource-client").clientSecret("resource-secret")
                     // OP/AS TLS credentials do not configure the application's downstream connection.
                     .webClient(WebClientConfig.builder().tls(callerTls).buildPrototype())
@@ -471,7 +474,7 @@ class OidcTokenPropagationTest {
             try (OidcProvider forwardingProvider = provider(tenant, target);
                  OidcProvider receivingProvider = provider(tenant)) {
                 SecurityEnvironment inbound = SecurityEnvironment.builder().targetUri(URI.create("https://service.example"))
-                        .header(HeaderNames.AUTHORIZATION.defaultCase(), "Bearer " + token)
+                        .header(HeaderNames.AUTHORIZATION.defaultCase(), "Bearer " + encodedToken)
                         .addAttribute("remotePeer", OidcTestCertificates.peerInfo(callerKeys.publicCert().orElseThrow())).build();
                 AuthenticationResponse authenticated = forwardingProvider.authenticate(OidcProviderTest.request(null, inbound));
                 assertThat(authenticated.description().orElse("No authentication description"), authenticated.status(),
@@ -503,7 +506,7 @@ class OidcTokenPropagationTest {
                         assertThat(propagated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
                         String authorization = propagated.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase())
                                 .getFirst();
-                        assertThat(authorization, is("Bearer " + token));
+                        assertThat(authorization, is("Bearer " + encodedToken));
                         for (var transport : Map.of(callerThumbprint, callerTls,
                                                     otherThumbprint, otherTls,
                                                     "absent", noCertificateTls).entrySet()) {

@@ -260,6 +260,41 @@ final class OidcEndpointUris {
         validateHttpsEndpointUri("well-known-uri", uri, tlsRequired, false);
     }
 
+    static URI oidcWellKnownUri(String issuer) {
+        while (issuer.endsWith("/")) {
+            issuer = issuer.substring(0, issuer.length() - 1);
+        }
+        return URI.create(issuer + "/.well-known/openid-configuration");
+    }
+
+    static boolean wellKnownUriMatchesIssuer(URI wellKnownUri, String issuer) {
+        URI issuerUri = URI.create(issuer);
+        if (issuerUri.getScheme() == null || issuerUri.getRawAuthority() == null
+                || issuerUri.getRawQuery() != null || issuerUri.getRawFragment() != null) {
+            return false;
+        }
+        String oauthWellKnownUri = issuerUri.getScheme() + "://" + issuerUri.getRawAuthority()
+                + "/.well-known/oauth-authorization-server"
+                + (issuerUri.getRawPath() == null ? "" : issuerUri.getRawPath());
+        // URI.equals folds host/scheme case, but discovery issuer identity uses exact string comparison.
+        String fetchedUri = wellKnownUri.toString();
+        return fetchedUri.equals(oidcWellKnownUri(issuer).toString()) || fetchedUri.equals(oauthWellKnownUri);
+    }
+
+    static void validateWellKnownMetadataIssuer(URI wellKnownUri, String issuer) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 4.3 OpenID Provider Configuration Validation
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation
+         * Spec: RFC 8414, 3.3 Authorization Server Metadata Validation and 6.2 Impersonation Attacks
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-3.3
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-6.2
+         * The issuer in a fetched document must identify the issuer used to construct its actual well-known URL.
+         */
+        if (!wellKnownUriMatchesIssuer(wellKnownUri, issuer)) {
+            throw new IllegalArgumentException("well-known metadata issuer must match well-known-uri");
+        }
+    }
+
     private static void validateHttpsEndpointUri(String configKey, URI uri, boolean tlsRequired, boolean fileAllowed) {
         String scheme = uri.getScheme();
         if (scheme == null) {

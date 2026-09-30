@@ -37,6 +37,7 @@ final class OidcProviderConfigDecorator
                                                                         "client-id",
                                                                         "client-secret",
                                                                         "token-endpoint-auth-method",
+                                                                        "outbound-mutual-tls",
                                                                         "id-token",
                                                                         "client-assertion",
                                                                         "webclient",
@@ -159,6 +160,7 @@ final class OidcProviderConfigDecorator
                 || target.clientId().isPresent()
                 || target.clientSecret().isPresent()
                 || target.tokenEndpointAuthenticationMethod().isPresent()
+                || target.outboundMutualTls()
                 || !DEFAULT_ID_TOKEN.equals(target.idToken())
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || target.webClient() != DEFAULT_WEBCLIENT
@@ -185,6 +187,7 @@ final class OidcProviderConfigDecorator
                 .enabled(target.enabled())
                 .initializationRetryInterval(target.initializationRetryInterval())
                 .initializationMaxQueued(target.initializationMaxQueued())
+                .outboundMutualTls(target.outboundMutualTls())
                 .idToken(target.idToken())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())

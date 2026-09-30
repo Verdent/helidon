@@ -36,6 +36,7 @@ final class OidcEndpointClient {
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
     private final OidcClientAuthenticationSupport clientAuthentication;
+    private final boolean outboundMutualTls;
     private final List<String> authorizationCodeResources;
     private final String userInfoAccept;
 
@@ -45,6 +46,7 @@ final class OidcEndpointClient {
         this.metadata = metadata;
         this.webClient = webClient;
         this.clientAuthentication = OidcClientAuthenticationSupport.tokenEndpoint(tenantConfig);
+        this.outboundMutualTls = OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig);
         this.authorizationCodeResources = List.copyOf(tenantConfig.authorizationCode()
                                                               .map(OidcAuthorizationCodeConfig::resources)
                                                               .orElseGet(List::of));
@@ -203,10 +205,7 @@ final class OidcEndpointClient {
          * `mtls_endpoint_aliases`, when present, in preference to the endpoint URL of the same name at the top level of
          * metadata."
          */
-        Optional<URI> endpointUri = clientAuthentication.usesMutualTls()
-                ? metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
-                        .or(metadata::pushedAuthorizationRequestEndpointUri)
-                : metadata.pushedAuthorizationRequestEndpointUri();
+        Optional<URI> endpointUri = metadata.pushedAuthorizationRequestEndpointUri(outboundMutualTls);
         if (endpointUri.isEmpty()) {
             return OidcPushedAuthorizationRequestResult.failure(
                     "Pushed Authorization Request Endpoint is not configured");
@@ -282,7 +281,7 @@ final class OidcEndpointClient {
     }
 
     OidcUserInfoEndpointResult userInfo(String accessToken) {
-        Optional<URI> endpointUri = metadata.userInfoEndpointUri();
+        Optional<URI> endpointUri = metadata.userInfoEndpointUri(outboundMutualTls);
         if (endpointUri.isEmpty()) {
             return OidcUserInfoEndpointResult.failure("UserInfo Endpoint is not configured");
         }
@@ -363,9 +362,7 @@ final class OidcEndpointClient {
          * of the endpoint within the `mtls_endpoint_aliases`, when present, in preference to the endpoint URL of the
          * same name at the top level of metadata."
          */
-        Optional<URI> endpointUri = clientAuthentication.usesMutualTls()
-                ? metadata.mutualTlsTokenEndpointUri().or(metadata::tokenEndpointUri)
-                : metadata.tokenEndpointUri();
+        Optional<URI> endpointUri = metadata.tokenEndpointUri(outboundMutualTls);
         if (endpointUri.isEmpty()) {
             return failureResult.create("Token Endpoint is not configured", null);
         }

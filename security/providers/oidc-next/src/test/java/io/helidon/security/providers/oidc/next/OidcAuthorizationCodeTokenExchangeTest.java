@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -90,18 +92,27 @@ class OidcAuthorizationCodeTokenExchangeTest {
     private static final String CLIENT_ASSERTION_TYPE =
             "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
+    private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static final AtomicReference<String> JWK_SET = new AtomicReference<>();
+    private static final AtomicReference<String> HTTPS_METADATA_RESPONSE = new AtomicReference<>();
+    private static final AtomicInteger HTTPS_METADATA_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger HTTP_METADATA_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger CONVENTIONAL_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger MUTUAL_TLS_REQUESTS = new AtomicInteger();
+    private static final AtomicBoolean MUTUAL_TLS_CERTIFICATE_PRESENT = new AtomicBoolean();
+    private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
+
     private static volatile int responseStatus;
     private static volatile String responseBody;
     private static volatile String responseContentType;
     private static volatile String responseCacheControl;
     private static volatile String responsePragma;
-    private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
-    private static final AtomicReference<String> JWK_SET = new AtomicReference<>();
-
+    private static volatile int userInfoStatus;
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
 
     private final URI mutualTlsServerUri;
+    private final URI conventionalTlsServerUri;
 
     private URI tokenEndpointUri;
     private URI mutualTlsTokenEndpointUri;
@@ -110,6 +121,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     OidcAuthorizationCodeTokenExchangeTest(WebServer server) {
         mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
+        conventionalTlsServerUri = URI.create("https://localhost:" + server.port("conventional") + "/");
     }
 
     @BeforeAll
@@ -127,17 +139,55 @@ class OidcAuthorizationCodeTokenExchangeTest {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
         routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
         routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(JWK_SET.get()));
+        routing.get("/.well-known/openid-configuration", (_, response) -> {
+            HTTP_METADATA_REQUESTS.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send("{}");
+        });
     }
 
     @SetUpRoute("mtls")
     static void mutualTlsRouting(HttpRouting.Builder routing) {
-        routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
-        routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
+        routing.post("/token", (request, response) -> {
+            recordMutualTls(request);
+            handleTokenEndpoint(request, response);
+        });
+        routing.post("/par", (request, response) -> {
+            recordMutualTls(request);
+            handleTokenEndpoint(request, response);
+        });
+        routing.get("/userinfo", (request, response) -> {
+            recordMutualTls(request);
+            USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
+            response.status(userInfoStatus).header(HeaderValues.CONTENT_TYPE_JSON).send("{\"sub\":\"subject\"}");
+        });
+    }
+
+    @SetUpRoute("conventional")
+    static void conventionalTlsRouting(HttpRouting.Builder routing) {
+        routing.get("/.well-known/openid-configuration", (_, response) -> {
+            HTTPS_METADATA_REQUESTS.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send(HTTPS_METADATA_RESPONSE.get());
+        });
+        routing.get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(JWK_SET.get()));
+        routing.post("/token", (request, response) -> {
+            CONVENTIONAL_REQUESTS.incrementAndGet();
+            handleTokenEndpoint(request, response);
+        });
+        routing.post("/par", (request, response) -> {
+            CONVENTIONAL_REQUESTS.incrementAndGet();
+            handleTokenEndpoint(request, response);
+        });
+        routing.get("/userinfo", (request, response) -> {
+            CONVENTIONAL_REQUESTS.incrementAndGet();
+            USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
+            response.status(userInfoStatus).header(HeaderValues.CONTENT_TYPE_JSON).send("{\"sub\":\"subject\"}");
+        });
     }
 
     @SetUpServer
     static void server(WebServerConfig.Builder builder) {
-        builder.putSocket("mtls", socket -> socket.tls(serverTls()));
+        builder.putSocket("mtls", socket -> socket.tls(serverTls(TlsClientAuth.REQUIRED)));
+        builder.putSocket("conventional", socket -> socket.tls(serverTls(TlsClientAuth.NONE)));
     }
 
     @BeforeEach
@@ -151,8 +201,16 @@ class OidcAuthorizationCodeTokenExchangeTest {
         responseContentType = "application/json";
         responseCacheControl = "no-store";
         responsePragma = "no-cache";
+        userInfoStatus = 200;
         RECORDED_REQUEST.set(null);
         JWK_SET.set(Resource.create("oidc-next-encrypt-public-jwk.json").string());
+        CONVENTIONAL_REQUESTS.set(0);
+        MUTUAL_TLS_REQUESTS.set(0);
+        MUTUAL_TLS_CERTIFICATE_PRESENT.set(false);
+        USER_INFO_AUTHORIZATION.set(null);
+        HTTPS_METADATA_RESPONSE.set(null);
+        HTTPS_METADATA_REQUESTS.set(0);
+        HTTP_METADATA_REQUESTS.set(0);
     }
 
     @Test
@@ -306,10 +364,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
-    void staticPushedAuthorizationRequestEndpointDoesNotOverrideWellKnownMutualTlsAlias(URI serverUri) {
+    void staticPushedAuthorizationRequestEndpointDoesNotOverrideWellKnownMutualTlsAlias() {
         responseStatus = 201;
         responseBody = validPushedAuthorizationResponse().toString();
-        URI staticPushedAuthorizationRequestEndpointUri = serverUri.resolve("unused-par");
+        URI staticPushedAuthorizationRequestEndpointUri = conventionalTlsServerUri.resolve("unused-par");
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
@@ -325,8 +383,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())
                 .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("pushed_authorization_request_endpoint", serverUri.resolve("well-known-par").toString())
+                .set("token_endpoint", conventionalTlsServerUri.resolve("token").toString())
+                .set("pushed_authorization_request_endpoint",
+                     conventionalTlsServerUri.resolve("well-known-par").toString())
                 .set("mtls_endpoint_aliases", JsonObject.builder()
                         .set("token_endpoint", mutualTlsTokenEndpointUri.toString())
                         .set("pushed_authorization_request_endpoint",
@@ -349,6 +408,330 @@ class OidcAuthorizationCodeTokenExchangeTest {
         RecordedRequest request = RECORDED_REQUEST.get();
         assertThat(request.authorization(), is(""));
         assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+    }
+
+    @Test
+    void bindingOnlyClientAuthenticationMethodsPreferRealMutualTlsTokenAlias() {
+        for (OidcClientAuthenticationMethod method : List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+                                                              OidcClientAuthenticationMethod.PRIVATE_KEY_JWT,
+                                                              OidcClientAuthenticationMethod.NONE)) {
+            CONVENTIONAL_REQUESTS.set(0);
+            MUTUAL_TLS_REQUESTS.set(0);
+            MUTUAL_TLS_CERTIFICATE_PRESENT.set(false);
+            OidcTenantConfig tenant = outboundMutualTlsTenant(method, true);
+            OidcProviderMetadata metadata = providerMetadata(tenant, true);
+
+            OidcTokenEndpointResult result = OidcTenantContext.ready("default", tenant, metadata)
+                    .endpointClient()
+                    .exchangeAuthorizationCode(AUTHORIZATION_CODE,
+                                               REDIRECTION_ENDPOINT_URI,
+                                               Optional.of(PKCE_VERIFIER));
+
+            assertThat(method.toString(), result.succeeded(), is(true));
+            assertThat(method.toString(), MUTUAL_TLS_REQUESTS.get(), is(1));
+            assertThat(method.toString(), CONVENTIONAL_REQUESTS.get(), is(0));
+            assertThat(method.toString(), MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+            RecordedRequest request = RECORDED_REQUEST.get();
+            assertThat(request.formParameters().get("grant_type"), is(List.of("authorization_code")));
+            if (method == OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC) {
+                assertThat(request.authorization(),
+                           is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+                assertThat(request.formParameters().containsKey("client_assertion"), is(false));
+            } else if (method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT) {
+                assertThat(request.authorization(), is(""));
+                assertThat(request.formParameters().get("client_assertion_type"),
+                           is(List.of(CLIENT_ASSERTION_TYPE)));
+            } else {
+                assertThat(request.authorization(), is(""));
+                assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
+                assertThat(request.formParameters().containsKey("client_assertion"), is(false));
+            }
+        }
+    }
+
+    @Test
+    void refreshedAndOutboundTokensUseTheSameMutualTlsAlias() {
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+        OidcEndpointClient client = OidcTenantContext.ready("default", tenant, providerMetadata(tenant, true))
+                .endpointClient();
+        responseBody = validRefreshResponse().toString();
+
+        OidcTokenEndpointResult refresh = client.refreshAccessToken(REFRESH_TOKEN);
+
+        assertThat(refresh.succeeded(), is(true));
+        responseBody = JsonObject.builder()
+                .set("access_token", "client-token")
+                .set("token_type", "Bearer")
+                .set("expires_in", 60)
+                .build()
+                .toString();
+        OidcTokenEndpointResult clientCredentials = client.clientCredentialsToken(Optional.empty(), List.of());
+
+        assertThat(clientCredentials.succeeded(), is(true));
+        responseBody = JsonObject.builder()
+                .set("access_token", "exchanged-token")
+                .set("issued_token_type", OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE)
+                .set("token_type", "Bearer")
+                .set("expires_in", 60)
+                .build()
+                .toString();
+        OidcTokenExchangeResult tokenExchange = client.tokenExchange("subject-token",
+                                                                      Optional.empty(),
+                                                                      Optional.empty(),
+                                                                      Optional.empty());
+
+        assertThat(tokenExchange.succeeded(), is(true));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(3));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("grant_type"),
+                   is(List.of("urn:ietf:params:oauth:grant-type:token-exchange")));
+    }
+
+    @Test
+    void bindingOnlyPrefersMutualTlsParAliasEvenWithStaticConventionalEndpoint() {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcPushedAuthorizationRequestResult result = OidcTenantContext.ready("default", tenant,
+                                                                                 providerMetadata(tenant, true))
+                .endpointClient()
+                .pushedAuthorizationRequest(authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(true));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+        assertThat(RECORDED_REQUEST.get().authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+    }
+
+    @Test
+    void advertisedOpUserInfoAliasUsesTheClientCertificateAndBearerToken() {
+        for (OidcClientAuthenticationMethod method : List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+                                                              OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)) {
+            CONVENTIONAL_REQUESTS.set(0);
+            MUTUAL_TLS_REQUESTS.set(0);
+            MUTUAL_TLS_CERTIFICATE_PRESENT.set(false);
+            OidcTenantConfig tenant = outboundMutualTlsTenant(method,
+                                                              method == OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+
+            OidcUserInfoEndpointResult result = OidcTenantContext.ready("default", tenant,
+                                                                          providerMetadata(tenant, true))
+                    .endpointClient()
+                    .userInfo("opaque-access-token");
+
+            assertThat(method.toString(), result.succeeded(), is(true));
+            assertThat(result.json().orElseThrow().stringValue("sub").orElseThrow(), is("subject"));
+            assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer opaque-access-token"));
+            assertThat(method.toString(), MUTUAL_TLS_REQUESTS.get(), is(1));
+            assertThat(method.toString(), CONVENTIONAL_REQUESTS.get(), is(0));
+            assertThat(method.toString(), MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+        }
+    }
+
+    @Test
+    void configuredTlsCredentialsWithoutOutboundIntentDoNotSelectAliases() {
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, false);
+        OidcEndpointClient client = OidcTenantContext.ready("default", tenant, providerMetadata(tenant, true))
+                .endpointClient();
+
+        OidcTokenEndpointResult token = client.exchangeAuthorizationCode(AUTHORIZATION_CODE,
+                                                                         REDIRECTION_ENDPOINT_URI,
+                                                                         Optional.of(PKCE_VERIFIER));
+        OidcUserInfoEndpointResult userInfo = client.userInfo("ordinary-access-token");
+
+        assertThat(token.succeeded(), is(true));
+        assertThat(userInfo.succeeded(), is(true));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(2));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
+        assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer ordinary-access-token"));
+    }
+
+    @Test
+    void absentMutualTlsAliasUsesTheConventionalHttpsEndpoint() {
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcTokenEndpointResult result = OidcTenantContext.ready("default", tenant, providerMetadata(tenant, false))
+                .endpointClient()
+                .exchangeAuthorizationCode(AUTHORIZATION_CODE, REDIRECTION_ENDPOINT_URI, Optional.of(PKCE_VERIFIER));
+
+        assertThat(result.succeeded(), is(true));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(1));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void absentOpUserInfoAliasUsesTheConventionalHttpsEndpoint() {
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcUserInfoEndpointResult result = OidcTenantContext.ready("default", tenant, providerMetadata(tenant, false))
+                .endpointClient()
+                .userInfo("opaque-access-token");
+
+        assertThat(result.succeeded(), is(true));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(1));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void failedMutualTlsTokenAliasIsNotRetriedAtTheConventionalEndpoint() {
+        responseStatus = 503;
+        responseBody = JsonObject.builder().set("error", "temporarily_unavailable").build().toString();
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcTokenEndpointResult result = OidcTenantContext.ready("default", tenant, providerMetadata(tenant, true))
+                .endpointClient()
+                .exchangeAuthorizationCode(AUTHORIZATION_CODE, REDIRECTION_ENDPOINT_URI, Optional.of(PKCE_VERIFIER));
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void failedMutualTlsParAliasIsNotRetriedAtTheConventionalEndpoint() {
+        responseStatus = 503;
+        responseBody = JsonObject.builder().set("error", "temporarily_unavailable").build().toString();
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcPushedAuthorizationRequestResult result = OidcTenantContext.ready("default", tenant,
+                                                                                 providerMetadata(tenant, true))
+                .endpointClient()
+                .pushedAuthorizationRequest(authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void failedOpUserInfoAliasIsNotRetriedAtTheConventionalEndpoint() {
+        userInfoStatus = 503;
+        OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
+
+        OidcUserInfoEndpointResult result = OidcTenantContext.ready("default", tenant,
+                                                                      providerMetadata(tenant, true))
+                .endpointClient()
+                .userInfo("opaque-access-token");
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer opaque-access-token"));
+    }
+
+    @Test
+    void discoveredAliasOnlyParEndpointIsUsedByAutoAuthorizationRequests() {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        HTTPS_METADATA_RESPONSE.set(localWellKnownMetadata()
+                                            .set("mtls_endpoint_aliases", JsonObject.builder()
+                                                    .set("token_endpoint", mutualTlsServerUri.resolve("token").toString())
+                                                    .set("pushed_authorization_request_endpoint",
+                                                         mutualTlsServerUri.resolve("par").toString())
+                                                    .build())
+                                            .build()
+                                            .toString());
+        OidcTenantConfig tenant = discoveredMutualTlsTenant(false, Optional.empty());
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .path("/resource")
+                .transport("https")
+                .build();
+
+        URI redirect = authenticationRequest(tenant, environment).authorizationUri();
+
+        assertThat(UriQuery.create(redirect).get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+        assertThat(HTTPS_METADATA_REQUESTS.get(), is(1));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+    }
+
+    @Test
+    void discoveredUserInfoAliasWithoutTopLevelEndpointIsUsable() {
+        HTTPS_METADATA_RESPONSE.set(localWellKnownMetadata()
+                                            .set("mtls_endpoint_aliases", JsonObject.builder()
+                                                    .set("token_endpoint", mutualTlsServerUri.resolve("token").toString())
+                                                    .set("userinfo_endpoint", mutualTlsServerUri.resolve("userinfo").toString())
+                                                    .build())
+                                            .build()
+                                            .toString());
+        OidcTenantConfig tenant = discoveredMutualTlsTenant(true, Optional.empty());
+
+        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+
+        assertThat(context.failureCause().map(Throwable::toString).orElse("ready"), context.ready(), is(true));
+        assertThat(context.metadata().userInfoEndpointUri().isEmpty(), is(true));
+        assertThat(context.metadata().userInfoEndpointUri(true),
+                   is(Optional.of(mutualTlsServerUri.resolve("userinfo"))));
+        OidcUserInfoEndpointResult result = context.endpointClient().userInfo("certificate-bound-access-token");
+        assertThat(result.succeeded(), is(true));
+        assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer certificate-bound-access-token"));
+        assertThat(HTTPS_METADATA_REQUESTS.get(), is(1));
+        assertThat(MUTUAL_TLS_REQUESTS.get(), is(1));
+        assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
+    }
+
+    @Test
+    void insecureOrFragmentedDiscoveredUserInfoAliasFailsBeforeBearerUse() {
+        for (String alias : List.of("http://issuer.example/userinfo",
+                                    mutualTlsServerUri.resolve("userinfo").toString() + "#fragment")) {
+            HTTPS_METADATA_RESPONSE.set(localWellKnownMetadata()
+                                                .set("mtls_endpoint_aliases", JsonObject.builder()
+                                                        .set("token_endpoint",
+                                                             mutualTlsServerUri.resolve("token").toString())
+                                                        .set("userinfo_endpoint", alias)
+                                                        .build())
+                                                .build()
+                                                .toString());
+            OidcTenantConfig tenant = discoveredMutualTlsTenant(true, Optional.empty());
+
+            OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+
+            assertThat(alias, context.state(), is(OidcTenantState.FAILED));
+            assertThat(context.failureCause().orElseThrow().getMessage(), containsString("user-info-endpoint-uri"));
+            assertThat(context.failureCause().orElseThrow().getMessage(),
+                       containsString(alias.startsWith("http:") ? "must use https" : "fragment"));
+            assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
+            assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        }
+    }
+
+    @Test
+    void outboundMutualTlsRejectsHttpDiscoveryBeforeTheInitialRequest(URI serverUri) {
+        URI httpWellKnown = serverUri.resolve(".well-known/openid-configuration");
+        OidcTenantConfig tenant = discoveredMutualTlsTenant(false, Optional.of(httpWellKnown));
+
+        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("well-known-uri must use https"));
+        assertThat(HTTP_METADATA_REQUESTS.get(), is(0));
+        assertThat(HTTPS_METADATA_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void outboundMutualTlsRejectsHttpDeferredDiscoveryBeforeTheRequest(URI serverUri) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(conventionalIssuer())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .outboundMutualTls(true)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.wellKnownUri(serverUri.resolve(".well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .buildPrototype();
+        OidcTenantContext context = OidcTenantContext.ready("default", tenant);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> new OidcOutboundMetadataResolver().clientCredentialsEndpointClient(context));
+
+        assertThat(failure.getMessage(), containsString("well-known-uri must use https"));
+        assertThat(HTTP_METADATA_REQUESTS.get(), is(0));
     }
 
     @Test
@@ -1086,6 +1469,11 @@ class OidcAuthorizationCodeTokenExchangeTest {
         response.send(responseBody);
     }
 
+    private static void recordMutualTls(ServerRequest request) {
+        MUTUAL_TLS_REQUESTS.incrementAndGet();
+        MUTUAL_TLS_CERTIFICATE_PRESENT.set(request.remotePeer().tlsCertificates().isPresent());
+    }
+
     private OidcPushedAuthorizationRequestResult pushedAuthorizationRequest(OidcTenantConfig tenantConfig,
                                                                             Parameters parameters) {
         return OidcTenantContext.ready("default", tenantConfig)
@@ -1144,6 +1532,90 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private OidcTenantConfig mutualTlsTenant(OidcClientAuthenticationMethod method) {
         return tenant(false, method);
+    }
+
+    private OidcTenantConfig outboundMutualTlsTenant(OidcClientAuthenticationMethod method, boolean outboundMutualTls) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(method)
+                .outboundMutualTls(outboundMutualTls)
+                .webClient(mutualTlsWebClient())
+                .update(builder -> {
+                    if (method == OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC) {
+                        builder.clientSecret(CLIENT_SECRET);
+                    }
+                    if (method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT) {
+                        builder.clientAssertion(it -> it.jwk(ResourceConfig.builder()
+                                .resourcePath("oidc-next-sign-jwk.json")
+                                .buildPrototype())
+                                .algorithm("RS256")
+                                .keyId("sign-rsa"));
+                    }
+                })
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(conventionalTlsServerUri.resolve("token"))
+                        .pushedAuthorizationRequestEndpointUri(conventionalTlsServerUri.resolve("par"))
+                        .userInfoEndpointUri(conventionalTlsServerUri.resolve("userinfo")))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(_ -> { })
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+    }
+
+    private OidcProviderMetadata providerMetadata(OidcTenantConfig tenant, boolean aliases) {
+        JsonObject.Builder wellKnown = JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("token_endpoint", conventionalTlsServerUri.resolve("token").toString())
+                .set("pushed_authorization_request_endpoint", conventionalTlsServerUri.resolve("par").toString())
+                .set("userinfo_endpoint", conventionalTlsServerUri.resolve("userinfo").toString());
+        if (aliases) {
+            wellKnown.set("mtls_endpoint_aliases", JsonObject.builder()
+                    .set("token_endpoint", mutualTlsServerUri.resolve("token").toString())
+                    .set("pushed_authorization_request_endpoint", mutualTlsServerUri.resolve("par").toString())
+                    .set("userinfo_endpoint", mutualTlsServerUri.resolve("userinfo").toString())
+                    .build());
+        }
+        return OidcProviderMetadata.fromStaticConfig(tenant)
+                .mergeWellKnownMetadata(OidcProviderMetadata.fromWellKnownMetadataJson(wellKnown.build()));
+    }
+
+    private OidcTenantConfig discoveredMutualTlsTenant(boolean userInfo, Optional<URI> wellKnownOverride) {
+        OidcTenantConfig.Builder builder = OidcTenantConfig.builder()
+                .issuer(conventionalIssuer())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .outboundMutualTls(true)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> {
+                    wellKnownOverride.ifPresent(it::wellKnownUri);
+                    it.authorizationEndpointUri(conventionalTlsServerUri.resolve("authorize"))
+                            .tokenEndpointUri(conventionalTlsServerUri.resolve("token"));
+                })
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")));
+        if (userInfo) {
+            builder.userInfo(_ -> { });
+        }
+        return builder.buildPrototype();
+    }
+
+    private JsonObject.Builder localWellKnownMetadata() {
+        return JsonObject.builder()
+                .set("issuer", conventionalIssuer())
+                .set("authorization_endpoint", conventionalTlsServerUri.resolve("authorize").toString())
+                .set("token_endpoint", conventionalTlsServerUri.resolve("token").toString())
+                .set("jwks_uri", conventionalTlsServerUri.resolve("jwks").toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("code_challenge_methods_supported", List.of("S256"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"));
+    }
+
+    private String conventionalIssuer() {
+        String uri = conventionalTlsServerUri.toString();
+        return uri.substring(0, uri.length() - 1);
     }
 
     private OidcTenantConfig privateKeyJwtTenant() {
@@ -1268,10 +1740,10 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .buildPrototype();
     }
 
-    private static Tls serverTls() {
+    private static Tls serverTls(TlsClientAuth clientAuth) {
         Keys privateKeyConfig = serverKeys();
         return Tls.builder()
-                .clientAuth(TlsClientAuth.REQUIRED)
+                .clientAuth(clientAuth)
                 .privateKey(privateKeyConfig)
                 .privateKeyCertChain(privateKeyConfig)
                 .trust(trust -> trust

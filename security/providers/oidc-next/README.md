@@ -67,8 +67,9 @@ The supported standards surface is intentionally scoped:
   Introspection response caching is not enabled by default.
 - Token Exchange, RFC 8693: outbound Bearer access-token to Bearer access-token exchange. SAML, ID Token exchange,
   actor-token, delegation-chain, `act`, and `may_act` semantics are not implemented.
-- Mutual TLS, RFC 8705: Token Endpoint mTLS client authentication, mTLS endpoint aliases, and certificate-bound
-  access-token validation. Certificate-bound token validation applies to Protected Resource Bearer requests.
+- Mutual TLS, RFC 8705: Token Endpoint mTLS client authentication, outbound mTLS alias selection (also for clients using
+  a certificate with another OAuth authentication method), and inbound certificate-bound access-token validation.
+  Certificate-bound token validation applies to Protected Resource Bearer requests.
 - Resource Indicators, RFC 8707: `resource` parameters for Authorization Code Flow, refresh requests, Client Credentials
   Grant, and Token Exchange where configured.
 - JWT Access Token Profile, RFC 9068: signed JWT access-token validation. Disabling audience validation is a compatibility
@@ -565,16 +566,20 @@ configured. It can provide `authorization_endpoint`, `token_endpoint`, `jwks_uri
 `id_token_signing_alg_values_supported`, `id_token_encryption_alg_values_supported`,
 `id_token_encryption_enc_values_supported`, `userinfo_endpoint`, `end_session_endpoint`,
 `mtls_endpoint_aliases.token_endpoint`, `mtls_endpoint_aliases.pushed_authorization_request_endpoint`,
-`mtls_endpoint_aliases.introspection_endpoint`, `pushed_authorization_request_endpoint`,
+`mtls_endpoint_aliases.introspection_endpoint`, `mtls_endpoint_aliases.userinfo_endpoint`,
+`pushed_authorization_request_endpoint`,
 `require_pushed_authorization_requests`, `request_parameter_supported`,
 `request_object_signing_alg_values_supported`, `request_object_encryption_alg_values_supported`,
 `request_object_encryption_enc_values_supported`, `require_signed_request_object`, and
 `authorization_response_iss_parameter_supported`.
 When well-known metadata is loaded, OIDC Next retains mTLS aliases independently from conventional endpoint URIs.
-Requests authenticated with `TLS_CLIENT_AUTH` or `SELF_SIGNED_TLS_CLIENT_AUTH` prefer the corresponding Token, PAR, or
-Introspection Endpoint alias even when the conventional endpoint was configured explicitly. A non-mTLS request uses the
-conventional endpoint. If metadata contains no corresponding alias, the configured or discovered conventional endpoint
-is the fallback.
+`TLS_CLIENT_AUTH` or `SELF_SIGNED_TLS_CLIENT_AUTH` imply outbound mTLS for Token and PAR requests. A tenant using another
+OAuth authentication method can select `outbound-mutual-tls: true` to prefer these aliases while presenting its client
+certificate. When OP UserInfo is enabled, an advertised mTLS UserInfo alias is used for outbound mTLS UserInfo calls.
+An alias takes precedence even over an explicitly configured conventional URI. Protected Resource introspection uses
+its own client-authentication setting and does not infer mTLS from this outbound option. With no corresponding alias,
+the conventional endpoint is used, as RFC 8705 specifies; an advertised but failing alias is never retried against the
+conventional endpoint.
 
 For example, an Authorization Server can isolate mTLS traffic while the application retains conventional endpoint
 configuration:
@@ -583,10 +588,12 @@ configuration:
 {
   "token_endpoint": "https://issuer.example/token",
   "introspection_endpoint": "https://issuer.example/introspect",
+  "userinfo_endpoint": "https://issuer.example/userinfo",
   "pushed_authorization_request_endpoint": "https://issuer.example/par",
   "mtls_endpoint_aliases": {
     "token_endpoint": "https://mtls.issuer.example/token",
     "introspection_endpoint": "https://mtls.issuer.example/introspect",
+    "userinfo_endpoint": "https://mtls.issuer.example/userinfo",
     "pushed_authorization_request_endpoint": "https://mtls.issuer.example/par"
   }
 }
@@ -1944,12 +1951,24 @@ security:
 For `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH`, the OIDC provider sends `client_id` in the Token Endpoint form
 and relies on enabled tenant `webclient.tls` for the mutual TLS client certificate proof. Configure private key plus
 certificate chain, an SSL context, or a custom TLS manager. The `private-key` TLS block supplies the client
-certificate/key used for mutual TLS. The `trust` TLS block validates the Authorization Server certificate. When
-well-known metadata supplies an alias for the Token, PAR, or Introspection Endpoint, an mTLS-authenticated request uses
-that alias in preference to the conventional endpoint, including when the conventional URI is explicitly configured.
-Non-mTLS requests continue to use the conventional URI. RFC 8705 mTLS endpoints always require HTTPS. If the Token
-Endpoint is loaded from well-known metadata, the well-known URI must also use HTTPS. `endpoints.tls-required: false`
-does not relax these mTLS requirements.
+certificate/key used for mutual TLS. The `trust` TLS block validates the Authorization Server certificate.
+
+For certificate-bound token acquisition with `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, JWT authentication, or `NONE`,
+configure the same tenant `webclient.tls` credentials and set `outbound-mutual-tls: true` alongside the existing
+`token-endpoint-auth-method`. This option is available at provider root for a single tenant or under a named tenant.
+It does not change OAuth client authentication, automatically register the client for certificate-bound tokens at the
+OP, or configure application-owned HTTP clients using those tokens. An AS-wide
+`tls_client_certificate_bound_access_tokens` capability flag is not a substitute for this client's mTLS intent.
+TLS client-authentication methods do not require the extra option. Token, PAR, and applicable OP UserInfo alias URIs
+are always validated as HTTPS even if `endpoints.tls-required: false`; any fetched well-known metadata used by the
+mTLS-intending tenant also requires HTTPS. Introspection's separate TLS client-authentication setting retains its own
+alias selection. When using a bound token at UserInfo or another protected resource, the HTTP client must present
+the same certificate used at issuance, including when aliases have different hostnames.
+
+Selecting an alias does not prove the AS issued a certificate-bound access token: RFC 8705 permits an unbound token
+if the Token Endpoint connection did not present a client certificate. If a deployment requires sender-constrained
+tokens, arrange the OP client registration and enforce that requirement through trusted token confirmation or
+introspection at the token's protected resource; do not treat this endpoint-selection setting as that enforcement.
 
 Programmatic `private_key_jwt` configuration:
 
@@ -2985,6 +3004,7 @@ with `tenants`.
 | `client-id` | OAuth 2.0 client identifier. |
 | `client-secret` | OAuth 2.0 client secret. For `CLIENT_SECRET_JWT`, its UTF-8 representation must contain at least 32, 48, or 64 octets for `HS256`, `HS384`, or `HS512`. |
 | `token-endpoint-auth-method` | Token Endpoint client authentication method: `CLIENT_SECRET_BASIC`, `CLIENT_SECRET_POST`, `CLIENT_SECRET_JWT`, `PRIVATE_KEY_JWT`, `TLS_CLIENT_AUTH`, `SELF_SIGNED_TLS_CLIENT_AUTH`, or `NONE`. `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH` require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager. |
+| `outbound-mutual-tls` | Explicit outbound mTLS intent for a tenant using a non-mTLS OAuth authentication method. Defaults to `false`; the TLS client-authentication methods already imply mTLS. Requires tenant `webclient.tls` client-certificate credentials and HTTPS for selected OP endpoints and discovery. Prefers advertised Token, PAR, and applicable OP UserInfo aliases, with conventional fallback only if an alias is absent. Does not guarantee that issued tokens are certificate-bound or change Protected Resource validation. |
 | `client-assertion` | Client assertion signing configuration for `CLIENT_SECRET_JWT` and `PRIVATE_KEY_JWT`. Used for Token Endpoint authentication and as the default for Introspection Endpoint authentication unless `protected-resource.token-validation.introspection.client-assertion` overrides it. |
 | `id-token` | ID Token validation and decryption configuration. |
 | `webclient` | WebClient configuration for well-known metadata, JWKS, Token Endpoint, introspection, and UserInfo requests. For RFC 8705 mTLS client authentication, `webclient.tls` must be enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager. |

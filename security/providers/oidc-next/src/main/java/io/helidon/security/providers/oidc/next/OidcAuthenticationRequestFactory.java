@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
@@ -270,22 +269,11 @@ final class OidcAuthenticationRequestFactory {
                                                        OidcProviderMetadata metadata) {
         return switch (authorizationCode.pushedAuthorizationRequests()) {
         case DISABLED -> false;
-        case AUTO -> pushedAuthorizationRequestEndpointUri(tenantConfig, metadata).isPresent()
+        case AUTO -> metadata.pushedAuthorizationRequestEndpointUri(
+                        OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)).isPresent()
                 || metadata.requirePushedAuthorizationRequests();
         case REQUIRED -> true;
         };
-    }
-
-    private static Optional<URI> pushedAuthorizationRequestEndpointUri(OidcTenantConfig tenantConfig,
-                                                                       OidcProviderMetadata metadata) {
-        OidcClientAuthenticationMethod method =
-                OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
-        if (method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH) {
-            return metadata.mutualTlsPushedAuthorizationRequestEndpointUri()
-                    .or(metadata::pushedAuthorizationRequestEndpointUri);
-        }
-        return metadata.pushedAuthorizationRequestEndpointUri();
     }
 
     private OidcPushedAuthorizationResponse pushedAuthorizationRequest(OidcTenantContext tenantContext,

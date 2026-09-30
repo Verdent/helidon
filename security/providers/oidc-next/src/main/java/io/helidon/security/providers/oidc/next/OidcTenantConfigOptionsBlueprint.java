@@ -115,6 +115,23 @@ interface OidcTenantConfigOptionsBlueprint {
     Optional<OidcClientAuthenticationMethod> tokenEndpointAuthenticationMethod();
 
     /**
+     * Whether this tenant intends outbound mutual TLS independently of its OAuth client-authentication method.
+     * <p>
+     * Set this when acquiring or using certificate-bound tokens with Basic, JWT, or no client authentication.
+     * The mutual TLS client-authentication methods already imply this intent. When an OP advertises a matching
+     * {@code mtls_endpoint_aliases} URI, the provider prefers it for direct Token Endpoint and PAR requests and for
+     * OP UserInfo requests. When no alias is advertised, the conventional endpoint is used. Enabled tenant
+     * {@code webclient.tls} with client-certificate credentials is required, as are HTTPS endpoints.
+     * This option does not configure the OP's client registration or guarantee that issued tokens are certificate-bound.
+     * It does not affect inbound Protected Resource access-token validation or application-owned HTTP clients.
+     *
+     * @return whether outbound mutual TLS is intended
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(false)
+    boolean outboundMutualTls();
+
+    /**
      * ID Token validation and decryption configuration.
      *
      * @return ID Token configuration
@@ -144,8 +161,9 @@ interface OidcTenantConfigOptionsBlueprint {
      * This client is used for well-known metadata requests, JSON Web Key Set loading, Token Endpoint
      * requests, introspection, and UserInfo requests. When using
      * {@link OidcClientAuthenticationMethod#TLS_CLIENT_AUTH} or
-     * {@link OidcClientAuthenticationMethod#SELF_SIGNED_TLS_CLIENT_AUTH}, tenant {@code webclient.tls} must be
-     * enabled and provide private key plus certificate chain, an SSL context, or a custom TLS manager.
+     * {@link OidcClientAuthenticationMethod#SELF_SIGNED_TLS_CLIENT_AUTH} or {@link #outboundMutualTls()}, tenant
+     * {@code webclient.tls} must be enabled and provide private key plus certificate chain, an SSL context, or a
+     * custom TLS manager.
      *
      * @return WebClient configuration
      */

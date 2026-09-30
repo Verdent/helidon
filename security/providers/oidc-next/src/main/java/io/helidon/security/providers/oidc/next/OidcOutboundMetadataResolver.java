@@ -101,7 +101,10 @@ final class OidcOutboundMetadataResolver {
                 }
                 try {
                     OidcProviderMetadata metadata = new OidcProviderMetadataLoader(tenantContext.webClient())
-                            .load(tenantContext.metadata(), tenantContext.tenantConfig().endpoints().tlsRequired());
+                            .load(tenantContext.metadata(),
+                                  tenantContext.tenantConfig().endpoints().tlsRequired()
+                                          || OidcClientAuthenticationSupport.outboundMutualTls(
+                                                  tenantContext.tenantConfig()));
                     ResolvedEndpoint resolved = new ResolvedEndpoint(
                             metadata,
                             new OidcEndpointClient(tenantContext.tenantConfig(), metadata, tenantContext.webClient()));

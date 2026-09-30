@@ -45,6 +45,10 @@ final class OidcTenantConfigDecorator
         if (!target.enabled()) {
             return;
         }
+        if (target.outboundMutualTls()) {
+            OidcClientAuthenticationConfigValidator.validateMutualTlsCredentials(target.webClient(),
+                                                                                 "outbound-mutual-tls");
+        }
         validateCookies(target.cookies(), target.clientId());
         OidcSubjectMappingConfig subjectMapping = target.subjectMapping();
         validateClaimPaths(subjectMapping.principalIdClaimPaths(),
@@ -72,7 +76,8 @@ final class OidcTenantConfigDecorator
         target.protectedResource()
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .ifPresent(OidcTenantConfigDecorator::validateTokenValidation);
-        target.issuer().ifPresent(issuer -> OidcEndpointUris.validateIssuerUri(issuer, target.endpoints().tlsRequired()));
+        target.issuer().ifPresent(issuer -> OidcEndpointUris.validateIssuerUri(
+                issuer, target.endpoints().tlsRequired() || target.outboundMutualTls()));
         validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
         validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
         validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
@@ -379,8 +384,7 @@ final class OidcTenantConfigDecorator
                                                                                    false,
                                                                                    "Authorization Code Flow");
         validatePkce(tenant, authorizationCode);
-        boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
-                || isMutualTlsTokenEndpointAuthentication(tenant);
+        boolean tokenEndpointTlsRequired = endpoints.tlsRequired() || outboundMutualTls(tenant);
         OidcEndpointUris.validateRedirectionEndpointUri(OidcEndpointUris.redirectionEndpointUri(authorizationCode),
                                                         endpoints.tlsRequired());
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
@@ -397,7 +401,7 @@ final class OidcTenantConfigDecorator
                                                     tokenEndpointTlsRequired,
                                                     tokenEndpointTlsRequired,
                                                     OidcEndpointUris::validateTokenEndpointUri);
-        validatePushedAuthorizationRequests(authorizationCode, endpoints, wellKnownUri);
+        validatePushedAuthorizationRequests(tenant, authorizationCode, endpoints, wellKnownUri);
         validateRequestObject(authorizationCode.requestObject());
         if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
             throw new IllegalArgumentException(
@@ -416,12 +420,13 @@ final class OidcTenantConfigDecorator
                         "cookies.protection must be configured when Authorization Code Flow is enabled"));
     }
 
-    private static void validatePushedAuthorizationRequests(OidcAuthorizationCodeConfig authorizationCode,
+    private static void validatePushedAuthorizationRequests(OidcTenantConfig.BuilderBase<?, ?> tenant,
+                                                            OidcAuthorizationCodeConfig authorizationCode,
                                                             OidcEndpointConfig endpoints,
                                                             Optional<URI> wellKnownUri) {
+        boolean tlsRequired = endpoints.tlsRequired() || outboundMutualTls(tenant);
         endpoints.pushedAuthorizationRequestEndpointUri()
-                .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri,
-                                                                                                 endpoints.tlsRequired()));
+                .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri, tlsRequired));
         if (authorizationCode.pushedAuthorizationRequests() == OidcPushedAuthorizationRequestMode.REQUIRED
                 && endpoints.pushedAuthorizationRequestEndpointUri().isEmpty()
                 && wellKnownUri.isEmpty()) {
@@ -615,7 +620,7 @@ final class OidcTenantConfigDecorator
                                                     wellKnownUri,
                                                     "user-info-endpoint-uri",
                                                     "UserInfo",
-                                                    endpoints.tlsRequired(),
+                                                    endpoints.tlsRequired() || outboundMutualTls(tenant),
                                                     OidcEndpointUris::validateUserInfoEndpointUri);
     }
 
@@ -835,13 +840,12 @@ final class OidcTenantConfigDecorator
         }
     }
 
-    private static boolean isMutualTlsTokenEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant) {
+    private static boolean outboundMutualTls(OidcTenantConfig.BuilderBase<?, ?> tenant) {
         OidcClientAuthenticationMethod method =
                 OidcClientAuthenticationConfigValidator.tokenEndpointAuthenticationMethod(
                         tenant.clientSecret(),
                         tenant.tokenEndpointAuthenticationMethod());
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+        return tenant.outboundMutualTls() || OidcClientAuthenticationSupport.usesMutualTls(method);
     }
 
     private static void validateBearerChallengeRealm(String realm) {

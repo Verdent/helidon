@@ -54,7 +54,7 @@ final class OidcClientAuthenticationConfigValidator {
 
     static boolean tokenEndpointTlsRequired(OidcTenantConfig tenant) {
         return tenant.endpoints().tlsRequired()
-                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(), tenant.tokenEndpointAuthenticationMethod());
+                || OidcClientAuthenticationSupport.outboundMutualTls(tenant);
     }
 
     static void validateTokenEndpointAuthentication(OidcTenantConfig.BuilderBase<?, ?> tenant,
@@ -120,10 +120,8 @@ final class OidcClientAuthenticationConfigValidator {
                                              "introspection");
         }
         case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
-            validateMutualTlsClientAuthentication(tenant.webClient(),
-                                                  method,
-                                                  "Introspection Endpoint",
-                                                  "introspection");
+            validateMutualTlsCredentials(tenant.webClient(),
+                                         method + " Introspection Endpoint authentication when introspection is enabled");
         }
         case NONE -> throw new IllegalArgumentException(
                 "Introspection Endpoint authentication cannot be NONE when introspection is enabled");
@@ -150,6 +148,26 @@ final class OidcClientAuthenticationConfigValidator {
                 });
     }
 
+    static void validateMutualTlsCredentials(WebClientConfig webClient, String purpose) {
+        TlsConfig tls = webClient.tls().prototype();
+        /*
+         * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication and 4 Public Clients and Certificate-Bound Tokens
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-4
+         * Both profiles need TLS credentials that can present a client certificate. Opaque TLS contexts and managers
+         * cannot be statically proven to present one; the AS must request and check the certificate at the handshake.
+         */
+        if (tls.enabled()
+                && (tls.sslContext().isPresent()
+                        || tls.privateKey().isPresent() && !tls.privateKeyCertChain().isEmpty()
+                        || !(tls.manager() instanceof ConfiguredTlsManager))) {
+            return;
+        }
+        throw new IllegalArgumentException(
+                "webclient.tls must be enabled and private-key plus certificate chain, ssl-context, or custom manager "
+                        + "must be configured for " + purpose);
+    }
+
     private static void validateConfidentialTokenEndpointGrant(OidcTenantConfig tenant,
                                                                OidcEndpointConfig endpoints,
                                                                String operation) {
@@ -161,9 +179,7 @@ final class OidcClientAuthenticationConfigValidator {
                                             tenant.webClient(),
                                             true,
                                             operation);
-        boolean tokenEndpointTlsRequired = endpoints.tlsRequired()
-                || mutualTlsTokenEndpointAuthentication(tenant.clientSecret(),
-                                                        tenant.tokenEndpointAuthenticationMethod());
+        boolean tokenEndpointTlsRequired = tokenEndpointTlsRequired(tenant);
         Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
         OidcEndpointUris.requireEndpointOrWellKnown(endpoints.tokenEndpointUri(),
                                                     wellKnownUri,
@@ -210,7 +226,8 @@ final class OidcClientAuthenticationConfigValidator {
                                              operation);
         }
         case TLS_CLIENT_AUTH, SELF_SIGNED_TLS_CLIENT_AUTH -> {
-            validateMutualTlsClientAuthentication(webClient, method, "Token Endpoint", operation);
+            validateMutualTlsCredentials(webClient,
+                                         method + " Token Endpoint authentication when " + operation + " is enabled");
         }
         case NONE -> {
             if (confidentialClientRequired) {
@@ -222,43 +239,10 @@ final class OidcClientAuthenticationConfigValidator {
         }
     }
 
-    private static void validateMutualTlsClientAuthentication(WebClientConfig webClient,
-                                                              OidcClientAuthenticationMethod method,
-                                                              String endpointName,
-                                                              String operation) {
-        TlsConfig tls = webClient.tls().prototype();
-        /*
-         * Spec: RFC 8705, 2 Mutual TLS for OAuth Client Authentication
-         * https://www.rfc-editor.org/rfc/rfc8705.html#section-2
-         * Quote: "In order to utilize TLS for OAuth client authentication, the TLS connection between the client and the
-         * authorization server MUST have been established or re-established with mutual-TLS X.509 certificate
-         * authentication (i.e., the client Certificate and CertificateVerify messages are sent during the TLS
-         * handshake)."
-         */
-        if (tls.enabled()
-                && (tls.sslContext().isPresent()
-                        || tls.privateKey().isPresent() && !tls.privateKeyCertChain().isEmpty()
-                        || !(tls.manager() instanceof ConfiguredTlsManager))) {
-            return;
-        }
-        throw new IllegalArgumentException(
-                "webclient.tls must be enabled and private-key plus certificate chain, ssl-context, or custom manager "
-                        + "must be configured for " + method + " " + endpointName + " authentication when " + operation
-                        + " is enabled");
-    }
-
-    private static boolean mutualTlsTokenEndpointAuthentication(Optional<String> clientSecret,
-                                                               Optional<OidcClientAuthenticationMethod> authenticationMethod) {
-        OidcClientAuthenticationMethod method = tokenEndpointAuthenticationMethod(clientSecret, authenticationMethod);
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
-    }
-
     static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTokenValidationConfig tokenValidation) {
         OidcClientAuthenticationMethod method = introspectionEndpointAuthenticationMethod(Optional.empty(),
                                                                                           tokenValidation.introspection());
-        return method == OidcClientAuthenticationMethod.TLS_CLIENT_AUTH
-                || method == OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH;
+        return OidcClientAuthenticationSupport.usesMutualTls(method);
     }
 
     static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(

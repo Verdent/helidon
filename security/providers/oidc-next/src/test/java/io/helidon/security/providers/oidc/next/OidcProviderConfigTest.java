@@ -2453,6 +2453,135 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void outboundMutualTlsIsIndependentOfTokenEndpointAuthenticationAndInboundTokenValidation() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .outboundMutualTls(true)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+
+        assertThat(tenant.outboundMutualTls(), is(true));
+        assertThat(OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenant),
+                   is(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC));
+        assertThat(OidcClientAuthenticationSupport.outboundMutualTls(tenant), is(true));
+        assertThat(tenant.protectedResource().isEmpty(), is(true));
+        assertThat(OidcTenantConfig.create().outboundMutualTls(), is(false));
+        assertThat(OidcProviderConfig.create().outboundMutualTls(), is(false));
+
+        OidcProviderConfig root = OidcProviderConfig.builder()
+                .outboundMutualTls(true)
+                .webClient(mutualTlsWebClient())
+                .buildPrototype();
+        assertThat(root.tenants().get("default").outboundMutualTls(), is(true));
+    }
+
+    @Test
+    void outboundMutualTlsRequiresTlsCredentialsEvenWithoutTlsOAuthAuthentication() {
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder().outboundMutualTls(true).buildPrototype());
+        assertThat(missing.getMessage(), containsString("webclient.tls"));
+
+        IllegalArgumentException disabled = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .outboundMutualTls(true)
+                        .webClient(disabledTlsWebClient())
+                        .buildPrototype());
+        assertThat(disabled.getMessage(), containsString("webclient.tls must be enabled"));
+
+        OidcTenantConfig sslContext = OidcTenantConfig.builder()
+                .outboundMutualTls(true)
+                .webClient(sslContextMutualTlsWebClient())
+                .buildPrototype();
+        OidcTenantConfig customManager = OidcTenantConfig.builder()
+                .outboundMutualTls(true)
+                .webClient(customManagerMutualTlsWebClient())
+                .buildPrototype();
+        assertThat(sslContext.outboundMutualTls(), is(true));
+        assertThat(customManager.outboundMutualTls(), is(true));
+    }
+
+    @Test
+    void outboundMutualTlsCannotBeDowngradedByDevelopmentHttpOptOut() {
+        IllegalArgumentException token = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .issuer(ISSUER.toString())
+                        .clientId("client-id")
+                        .clientSecret("client-secret")
+                        .outboundMutualTls(true)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                                .tokenEndpointUri(URI.create("http://issuer.example/token"))
+                                .tlsRequired(false))
+                        .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .buildPrototype());
+        assertThat(token.getMessage(), containsString("token-endpoint-uri must use https"));
+
+        IllegalArgumentException par = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .issuer(ISSUER.toString())
+                        .clientId("client-id")
+                        .clientSecret("client-secret")
+                        .outboundMutualTls(true)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                                .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                                .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par"))
+                                .tlsRequired(false))
+                        .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .buildPrototype());
+        assertThat(par.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
+
+        IllegalArgumentException userInfo = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .issuer(ISSUER.toString())
+                        .clientId("client-id")
+                        .clientSecret("client-secret")
+                        .outboundMutualTls(true)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                                .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                                .userInfoEndpointUri(URI.create("http://issuer.example/userinfo"))
+                                .tlsRequired(false))
+                        .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                        .userInfo(_ -> { })
+                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .buildPrototype());
+        assertThat(userInfo.getMessage(), containsString("user-info-endpoint-uri must use https"));
+
+        OidcTenantConfig clientCredentials = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .outboundMutualTls(true)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .buildPrototype();
+        IllegalArgumentException outbound = assertThrows(IllegalArgumentException.class,
+                () -> OidcProviderConfig.builder()
+                        .putTenant("default", clientCredentials)
+                        .outboundTargets(List.of(clientCredentialsTarget()))
+                        .buildPrototype());
+        assertThat(outbound.getMessage(), containsString("token-endpoint-uri must use https"));
+
+        IllegalArgumentException issuer = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .issuer("http://issuer.example")
+                        .outboundMutualTls(true)
+                        .webClient(mutualTlsWebClient())
+                        .endpoints(it -> it.tlsRequired(false))
+                        .buildPrototype());
+        assertThat(issuer.getMessage(), containsString("issuer must use https"));
+    }
+
+    @Test
     void mutualTlsClientAuthenticationAcceptsDocumentedWebClientTlsShapes() {
         OidcTenantConfig sslContextTenant = OidcTenantConfig.builder()
                 .clientId("client-id")

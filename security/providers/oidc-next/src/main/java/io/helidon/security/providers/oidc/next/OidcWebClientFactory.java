@@ -17,15 +17,12 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
-import java.util.Optional;
 
 import io.helidon.security.providers.common.OutboundConfig;
-import io.helidon.webclient.api.Proxy;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
 
 final class OidcWebClientFactory {
-    private static final WebClientConfig DEFAULT_WEBCLIENT = WebClientConfig.create();
     private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT =
             WebClientConfig.create().socketOptions().readTimeout();
@@ -48,33 +45,5 @@ final class OidcWebClientFactory {
             builder.readTimeout(DEFAULT_READ_TIMEOUT);
         }
         return WebClient.create(builder.buildPrototype());
-    }
-
-    static boolean optionsChanged(WebClientConfig webClient) {
-        return webClient.readTimeout().isPresent()
-                || webClient.connectTimeout().isPresent()
-                || !WEBCLIENT_DEFAULT_SOCKET_READ_TIMEOUT.equals(webClient.socketOptions().readTimeout())
-                || !DEFAULT_WEBCLIENT.socketOptions().connectTimeout().equals(webClient.socketOptions().connectTimeout())
-                || webClient.followRedirects() != DEFAULT_WEBCLIENT.followRedirects()
-                || webClient.maxRedirects() != DEFAULT_WEBCLIENT.maxRedirects()
-                || webClient.keepAlive() != DEFAULT_WEBCLIENT.keepAlive()
-                || proxyOptionsChanged(webClient.proxy())
-                || !DEFAULT_WEBCLIENT.tls().equals(webClient.tls())
-                || webClient.baseUri().isPresent()
-                || webClient.baseAddress().isPresent()
-                || !webClient.defaultHeadersMap().isEmpty()
-                || !webClient.headers().isEmpty()
-                || !webClient.properties().isEmpty()
-                || !DEFAULT_WEBCLIENT.protocolConfigs().equals(webClient.protocolConfigs())
-                || !webClient.protocolPreference().isEmpty();
-    }
-
-    private static boolean proxyOptionsChanged(Proxy proxy) {
-        Proxy defaultProxy = DEFAULT_WEBCLIENT.proxy();
-        return proxy.type() != defaultProxy.type()
-                || proxy.port() != defaultProxy.port()
-                || !Optional.ofNullable(defaultProxy.host()).equals(Optional.ofNullable(proxy.host()))
-                || !defaultProxy.username().equals(proxy.username())
-                || defaultProxy.password().isPresent() != proxy.password().isPresent();
     }
 }

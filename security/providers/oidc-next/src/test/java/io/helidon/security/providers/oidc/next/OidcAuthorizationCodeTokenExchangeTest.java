@@ -16,6 +16,14 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.io.BufferedReader;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.interfaces.RSAPrivateKey;
@@ -26,6 +34,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -324,6 +336,16 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code_challenge", List.of("challenge-value"),
                                                        "code_challenge_method", List.of("S256"))));
         assertThat(request.formParameters().containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void pushedAuthorizationRequestAccepts201WithCustomReasonPhrase() throws Exception {
+        assertPushedAuthorizationRequestWithReasonPhrase("Request Stored");
+    }
+
+    @Test
+    void pushedAuthorizationRequestAccepts201WithoutReasonPhrase() throws Exception {
+        assertPushedAuthorizationRequestWithReasonPhrase("");
     }
 
     @Test
@@ -747,6 +769,18 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
         assertThat(result.succeeded(), is(false));
         assertThat(result.description(), is("Pushed Authorization Request Endpoint response is invalid"));
+    }
+
+    @Test
+    void pushedAuthorizationRequestDoesNotAccept202AsSuccess() {
+        responseStatus = 202;
+        responseBody = validPushedAuthorizationResponse().toString();
+
+        OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(confidentialParTenant(),
+                                                                                  authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.response(), is(Optional.empty()));
     }
 
     @Test
@@ -1479,6 +1513,78 @@ class OidcAuthorizationCodeTokenExchangeTest {
         return OidcTenantContext.ready("default", tenantConfig)
                 .endpointClient()
                 .pushedAuthorizationRequest(parameters);
+    }
+
+    private void assertPushedAuthorizationRequestWithReasonPhrase(String reasonPhrase) throws Exception {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+                ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            URI parUri = new URI("http", null, listener.getInetAddress().getHostAddress(),
+                                 listener.getLocalPort(), "/par", null, null);
+            Future<?> served = executor.submit(() -> {
+                try (Socket socket = listener.accept()) {
+                    socket.setSoTimeout(10_000);
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(),
+                                                                                      StandardCharsets.ISO_8859_1));
+                    assertThat(reader.readLine(), is("POST /par HTTP/1.1"));
+                    int contentLength = -1;
+                    boolean chunked = false;
+                    String lengthHeader = "Content-Length:";
+                    String encodingHeader = "Transfer-Encoding:";
+                    for (String line = reader.readLine(); line != null && !line.isEmpty(); line = reader.readLine()) {
+                        if (line.regionMatches(true, 0, lengthHeader, 0, lengthHeader.length())) {
+                            contentLength = Integer.parseInt(line.substring(lengthHeader.length()).strip());
+                        } else if (line.regionMatches(true, 0, encodingHeader, 0, encodingHeader.length())) {
+                            chunked = line.substring(encodingHeader.length()).strip().equalsIgnoreCase("chunked");
+                        }
+                    }
+                    if (!chunked && contentLength < 0) {
+                        throw new IllegalStateException("PAR test request is missing a body length");
+                    }
+                    char[] buffer = new char[1024];
+                    int segmentLength = chunked ? Integer.parseInt(reader.readLine(), 16) : contentLength;
+                    while (true) {
+                        for (int remaining = segmentLength; remaining > 0;) {
+                            int count = reader.read(buffer, 0, Math.min(buffer.length, remaining));
+                            if (count < 0) {
+                                throw new EOFException("Incomplete PAR test request body");
+                            }
+                            remaining -= count;
+                        }
+                        if (!chunked || segmentLength == 0) {
+                            break;
+                        }
+                        assertThat(reader.readLine(), is(""));
+                        segmentLength = Integer.parseInt(reader.readLine(), 16);
+                    }
+                    if (chunked) {
+                        assertThat(reader.readLine(), is(""));
+                    }
+                    byte[] json = validPushedAuthorizationResponse().toString().getBytes(StandardCharsets.UTF_8);
+                    String headers = "HTTP/1.1 201 " + reasonPhrase
+                            + "\r\nContent-Type: application/json\r\nContent-Length: " + json.length
+                            + "\r\nConnection: close\r\n\r\n";
+                    socket.getOutputStream().write(headers.getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().write(json);
+                    socket.getOutputStream().flush();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+            OidcTenantConfig tenant = OidcTenantConfig.builder()
+                    .issuer(ISSUER.toString())
+                    .clientId(CLIENT_ID)
+                    .clientSecret(CLIENT_SECRET)
+                    .endpoints(it -> it.pushedAuthorizationRequestEndpointUri(parUri).tlsRequired(false))
+                    .buildPrototype();
+
+            OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(tenant,
+                                                                                     authorizationRequestParameters());
+
+            served.get(10, TimeUnit.SECONDS);
+            assertThat(result.description() + ": " + result.cause(), result.succeeded(), is(true));
+            assertThat(result.response().orElseThrow().requestUri(), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+            assertThat(result.response().orElseThrow().expiresIn(), is(90L));
+        }
     }
 
     private static OidcAuthenticationRequest authenticationRequest(OidcTenantConfig tenantConfig,

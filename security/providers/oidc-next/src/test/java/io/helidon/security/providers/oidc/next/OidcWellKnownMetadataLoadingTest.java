@@ -116,6 +116,14 @@ class OidcWellKnownMetadataLoadingTest {
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(PROVIDER_METADATA.get());
         });
+        routing.get("/tenant/.well-known/openid-configuration", (_, response) -> {
+            WELL_KNOWN_REQUESTS.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send(PROVIDER_METADATA.get());
+        });
+        routing.get("/.well-known/oauth-authorization-server/tenant", (_, response) -> {
+            WELL_KNOWN_REQUESTS.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send(PROVIDER_METADATA.get());
+        });
     }
 
     @BeforeEach
@@ -207,32 +215,141 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void metadataOnlyAuthorizationCodeTenantRejectsAnotherIssuersMetadata() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .set("issuer", HTTPS_ISSUER.toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"));
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.retryableFailure(), is(false));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("well-known metadata issuer must match well-known-uri"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void configuredIssuerCannotTrustMetadataFromDifferentWellKnownUrl() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .set("issuer", HTTPS_ISSUER.toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = OidcTenantConfig.builder(metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration")))
+                .issuer(HTTPS_ISSUER.toString())
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.retryableFailure(), is(false));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("well-known metadata issuer must match well-known-uri"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+    }
+
+    @Test
+    void metadataOnlyAuthorizationCodeTenantAcceptsCanonicalOpenIdDiscovery() {
+        OidcTenantConfig tenant = metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"));
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                   context.state(), is(OidcTenantState.READY));
+        assertThat(context.metadata().issuer(), is(Optional.of(issuer.toString())));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void pathIssuerAcceptsCanonicalOpenIdDiscovery() {
+        URI pathIssuer = issuer.resolve("/tenant");
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .set("issuer", pathIssuer.toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/tenant/.well-known/openid-configuration"));
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                   context.state(), is(OidcTenantState.READY));
+        assertThat(context.metadata().issuer(), is(Optional.of(pathIssuer.toString())));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void pathIssuerAcceptsCanonicalOauthMetadataDiscovery() {
+        URI pathIssuer = issuer.resolve("/tenant");
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .set("issuer", pathIssuer.toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/oauth-authorization-server/tenant"));
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                   context.state(), is(OidcTenantState.READY));
+        assertThat(context.metadata().issuer(), is(Optional.of(pathIssuer.toString())));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
+    void configuredPathIssuerAcceptsCanonicalOauthMetadataDiscovery() {
+        URI pathIssuer = issuer.resolve("/tenant");
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .set("issuer", pathIssuer.toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = OidcTenantConfig.builder(metadataOnlyAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/oauth-authorization-server/tenant")))
+                .issuer(pathIssuer.toString())
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                   context.state(), is(OidcTenantState.READY));
+        assertThat(context.metadata().issuer(), is(Optional.of(pathIssuer.toString())));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
     void providerAndFeatureShareConcurrentTenantInitialization() throws Exception {
         CountDownLatch discoveryStarted = new CountDownLatch(1);
         CountDownLatch releaseDiscovery = new CountDownLatch(1);
         CountDownLatch requestsStarted = new CountDownLatch(16);
         AtomicInteger discoveries = new AtomicInteger();
-        String metadata = PROVIDER_METADATA.get();
-        WebServer metadataServer = WebServer.builder().port(0).routing(routing -> routing.get("/metadata", (_, response) -> {
-            if (discoveries.incrementAndGet() > 1) {
-                response.status(Status.SERVICE_UNAVAILABLE_503).send();
-                return;
-            }
-            discoveryStarted.countDown();
-            try {
-                assertThat(releaseDiscovery.await(10, TimeUnit.SECONDS), is(true));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(e);
-            }
-            response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata);
-        })).build().start();
+        AtomicReference<String> metadata = new AtomicReference<>();
+        WebServer metadataServer = WebServer.builder()
+                .port(0)
+                .routing(routing -> routing.get("/.well-known/openid-configuration", (_, response) -> {
+                    if (discoveries.incrementAndGet() > 1) {
+                        response.status(Status.SERVICE_UNAVAILABLE_503).send();
+                        return;
+                    }
+                    discoveryStarted.countDown();
+                    try {
+                        assertThat(releaseDiscovery.await(10, TimeUnit.SECONDS), is(true));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.get());
+                }))
+                .build().start();
         try {
+            URI discoveryIssuer = URI.create("http://localhost:" + metadataServer.port());
+            metadata.set(authorizationCodeMetadataBuilder()
+                                 .set("issuer", discoveryIssuer.toString())
+                                 .build().toString());
             OidcTenantConfig tenant = OidcTenantConfig.builder()
-                    .issuer(issuer.toString())
+                    .issuer(discoveryIssuer.toString())
                     .clientId("client-id")
                     .endpoints(endpoints -> endpoints.tlsRequired(false)
-                            .wellKnownUri(URI.create("http://localhost:" + metadataServer.port() + "/metadata")))
+                            .wellKnownUri(discoveryIssuer.resolve("/.well-known/openid-configuration")))
                     .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/callback")))
                     .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
                     .buildPrototype();
@@ -246,7 +363,7 @@ class OidcWellKnownMetadataLoadingTest {
                         Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
                 SetCookie stateCookie = OidcCookieStateHandler.create("tenant", tenant)
                         .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state,
-                                "nonce", "verifier", null, issuer.toString(), URI.create("/resource"), callback,
+                                "nonce", "verifier", null, discoveryIssuer.toString(), URI.create("/resource"), callback,
                                 now, now.plusSeconds(300)));
                 List<Future<AuthenticationResponse>> requests = new ArrayList<>();
                 for (int index = 0; index < 16; index++) {
@@ -526,9 +643,12 @@ class OidcWellKnownMetadataLoadingTest {
 
     @Test
     void staticAuthorizationEndpointsAllowExplicitHttpDiscoveryOptOut() {
-        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder().build().toString());
+        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder()
+                                      .set("issuer", issuer.toString())
+                                      .build().toString());
         OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
                 issuer.resolve("/.well-known/openid-configuration"), endpoints -> endpoints.tlsRequired(false))
+                .issuer(issuer.toString())
                 .buildPrototype();
 
         try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
@@ -563,24 +683,29 @@ class OidcWellKnownMetadataLoadingTest {
     @Test
     void staticAuthorizationEndpointsAllowHttpsDiscovery() {
         AtomicInteger requests = new AtomicInteger();
-        String metadata = httpsAuthorizationCodeMetadataBuilder().build().toString();
+        AtomicReference<String> metadata = new AtomicReference<>();
         Keys keys = Keys.builder()
                 .keystore(store -> store.passphrase("password").keystore(Resource.create("server.p12")))
                 .build();
         Tls tls = Tls.builder().privateKey(keys).privateKeyCertChain(keys).build();
         WebServer metadataServer = WebServer.builder().port(0).tls(tls)
-                .routing(routing -> routing.get("/metadata", (_, response) -> {
+                .routing(routing -> routing.get("/.well-known/openid-configuration", (_, response) -> {
                     requests.incrementAndGet();
-                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata);
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.get());
                 }))
                 .build().start();
         try {
+            URI metadataIssuer = URI.create("https://localhost:" + metadataServer.port());
+            metadata.set(httpsAuthorizationCodeMetadataBuilder()
+                                 .set("issuer", metadataIssuer.toString())
+                                 .build().toString());
             WebClientConfig client = WebClientConfig.builder()
                     .tls(clientTls -> clientTls.trust(trust -> trust.keystore(store -> store
                             .passphrase("password").trustStore(true).keystore(Resource.create("server.p12")))))
                     .buildPrototype();
             OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
-                    URI.create("https://localhost:" + metadataServer.port() + "/metadata"), _ -> { })
+                    metadataIssuer.resolve("/.well-known/openid-configuration"), _ -> { })
+                    .issuer(metadataIssuer.toString())
                     .webClient(client)
                     .buildPrototype();
 
@@ -590,8 +715,68 @@ class OidcWellKnownMetadataLoadingTest {
 
                 assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
                            context.state(), is(OidcTenantState.READY));
-                assertThat(context.metadata().issuer(), is(Optional.of(HTTPS_ISSUER.toString())));
+                assertThat(context.metadata().issuer(), is(Optional.of(metadataIssuer.toString())));
                 assertThat(context.metadata().wellKnownMetadataLoaded(), is(true));
+                assertThat(requests.get(), is(1));
+            }
+        } finally {
+            metadataServer.stop();
+        }
+    }
+
+    @Test
+    void httpsMetadataCannotClaimDifferentIssuerWithDefaultTlsPolicy() {
+        AtomicInteger requests = new AtomicInteger();
+        AtomicReference<String> metadata = new AtomicReference<>();
+        Keys keys = Keys.builder()
+                .keystore(store -> store.passphrase("password").keystore(Resource.create("server.p12")))
+                .build();
+        Tls tls = Tls.builder().privateKey(keys).privateKeyCertChain(keys).build();
+        WebServer metadataServer = WebServer.builder().port(0).tls(tls)
+                .routing(routing -> routing.get("/.well-known/openid-configuration", (_, response) -> {
+                    requests.incrementAndGet();
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.get());
+                }))
+                .build().start();
+        try {
+            URI metadataIssuer = URI.create("https://localhost:" + metadataServer.port());
+            metadata.set(httpsAuthorizationCodeMetadataBuilder()
+                                 .set("token_endpoint", metadataIssuer.resolve("attacker-token").toString())
+                                 .set("authorization_response_iss_parameter_supported", true)
+                                 .build().toString());
+            WebClientConfig client = WebClientConfig.builder()
+                    .tls(clientTls -> clientTls.trust(trust -> trust.keystore(store -> store
+                            .passphrase("password").trustStore(true).keystore(Resource.create("server.p12")))))
+                    .buildPrototype();
+            OidcTenantConfig tenant = OidcTenantConfig.builder()
+                    .clientId("client-id")
+                    .clientSecret("client-secret")
+                    .webClient(client)
+                    .endpoints(endpoints -> endpoints.wellKnownUri(
+                            metadataIssuer.resolve("/.well-known/openid-configuration")))
+                    .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                    .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                    .buildPrototype();
+
+            try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                    .putTenant("tenant", tenant).buildPrototype())) {
+                OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+                assertThat(context.state(), is(OidcTenantState.FAILED));
+                assertThat(context.retryableFailure(), is(false));
+                assertThat(context.failureCause().orElseThrow().getMessage(),
+                           containsString("well-known metadata issuer must match well-known-uri"));
+                assertThat(requests.get(), is(1));
+            }
+            OidcTenantConfig pinned = OidcTenantConfig.builder(tenant).issuer(HTTPS_ISSUER.toString()).buildPrototype();
+            try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                    .putTenant("tenant", pinned).buildPrototype())) {
+                OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+                assertThat(context.state(), is(OidcTenantState.FAILED));
+                assertThat(context.retryableFailure(), is(false));
+                assertThat(context.failureCause().orElseThrow().getMessage(),
+                           containsString("well-known metadata issuer must match well-known-uri"));
                 assertThat(requests.get(), is(1));
             }
         } finally {
@@ -2236,6 +2421,15 @@ class OidcWellKnownMetadataLoadingTest {
                 })
                 .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")));
+    }
+
+    private static OidcTenantConfig metadataOnlyAuthorizationCodeTenant(URI wellKnownUri) {
+        return OidcTenantConfig.builder()
+                .clientId("client-id")
+                .endpoints(endpoints -> endpoints.wellKnownUri(wellKnownUri).tlsRequired(false))
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
     }
 
     private static OutboundTarget clientCredentialsTarget() {

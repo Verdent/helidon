@@ -424,14 +424,7 @@ final class OidcProviderMetadata {
         if (configuredWellKnownUri.isPresent()) {
             return configuredWellKnownUri;
         }
-        if (issuer.isEmpty()) {
-            return Optional.empty();
-        }
-        String issuerValue = issuer.orElseThrow();
-        while (issuerValue.endsWith("/")) {
-            issuerValue = issuerValue.substring(0, issuerValue.length() - 1);
-        }
-        return Optional.of(URI.create(issuerValue + "/.well-known/openid-configuration"));
+        return issuer.map(OidcEndpointUris::oidcWellKnownUri);
     }
 
     private static Optional<URI> uriValue(JsonObject json, String name) {

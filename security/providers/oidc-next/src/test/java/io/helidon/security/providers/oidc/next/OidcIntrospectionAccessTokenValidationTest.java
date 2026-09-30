@@ -117,6 +117,7 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     private URI introspectionEndpointUri;
     private URI redirectedIntrospectionEndpointUri;
+    private URI discoveryIssuer;
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
@@ -136,8 +137,9 @@ class OidcIntrospectionAccessTokenValidationTest {
     void setUp(URI serverUri) {
         introspectionEndpointUri = serverUri.resolve("introspect");
         redirectedIntrospectionEndpointUri = serverUri.resolve("redirected-introspect");
+        discoveryIssuer = URI.create(serverUri.getScheme() + "://" + serverUri.getRawAuthority());
         discoveryResponseBody = JsonObject.builder()
-                .set("issuer", ISSUER.toString())
+                .set("issuer", discoveryIssuer.toString())
                 .set("token_endpoint", "https://issuer.example/token")
                 .set("introspection_endpoint", introspectionEndpointUri.toString())
                 .setStrings("token_endpoint_auth_methods_supported", List.of("private_key_jwt"))
@@ -256,7 +258,9 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     @Test
     void discoveredIntrospectionReusesInheritedPrivateKeyJwtMaterial() {
+        responseBody = validResponse(builder -> builder.set("iss", discoveryIssuer.toString())).toString();
         OidcProvider provider = provider(tenant -> tenant
+                .issuer(discoveryIssuer.toString())
                 .clearClientSecret()
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
                 .clientAssertion(assertion -> assertion.jwk(ResourceConfig.builder()
@@ -1194,6 +1198,8 @@ class OidcIntrospectionAccessTokenValidationTest {
     private void assertJwtIntrospection(OidcClientAuthenticationMethod method,
                                        boolean discoverEndpoint,
                                        boolean separateAssertion) throws Exception {
+        URI expectedIssuer = discoverEndpoint ? discoveryIssuer : ISSUER;
+        responseBody = validResponse(builder -> builder.set("iss", expectedIssuer.toString())).toString();
         boolean privateKey = method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT;
         String algorithm = (privateKey ? "RS" : "HS") + (separateAssertion ? "512" : "256");
         OidcClientAssertionConfig.Builder assertionBuilder = OidcClientAssertionConfig.builder()
@@ -1205,13 +1211,14 @@ class OidcIntrospectionAccessTokenValidationTest {
         }
         OidcClientAssertionConfig assertion = assertionBuilder.buildPrototype();
         discoveryResponseBody = JsonObject.builder()
-                .set("issuer", ISSUER.toString())
+                .set("issuer", expectedIssuer.toString())
                 .set("introspection_endpoint", introspectionEndpointUri.toString())
                 .setStrings("introspection_endpoint_auth_methods_supported", List.of(method.wireName()))
                 .setStrings("introspection_endpoint_auth_signing_alg_values_supported", List.of(algorithm))
                 .build()
                 .toString();
         OidcProvider provider = provider(tenant -> tenant
+                .issuer(expectedIssuer.toString())
                 .clientSecret(JWT_CLIENT_SECRET)
                 .tokenEndpointAuthenticationMethod(method)
                 .clientAssertion(assertion)
@@ -1240,7 +1247,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         AuthenticationResponse first = authenticate(provider, OPAQUE_TOKEN);
         assertThat(first.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
         assertThat(first.user().orElseThrow().principal().id(),
-                   is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
+                   is(OidcTestIdentities.issuerSubject(expectedIssuer.toString(), SUBJECT)));
         SignedJwt firstAssertion = verifiedIntrospectionAssertion(method, separateAssertion, algorithm);
         AuthenticationResponse second = authenticate(provider, OPAQUE_TOKEN);
         assertThat(second.status(), is(SecurityResponse.SecurityStatus.SUCCESS));

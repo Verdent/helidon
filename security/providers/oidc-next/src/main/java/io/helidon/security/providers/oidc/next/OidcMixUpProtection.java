@@ -30,6 +30,28 @@ final class OidcMixUpProtection {
     private OidcMixUpProtection() {
     }
 
+    static void validateIssuerBindings(Map<String, OidcTenantConfig> configuredTenants) {
+        List<AuthorizationCodeTenant> tenants = authorizationCodeTenants(configuredTenants);
+        for (int firstIndex = 0; firstIndex < tenants.size(); firstIndex++) {
+            AuthorizationCodeTenant first = tenants.get(firstIndex);
+            for (int secondIndex = firstIndex + 1; secondIndex < tenants.size(); secondIndex++) {
+                AuthorizationCodeTenant second = tenants.get(secondIndex);
+                if (mayShareIssuer(first, second)
+                        && (!first.endpoints().authorizationEndpointUri()
+                                .equals(second.endpoints().authorizationEndpointUri())
+                        || !first.endpoints().tokenEndpointUri().equals(second.endpoints().tokenEndpointUri()))) {
+                    /*
+                     * Spec: RFC 9207, 4 Security Considerations
+                     * https://www.rfc-editor.org/rfc/rfc9207.html#section-4
+                     * The same accepted issuer cannot identify independently configured authorization servers.
+                     */
+                    throw new IllegalArgumentException("OIDC tenants that may share an issuer must use matching "
+                                                               + "authorization-endpoint-uri and token-endpoint-uri settings");
+                }
+            }
+        }
+    }
+
     /**
      * Returns tenants that must receive the RFC 9207 {@code iss} Authorization Response parameter.
      * <p>
@@ -42,13 +64,7 @@ final class OidcMixUpProtection {
      * @return immutable set of tenant ids that require issuer identification
      */
     static Set<String> issuerParameterRequiredTenants(OidcProviderConfig config) {
-        List<AuthorizationCodeTenant> tenants = config.tenants()
-                .entrySet()
-                .stream()
-                .filter(entry -> entry.getValue().enabled())
-                .map(OidcMixUpProtection::authorizationCodeTenant)
-                .flatMap(Optional::stream)
-                .toList();
+        List<AuthorizationCodeTenant> tenants = authorizationCodeTenants(config.tenants());
         Set<String> required = new LinkedHashSet<>();
         for (int firstIndex = 0; firstIndex < tenants.size(); firstIndex++) {
             AuthorizationCodeTenant first = tenants.get(firstIndex);
@@ -63,14 +79,43 @@ final class OidcMixUpProtection {
         return Set.copyOf(required);
     }
 
+    private static List<AuthorizationCodeTenant> authorizationCodeTenants(Map<String, OidcTenantConfig> configuredTenants) {
+        return configuredTenants.entrySet()
+                .stream()
+                .filter(entry -> entry.getValue().enabled())
+                .map(OidcMixUpProtection::authorizationCodeTenant)
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
     private static Optional<AuthorizationCodeTenant> authorizationCodeTenant(Map.Entry<String, OidcTenantConfig> entry) {
         OidcTenantConfig tenant = entry.getValue();
         return tenant.authorizationCode()
                 .filter(OidcAuthorizationCodeConfig::enabled)
                 .map(authorizationCode -> new AuthorizationCodeTenant(entry.getKey(),
                                                                        tenant.issuer(),
+                                                                       tenant.endpoints(),
                                                                        OidcEndpointUris.redirectionEndpointUri(
                                                                                authorizationCode)));
+    }
+
+    private static boolean mayShareIssuer(AuthorizationCodeTenant first, AuthorizationCodeTenant second) {
+        Optional<String> firstIssuer = first.issuer();
+        Optional<String> secondIssuer = second.issuer();
+        if (firstIssuer.isPresent() && secondIssuer.isPresent()) {
+            return firstIssuer.equals(secondIssuer);
+        }
+        if (firstIssuer.isPresent()) {
+            return second.endpoints().wellKnownUri()
+                    .filter(uri -> OidcEndpointUris.wellKnownUriMatchesIssuer(uri, firstIssuer.orElseThrow()))
+                    .isPresent();
+        }
+        if (secondIssuer.isPresent()) {
+            return first.endpoints().wellKnownUri()
+                    .filter(uri -> OidcEndpointUris.wellKnownUriMatchesIssuer(uri, secondIssuer.orElseThrow()))
+                    .isPresent();
+        }
+        return first.endpoints().wellKnownUri().equals(second.endpoints().wellKnownUri());
     }
 
     private static boolean differentAuthorizationServers(AuthorizationCodeTenant first, AuthorizationCodeTenant second) {
@@ -95,6 +140,7 @@ final class OidcMixUpProtection {
 
     private record AuthorizationCodeTenant(String tenantId,
                                            Optional<String> issuer,
+                                           OidcEndpointConfig endpoints,
                                            URI redirectionEndpointUri) {
     }
 }

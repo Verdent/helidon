@@ -115,6 +115,7 @@ class OidcFeatureRouteTest {
     private static String userInfoEndpointContentType;
     private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
     private static final AtomicReference<String> TOKEN_CLIENT_ASSERTION = new AtomicReference<>();
+    private static final AtomicReference<String> COLLIDING_ISSUER_METADATA = new AtomicReference<>();
     private static final AtomicInteger ATTACKER_TOKEN_REQUESTS = new AtomicInteger();
 
     @BeforeAll
@@ -141,6 +142,8 @@ class OidcFeatureRouteTest {
             ATTACKER_TOKEN_REQUESTS.incrementAndGet();
             tokenEndpointResponse(response);
         });
+        routing.get("/issuer-collision-metadata", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(COLLIDING_ISSUER_METADATA.get()));
         routing.get("/userinfo", (request, response) -> {
             USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
             response.status(userInfoEndpointStatus);
@@ -163,6 +166,7 @@ class OidcFeatureRouteTest {
         userInfoEndpointContentType = "application/json";
         USER_INFO_AUTHORIZATION.set("");
         TOKEN_CLIENT_ASSERTION.set("");
+        COLLIDING_ISSUER_METADATA.set("");
         ATTACKER_TOKEN_REQUESTS.set(0);
         TOKEN_REQUESTS.set(0);
     }
@@ -224,6 +228,89 @@ class OidcFeatureRouteTest {
             }
         } finally {
             rpServer.stop();
+        }
+    }
+
+    @Test
+    void sharedCallbackRejectsCollidingDiscoveredIssuerBeforeWrongTokenEndpoint(URI serverUri) {
+        String attackerTenantId = "attacker";
+        String attackerState = authorizationState(attackerTenantId, 2);
+        OidcProviderConfig config = collidingIssuerProviderConfig(serverUri);
+        OidcTenantConfig attackerTenant = config.tenants().get(attackerTenantId);
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            URI callbackUri = callbackUri(rpServer);
+            SetCookie stateCookie = authenticationRequestCookie(attackerTenantId,
+                                                                attackerState,
+                                                                ISSUER.toString(),
+                                                                callbackUri,
+                                                                attackerTenant);
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "honest-authorization-code")
+                    .queryParam("state", attackerState)
+                    .queryParam("iss", ISSUER.toString())
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(ATTACKER_TOKEN_REQUESTS.get(), is(0));
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(response.as(String.class), is("Authorization Response is invalid"));
+                assertThat(TOKEN_REQUESTS.get(), is(0));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void collidingIssuerFailsRegardlessOfTenantInitializationOrder(URI serverUri) {
+        OidcProviderConfig config = collidingIssuerProviderConfig(serverUri);
+
+        for (boolean honestFirst : List.of(true, false)) {
+            try (OidcProvider provider = OidcProvider.create(config)) {
+                String first = honestFirst ? "honest" : "attacker";
+                String second = honestFirst ? "attacker" : "honest";
+                OidcTenantRuntimeRegistry registry = provider.tenantRuntimeRegistry();
+                OidcTenantContext firstContext = registry.tenantContext(first).orElseThrow();
+                OidcTenantContext secondContext = registry.tenantContext(second).orElseThrow();
+                OidcTenantContext honestContext = honestFirst ? firstContext : secondContext;
+                OidcTenantContext attackerContext = honestFirst ? secondContext : firstContext;
+
+                assertThat(honestContext.state(), is(OidcTenantState.READY));
+                assertThat(attackerContext.state(), is(OidcTenantState.FAILED));
+                assertThat(attackerContext.retryableFailure(), is(false));
+                assertThat(ATTACKER_TOKEN_REQUESTS.get(), is(0));
+            }
+        }
+    }
+
+    @Test
+    void collidingIssuerFailsWithConcurrentVirtualThreadInitialization(URI serverUri) throws Exception {
+        OidcProviderConfig config = collidingIssuerProviderConfig(serverUri);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (OidcProvider provider = OidcProvider.create(config);
+             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            OidcTenantRuntimeRegistry registry = provider.tenantRuntimeRegistry();
+            Future<OidcTenantContext> honest = executor.submit(() -> {
+                start.await();
+                return registry.tenantContext("honest").orElseThrow();
+            });
+            Future<OidcTenantContext> attacker = executor.submit(() -> {
+                start.await();
+                return registry.tenantContext("attacker").orElseThrow();
+            });
+            start.countDown();
+
+            assertThat(honest.get(5, TimeUnit.SECONDS).state(), is(OidcTenantState.READY));
+            assertThat(attacker.get(5, TimeUnit.SECONDS).state(), is(OidcTenantState.FAILED));
+            assertThat(ATTACKER_TOKEN_REQUESTS.get(), is(0));
+        } finally {
+            start.countDown();
         }
     }
 
@@ -353,35 +440,43 @@ class OidcFeatureRouteTest {
             CountDownLatch entered = new CountDownLatch(1);
             CountDownLatch release = new CountDownLatch(1);
             AtomicInteger discoveryRequests = new AtomicInteger();
-            JsonObject metadata = JsonObject.builder().set("issuer", ISSUER.toString())
-                    .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
-                    .set("token_endpoint", serverUri.resolve("token").toString())
-                    .set("jwks_uri", serverUri.resolve("jwks").toString())
-                    .set("end_session_endpoint", END_SESSION_ENDPOINT_URI.toString())
-                    .setStrings("response_types_supported", List.of("code"))
-                    .setStrings("code_challenge_methods_supported", List.of("S256"))
-                    .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
-                    .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
-                    .setStrings("grant_types_supported", List.of("authorization_code", "client_credentials", "refresh_token"))
-                    .build();
-            WebServer discovery = WebServer.builder().port(0).routing(routing -> routing.get("/metadata", (_, response) -> {
-                discoveryRequests.incrementAndGet();
-                entered.countDown();
-                try {
-                    if (!release.await(10, TimeUnit.SECONDS)) {
-                        throw new IllegalStateException("Test did not release discovery");
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(e);
-                }
-                response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.toString());
-            })).build().start();
+            AtomicReference<String> metadata = new AtomicReference<>();
+            WebServer discovery = WebServer.builder()
+                    .port(0)
+                    .routing(routing -> routing.get("/.well-known/openid-configuration", (_, response) -> {
+                        discoveryRequests.incrementAndGet();
+                        entered.countDown();
+                        try {
+                            if (!release.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Test did not release discovery");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                        response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata.get());
+                    }))
+                    .build().start();
             try {
+                URI discoveryIssuer = URI.create("http://localhost:" + discovery.port());
+                metadata.set(JsonObject.builder().set("issuer", discoveryIssuer.toString())
+                                     .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
+                                     .set("token_endpoint", serverUri.resolve("token").toString())
+                                     .set("jwks_uri", serverUri.resolve("jwks").toString())
+                                     .set("end_session_endpoint", END_SESSION_ENDPOINT_URI.toString())
+                                     .setStrings("response_types_supported", List.of("code"))
+                                     .setStrings("code_challenge_methods_supported", List.of("S256"))
+                                     .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                                     .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                                     .setStrings("grant_types_supported",
+                                                 List.of("authorization_code", "client_credentials", "refresh_token"))
+                                     .build().toString());
+                tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(NONCE, discoveryIssuer.toString())).toString();
                 OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri,
                         code -> code.redirectionEndpointUri(URI.create("/oidc/callback"))))
+                        .issuer(discoveryIssuer.toString())
                         .endpoints(endpoints -> endpoints.tlsRequired(false)
-                                .wellKnownUri(URI.create("http://localhost:" + discovery.port() + "/metadata")))
+                                .wellKnownUri(discoveryIssuer.resolve("/.well-known/openid-configuration")))
                         .logout(config -> config.endSession(endSession -> endSession.idTokenHintRequired(false)))
                         .initializationMaxQueued(0).buildPrototype();
                 try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
@@ -418,8 +513,11 @@ class OidcFeatureRouteTest {
                                     Thread.interrupted();
                                 }
 
-                                SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
-                                SetCookie session = localAuthenticationCookie(tenant, "default");
+                                SetCookie state = authenticationRequestCookie("default", STATE,
+                                                                               discoveryIssuer.toString(),
+                                                                               callbackUri(rp), tenant);
+                                SetCookie session = localAuthenticationCookie(
+                                        tenant, "default", signedIdToken(NONCE, discoveryIssuer.toString()));
                                 for (boolean recovering : List.of(false, true)) {
                                     if (recovering) {
                                         release.countDown();
@@ -2364,6 +2462,34 @@ class OidcFeatureRouteTest {
                 .buildPrototype();
     }
 
+    private static OidcProviderConfig collidingIssuerProviderConfig(URI serverUri) {
+        COLLIDING_ISSUER_METADATA.set(JsonObject.builder()
+                                              .set("issuer", ISSUER.toString())
+                                              .set("authorization_endpoint", AUTHORIZATION_ENDPOINT_URI.toString())
+                                              .set("token_endpoint", serverUri.resolve("attacker-token").toString())
+                                              .set("jwks_uri", serverUri.resolve("jwks").toString())
+                                              .setStrings("response_types_supported", List.of("code"))
+                                              .setStrings("grant_types_supported", List.of("authorization_code"))
+                                              .setStrings("code_challenge_methods_supported", List.of("S256"))
+                                              .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                                              .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
+                                              .set("authorization_response_iss_parameter_supported", true)
+                                              .build().toString());
+        OidcTenantConfig attacker = OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints.wellKnownUri(serverUri.resolve("issuer-collision-metadata"))
+                        .tlsRequired(false))
+                .authorizationCode(code -> code.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
+                        .scopes(List.of("openid", "profile")))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("honest", tenantConfig(serverUri))
+                .putTenant("attacker", attacker)
+                .buildPrototype();
+    }
+
     private static OidcProviderConfig providerConfig(OidcTenantConfig tenant) {
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant)
@@ -2783,11 +2909,15 @@ class OidcFeatureRouteTest {
     }
 
     private static String signedIdToken(String nonce) {
+        return signedIdToken(nonce, ISSUER.toString());
+    }
+
+    private static String signedIdToken(String nonce, String issuer) {
         Instant now = Instant.now();
         Jwt jwt = Jwt.builder()
                 .type("JWT")
                 .subject(SUBJECT)
-                .issuer(ISSUER.toString())
+                .issuer(issuer)
                 .algorithm("RS256")
                 .keyId("verify-rsa")
                 .issueTime(now)

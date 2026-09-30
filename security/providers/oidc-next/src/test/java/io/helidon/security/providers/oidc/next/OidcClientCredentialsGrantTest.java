@@ -117,6 +117,7 @@ class OidcClientCredentialsGrantTest {
 
     private static JwkKeys signKeys;
 
+    private final URI mutualTlsIssuer;
     private final URI mutualTlsServerUri;
 
     private URI issuer;
@@ -126,7 +127,8 @@ class OidcClientCredentialsGrantTest {
     private URI redirectedTokenEndpointUri;
 
     OidcClientCredentialsGrantTest(WebServer server) {
-        mutualTlsServerUri = URI.create("https://localhost:" + server.port("mtls") + "/");
+        mutualTlsIssuer = URI.create("https://localhost:" + server.port("mtls"));
+        mutualTlsServerUri = mutualTlsIssuer.resolve("/");
     }
 
     @BeforeAll
@@ -324,7 +326,7 @@ class OidcClientCredentialsGrantTest {
     @Test
     void tlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
-                .set("issuer", issuer.toString())
+                .set("issuer", mutualTlsIssuer.toString())
                 .set("token_endpoint", secureTokenEndpointUri.toString())
                 .setStrings("grant_types_supported", List.of("client_credentials"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("tls_client_auth"))
@@ -346,7 +348,7 @@ class OidcClientCredentialsGrantTest {
     @Test
     void selfSignedTlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
-                .set("issuer", issuer.toString())
+                .set("issuer", mutualTlsIssuer.toString())
                 .set("token_endpoint", secureTokenEndpointUri.toString())
                 .setStrings("grant_types_supported", List.of("client_credentials"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("self_signed_tls_client_auth"))
@@ -369,7 +371,7 @@ class OidcClientCredentialsGrantTest {
     @Test
     void mutualTlsClientCredentialsGrantUsesWellKnownTokenEndpointWhenAliasIsMissing() {
         providerMetadata = JsonObject.builder()
-                .set("issuer", issuer.toString())
+                .set("issuer", mutualTlsIssuer.toString())
                 .set("token_endpoint", secureTokenEndpointUri.toString())
                 .setStrings("grant_types_supported", List.of("client_credentials"))
                 .setStrings("token_endpoint_auth_methods_supported", List.of("tls_client_auth"))
@@ -1703,7 +1705,7 @@ class OidcClientCredentialsGrantTest {
 
     private OidcTenantConfig mutualTlsTenantFromWellKnown(OidcClientAuthenticationMethod method) {
         return OidcTenantConfig.builder()
-                .issuer(issuer.toString())
+                .issuer(mutualTlsIssuer.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(method)
                 .webClient(mutualTlsWebClient())

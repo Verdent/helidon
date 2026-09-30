@@ -572,6 +572,8 @@ final class OidcTenantConfigDecorator
                 OidcClientAuthenticationConfigValidator.tokenEndpointAuthenticationMethod(
                         tenant.clientSecret(),
                         tenant.tokenEndpointAuthenticationMethod());
+        // Authenticated clients may explicitly select legacy PLAIN. For this S256-capable RP that is a documented
+        // RFC 7636 section 4.2 compatibility exception, not a compliant alternative to S256.
         if (method != OidcClientAuthenticationMethod.NONE) {
             return;
         }

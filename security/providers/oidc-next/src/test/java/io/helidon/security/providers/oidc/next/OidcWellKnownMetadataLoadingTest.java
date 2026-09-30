@@ -36,6 +36,7 @@ import java.util.function.Consumer;
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.Tls;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -67,6 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @ServerTest
 class OidcWellKnownMetadataLoadingTest {
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
+    private static final URI HTTPS_ISSUER = URI.create("https://issuer.example");
     private static final String TENANT_WEBCLIENT_HEADER = "X-Tenant-WebClient";
     private static final String TENANT_WEBCLIENT_HEADER_VALUE = "configured";
     private static final HeaderName TENANT_WEBCLIENT_HEADER_NAME = HeaderNames.create(TENANT_WEBCLIENT_HEADER);
@@ -476,6 +478,166 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().pushedAuthorizationRequestEndpointUri(), is(Optional.empty()));
         assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(""));
+    }
+
+    @Test
+    void staticAuthorizationEndpointsDoNotBypassDiscoveryTlsWhenJwksIsMissing() {
+        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder().build().toString());
+        OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"), _ -> { }).buildPrototype();
+
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenant).buildPrototype())) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+            assertAll(() -> assertThat(context.state(), is(OidcTenantState.FAILED)),
+                      () -> assertThat(context.retryableFailure(), is(false)),
+                      () -> assertThat(context.failureCause().map(Throwable::getMessage).orElse(""),
+                                       containsString("well-known-uri must use https")),
+                      () -> assertThat(WELL_KNOWN_REQUESTS.get(), is(0)));
+            assertThat(provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow(), sameInstance(context));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+        }
+    }
+
+    @Test
+    void staticAuthorizationEndpointsDoNotBypassDiscoveryTlsWhenParIsRequired() {
+        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder()
+                                      .set("pushed_authorization_request_endpoint", HTTPS_ISSUER.resolve("par").toString())
+                                      .build().toString());
+        OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"),
+                endpoints -> endpoints.jwksUri(HTTPS_ISSUER.resolve("jwks")))
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.REQUIRED))
+                .buildPrototype();
+
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenant).buildPrototype())) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+            assertAll(() -> assertThat(context.state(), is(OidcTenantState.FAILED)),
+                      () -> assertThat(context.retryableFailure(), is(false)),
+                      () -> assertThat(context.failureCause().map(Throwable::getMessage).orElse(""),
+                                       containsString("well-known-uri must use https")),
+                      () -> assertThat(WELL_KNOWN_REQUESTS.get(), is(0)));
+        }
+    }
+
+    @Test
+    void staticAuthorizationEndpointsAllowExplicitHttpDiscoveryOptOut() {
+        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder().build().toString());
+        OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"), endpoints -> endpoints.tlsRequired(false))
+                .buildPrototype();
+
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenant).buildPrototype())) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+            assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                       context.state(), is(OidcTenantState.READY));
+            assertThat(context.metadata().jwkSetUri(), is(Optional.of(HTTPS_ISSUER.resolve("jwks"))));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+        }
+    }
+
+    @Test
+    void completeStaticMetadataDoesNotFetchInsecureUnusedDiscoveryUri() {
+        OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
+                issuer.resolve("/.well-known/openid-configuration"),
+                endpoints -> endpoints.jwksUri(HTTPS_ISSUER.resolve("jwks")))
+                .buildPrototype();
+
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenant).buildPrototype())) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+            assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                       context.state(), is(OidcTenantState.READY));
+            assertThat(context.metadata().wellKnownMetadataLoaded(), is(false));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+        }
+    }
+
+    @Test
+    void staticAuthorizationEndpointsAllowHttpsDiscovery() {
+        AtomicInteger requests = new AtomicInteger();
+        String metadata = httpsAuthorizationCodeMetadataBuilder().build().toString();
+        Keys keys = Keys.builder()
+                .keystore(store -> store.passphrase("password").keystore(Resource.create("server.p12")))
+                .build();
+        Tls tls = Tls.builder().privateKey(keys).privateKeyCertChain(keys).build();
+        WebServer metadataServer = WebServer.builder().port(0).tls(tls)
+                .routing(routing -> routing.get("/metadata", (_, response) -> {
+                    requests.incrementAndGet();
+                    response.header(HeaderValues.CONTENT_TYPE_JSON).send(metadata);
+                }))
+                .build().start();
+        try {
+            WebClientConfig client = WebClientConfig.builder()
+                    .tls(clientTls -> clientTls.trust(trust -> trust.keystore(store -> store
+                            .passphrase("password").trustStore(true).keystore(Resource.create("server.p12")))))
+                    .buildPrototype();
+            OidcTenantConfig tenant = staticHttpsAuthorizationCodeTenant(
+                    URI.create("https://localhost:" + metadataServer.port() + "/metadata"), _ -> { })
+                    .webClient(client)
+                    .buildPrototype();
+
+            try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                    .putTenant("tenant", tenant).buildPrototype())) {
+                OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+
+                assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                           context.state(), is(OidcTenantState.READY));
+                assertThat(context.metadata().issuer(), is(Optional.of(HTTPS_ISSUER.toString())));
+                assertThat(context.metadata().wellKnownMetadataLoaded(), is(true));
+                assertThat(requests.get(), is(1));
+            }
+        } finally {
+            metadataServer.stop();
+        }
+    }
+
+    @Test
+    void deferredDiscoveryRejectsHttpForConcurrentCallers() throws Exception {
+        PROVIDER_METADATA.set(httpsAuthorizationCodeMetadataBuilder().build().toString());
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(HTTPS_ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(endpoints -> endpoints.wellKnownUri(issuer.resolve("/.well-known/openid-configuration")))
+                .buildPrototype();
+        MutableClock clock = MutableClock.create(Instant.parse("2026-09-29T10:00:00Z"));
+        OidcOutboundMetadataResolver resolver = new OidcOutboundMetadataResolver(clock);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenant).buildPrototype());
+             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("tenant").orElseThrow();
+            assertThat(context.ready(), is(true));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+            List<Future<IllegalArgumentException>> failures = new ArrayList<>();
+            for (int i = 0; i < 16; i++) {
+                failures.add(executor.submit(() -> {
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
+                    return assertThrows(IllegalArgumentException.class,
+                                        () -> resolver.clientCredentialsEndpointClient(context));
+                }));
+            }
+            start.countDown();
+            for (Future<IllegalArgumentException> failure : failures) {
+                assertThat(failure.get(10, TimeUnit.SECONDS).getMessage(), containsString("well-known-uri must use https"));
+            }
+            clock.advance(Duration.ofDays(1));
+            assertThat(assertThrows(IllegalArgumentException.class,
+                                    () -> resolver.tokenExchangeEndpointClient(context)).getMessage(),
+                       containsString("well-known-uri must use https"));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+        } finally {
+            start.countDown();
+        }
     }
 
     @Test
@@ -2059,6 +2221,23 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    private static OidcTenantConfig.Builder staticHttpsAuthorizationCodeTenant(
+            URI wellKnownUri,
+            Consumer<OidcEndpointConfig.Builder> endpointCustomizer) {
+        return OidcTenantConfig.builder()
+                .issuer(HTTPS_ISSUER.toString())
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .endpoints(endpoints -> {
+                    endpoints.wellKnownUri(wellKnownUri)
+                            .authorizationEndpointUri(HTTPS_ISSUER.resolve("authorize"))
+                            .tokenEndpointUri(HTTPS_ISSUER.resolve("token"));
+                    endpointCustomizer.accept(endpoints);
+                })
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")));
+    }
+
     private static OutboundTarget clientCredentialsTarget() {
         return OutboundTarget.builder("api")
                 .customObject(OidcOutboundTargetConfig.class,
@@ -2109,6 +2288,14 @@ class OidcWellKnownMetadataLoadingTest {
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
                 .followRedirects(true)
                 .buildPrototype();
+    }
+
+    private JsonObject.Builder httpsAuthorizationCodeMetadataBuilder() {
+        return authorizationCodeMetadataBuilder()
+                .set("issuer", HTTPS_ISSUER.toString())
+                .set("authorization_endpoint", HTTPS_ISSUER.resolve("authorize").toString())
+                .set("token_endpoint", HTTPS_ISSUER.resolve("token").toString())
+                .set("jwks_uri", HTTPS_ISSUER.resolve("jwks").toString());
     }
 
     private JsonObject.Builder providerMetadataBuilder() {

@@ -85,7 +85,8 @@ final class OidcTenantContextFactory {
                 OidcProviderMetadata metadata;
                 if (wellKnownMetadataLoaded) {
                     try {
-                        metadata = new OidcProviderMetadataLoader(webClient).load(staticMetadata);
+                        metadata = new OidcProviderMetadataLoader(webClient)
+                                .load(staticMetadata, tenantConfig.endpoints().tlsRequired());
                     } catch (OidcProviderMetadataLoader.RetryableDiscoveryException e) {
                         return failed(tenantId, tenantConfig, webClient, e, true);
                     }

@@ -246,12 +246,16 @@ final class OidcEndpointUris {
         validateNoFragment(configKey, uri);
     }
 
-    private static void validateWellKnownUri(URI uri, boolean tlsRequired) {
+    static void validateWellKnownUri(URI uri, boolean tlsRequired) {
         /*
          * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
          * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationRequest
          * Quote: "OpenID Providers supporting Discovery MUST make a JSON document available at the path formed by
          * concatenating the string `/.well-known/openid-configuration` to the Issuer."
+         *
+         * Spec: RFC 8414, 3 Obtaining Authorization Server Metadata
+         * https://www.rfc-editor.org/rfc/rfc8414.html#section-3
+         * Quote: "This path MUST use the \"https\" scheme."
          */
         validateHttpsEndpointUri("well-known-uri", uri, tlsRequired, false);
     }

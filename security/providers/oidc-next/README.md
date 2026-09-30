@@ -499,6 +499,11 @@ This is the OpenID Connect Discovery location. The provider does not automatical
 `/.well-known/oauth-authorization-server` location; configure `endpoints.well-known-uri` explicitly when an OAuth
 Authorization Server metadata endpoint must be used instead.
 
+Before any metadata request, the selected well-known URI is checked against `endpoints.tls-required`, including discovery
+needed only for missing JWKS or required PAR metadata when other endpoints are configured statically. A TLS-policy
+violation fails without a request and is not retried. Explicit HTTP opt-out behavior is unchanged; an unused well-known
+URI does not force discovery.
+
 Tenant initialization and lazy outbound Token Endpoint discovery retry a failed well-known metadata load after
 `initialization-retry-interval`, which defaults to `PT10S`. Callers during that interval observe the same failed outcome,
 and one caller performs the next load after the interval. This avoids a retry storm while allowing recovery from an

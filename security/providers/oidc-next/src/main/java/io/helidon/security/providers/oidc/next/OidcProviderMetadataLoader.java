@@ -31,9 +31,11 @@ final class OidcProviderMetadataLoader {
         this.webClient = webClient;
     }
 
-    OidcProviderMetadata load(OidcProviderMetadata staticMetadata) {
+    OidcProviderMetadata load(OidcProviderMetadata staticMetadata, boolean tlsRequired) {
         URI wellKnownUri = staticMetadata.wellKnownUri()
                 .orElseThrow(() -> new IllegalArgumentException("well-known-uri is not configured"));
+        // Validate the actual discovery target even when static endpoints satisfied configuration validation.
+        OidcEndpointUris.validateWellKnownUri(wellKnownUri, tlsRequired);
         OidcProviderMetadata wellKnownMetadata;
         try (HttpClientResponse response = webClient.get()
                 .uri(wellKnownUri)

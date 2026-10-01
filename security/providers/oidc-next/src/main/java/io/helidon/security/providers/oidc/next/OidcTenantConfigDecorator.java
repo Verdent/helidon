@@ -401,7 +401,7 @@ final class OidcTenantConfigDecorator
                                                     tokenEndpointTlsRequired,
                                                     tokenEndpointTlsRequired,
                                                     OidcEndpointUris::validateTokenEndpointUri);
-        validatePushedAuthorizationRequests(tenant, authorizationCode, endpoints, wellKnownUri);
+        validatePushedAuthorizationRequests(authorizationCode, endpoints, wellKnownUri);
         validateRequestObject(authorizationCode.requestObject());
         if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
             throw new IllegalArgumentException(
@@ -420,13 +420,12 @@ final class OidcTenantConfigDecorator
                         "cookies.protection must be configured when Authorization Code Flow is enabled"));
     }
 
-    private static void validatePushedAuthorizationRequests(OidcTenantConfig.BuilderBase<?, ?> tenant,
-                                                            OidcAuthorizationCodeConfig authorizationCode,
+    private static void validatePushedAuthorizationRequests(OidcAuthorizationCodeConfig authorizationCode,
                                                             OidcEndpointConfig endpoints,
                                                             Optional<URI> wellKnownUri) {
-        boolean tlsRequired = endpoints.tlsRequired() || outboundMutualTls(tenant);
+        // RFC 9126 requires HTTPS for PAR even when this tenant allows HTTP for local callback or other endpoints.
         endpoints.pushedAuthorizationRequestEndpointUri()
-                .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri, tlsRequired));
+                .ifPresent(OidcEndpointUris::validatePushedAuthorizationRequestEndpointUri);
         if (authorizationCode.pushedAuthorizationRequests() == OidcPushedAuthorizationRequestMode.REQUIRED
                 && endpoints.pushedAuthorizationRequestEndpointUri().isEmpty()
                 && wellKnownUri.isEmpty()) {

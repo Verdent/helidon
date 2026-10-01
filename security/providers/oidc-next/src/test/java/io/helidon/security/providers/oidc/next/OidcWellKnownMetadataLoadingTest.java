@@ -144,7 +144,8 @@ class OidcWellKnownMetadataLoadingTest {
         introspectionEndpointUri = serverUri.resolve("introspect");
         userInfoEndpointUri = serverUri.resolve("userinfo");
         endSessionEndpointUri = serverUri.resolve("logout");
-        pushedAuthorizationRequestEndpointUri = serverUri.resolve("par");
+        // Metadata is served over HTTP in this fixture; the advertised PAR URL must still be HTTPS.
+        pushedAuthorizationRequestEndpointUri = HTTPS_ISSUER.resolve("par");
         PROVIDER_METADATA.set(providerMetadataBuilder()
                                       .build()
                                       .toString());
@@ -561,6 +562,22 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
         assertThat(context.metadata().pushedAuthorizationRequestEndpointUri(),
                    is(Optional.of(pushedAuthorizationRequestEndpointUri)));
+    }
+
+    @Test
+    void authorizationCodeTenantRejectsHttpPushedAuthorizationRequestEndpointInMetadata() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("pushed_authorization_request_endpoint", issuer.resolve("par").toString())
+                                      .build()
+                                      .toString());
+
+        // This fixture deliberately allows an HTTP discovery URL, but that exception does not apply to PAR.
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("pushed-authorization-request-endpoint-uri must use https"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
     @Test

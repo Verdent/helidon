@@ -17,6 +17,8 @@
 package io.helidon.tests.integration.security.oidcnext.keycloak;
 
 import java.net.URI;
+import java.security.cert.X509Certificate;
+import java.util.List;
 
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
@@ -25,6 +27,7 @@ import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcPushedAuthorizationRequestMode;
 import io.helidon.tests.integration.security.oidcnext.keycloak.KeycloakOidcIntegrationSupport.BrowserSession;
 import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 
 import org.junit.jupiter.api.Test;
@@ -38,16 +41,28 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @Testcontainers(disabledWithoutDocker = true)
 class KeycloakPushedAuthorizationRequestIT {
     @Container
-    static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
+    static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.httpsContainer(
+            "keycloak/tls/dns-san.crt", "keycloak/tls/dns-san.key");
 
     @Test
-    void authorizationCodeFlowUsesKeycloakPushedAuthorizationRequestEndpointFromDiscovery() {
+    void authorizationCodeFlowUsesKeycloakPushedAuthorizationRequestEndpointFromDiscovery() throws Exception {
+        URI issuer = URI.create("https://localhost:" + CONTAINER.getMappedPort(KeycloakOidcContainer.HTTPS_PORT)
+                                        + "/realms/" + KeycloakOidcContainer.REALM);
+        URI metadataUri = issuer.resolve(issuer.getPath() + "/.well-known/openid-configuration");
+        X509Certificate certificate = KeycloakOidcIntegrationSupport.certificate("keycloak/tls/dns-san.crt");
+        WebClientConfig clientConfig = WebClientConfig.builder()
+                .tls(tls -> tls.trust(List.of(certificate)))
+                .buildPrototype();
+        // The local RP callback is HTTP; discovery and the credential-bearing PAR request must use HTTPS.
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig(
-                authorizationCode -> authorizationCode.pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.REQUIRED));
+                issuer,
+                metadataUri,
+                authorizationCode -> authorizationCode.pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.REQUIRED),
+                tenant -> tenant.webClient(clientConfig));
         WebServer rpServer = KeycloakOidcIntegrationSupport.rpServer(
                 providerConfig,
                 routing -> KeycloakOidcIntegrationSupport.protectedRoute(routing, "/resource"));
-        try (BrowserSession browser = new BrowserSession()) {
+        try (BrowserSession browser = new BrowserSession(certificate)) {
             URI resourceUri = KeycloakOidcIntegrationSupport.rpBaseUri(rpServer).resolve("/resource");
             URI authorizationUri;
             try (HttpClientResponse start = browser.get(resourceUri)) {

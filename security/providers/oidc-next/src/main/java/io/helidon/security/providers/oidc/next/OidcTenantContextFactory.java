@@ -381,13 +381,13 @@ final class OidcTenantContextFactory {
                                                                   boolean wellKnownMetadataLoaded) {
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
         OidcPushedAuthorizationRequestMode mode = authorizationCode.pushedAuthorizationRequests();
+        // Validate the advertised URL independently of tls-required, which may be disabled for a local RP callback.
         metadata.pushedAuthorizationRequestEndpointUri()
-                .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(
-                        uri,
-                        tenantConfig.endpoints().tlsRequired()));
+                .ifPresent(OidcEndpointUris::validatePushedAuthorizationRequestEndpointUri);
         if (OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)) {
+            // The selected mTLS alias is also a PAR URL and must satisfy the same HTTPS rule.
             pushedAuthorizationRequestEndpointUri(tenantConfig, metadata)
-                    .ifPresent(uri -> OidcEndpointUris.validatePushedAuthorizationRequestEndpointUri(uri, true));
+                    .ifPresent(OidcEndpointUris::validatePushedAuthorizationRequestEndpointUri);
         }
 
         /*

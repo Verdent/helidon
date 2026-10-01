@@ -16,8 +16,13 @@
 
 package io.helidon.tests.integration.security.oidcnext.keycloak;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
@@ -130,12 +135,23 @@ final class KeycloakOidcIntegrationSupport {
     static OidcProviderConfig authorizationCodeProviderConfig(
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
             Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        return authorizationCodeProviderConfig(KeycloakOidcContainer.issuer(),
+                                               KeycloakOidcContainer.metadataUri(),
+                                               authorizationCodeCustomizer,
+                                               tenantCustomizer);
+    }
+
+    static OidcProviderConfig authorizationCodeProviderConfig(
+            URI issuer,
+            URI metadataUri,
+            Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
+            Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
-                .issuer(KeycloakOidcContainer.issuer().toString())
+                .issuer(issuer.toString())
                 .clientId(WEB_CLIENT_ID)
                 .clientSecret(WEB_CLIENT_SECRET)
                 .endpoints(endpoints -> endpoints
-                        .wellKnownUri(KeycloakOidcContainer.metadataUri())
+                        .wellKnownUri(metadataUri)
                         .tlsRequired(false))
                 .authorizationCode(authorizationCode -> {
                     authorizationCode.pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.DISABLED);
@@ -299,6 +315,15 @@ final class KeycloakOidcIntegrationSupport {
 
     static URI rpBaseUri(WebServer server) {
         return URI.create("http://localhost:" + server.port());
+    }
+
+    static X509Certificate certificate(String resourceName) throws IOException, CertificateException {
+        try (InputStream input = KeycloakOidcIntegrationSupport.class.getResourceAsStream("/" + resourceName)) {
+            if (input == null) {
+                throw new IllegalArgumentException("Missing test certificate: " + resourceName);
+            }
+            return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(input);
+        }
     }
 
     static void protectedRoute(HttpRouting.Builder routing, String path) {
@@ -467,10 +492,19 @@ final class KeycloakOidcIntegrationSupport {
     }
 
     static final class BrowserSession implements AutoCloseable {
-        private final WebClient client = WebClient.builder()
-                .followRedirects(false)
-                .build();
+        private final WebClient client;
         private final Map<String, String> cookies = new LinkedHashMap<>();
+
+        BrowserSession() {
+            client = WebClient.builder().followRedirects(false).build();
+        }
+
+        BrowserSession(X509Certificate trustedCertificate) {
+            client = WebClient.builder()
+                    .followRedirects(false)
+                    .tls(tls -> tls.trust(List.of(trustedCertificate)))
+                    .build();
+        }
 
         HttpClientResponse get(URI uri) {
             HttpClientRequest request = client.get().uri(uri);

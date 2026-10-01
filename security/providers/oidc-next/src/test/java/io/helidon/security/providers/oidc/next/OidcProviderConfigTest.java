@@ -1786,6 +1786,20 @@ class OidcProviderConfigTest {
 
         assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
 
+        // Disabling the general TLS policy for a local callback cannot disable RFC 9126's PAR endpoint requirement.
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                        .tokenEndpointUri(TOKEN_ENDPOINT_URI)
+                        .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par"))
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(URI.create("http://rp.example/oidc/callback")))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype());
+        assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
+        assertThat(thrown.getMessage().contains("unless endpoints.tls-required"), is(false));
+
         thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")

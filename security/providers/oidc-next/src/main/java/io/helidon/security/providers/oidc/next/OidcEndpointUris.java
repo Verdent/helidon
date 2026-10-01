@@ -113,13 +113,15 @@ final class OidcEndpointUris {
         validateNoFragment("authorization-endpoint-uri", uri);
     }
 
-    static void validatePushedAuthorizationRequestEndpointUri(URI uri, boolean tlsRequired) {
+    static void validatePushedAuthorizationRequestEndpointUri(URI uri) {
         /*
          * Spec: RFC 9126, 2 Pushed Authorization Request Endpoint
          * https://www.rfc-editor.org/rfc/rfc9126.html#section-2
          * Quote: "The PAR endpoint URL MUST use the `https` scheme."
+         * The endpoints.tls-required exception can permit a local HTTP callback, but it cannot relax the PAR URL:
+         * authorization data and client credentials may be sent directly to this endpoint.
          */
-        validateHttpsEndpointUri("pushed-authorization-request-endpoint-uri", uri, tlsRequired, false);
+        validateHttpsEndpointUri("pushed-authorization-request-endpoint-uri", uri, true, false);
         validateNoFragment("pushed-authorization-request-endpoint-uri", uri);
     }
 
@@ -307,7 +309,8 @@ final class OidcEndpointUris {
             return;
         }
         throw new IllegalArgumentException(
-                configKey + " must use https unless endpoints.tls-required is disabled: " + uri);
+                configKey + " must use https"
+                        + (tlsRequired ? "" : " unless endpoints.tls-required is disabled") + ": " + uri);
     }
 
     private static void validateNoFragment(String configKey, URI uri) {

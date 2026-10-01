@@ -231,6 +231,7 @@ public class TcpClientConnection implements ClientConnection {
                                        serverNamesOverride);
             try {
                 sslSocket.startHandshake();
+                webClient.prototype().connectionListener().tlsHandshakeCompleted(sslSocket.getSession());
             } catch (IOException e) {
                 try {
                     sslSocket.close();
@@ -238,6 +239,13 @@ public class TcpClientConnection implements ClientConnection {
                     e.addSuppressed(ex);
                 }
                 throw new UncheckedIOException("Failed to execute SSL handshake", e);
+            } catch (RuntimeException | Error e) {
+                try {
+                    sslSocket.close();
+                } catch (IOException ex) {
+                    e.addSuppressed(ex);
+                }
+                throw e;
             }
             if (LOGGER.isLoggable(TRACE)) {
                 debugTls(sslSocket, channelId);

@@ -354,6 +354,7 @@ public class UnixDomainSocketClientConnection implements ClientConnection {
 
                 TlsNioSocket tlsSocket = TlsNioSocket.client(this.channel, engine, this.channelId);
                 startTlsHandshake(tlsSocket);
+                this.webClient.prototype().connectionListener().tlsHandshakeCompleted(engine.getSession());
                 if (LOGGER.isLoggable(TRACE)) {
                     debugTls(engine, channelId);
                 }
@@ -364,7 +365,7 @@ public class UnixDomainSocketClientConnection implements ClientConnection {
         } catch (IOException e) {
             closeChannelOnFailure(e);
             throw new UncheckedIOException(e);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             closeChannelOnFailure(e);
             throw e;
         }

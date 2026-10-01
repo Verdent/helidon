@@ -18,12 +18,14 @@ package io.helidon.webclient.api;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.channels.SocketChannel;
+import java.util.Objects;
+
+import javax.net.ssl.SSLSession;
 
 /**
- * This interface provides callback methods that are invoked when the client connection is first established,
- * before any TLS or HTTP application traffic is sent. This can be used for cases such as the HAProxy
- * Proxy Protocol, which involves sending protocol-specific data bytes on the connection before the TLS
- * handshake occurs.
+ * Socket callbacks run when the client connection is first established, before TLS or HTTP application traffic is sent.
+ * They can be used for protocols such as the HAProxy Proxy Protocol, which send data before the TLS handshake.
+ * The TLS callback runs after a successful handshake, before an HTTP request is sent over that TLS connection.
  */
 public interface ConnectionListener {
     /**
@@ -58,4 +60,15 @@ public interface ConnectionListener {
      * @throws IOException if an I/O error occurs
      */
     void socketChannelConnected(ConnectedSocketChannelInfo socketInfo) throws IOException;
+
+    /**
+     * Called after a TLS handshake succeeds, before an HTTP request is sent over the TLS connection.
+     * This callback is not invoked when a connection is reused from a pool. Throwing an exception rejects and closes
+     * the connection.
+     *
+     * @param session the established TLS session
+     */
+    default void tlsHandshakeCompleted(SSLSession session) {
+        Objects.requireNonNull(session, "session");
+    }
 }

@@ -21,30 +21,53 @@ import java.time.Duration;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.containers.wait.strategy.WaitStrategy;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
 final class KeycloakOidcContainer {
     static final String REALM = "helidon";
     static final int HTTP_PORT = 8080;
+    static final int HTTPS_PORT = 8443;
 
     private static final DockerImageName IMAGE = DockerImageName.parse(
             System.getProperty("helidon.tests.keycloak.image", "quay.io/keycloak/keycloak:26.6.3"));
+    private static final String TLS_CERTIFICATE = "/opt/keycloak/conf/oidc-next-test.crt";
+    private static final String TLS_PRIVATE_KEY = "/opt/keycloak/conf/oidc-next-test.key";
 
-    static final GenericContainer<?> CONTAINER = new GenericContainer<>(IMAGE)
-            .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
-            .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
+    static final GenericContainer<?> CONTAINER = container()
             .withExposedPorts(HTTP_PORT)
-            .withCopyFileToContainer(MountableFile.forClasspathResource("keycloak/helidon-realm.json"),
-                                     "/opt/keycloak/data/import/helidon-realm.json")
             .withCommand("start-dev", "--import-realm", "--features=par")
-            .withStartupAttempts(3)
-            .waitingFor(Wait.forHttp("/realms/" + REALM + "/.well-known/openid-configuration")
-                                .forPort(HTTP_PORT)
-                                .forStatusCode(200)
-                                .withStartupTimeout(Duration.ofMinutes(4)));
+            .waitingFor(metadataReady());
 
     private KeycloakOidcContainer() {
+    }
+
+    static GenericContainer<?> httpsContainer(String certificate, String privateKey) {
+        return container()
+                .withExposedPorts(HTTP_PORT, HTTPS_PORT)
+                .withCopyFileToContainer(MountableFile.forClasspathResource(certificate), TLS_CERTIFICATE)
+                .withCopyFileToContainer(MountableFile.forClasspathResource(privateKey), TLS_PRIVATE_KEY)
+                .withCommand("start-dev", "--import-realm", "--features=par",
+                             "--https-certificate-file=" + TLS_CERTIFICATE,
+                             "--https-certificate-key-file=" + TLS_PRIVATE_KEY)
+                .waitingFor(metadataReady());
+    }
+
+    private static GenericContainer<?> container() {
+        return new GenericContainer<>(IMAGE)
+                .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
+                .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
+                .withCopyFileToContainer(MountableFile.forClasspathResource("keycloak/helidon-realm.json"),
+                                         "/opt/keycloak/data/import/helidon-realm.json")
+                .withStartupAttempts(3);
+    }
+
+    private static WaitStrategy metadataReady() {
+        return Wait.forHttp("/realms/" + REALM + "/.well-known/openid-configuration")
+                .forPort(HTTP_PORT)
+                .forStatusCode(200)
+                .withStartupTimeout(Duration.ofMinutes(4));
     }
 
     static URI baseUri() {

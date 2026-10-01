@@ -19,11 +19,15 @@ package io.helidon.tests.integration.security.oidcnext.keycloak;
 import java.net.URI;
 import java.util.List;
 
+import io.helidon.config.Config;
+import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
+import io.helidon.security.providers.oidc.next.OidcTenantConfig;
+import io.helidon.security.providers.oidc.next.OidcTokenValidationConfig;
 import io.helidon.tests.integration.security.oidcnext.keycloak.KeycloakOidcIntegrationSupport.BrowserSession;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webserver.WebServer;
@@ -43,10 +47,30 @@ class KeycloakRefreshTokenIT {
 
     @Test
     void authorizationCodeFlowRefreshesKeycloakAccessTokenAndUpdatesLocalCookie() {
+        assertRefreshedAuthentication(KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig());
+    }
+
+    @Test
+    void authorizationCodeFlowRefreshesDefaultKeycloakAccessTokenWithCustomJwtLayout() {
+        OidcProviderConfig original = KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig();
+        OidcTenantConfig tenant = original.tenants().get("default");
+        OidcTokenValidationConfig custom = OidcTokenValidationConfig.create(Config.create(
+                ConfigSources.classpath("keycloak-jwt-custom.yaml")).get("protected-resource.token-validation"));
+        OidcTenantConfig customized = OidcTenantConfig.builder().from(tenant)
+                .protectedResource(resource -> resource.enabled(false).tokenValidation(validation -> validation
+                        .from(custom)
+                        .clockSkew(tenant.protectedResource().orElseThrow().tokenValidation().clockSkew())))
+                .buildPrototype();
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder().from(original)
+                .putTenant("default", customized).buildPrototype();
+
+        assertRefreshedAuthentication(providerConfig);
+    }
+
+    private static void assertRefreshedAuthentication(OidcProviderConfig providerConfig) {
         OidcEndpointPolicyConfig browserPolicy = OidcEndpointPolicyConfig.builder()
                 .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
                 .buildPrototype();
-        OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig();
         WebServer rpServer = KeycloakOidcIntegrationSupport.rpServer(
                 providerConfig,
                 routing -> KeycloakOidcIntegrationSupport.protectedRoute(routing, "/resource", browserPolicy));

@@ -40,6 +40,18 @@ interface OidcTokenValidationConfigBlueprint {
     Optional<OidcTokenValidationMethod> method();
 
     /**
+     * JWT access-token layout requirements.
+     * <p>
+     * Used with {@link OidcTokenValidationMethod#JWT}. Defaults to RFC 9068. A custom profile can validate
+     * provider-specific token types and claims while retaining signature, issuer, expiration, and audience checks.
+     *
+     * @return JWT access-token layout configuration
+     */
+    @Option.Configured
+    @Option.Default("create()")
+    OidcJwtAccessTokenConfig jwt();
+
+    /**
      * Access-token audience expected when audience validation is required.
      * <p>
      * For JWT access-token validation, this should identify the current resource server. RFC 9068 requires JWT access

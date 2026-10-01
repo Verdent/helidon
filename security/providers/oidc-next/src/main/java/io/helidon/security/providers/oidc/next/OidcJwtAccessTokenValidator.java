@@ -17,7 +17,6 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -30,7 +29,6 @@ import io.helidon.security.jwt.SignedJwt;
 
 final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     private static final String NONE_ALGORITHM = "none";
-    private static final List<String> ALLOWED_ACCESS_TOKEN_TYPES = List.of("at+jwt", "application/at+jwt");
 
     OidcJwtAccessTokenValidator() {
     }
@@ -54,7 +52,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         }
 
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
-        Errors headerErrors = headerValidator(tokenValidation.allowedAlgorithms()).validate(jwt);
+        Errors headerErrors = headerValidator(tokenValidation).validate(jwt);
         if (!headerErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token JWS header is invalid");
         }
@@ -113,7 +111,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         return OidcValidationResult.success(new OidcValidatedJwt(token, signedJwt, jwt));
     }
 
-    private JwtValidator headerValidator(List<String> allowedAlgorithms) {
+    private JwtValidator headerValidator(OidcTokenValidationConfig tokenValidation) {
         return JwtValidator.builder()
                 .addCriticalValidator()
                 .addValidator(JwtScope.HEADER, (jwt, collector) -> {
@@ -129,7 +127,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                          * Quote: "The resource server MUST reject any JWT in which the value of \"alg\" is \"none\"."
                          */
                         collector.fatal(jwt, "JWT alg header must not be none");
-                    } else if (!allowedAlgorithms.contains(algorithm)) {
+                    } else if (!tokenValidation.allowedAlgorithms().contains(algorithm)) {
                         collector.fatal(jwt, "JWT alg header is not allowed: " + algorithm);
                     }
                 }, "alg")
@@ -137,7 +135,9 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                     String type = jwt.type().orElse(null);
                     if (type == null) {
                         collector.fatal(jwt, "JWT typ header is mandatory");
-                    } else if (!ALLOWED_ACCESS_TOKEN_TYPES.contains(type.toLowerCase(Locale.ROOT))) {
+                    } else if (tokenValidation.jwt().allowedTypes().stream()
+                            .map(allowed -> allowed.toLowerCase(Locale.ROOT))
+                            .noneMatch(type.toLowerCase(Locale.ROOT)::equals)) {
                         collector.fatal(jwt, "JWT typ header is not an access token type: " + type);
                     }
                 }, "typ")
@@ -148,16 +148,19 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                                         String expectedIssuer,
                                         Optional<String> expectedAudience,
                                         Instant validationTime) {
+        OidcJwtAccessTokenConfig layout = tokenValidation.jwt();
+        boolean rfc9068 = layout.profile() == OidcJwtAccessTokenProfile.RFC_9068;
         JwtValidator.Builder builder = JwtValidator.builder()
                 .addExpirationValidator(it -> it.now(validationTime)
                         .allowedTimeSkew(tokenValidation.clockSkew())
                         .mandatory(true))
                 .addIssueTimeValidator(it -> it.now(validationTime)
                         .allowedTimeSkew(tokenValidation.clockSkew())
-                        .mandatory(true))
+                        .mandatory(rfc9068 || layout.requiredClaims().contains("iat")))
                 .addNotBeforeValidator(it -> it.now(validationTime).allowedTimeSkew(tokenValidation.clockSkew()))
-                .addIssuerValidator(expectedIssuer)
-                .addValidator((jwt, collector) -> {
+                .addIssuerValidator(expectedIssuer);
+        if (rfc9068) {
+            builder.addValidator((jwt, collector) -> {
                     if (jwt.subject().filter(subject -> !subject.isBlank()).isEmpty()) {
                         collector.fatal(jwt, "JWT subject claim is mandatory");
                     }
@@ -176,6 +179,26 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                         collector.fatal(jwt, "JWT client_id claim is mandatory");
                     }
                 }, "client_id");
+        }
+        for (String claim : layout.requiredClaims()) {
+            builder.addValidator((jwt, collector) -> {
+                if (jwt.payloadClaimValue(claim)
+                        .filter(value -> value.type() != JsonValueType.NULL)
+                        .filter(value -> value.type() != JsonValueType.STRING || !value.asString().value().isBlank())
+                        .isEmpty()) {
+                    collector.fatal(jwt, "JWT " + claim + " claim is mandatory");
+                }
+            }, claim);
+        }
+        layout.requiredStringClaims().forEach((claim, expected) -> builder.addValidator((jwt, collector) -> {
+            if (jwt.payloadClaimValue(claim)
+                    .filter(value -> value.type() == JsonValueType.STRING)
+                    .map(value -> value.asString().value())
+                    .filter(expected::equals)
+                    .isEmpty()) {
+                collector.fatal(jwt, "JWT " + claim + " claim does not match the required access-token value");
+            }
+        }, claim));
         if (tokenValidation.audienceValidationEnabled()) {
             expectedAudience.ifPresent(builder::addAudienceValidator);
         }

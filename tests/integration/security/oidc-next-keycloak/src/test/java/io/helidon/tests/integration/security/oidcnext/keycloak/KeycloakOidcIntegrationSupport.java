@@ -355,14 +355,18 @@ final class KeycloakOidcIntegrationSupport {
     }
 
     static String passwordAccessToken() {
-        return accessToken(tokenResponse(Parameters.builder("token")
-                                   .add("grant_type", "password")
-                                   .add("username", USERNAME)
-                                   .add("password", PASSWORD)
-                                   .add("scope", "openid profile email")
-                                   .build(),
-                           WEB_CLIENT_ID,
-                           WEB_CLIENT_SECRET));
+        return accessToken(passwordTokenResponse());
+    }
+
+    static JsonObject passwordTokenResponse() {
+        return tokenResponse(Parameters.builder("token")
+                                     .add("grant_type", "password")
+                                     .add("username", USERNAME)
+                                     .add("password", PASSWORD)
+                                     .add("scope", "openid profile email")
+                                     .build(),
+                             WEB_CLIENT_ID,
+                             WEB_CLIENT_SECRET);
     }
 
     static String clientCredentialsAccessToken() {

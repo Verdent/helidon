@@ -211,6 +211,10 @@ final class OidcEndpointClient {
                     "Pushed Authorization Request Endpoint is not configured");
         }
         URI uri = endpointUri.orElseThrow();
+        // Validate the selected URL before constructing client authentication, even for programmatically supplied metadata.
+        if (!"https".equalsIgnoreCase(uri.getScheme())) {
+            return OidcPushedAuthorizationRequestResult.failure("Pushed Authorization Request Endpoint must use https");
+        }
         if (authorizationRequestParameters.names().contains("request_uri")) {
             return OidcPushedAuthorizationRequestResult.failure(
                     "Pushed Authorization Request form must not contain request_uri");

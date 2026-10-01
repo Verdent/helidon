@@ -16,12 +16,8 @@
 
 package io.helidon.tests.integration.security.oidcnext.keycloak;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
-import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.List;
 
@@ -88,7 +84,7 @@ class KeycloakTlsCertificateIdentityIT {
 
             URI issuer = URI.create("https://localhost:" + keycloak.getMappedPort(KeycloakOidcContainer.HTTPS_PORT)
                                             + "/realms/" + KeycloakOidcContainer.REALM);
-            X509Certificate trustedCertificate = certificate(prefix + ".crt");
+            X509Certificate trustedCertificate = KeycloakOidcIntegrationSupport.certificate(prefix + ".crt");
             WebClientConfig clientConfig = WebClientConfig.builder()
                     .tls(tls -> tls.trust(List.of(trustedCertificate)))
                     .buildPrototype();
@@ -149,14 +145,5 @@ class KeycloakTlsCertificateIdentityIT {
 
     private static URI endpoint(URI issuer, String path) {
         return issuer.resolve(issuer.getPath() + "/protocol/openid-connect/" + path);
-    }
-
-    private static X509Certificate certificate(String resourceName) throws IOException, CertificateException {
-        try (InputStream input = KeycloakTlsCertificateIdentityIT.class.getResourceAsStream("/" + resourceName)) {
-            if (input == null) {
-                throw new IllegalArgumentException("Missing test certificate: " + resourceName);
-            }
-            return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(input);
-        }
     }
 }

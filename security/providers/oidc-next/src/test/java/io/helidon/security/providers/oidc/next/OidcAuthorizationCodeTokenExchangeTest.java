@@ -22,12 +22,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,10 +43,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
+import io.helidon.common.socket.SocketOptions;
 import io.helidon.common.tls.Tls;
 import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.common.uri.UriQuery;
@@ -83,6 +88,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
@@ -206,7 +212,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
     void setUp(URI serverUri) {
         tokenEndpointUri = serverUri.resolve("token");
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
-        pushedAuthorizationRequestEndpointUri = serverUri.resolve("par");
+        // RFC 9126 requires HTTPS for PAR even when the other test endpoints and RP callback use HTTP.
+        pushedAuthorizationRequestEndpointUri = conventionalTlsServerUri.resolve("par");
         mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsServerUri.resolve("par");
         responseStatus = 200;
         responseBody = validTokenResponse().toString();
@@ -277,6 +284,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize?existing=endpoint%26value"))
                         .tokenEndpointUri(tokenEndpointUri)
                         .jwksUri(serverUri.resolve("jwks"))
@@ -336,6 +344,29 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code_challenge", List.of("challenge-value"),
                                                        "code_challenge_method", List.of("S256"))));
         assertThat(request.formParameters().containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void pushedAuthorizationRequestRejectsHttpSelectedFromProgrammaticMetadata(URI serverUri) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tlsRequired(false))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", ISSUER.toString())
+                .set("pushed_authorization_request_endpoint", serverUri.resolve("par").toString())
+                .build());
+
+        // Even metadata supplied directly to a ready context must not send client credentials over HTTP.
+        OidcPushedAuthorizationRequestResult result = OidcTenantContext.ready("default", tenant, metadata)
+                .endpointClient()
+                .pushedAuthorizationRequest(authorizationRequestParameters());
+
+        assertThat(result.succeeded(), is(false));
+        assertThat(result.description(), is("Pushed Authorization Request Endpoint must use https"));
+        assertThat(RECORDED_REQUEST.get(), is(nullValue()));
     }
 
     @Test
@@ -837,6 +868,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
                         .tokenEndpointUri(tokenEndpointUri)
                         .jwksUri(serverUri.resolve("jwks"))
@@ -889,6 +921,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
                         .tokenEndpointUri(tokenEndpointUri)
                         .jwksUri(serverUri.resolve("jwks"))
@@ -1517,12 +1550,17 @@ class OidcAuthorizationCodeTokenExchangeTest {
 
     private void assertPushedAuthorizationRequestWithReasonPhrase(String reasonPhrase) throws Exception {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-                ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            URI parUri = new URI("http", null, listener.getInetAddress().getHostAddress(),
-                                 listener.getLocalPort(), "/par", null, null);
+                SSLServerSocket listener = serverTls(TlsClientAuth.NONE).createServerSocket()) {
+            // WebClient probes ALPN before sending HTTP; negotiate HTTP/1.1 so the probe carries the PAR request.
+            SSLParameters tlsParameters = listener.getSSLParameters();
+            tlsParameters.setApplicationProtocols(new String[] {"http/1.1"});
+            listener.setSSLParameters(tlsParameters);
+            listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 1);
+            URI parUri = URI.create("https://localhost:" + listener.getLocalPort() + "/par");
             Future<?> served = executor.submit(() -> {
-                try (Socket socket = listener.accept()) {
+                try (SSLSocket socket = (SSLSocket) listener.accept()) {
                     socket.setSoTimeout(10_000);
+                    socket.startHandshake();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(),
                                                                                       StandardCharsets.ISO_8859_1));
                     assertThat(reader.readLine(), is("POST /par HTTP/1.1"));
@@ -1574,13 +1612,18 @@ class OidcAuthorizationCodeTokenExchangeTest {
                     .issuer(ISSUER.toString())
                     .clientId(CLIENT_ID)
                     .clientSecret(CLIENT_SECRET)
+                    .webClient(WebClientConfig.builder(conventionalTlsWebClient())
+                                       .socketOptions(SocketOptions.builder()
+                                                              .readTimeout(Duration.ofSeconds(10))
+                                                              .buildPrototype())
+                                       .buildPrototype())
                     .endpoints(it -> it.pushedAuthorizationRequestEndpointUri(parUri).tlsRequired(false))
                     .buildPrototype();
 
-            OidcPushedAuthorizationRequestResult result = pushedAuthorizationRequest(tenant,
-                                                                                     authorizationRequestParameters());
-
+            Future<OidcPushedAuthorizationRequestResult> sent = executor.submit(() ->
+                    pushedAuthorizationRequest(tenant, authorizationRequestParameters()));
             served.get(10, TimeUnit.SECONDS);
+            OidcPushedAuthorizationRequestResult result = sent.get(10, TimeUnit.SECONDS);
             assertThat(result.description() + ": " + result.cause(), result.succeeded(), is(true));
             assertThat(result.response().orElseThrow().requestUri(), is(PUSHED_AUTHORIZATION_REQUEST_URI));
             assertThat(result.response().orElseThrow().expiresIn(), is(90L));
@@ -1733,6 +1776,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.PRIVATE_KEY_JWT)
+                .webClient(conventionalTlsWebClient())
                 .clientAssertion(it -> it.jwk(ResourceConfig.builder()
                         .resourcePath("oidc-next-sign-jwk.json")
                         .buildPrototype())
@@ -1813,6 +1857,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         return OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
+                .webClient(conventionalTlsWebClient())
                 .update(builder -> {
                     if (clientSecret) {
                         builder.clientSecret(CLIENT_SECRET);
@@ -1829,6 +1874,16 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig conventionalTlsWebClient() {
+        return WebClientConfig.builder()
+                .tls(tls -> tls.trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("client.p12")))))
                 .buildPrototype();
     }
 
@@ -1884,6 +1939,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .issuer(ISSUER.toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
                 .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
                         .tokenEndpointUri(tokenEndpointUri)
                         .jwksUri(serverUri.resolve("jwks"))

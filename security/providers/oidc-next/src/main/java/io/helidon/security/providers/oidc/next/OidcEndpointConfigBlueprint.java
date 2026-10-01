@@ -54,6 +54,8 @@ interface OidcEndpointConfigBlueprint {
 
     /**
      * Pushed Authorization Request Endpoint URI.
+     * Must use HTTPS even when {@link #tlsRequired()} is disabled: a PAR POST can include client credentials.
+     * See <a href="https://www.rfc-editor.org/rfc/rfc9126.html#section-2">RFC 9126, section 2</a>.
      *
      * @return Pushed Authorization Request Endpoint URI
      */
@@ -83,12 +85,14 @@ interface OidcEndpointConfigBlueprint {
     /**
      * Whether OpenID Connect endpoint URIs, OIDC post-logout redirect URIs, and OIDC outbound bearer-token targets must
      * use transport-layer security.
+     * The PAR endpoint URI must always use HTTPS regardless of this option.
      * <p>
-     * WARNING: Disabling this option permits using non-TLS endpoint URIs and post-logout redirect URIs, and permits
-     * Token Propagation, Client Credentials Grant, or Token Exchange to attach Bearer tokens to non-HTTPS outbound target
-     * URIs. This can expose access tokens, client credentials, and token signature verification keys, and is not compliant
-     * with OpenID Connect and OAuth endpoint TLS requirements. It should only be used for isolated tests or equivalent
-     * non-production environments where the endpoint and key source are controlled.
+     * WARNING: Disabling this option permits non-TLS endpoint URIs (except PAR) and post-logout redirect URIs.
+     * It also permits Token Propagation, Client Credentials Grant, or Token Exchange to attach Bearer tokens to
+     * non-HTTPS outbound target URIs. This can expose access tokens, client credentials, and token signature
+     * verification keys. Such use is not compliant with OpenID Connect and OAuth endpoint TLS requirements.
+     * It should only be used for isolated tests or equivalent non-production environments where the endpoint and key
+     * source are controlled.
      * <p>
      * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata,
      * <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">section 3</a>.
@@ -99,8 +103,8 @@ interface OidcEndpointConfigBlueprint {
      * Quote: "The introspection endpoint MUST be protected by a transport-layer security mechanism as described in
      * Section 4."
      *
-     * @return whether OpenID Connect endpoint URIs, post-logout redirect URIs, and OIDC outbound bearer-token targets
-     *         must use transport-layer security
+     * @return whether OpenID Connect endpoint URIs other than PAR, post-logout redirect URIs, and OIDC outbound
+     *         bearer-token targets must use transport-layer security
      */
     @Option.Configured
     @Option.DefaultBoolean(true)

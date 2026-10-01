@@ -27,6 +27,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -1267,6 +1268,150 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void customProfileAcceptsProviderLayoutWithoutRfc9068Claims() {
+        String token = signedToken(it -> it.type("JWT")
+                .jwtId(null)
+                .issueTime(null)
+                .removePayloadClaim("client_id")
+                .addPayloadClaim("azp", "calling-client")
+                .addPayloadClaim("typ", "Bearer"));
+
+        try (OidcProvider provider = customLayoutProvider(layout -> layout.requiredClaims(List.of("sub", "azp")))) {
+            AuthenticationResponse response = authenticate(provider, token);
+
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(response.user().orElseThrow().principal().id(),
+                       is(OidcTestIdentities.issuerSubject(ISSUER.toString(), SUBJECT)));
+        }
+    }
+
+    @Test
+    void customProfileSupportsAnotherProvidersAccessTokenMarker() {
+        String token = signedToken(it -> it.type("JWT")
+                .removePayloadClaim("client_id")
+                .addPayloadClaim("token_use", "access"));
+
+        try (OidcProvider provider = customLayoutProvider(layout -> layout
+                .requiredStringClaims(Map.of("token_use", "access")))) {
+            assertThat(authenticate(provider, token).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        }
+    }
+
+    @Test
+    void customProfileRejectsIdTokenEvenWhenIssuerAudienceAndSignatureMatch() {
+        String token = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "ID"));
+
+        try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+            assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+        }
+    }
+
+    @Test
+    void customProfileRejectsMissingWrongCaseAndNonStringAccessTokenMarkers() {
+        List<Consumer<Jwt.Builder>> variants = List.of(
+                it -> it.removePayloadClaim("typ"),
+                it -> it.addPayloadClaim("typ", "bearer"),
+                it -> it.addPayloadClaim("typ", List.of("Bearer")),
+                it -> it.addPayloadClaim("typ", JsonObject.builder().set("value", "Bearer").build()));
+        for (Consumer<Jwt.Builder> variant : variants) {
+            String token = signedToken(it -> {
+                it.type("JWT");
+                variant.accept(it);
+            });
+            try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+                assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+            }
+        }
+    }
+
+    @Test
+    void customProfileEnforcesAdditionalRequiredClaims() {
+        for (String clientId : List.of("", " ")) {
+            String token = signedToken(it -> it.type("JWT")
+                    .addPayloadClaim("typ", "Bearer")
+                    .addPayloadClaim("azp", clientId));
+            try (OidcProvider provider = customLayoutProvider(layout -> layout.addRequiredClaim("azp"))) {
+                assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+            }
+        }
+        String missing = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "Bearer"));
+        try (OidcProvider provider = customLayoutProvider(layout -> layout.addRequiredClaim("azp"))) {
+            assertInvalidToken(authenticate(provider, missing), "Bearer Token JWT claims are invalid");
+        }
+    }
+
+    @Test
+    void customProfileRequiresExpirationIssuerAndAudience() {
+        List<Consumer<Jwt.Builder>> variants = List.of(
+                it -> it.expirationTime(null),
+                it -> it.issuer(null),
+                it -> it.issuer("https://other.example"),
+                it -> it.audience(List.of()),
+                it -> it.audience(List.of("api://other")),
+                it -> it.expirationTime(Instant.now().minusSeconds(300)),
+                it -> it.issueTime(Instant.now().plusSeconds(300)),
+                it -> it.notBefore(Instant.now().plusSeconds(300)));
+        for (Consumer<Jwt.Builder> variant : variants) {
+            String token = signedToken(it -> {
+                it.type("JWT").addPayloadClaim("typ", "Bearer");
+                variant.accept(it);
+            });
+            try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+                assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+            }
+        }
+    }
+
+    @Test
+    void customProfileCanRequireIssueTimeAndJwtId() {
+        List<Consumer<Jwt.Builder>> variants = List.of(it -> it.issueTime(null), it -> it.jwtId(null));
+        for (Consumer<Jwt.Builder> variant : variants) {
+            String token = signedToken(it -> {
+                it.type("JWT").addPayloadClaim("typ", "Bearer");
+                variant.accept(it);
+            });
+            try (OidcProvider provider = customLayoutProvider(layout -> layout.requiredClaims(List.of("iat", "jti")))) {
+                assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+            }
+        }
+    }
+
+    @Test
+    void customProfileStillRejectsTamperedSignatures() {
+        String token = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "Bearer"));
+        int signatureStart = token.lastIndexOf('.') + 1;
+        char replacement = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
+        String tampered = token.substring(0, signatureStart) + replacement + token.substring(signatureStart + 1);
+
+        try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+            assertInvalidToken(authenticate(provider, tampered), "Bearer Token signature is invalid");
+        }
+    }
+
+    @Test
+    void customProfileStillRejectsDisallowedAlgorithmsAndUnsignedTokens() {
+        String disallowed = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct",
+                                       it -> it.type("JWT").addPayloadClaim("typ", "Bearer"));
+        String unsigned = unsignedToken(it -> it.type("JWT").addPayloadClaim("typ", "Bearer"));
+        for (String token : List.of(disallowed, unsigned)) {
+            try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+                assertInvalidToken(authenticate(provider, token), "Bearer Token JWS header is invalid");
+            }
+        }
+    }
+
+    @Test
+    void customProfileStillRejectsSenderConstrainedTokensAsBearer() {
+        String token = signedToken(it -> it.type("JWT")
+                .addPayloadClaim("typ", "Bearer")
+                .addPayloadClaim("cnf", JsonObject.builder().set("jkt", "proof-key").build()));
+
+        try (OidcProvider provider = customLayoutProvider(_ -> { })) {
+            assertInvalidToken(authenticate(provider, token), "Bearer Token JWT claims are invalid");
+        }
+    }
+
+    @Test
     void invalidSignatureIsRejected() {
         String token = signedToken(_ -> { });
         int signatureStart = token.lastIndexOf('.') + 1;
@@ -1339,6 +1484,19 @@ class OidcJwtAccessTokenValidationTest {
 
     private static OidcProvider provider() {
         return provider(true);
+    }
+
+    private static OidcProvider customLayoutProvider(Consumer<OidcJwtAccessTokenConfig.Builder> customizer) {
+        return provider(true, true, jwksUri, tenant -> tenant.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .jwt(layout -> {
+                            layout.profile(OidcJwtAccessTokenProfile.CUSTOM)
+                                    .allowedTypes(List.of("JWT", "at+jwt"))
+                                    .putRequiredStringClaim("typ", "Bearer");
+                            customizer.accept(layout);
+                        }))));
     }
 
     private static OidcProvider provider(boolean audienceValidationEnabled) {

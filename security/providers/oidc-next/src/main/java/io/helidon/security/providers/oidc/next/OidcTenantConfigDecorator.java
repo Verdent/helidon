@@ -212,6 +212,14 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        if (tokenValidation.jwt().profile() == OidcJwtAccessTokenProfile.CUSTOM) {
+            if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+                throw new IllegalArgumentException("token-validation.jwt.profile CUSTOM requires token-validation.method JWT");
+            }
+            if (!tokenValidation.audienceValidationEnabled()) {
+                throw new IllegalArgumentException("token-validation.jwt.profile CUSTOM requires audience validation");
+            }
+        }
         tokenValidation.verificationJwk().ifPresent(resource -> {
             if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
                 throw new IllegalArgumentException("token-validation.verification-jwk requires token-validation.method JWT");

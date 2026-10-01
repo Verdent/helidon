@@ -73,7 +73,8 @@ The supported standards surface is intentionally scoped:
 - Resource Indicators, RFC 8707: `resource` parameters for Authorization Code Flow, refresh requests, Client Credentials
   Grant, and Token Exchange where configured.
 - JWT Access Token Profile, RFC 9068: signed JWT access-token validation. Disabling audience validation is a compatibility
-  relaxation, not full RFC 9068 conformance.
+  relaxation, not full RFC 9068 conformance. An explicit `CUSTOM` JWT layout supports provider-specific token types and
+  claims while requiring signature, issuer, expiration, and audience validation.
 - JWT-Secured Authorization Request, RFC 9101: signed and signed-then-encrypted by-value Request Objects, including PAR
   transport. Unsigned and client-hosted `request_uri` Request Objects are not implemented.
 - Pushed Authorization Requests, RFC 9126: PAR request and response handling, including metadata-driven enforcement.
@@ -100,7 +101,7 @@ negative cases, strict protocol variants, and features that real providers do no
 | JSON and JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWS, direct JWE, nested JWS-in-JWE, and claim storage. | Real provider emitting signed or encrypted JWT UserInfo. |
 | RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
 | Bearer introspection | Yes: valid, inactive, wrong-audience, and unknown tokens. | Response parsing, errors, issuer/audience/time validation, and endpoint failures. | Opaque-token cloud providers. |
-| JWT access tokens | Keycloak default JWT is covered as rejected because it is not RFC 9068. | Strict RFC 9068 JWT success and negative validation. | Real provider issuing RFC 9068-style tokens. |
+| JWT access tokens | Default Keycloak user and client-credentials tokens succeed with the YAML custom layout; RFC 9068 rejects the default layout. ID Token substitution and wrong audience are rejected. | RFC 9068 and custom layouts, required claims, token markers, and signature/issuer/time/audience validation. | Additional provider layouts and real providers issuing RFC 9068-style tokens. |
 | mTLS and certificate-bound tokens | No Keycloak CI path. | Token Endpoint mTLS config and certificate-bound access-token validation. | Real mTLS provider setup. |
 | Token Propagation | Yes: validated Keycloak token propagated through WebClient. | Audience validation, abstain/failure paths, and target matching. | Downstream audience policy variations. |
 | Client Credentials Grant | Yes: Keycloak token endpoint and outbound WebClient use. | Request shape, caching, auth methods, resources, and metadata checks. | Non-basic client authentication with real providers. |
@@ -654,6 +655,62 @@ security:
 otherwise the provider loads well-known metadata and uses its `jwks_uri`. RFC 9068 JWT access-token validation expects
 `audience` to identify this resource server.
 
+### Provider-specific JWT layouts
+
+`token-validation.jwt.profile` defaults to `RFC_9068`. It requires the `at+jwt` or `application/at+jwt` header type
+and the profile's `sub`, `iat`, `jti`, and `client_id` claims, in addition to issuer, expiration, and audience validation.
+Use `CUSTOM` for a provider's documented access-token layout. Configure its allowed header types, additional required
+claims, and exact string claim values. Custom layouts require audience validation and cannot disable signature,
+issuer, or expiration checks.
+
+For Keycloak's default access tokens:
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://keycloak.example/realms/helidon"
+        protected-resource:
+          token-validation:
+            method: JWT
+            audience: helidon-api
+            jwt:
+              profile: CUSTOM
+              allowed-types: [JWT, at+jwt]
+              required-claims: [sub, iat, jti, azp]
+              required-string-claims:
+                typ: Bearer
+```
+
+This layout accepts Keycloak's default `JWT` header and `azp` claim without requiring `client_id`. The signed payload
+claim `typ: Bearer` identifies an access token. Applications must choose a claim whose value distinguishes the
+provider's access tokens from its ID Tokens. For example, another provider can use `token_use: access`.
+Allowing non-RFC 9068 header types without any required string payload claim is rejected during configuration.
+
+The same layout can be built programmatically:
+
+```java
+OidcProviderConfig config = OidcProviderConfig.builder()
+        .issuer("https://keycloak.example/realms/helidon")
+        .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                .method(OidcTokenValidationMethod.JWT)
+                .audience("helidon-api")
+                .jwt(jwt -> jwt.profile(OidcJwtAccessTokenProfile.CUSTOM)
+                        .allowedTypes(List.of("JWT", "at+jwt"))
+                        .requiredClaims(List.of("sub", "iat", "jti", "azp"))
+                        .putRequiredStringClaim("typ", "Bearer"))))
+        .buildPrototype();
+```
+
+Claim requirements use exact top-level payload names. Required claims must be present and non-null; string values
+must also be nonblank. Required string claim values are compared exactly and case-sensitively after signature
+verification. Header type matching is case-insensitive, and the header type remains mandatory. Issue time and
+not-before are validated whenever present. A custom layout can omit `iat`, `jti`, or `client_id`; include any claim
+in `required-claims` to make it mandatory. Principal, role, and scope mapping use the existing `subject-mapping`
+configuration. The selected layout also applies when validating refreshed access tokens.
+
+### JWT verification keys
+
 Provider JWKS URIs always supply public keys, whether configured explicitly, discovered, or overridden alongside
 discovery. Initial loads and refreshes reject private or symmetric key material, including in file-backed copies of
 provider JWKS. This follows the OP key-set rule in
@@ -690,7 +747,8 @@ that previously placed HMAC secrets in `endpoints.jwks-uri` must move those keys
 
 Audience validation is enabled by default. For JWT access tokens, disabling it relaxes RFC 9068 validation, logs a warning
 during configuration, and should be used only for testing, local development, or legacy non-RFC9068 tokens. Without a
-local audience check, this resource server can accept tokens meant for a different resource server.
+local audience check, this resource server can accept tokens meant for a different resource server. This compatibility
+option is unavailable with `jwt.profile: CUSTOM`, which always requires audience validation.
 
 ```yaml
 protected-resource:
@@ -2975,7 +3033,7 @@ Common checks:
 | `OIDC tenant is unavailable` | Enable DEBUG logging and check tenant initialization. Verify `issuer`, `endpoints.well-known-uri`, required endpoint URIs, TLS settings, and metadata requirements for the enabled features. |
 | Host-based tenant does not resolve | Check the effective target URI or single `Host` value, canonical lower-case/IDNA tenant key, complete-label host template, port syntax, and trusted-proxy requested URI discovery. Present invalid, nonmatching, or unknown authorities never use the default tenant. |
 | JOSE key or client assertion initialization fails | Check that RSA moduli are at least 2048 bits, `CLIENT_SECRET_JWT` secrets meet the selected 32/48/64-octet HMAC minimum, the configured algorithm is compatible with the key type, and any declared JWK `alg` exactly matches the operation. |
-| `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and whether the token is a strict RFC 9068 access token. Without `kid`, exactly one key must remain eligible after algorithm, use, operations, type, and strength filtering. |
+| `Bearer Token is invalid` with JWT validation | Check configured `issuer`, `protected-resource.token-validation.audience`, allowed algorithms, JWKS URI, JWK Set refresh settings, token `kid`, clock skew, and the selected `jwt.profile` token type and claim requirements. Without `kid`, exactly one key must remain eligible after algorithm, use, operations, type, and strength filtering. |
 | `Bearer Token is invalid` with introspection | Check the introspection endpoint URI, introspection client authentication method, Authorization Server policy, required audience, issuer validation, and whether the response contains `active: true` plus a configured principal claim. |
 | `Bearer Token validation is unavailable` with HTTP `503` | Introspection admission capacity is exhausted. Check Introspection Endpoint latency and health, inbound request rate, and `protected-resource.token-validation.introspection.remote-work`; increase limits only within the service and Authorization Server connection budgets. |
 | `OIDC authentication is unavailable` with HTTP `503` while a local session refreshes | Refresh admission capacity is exhausted or the caller was interrupted after its source access token expired. Check Token Endpoint latency and health plus `authorization-code.refresh-remote-work`. No authentication cookie is removed by this response. |
@@ -3189,8 +3247,12 @@ Token validation options:
 | Key | Description |
 | --- | --- |
 | `method` | `JWT` or `INTROSPECTION`. |
+| `jwt.profile` | JWT layout: `RFC_9068` (default) or `CUSTOM`. Custom layouts require `method: JWT` and audience validation. |
+| `jwt.allowed-types` | Accepted JOSE header `typ` values, compared case-insensitively. Defaults to `[at+jwt, application/at+jwt]`. Nonstandard types require `CUSTOM` and a required string payload claim identifying access tokens. |
+| `jwt.required-claims` | Additional required top-level payload claims. Values must be non-null and nonblank when strings. RFC 9068's required claims remain mandatory in that profile. |
+| `jwt.required-string-claims` | Map of top-level payload claim names to exact, case-sensitive string values, such as `typ: Bearer` or `token_use: access`. Checked after signature verification. |
 | `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
-| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. For JWT access tokens, disabling it relaxes RFC 9068 validation and logs a warning. |
+| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. Disabling it relaxes RFC 9068 validation and logs a warning. `jwt.profile: CUSTOM` requires it to remain enabled. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
 | `verification-jwk` | Optional local JWK Set resource configuration used exclusively for JWT access-token verification. Required for HMAC algorithms. URI sources are rejected; tenant JWK refresh policies apply. No fallback to provider JWKS. |

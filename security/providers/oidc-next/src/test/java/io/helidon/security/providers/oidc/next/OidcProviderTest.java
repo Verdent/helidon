@@ -68,6 +68,7 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcProviderTest {
@@ -91,6 +92,22 @@ class OidcProviderTest {
         encryptKeys = JwkKeys.builder()
                 .resource(Resource.create("oidc-next-encrypt-jwk.json"))
                 .build();
+    }
+
+    static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
+        EndpointConfig.Builder endpointConfig = EndpointConfig.builder();
+        if (endpointPolicy != null) {
+            endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);
+        }
+        return new TestProviderRequest(endpointConfig.build(), environment);
+    }
+
+    static ProviderRequest requestWithEndpointPolicyConfig(OidcEndpointPolicyConfig endpointPolicy,
+                                                          SecurityEnvironment environment) {
+        return new TestProviderRequest(EndpointConfig.builder()
+                                               .customObject(OidcEndpointPolicyConfig.class, endpointPolicy)
+                                               .build(),
+                                       environment);
     }
 
     @Test
@@ -119,12 +136,16 @@ class OidcProviderTest {
     }
 
     @Test
-    void providerWithoutRequestAbstains() {
+    void providerRejectsNullRequestButAcceptsAbsentOutboundOptions() {
         OidcProvider provider = OidcProvider.create();
 
-        assertThat(provider.authenticate(null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
-        assertThat(provider.isOutboundSupported(null, null, null), is(false));
-        assertThat(provider.outboundSecurity(null, null, null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+        assertThrows(NullPointerException.class, () -> provider.authenticate(null));
+        assertThrows(NullPointerException.class, () -> provider.isOutboundSupported(null, null, null));
+        assertThrows(NullPointerException.class, () -> provider.outboundSecurity(null, null, null));
+
+        ProviderRequest request = request(null, SecurityEnvironment.create());
+        assertThat(provider.isOutboundSupported(request, null, null), is(false));
+        assertThat(provider.outboundSecurity(request, null, null).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
     }
 
     @Test
@@ -1614,7 +1635,10 @@ class OidcProviderTest {
     void tokenPropagationWithoutCurrentSubjectAbstains() {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
-        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagation("api://orders"));
+        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicyConfig.builder()
+                                                               .tokenPropagationEnabled(true)
+                                                               .audience("api://orders")
+                                                               .buildPrototype());
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
@@ -1632,7 +1656,9 @@ class OidcProviderTest {
                                              .clientSecret("client-secret")
                                              .buildPrototype());
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
-        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.clientCredentialsGrant());
+        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicyConfig.builder()
+                                                               .clientCredentialsGrantEnabled(true)
+                                                               .buildPrototype());
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
@@ -1644,41 +1670,9 @@ class OidcProviderTest {
         assertThat(response.description().orElse(""), is("Client Credentials Grant failed"));
     }
 
-    @Test
-    void ambiguousOutboundPolicyFailsSafely() {
-        OidcProvider provider = providerWithTenant();
-        ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
-        EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicy.tokenPropagationAndClientCredentialsGrant());
-        SecurityEnvironment outboundEnv = outboundEnvironment();
-
-        OutboundSecurityResponse response = provider.outboundSecurity(providerRequest,
-                                                                      outboundEnv,
-                                                                      outboundConfig);
-
-        assertThat(provider.isOutboundSupported(providerRequest, outboundEnv, outboundConfig), is(true));
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.description().orElse(""), is("OIDC outbound request is ambiguous"));
-    }
-
-    static ProviderRequest request(OidcEndpointPolicy endpointPolicy, SecurityEnvironment environment) {
-        EndpointConfig.Builder endpointConfig = EndpointConfig.builder();
-        if (endpointPolicy != null) {
-            endpointConfig.customObject(OidcEndpointPolicy.class, endpointPolicy);
-        }
-        return new TestProviderRequest(endpointConfig.build(), environment);
-    }
-
-    static ProviderRequest requestWithEndpointPolicyConfig(OidcEndpointPolicyConfig endpointPolicy,
-                                                          SecurityEnvironment environment) {
-        return new TestProviderRequest(EndpointConfig.builder()
-                                               .customObject(OidcEndpointPolicyConfig.class, endpointPolicy)
-                                               .build(),
-                                       environment);
-    }
-
-    private static EndpointConfig outboundConfig(OidcOutboundPolicy outboundPolicy) {
+    private static EndpointConfig outboundConfig(OidcOutboundPolicyConfig outboundPolicy) {
         return EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, outboundPolicy)
+                .customObject(OidcOutboundPolicyConfig.class, outboundPolicy)
                 .build();
     }
 

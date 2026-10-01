@@ -112,19 +112,6 @@ final class OidcTenantContext {
         return failed(tenantId, tenantConfig, failureCause, true);
     }
 
-    private static OidcTenantContext failed(String tenantId,
-                                            OidcTenantConfig tenantConfig,
-                                            Throwable failureCause,
-                                            boolean retryableFailure) {
-        return new OidcTenantContext(tenantId,
-                                     tenantConfig,
-                                     OidcTenantState.FAILED,
-                                     null,
-                                     null,
-                                     failureCause,
-                                     retryableFailure);
-    }
-
     String tenantId() {
         return tenantId;
     }
@@ -240,11 +227,24 @@ final class OidcTenantContext {
     String bearerChallengeRealm() {
         return tenantConfig.protectedResource()
                 .map(OidcProtectedResourceConfig::challengeRealm)
-                .orElse(OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM);
+                .orElse(OidcResponseFactory.DEFAULT_CHALLENGE_REALM);
     }
 
     OidcSubjectMappingConfig subjectMapping() {
         return tenantConfig.subjectMapping();
+    }
+
+    private static OidcTenantContext failed(String tenantId,
+                                            OidcTenantConfig tenantConfig,
+                                            Throwable failureCause,
+                                            boolean retryableFailure) {
+        return new OidcTenantContext(tenantId,
+                                     tenantConfig,
+                                     OidcTenantState.FAILED,
+                                     null,
+                                     null,
+                                     failureCause,
+                                     retryableFailure);
     }
 
     private RuntimeResources runtimeResources() {

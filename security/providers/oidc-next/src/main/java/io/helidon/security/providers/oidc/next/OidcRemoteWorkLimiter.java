@@ -98,7 +98,7 @@ final class OidcRemoteWorkLimiter {
             try {
                 active.acquire();
                 return Optional.of(new Permit(active));
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return Optional.empty();
             }
@@ -114,7 +114,7 @@ final class OidcRemoteWorkLimiter {
             boolean acquired = semaphore.tryAcquire(0, TimeUnit.NANOSECONDS)
                     || (timeoutNanos > 0 && semaphore.tryAcquire(timeoutNanos, TimeUnit.NANOSECONDS));
             return acquired ? Optional.of(new Permit(semaphore)) : Optional.empty();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return Optional.empty();
         }

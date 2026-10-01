@@ -122,7 +122,7 @@ final class OidcTenantConfigDecorator
                         || audience.isBlank()
                         || !audience.equals(audience.strip()))
                 .findFirst()
-                .ifPresent(audience -> {
+                .ifPresent(_ -> {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
@@ -139,7 +139,7 @@ final class OidcTenantConfigDecorator
                         || !algorithm.equals(algorithm.strip())
                         || "none".equalsIgnoreCase(algorithm))
                 .findFirst()
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
@@ -154,7 +154,7 @@ final class OidcTenantConfigDecorator
                 .stream()
                 .filter(algorithm -> algorithm != null && algorithm.toUpperCase(Locale.ROOT).startsWith("HS"))
                 .findFirst()
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     /*
                      * Spec: OpenID Connect Core 1.0, 3.1.3.7 ID Token Validation
                      * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
@@ -172,7 +172,7 @@ final class OidcTenantConfigDecorator
                         || algorithm.isBlank()
                         || !algorithm.equals(algorithm.strip()))
                 .findFirst()
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "id-token.allowed-encryption-algorithms must not contain blank or padded values");
                 });
@@ -182,7 +182,7 @@ final class OidcTenantConfigDecorator
                         || algorithm.isBlank()
                         || !algorithm.equals(algorithm.strip()))
                 .findFirst()
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "id-token.allowed-content-encryption-algorithms must not contain blank or padded values");
                 });
@@ -454,7 +454,7 @@ final class OidcTenantConfigDecorator
                 });
         requestObject.signingAlgorithm()
                 .filter(algorithm -> !OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm))
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     throw new IllegalArgumentException(
                             "authorization-code.request-object.signing-algorithm must be one of "
                                     + OidcClientAuthenticationSupport.privateKeyJwtAlgorithms());

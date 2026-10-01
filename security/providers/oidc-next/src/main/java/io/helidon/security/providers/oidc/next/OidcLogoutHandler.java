@@ -187,6 +187,10 @@ final class OidcLogoutHandler {
         response.send();
     }
 
+    private static String logoutEndpointPath(OidcTenantConfig tenant) {
+        return OidcUri.path(tenant.logout().orElseThrow().localEndpointUri());
+    }
+
     private Optional<URI> postLogoutRedirectUri(ServerRequest request, OidcEndSessionConfig endSession) {
         List<String> requestedPostLogoutRedirectUris = request.query()
                 .all("post_logout_redirect_uri", List::of);
@@ -284,7 +288,7 @@ final class OidcLogoutHandler {
         try {
             URI origin = URI.create(originHeader);
             return OidcUri.sameOrigin(requestedUri, origin);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }
@@ -296,10 +300,6 @@ final class OidcLogoutHandler {
                 .filter(entry -> entry.getValue().enabled())
                 .filter(entry -> entry.getValue().logout().filter(OidcLogoutConfig::enabled).isPresent())
                 .toList();
-    }
-
-    private static String logoutEndpointPath(OidcTenantConfig tenant) {
-        return OidcUri.path(tenant.logout().orElseThrow().localEndpointUri());
     }
 
     private record LogoutTenant(String tenantId,

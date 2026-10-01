@@ -27,6 +27,8 @@ import io.helidon.security.SecurityResponse;
 import io.helidon.security.Subject;
 
 final class OidcResponseFactory {
+    static final String DEFAULT_CHALLENGE_REALM = "helidon";
+
     private static final String WWW_AUTHENTICATE = HeaderNames.WWW_AUTHENTICATE.defaultCase();
     private static final String INVALID_REQUEST = "invalid_request";
     private static final String INVALID_TOKEN = "invalid_token";
@@ -37,9 +39,6 @@ final class OidcResponseFactory {
     private static final String TENANT_UNAVAILABLE_DESCRIPTION = "OIDC tenant is unavailable";
     private static final String CLIENT_CREDENTIALS_FAILURE_DESCRIPTION = "Client Credentials Grant failed";
     private static final String TOKEN_EXCHANGE_FAILURE_DESCRIPTION = "Token Exchange failed";
-    private static final String DEFAULT_CHALLENGE_REALM =
-            OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM;
-
     private OidcResponseFactory() {
     }
 
@@ -171,13 +170,6 @@ final class OidcResponseFactory {
         return OutboundSecurityResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)
                 .description(TOKEN_EXCHANGE_FAILURE_DESCRIPTION)
-                .build();
-    }
-
-    static OutboundSecurityResponse ambiguousOutboundRequest() {
-        return OutboundSecurityResponse.builder()
-                .status(SecurityResponse.SecurityStatus.FAILURE)
-                .description("OIDC outbound request is ambiguous")
                 .build();
     }
 

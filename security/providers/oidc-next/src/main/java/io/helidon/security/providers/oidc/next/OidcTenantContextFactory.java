@@ -58,6 +58,51 @@ final class OidcTenantContextFactory {
         return new OidcTenantContextFactory(Objects.requireNonNull(initializer));
     }
 
+    static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
+                                                       OidcProviderMetadata metadata) {
+        validateIssuerMetadata(tenantConfig, metadata);
+        validateClientCredentialsGrantMetadata(tenantConfig,
+                                               metadata,
+                                               metadata.wellKnownMetadataLoaded(),
+                                               true);
+        validateMutualTlsMetadata(tenantConfig, metadata);
+    }
+
+    static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
+                                              OidcProviderMetadata metadata) {
+        validateIssuerMetadata(tenantConfig, metadata);
+        validateTokenExchangeMetadata(tenantConfig,
+                                      metadata,
+                                      metadata.wellKnownMetadataLoaded(),
+                                      true);
+        validateMutualTlsMetadata(tenantConfig, metadata);
+    }
+
+    static void validateMutualTlsIntrospectionMetadata(OidcTenantConfig tenantConfig,
+                                                       OidcProviderMetadata metadata) {
+        if (!mutualTlsIntrospectionEndpointAuthentication(tenantConfig)) {
+            return;
+        }
+        metadata.mutualTlsIntrospectionEndpointUri()
+                .ifPresent(uri -> OidcEndpointUris.validateIntrospectionEndpointUri(uri, true));
+    }
+
+    static void validateMutualTlsMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
+        if (!OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)) {
+            return;
+        }
+
+        /*
+         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
+         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+         * Quote: "`mtls_endpoint_aliases` OPTIONAL. A JSON object containing alternative authorization server endpoints
+         * that, when present, an OAuth client intending to do mutual TLS uses in preference to the conventional
+         * endpoints."
+         */
+        metadata.tokenEndpointUri(true)
+                .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(uri, true));
+    }
+
     OidcTenantContext create(String tenantId, OidcTenantConfig tenantConfig) {
         if (!tenantConfig.enabled()) {
             return OidcTenantContext.disabled(tenantId, tenantConfig);
@@ -499,7 +544,7 @@ final class OidcTenantContextFactory {
                                         + algorithm);
                     });
             String contentEncryption = requestObject.contentEncryptionAlgorithm()
-                    .orElse(OidcRequestObjectConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+                    .orElse(OidcRequestObjectConfigSupport.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
             metadata.requestObjectContentEncryptionAlgorithmsSupported()
                     .filter(supportedAlgorithms -> !supportedAlgorithms.contains(contentEncryption))
                     .ifPresent(_ -> {
@@ -548,7 +593,7 @@ final class OidcTenantContextFactory {
                         .allowedEncryptionAlgorithms()
                         .stream()
                         .noneMatch(supportedAlgorithms::contains))
-                .ifPresent(supportedAlgorithms -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(
                             "well-known metadata id_token_encryption_alg_values_supported must include at least one "
                                     + "configured ID Token encryption algorithm");
@@ -558,21 +603,11 @@ final class OidcTenantContextFactory {
                         .allowedContentEncryptionAlgorithms()
                         .stream()
                         .noneMatch(supportedAlgorithms::contains))
-                .ifPresent(supportedAlgorithms -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(
                             "well-known metadata id_token_encryption_enc_values_supported must include at least one "
                                     + "configured ID Token content encryption algorithm");
                 });
-    }
-
-    static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
-                                                       OidcProviderMetadata metadata) {
-        validateIssuerMetadata(tenantConfig, metadata);
-        validateClientCredentialsGrantMetadata(tenantConfig,
-                                               metadata,
-                                               metadata.wellKnownMetadataLoaded(),
-                                               true);
-        validateMutualTlsMetadata(tenantConfig, metadata);
     }
 
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
@@ -618,16 +653,6 @@ final class OidcTenantContextFactory {
             throw new IllegalStateException(
                     "well-known metadata grant_types_supported must include " + CLIENT_CREDENTIALS_GRANT);
         }
-    }
-
-    static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
-                                              OidcProviderMetadata metadata) {
-        validateIssuerMetadata(tenantConfig, metadata);
-        validateTokenExchangeMetadata(tenantConfig,
-                                      metadata,
-                                      metadata.wellKnownMetadataLoaded(),
-                                      true);
-        validateMutualTlsMetadata(tenantConfig, metadata);
     }
 
     private static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
@@ -798,15 +823,6 @@ final class OidcTenantContextFactory {
         validateIntrospectionAuthenticationMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
     }
 
-    static void validateMutualTlsIntrospectionMetadata(OidcTenantConfig tenantConfig,
-                                                       OidcProviderMetadata metadata) {
-        if (!mutualTlsIntrospectionEndpointAuthentication(tenantConfig)) {
-            return;
-        }
-        metadata.mutualTlsIntrospectionEndpointUri()
-                .ifPresent(uri -> OidcEndpointUris.validateIntrospectionEndpointUri(uri, true));
-    }
-
     private static void validateIntrospectionAuthenticationMetadata(OidcTenantConfig tenantConfig,
                                                                     OidcProviderMetadata metadata,
                                                                     boolean wellKnownMetadataLoaded) {
@@ -818,7 +834,7 @@ final class OidcTenantContextFactory {
                 OidcClientAuthenticationSupport.introspectionEndpointAuthenticationMethod(tenantConfig);
         metadata.introspectionEndpointAuthenticationMethodsSupported()
                 .filter(methods -> !methods.contains(method.wireName()))
-                .ifPresent(methods -> {
+                .ifPresent(_ -> {
                      /*
                       * Spec: RFC 8414, 2 Authorization Server Metadata
                       * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
@@ -897,22 +913,22 @@ final class OidcTenantContextFactory {
          */
         jwt.signingAlgorithm().ifPresent(algorithm -> metadata.userInfoSigningAlgorithmsSupported()
                 .filter(supported -> !supported.contains(algorithm))
-                .ifPresent(supported -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(
                             "well-known metadata userinfo_signing_alg_values_supported must include " + algorithm);
                 }));
         jwt.encryptionAlgorithm().ifPresent(algorithm -> metadata.userInfoEncryptionAlgorithmsSupported()
                 .filter(supported -> !supported.contains(algorithm))
-                .ifPresent(supported -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(
                             "well-known metadata userinfo_encryption_alg_values_supported must include " + algorithm);
                 }));
         if (jwt.encryptionAlgorithm().isPresent()) {
             String contentEncryptionAlgorithm = jwt.contentEncryptionAlgorithm()
-                    .orElse(OidcUserInfoJwtConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+                    .orElse(OidcUserInfoJwtConfigDecorator.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
             metadata.userInfoContentEncryptionAlgorithmsSupported()
                     .filter(supported -> !supported.contains(contentEncryptionAlgorithm))
-                    .ifPresent(supported -> {
+                    .ifPresent(_ -> {
                         throw new IllegalStateException(
                                 "well-known metadata userinfo_encryption_enc_values_supported must include "
                                         + contentEncryptionAlgorithm);
@@ -945,22 +961,6 @@ final class OidcTenantContextFactory {
                                              "well-known metadata end_session_endpoint must be present for "
                                                      + "RP-Initiated Logout");
                                  });
-    }
-
-    static void validateMutualTlsMetadata(OidcTenantConfig tenantConfig, OidcProviderMetadata metadata) {
-        if (!OidcClientAuthenticationSupport.outboundMutualTls(tenantConfig)) {
-            return;
-        }
-
-        /*
-         * Spec: RFC 8705, 5 Metadata for Mutual TLS Endpoint Aliases
-         * https://www.rfc-editor.org/rfc/rfc8705.html#section-5
-         * Quote: "`mtls_endpoint_aliases` OPTIONAL. A JSON object containing alternative authorization server endpoints
-         * that, when present, an OAuth client intending to do mutual TLS uses in preference to the conventional
-         * endpoints."
-         */
-        metadata.tokenEndpointUri(true)
-                .ifPresent(uri -> OidcEndpointUris.validateTokenEndpointUri(uri, true));
     }
 
     private static void validateCertificateBoundAccessTokenMetadata(OidcTenantConfig tenantConfig,

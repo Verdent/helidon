@@ -25,8 +25,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.context.Contexts;
 import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HttpMediaTypes;
@@ -48,6 +50,7 @@ import io.helidon.tests.integration.security.oidcnext.idp.TestOidcServer;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webclient.security.WebClientSecurity;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpFeature;
@@ -64,9 +67,9 @@ final class OidcIntegrationSupport {
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig(TestOidcServer idp,
-                                                              Consumer<OidcAuthorizationCodeConfig.Builder>
+                                                                      Consumer<OidcAuthorizationCodeConfig.Builder>
                                                                       authorizationCodeCustomizer) {
-        return authorizationCodeProviderConfig(idp, authorizationCodeCustomizer, tenant -> {
+        return authorizationCodeProviderConfig(idp, authorizationCodeCustomizer, _ -> {
         });
     }
 
@@ -94,7 +97,7 @@ final class OidcIntegrationSupport {
     static OidcProviderConfig authorizationCodeProviderConfigFromWellKnown(
             TestOidcServer idp,
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer) {
-        OidcTenantConfig tenant = OidcTenantConfig.builder()
+        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(idp.issuer().toString())
                 .clientId(CLIENT_ID)
                 .clientSecret(CLIENT_SECRET)
@@ -106,11 +109,22 @@ final class OidcIntegrationSupport {
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
-                .buildPrototype();
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+        if (idp.parEnabled()) {
+            trustParEndpoint(tenant);
+        }
         return OidcProviderConfig.builder()
-                .putTenant("default", tenant)
+                .putTenant("default", tenant.buildPrototype())
                 .buildPrototype();
+    }
+
+    static void trustParEndpoint(OidcTenantConfig.Builder tenant) {
+        Keys trustedParServer = Keys.builder()
+                .pem(pem -> pem.certificates(Resource.create("oidc-next-par-localhost.crt")))
+                .build();
+        tenant.webClient(WebClientConfig.builder()
+                .tls(tls -> tls.trust(trustedParServer))
+                .buildPrototype());
     }
 
     static OidcProviderConfig protectedResourceProviderConfig(TestOidcServer idp, String clientId, String audience) {
@@ -122,7 +136,7 @@ final class OidcIntegrationSupport {
                                                               String clientSecret,
                                                               String audience,
                                                               OidcTokenValidationMethod method) {
-        return protectedResourceProviderConfig(idp, clientId, clientSecret, audience, method, tenant -> {
+        return protectedResourceProviderConfig(idp, clientId, clientSecret, audience, method, _ -> {
         });
     }
 
@@ -204,16 +218,6 @@ final class OidcIntegrationSupport {
         protectedRoute(routing, path, SecurityFeature.authenticate().customObject(endpointPolicy));
     }
 
-    private static void protectedRoute(HttpRouting.Builder routing, String path, SecurityHandler securityHandler) {
-        routing.get(path, securityHandler, (request, response) -> {
-            Subject subject = currentSubject();
-            Object email = subject.principal().abacAttributeRaw("email");
-            response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
-            response.send(subject.principal().id() + "|" + subject.principal().getName() + "|"
-                                  + (email == null ? "" : email));
-        });
-    }
-
     static Subject currentSubject() {
         return Contexts.context()
                 .flatMap(context -> context.get(SecurityContext.class))
@@ -268,6 +272,16 @@ final class OidcIntegrationSupport {
         return builder.build();
     }
 
+    private static void protectedRoute(HttpRouting.Builder routing, String path, SecurityHandler securityHandler) {
+        routing.get(path, securityHandler, (_, response) -> {
+            Subject subject = currentSubject();
+            Object email = subject.principal().abacAttributeRaw("email");
+            response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
+            response.send(subject.principal().id() + "|" + subject.principal().getName() + "|"
+                                  + (email == null ? "" : email));
+        });
+    }
+
     static final class BrowserSession implements AutoCloseable {
         private final WebClient client = WebClient.builder()
                 .followRedirects(false)
@@ -283,7 +297,7 @@ final class OidcIntegrationSupport {
         }
 
         HttpClientResponse post(URI uri, Parameters form) {
-            return post(uri, form, request -> {
+            return post(uri, form, _ -> {
             });
         }
 

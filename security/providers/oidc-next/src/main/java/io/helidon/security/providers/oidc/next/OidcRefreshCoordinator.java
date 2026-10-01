@@ -76,18 +76,18 @@ final class OidcRefreshCoordinator<R> {
                                 rejected);
     }
 
-    private OidcSingleFlightCache.Resolution<CachedResult<R>, R> completed(Supplier<R> refresh) {
-        R result = Objects.requireNonNull(refresh.get());
-        CachedResult<R> cached = new CachedResult<>(result, nanoTime.getAsLong());
-        return OidcSingleFlightCache.Resolution.cache(cached, result);
-    }
-
     int cachedResultCount() {
         return outcomes.size();
     }
 
     OidcRemoteWorkLimiter remoteWorkLimiter() {
         return remoteWorkLimiter;
+    }
+
+    private OidcSingleFlightCache.Resolution<CachedResult<R>, R> completed(Supplier<R> refresh) {
+        R result = Objects.requireNonNull(refresh.get());
+        CachedResult<R> cached = new CachedResult<>(result, nanoTime.getAsLong());
+        return OidcSingleFlightCache.Resolution.cache(cached, result);
     }
 
     private record RefreshKey(String browserSessionGenerationFingerprint,

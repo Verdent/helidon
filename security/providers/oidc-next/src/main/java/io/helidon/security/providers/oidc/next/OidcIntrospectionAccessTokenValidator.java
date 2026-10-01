@@ -36,6 +36,17 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
     OidcIntrospectionAccessTokenValidator() {
     }
 
+    static Optional<URI> introspectionEndpointUri(OidcProviderMetadata metadata,
+                                                  OidcClientAuthenticationSupport clientAuthentication) {
+        /*
+         * RFC 8705, 5 Metadata for Mutual-TLS Endpoint Aliases, requires a client intending to use mutual TLS to
+         * prefer the corresponding endpoint alias when one is present.
+         */
+        return clientAuthentication.usesMutualTls()
+                ? metadata.mutualTlsIntrospectionEndpointUri().or(metadata::introspectionEndpointUri)
+                : metadata.introspectionEndpointUri();
+    }
+
     @Override
     public OidcValidationResult<OidcValidatedAccessToken> validate(OidcAccessTokenValidationRequest request) {
         String token = request.token();
@@ -70,17 +81,6 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         } catch (RuntimeException e) {
             return OidcValidationResult.unavailable("Bearer Token introspection endpoint is unavailable", e);
         }
-    }
-
-    static Optional<URI> introspectionEndpointUri(OidcProviderMetadata metadata,
-                                                  OidcClientAuthenticationSupport clientAuthentication) {
-        /*
-         * RFC 8705, 5 Metadata for Mutual-TLS Endpoint Aliases, requires a client intending to use mutual TLS to
-         * prefer the corresponding endpoint alias when one is present.
-         */
-        return clientAuthentication.usesMutualTls()
-                ? metadata.mutualTlsIntrospectionEndpointUri().or(metadata::introspectionEndpointUri)
-                : metadata.introspectionEndpointUri();
     }
 
     private OidcValidationResult<OidcValidatedAccessToken> validateResponse(OidcAccessTokenValidationRequest request,

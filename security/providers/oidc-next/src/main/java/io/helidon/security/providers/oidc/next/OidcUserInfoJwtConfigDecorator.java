@@ -19,6 +19,8 @@ package io.helidon.security.providers.oidc.next;
 import io.helidon.builder.api.Prototype;
 
 final class OidcUserInfoJwtConfigDecorator implements Prototype.BuilderDecorator<OidcUserInfoJwtConfig.BuilderBase<?, ?>> {
+    static final String DEFAULT_CONTENT_ENCRYPTION_ALGORITHM = "A128CBC-HS256";
+
     @Override
     public void decorate(OidcUserInfoJwtConfig.BuilderBase<?, ?> target) {
         target.decryptionJwk()

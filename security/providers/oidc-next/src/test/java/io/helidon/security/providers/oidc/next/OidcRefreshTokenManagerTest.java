@@ -128,7 +128,7 @@ class OidcRefreshTokenManagerTest {
         routing.post("/token", OidcRefreshTokenManagerTest::handleTokenEndpoint);
         routing.post("/introspect", OidcRefreshTokenManagerTest::handleIntrospectionEndpoint);
         routing.get("/userinfo", OidcRefreshTokenManagerTest::handleUserInfoEndpoint);
-        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+        routing.get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(verifyJwkSet));
     }
 
@@ -257,7 +257,7 @@ class OidcRefreshTokenManagerTest {
     void refreshCapacityRejectionDoesNotMutateCookiesAndNeverAuthenticatesExpiredToken(URI serverUri) throws Exception {
         CountDownLatch leaderStarted = new CountDownLatch(1);
         CountDownLatch releaseLeader = new CountDownLatch(1);
-        TOKEN_ENDPOINT_RESPONDER.set((requestNumber, response) -> {
+        TOKEN_ENDPOINT_RESPONDER.set((_, response) -> {
             leaderStarted.countDown();
             await(releaseLeader);
             sendTokenResponse(response,

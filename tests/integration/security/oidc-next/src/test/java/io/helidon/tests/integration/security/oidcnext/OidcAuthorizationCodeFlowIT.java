@@ -265,7 +265,7 @@ class OidcAuthorizationCodeFlowIT {
                 .browserLogin(true)
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -334,7 +334,7 @@ class OidcAuthorizationCodeFlowIT {
                         .idToken(id -> id.includeUserClaims("preferred_username")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -387,7 +387,7 @@ class OidcAuthorizationCodeFlowIT {
                         .idToken(id -> id.includeUserClaims("preferred_username")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
-                                                                                                                    it -> {
+                                                                                                                    _ -> {
                                                                                                                     });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -431,7 +431,7 @@ class OidcAuthorizationCodeFlowIT {
                         .idToken(id -> id.includeUserClaims("preferred_username")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
-                                                                                                                    it -> {
+                                                                                                                    _ -> {
                                                                                                                     });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -469,7 +469,7 @@ class OidcAuthorizationCodeFlowIT {
                         .idToken(id -> id.includeUserClaims("preferred_username")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
-                                                                                                                    it -> {
+                                                                                                                    _ -> {
                                                                                                                     });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -511,7 +511,7 @@ class OidcAuthorizationCodeFlowIT {
                                 .idTokenEnabled(true)))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport

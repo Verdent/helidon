@@ -63,6 +63,7 @@ public final class OidcProvider
      * @return new provider instance
      */
     public static OidcProvider create(Config config) {
+        Objects.requireNonNull(config, "config");
         return builder()
                 .config(config)
                 .build();
@@ -85,6 +86,7 @@ public final class OidcProvider
      * @return new provider instance
      */
     public static OidcProvider create(Consumer<OidcProviderConfig.Builder> consumer) {
+        Objects.requireNonNull(consumer, "consumer");
         return builder()
                 .update(consumer)
                 .build();
@@ -106,6 +108,7 @@ public final class OidcProvider
 
     @Override
     public AuthenticationResponse authenticate(ProviderRequest providerRequest) {
+        Objects.requireNonNull(providerRequest, "providerRequest");
         tenantRuntimeRegistry.requireOpen();
         try {
             return authentication.authenticate(providerRequest);
@@ -118,6 +121,8 @@ public final class OidcProvider
     public boolean isOutboundSupported(ProviderRequest providerRequest,
                                        SecurityEnvironment outboundEnv,
                                        EndpointConfig outboundConfig) {
+        Objects.requireNonNull(providerRequest, "providerRequest");
+        // Security's outbound builder may omit the environment and endpoint config; its SPI passes null for those.
         tenantRuntimeRegistry.requireOpen();
         return outbound.isSupported(providerRequest, outboundEnv, outboundConfig);
     }
@@ -126,6 +131,8 @@ public final class OidcProvider
     public OutboundSecurityResponse outboundSecurity(ProviderRequest providerRequest,
                                                      SecurityEnvironment outboundEnv,
                                                      EndpointConfig outboundConfig) {
+        Objects.requireNonNull(providerRequest, "providerRequest");
+        // Match the nullable outbound environment/config contract of the Security SPI without using nullable public setters.
         tenantRuntimeRegistry.requireOpen();
         try {
             return outbound.secure(providerRequest, outboundEnv, outboundConfig);

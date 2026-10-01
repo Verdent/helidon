@@ -59,64 +59,6 @@ final class OidcTenantResolver {
         return defaultTenantId();
     }
 
-    private TenantResolution headerTenantId(SecurityEnvironment environment) {
-        return tenantResolution.headerName()
-                .map(header -> tenantHeaderValue(environment, header))
-                .orElseGet(TenantResolution::absent);
-    }
-
-    private Optional<String> pathTenantId(SecurityEnvironment environment) {
-        return tenantResolution.pathSegment()
-                .flatMap(segment -> {
-                    if (segment < 0) {
-                        return Optional.empty();
-                    }
-                    return environment.path()
-                            .flatMap(path -> {
-                                List<String> segments = pathSegments(path);
-                                if (segment >= segments.size()) {
-                                    return Optional.empty();
-                                }
-                                return nonBlank(segments.get(segment));
-                            });
-                });
-    }
-
-    private TenantResolution hostTenantId(SecurityEnvironment environment) {
-        if (hostTemplate.isEmpty()) {
-            return TenantResolution.absent();
-        }
-        try {
-            return authority(environment)
-                    .map(UriAuthority::create)
-                    .map(UriAuthority::host)
-                    .map(host -> TenantResolution.present(hostTemplate.orElseThrow().tenantId(host)))
-                    .orElseGet(TenantResolution::absent);
-        } catch (IllegalArgumentException _) {
-            return TenantResolution.invalid();
-        }
-    }
-
-    private Optional<String> pathTemplateTenantId(SecurityEnvironment environment) {
-        return tenantResolution.pathTemplate()
-                .flatMap(template -> environment.path()
-                        .flatMap(path -> tenantFromPathTemplate(path, template)));
-    }
-
-    private Optional<String> defaultTenantId() {
-        if (config.tenants().isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<String> defaultTenant = config.defaultTenant();
-        if (defaultTenant.isPresent()) {
-            return defaultTenant;
-        }
-        if (config.tenants().size() == 1) {
-            return Optional.of(config.tenants().keySet().iterator().next());
-        }
-        return Optional.empty();
-    }
-
     private static TenantResolution tenantHeaderValue(SecurityEnvironment environment, String headerName) {
         List<String> values = environment.headers().get(headerName);
         if (values == null || values.isEmpty()) {
@@ -179,6 +121,64 @@ final class OidcTenantResolver {
             return Optional.empty();
         }
         return Optional.of(value);
+    }
+
+    private TenantResolution headerTenantId(SecurityEnvironment environment) {
+        return tenantResolution.headerName()
+                .map(header -> tenantHeaderValue(environment, header))
+                .orElseGet(TenantResolution::absent);
+    }
+
+    private Optional<String> pathTenantId(SecurityEnvironment environment) {
+        return tenantResolution.pathSegment()
+                .flatMap(segment -> {
+                    if (segment < 0) {
+                        return Optional.empty();
+                    }
+                    return environment.path()
+                            .flatMap(path -> {
+                                List<String> segments = pathSegments(path);
+                                if (segment >= segments.size()) {
+                                    return Optional.empty();
+                                }
+                                return nonBlank(segments.get(segment));
+                            });
+                });
+    }
+
+    private TenantResolution hostTenantId(SecurityEnvironment environment) {
+        if (hostTemplate.isEmpty()) {
+            return TenantResolution.absent();
+        }
+        try {
+            return authority(environment)
+                    .map(UriAuthority::create)
+                    .map(UriAuthority::host)
+                    .map(host -> TenantResolution.present(hostTemplate.orElseThrow().tenantId(host)))
+                    .orElseGet(TenantResolution::absent);
+        } catch (IllegalArgumentException _) {
+            return TenantResolution.invalid();
+        }
+    }
+
+    private Optional<String> pathTemplateTenantId(SecurityEnvironment environment) {
+        return tenantResolution.pathTemplate()
+                .flatMap(template -> environment.path()
+                        .flatMap(path -> tenantFromPathTemplate(path, template)));
+    }
+
+    private Optional<String> defaultTenantId() {
+        if (config.tenants().isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<String> defaultTenant = config.defaultTenant();
+        if (defaultTenant.isPresent()) {
+            return defaultTenant;
+        }
+        if (config.tenants().size() == 1) {
+            return Optional.of(config.tenants().keySet().iterator().next());
+        }
+        return Optional.empty();
     }
 
     private record TenantResolution(boolean present, Optional<String> tenantId) {

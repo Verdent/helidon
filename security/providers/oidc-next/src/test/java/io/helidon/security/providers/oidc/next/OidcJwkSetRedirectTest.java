@@ -108,24 +108,6 @@ class OidcJwkSetRedirectTest {
         }
     }
 
-    private static WebServer server(Tls tls) {
-        HttpRouting.Builder routing = HttpRouting.builder();
-        routing.get("/jwks", (request, response) -> {
-            SOURCE_REQUESTS.incrementAndGet();
-            String location = redirectLocation;
-            if (location != null) {
-                response.status(redirectStatus).header(HeaderNames.LOCATION, location).send();
-            } else {
-                response.header(HeaderValues.CONTENT_TYPE_JSON).send(sourceKeys);
-            }
-        });
-        routing.get("/target", (request, response) -> {
-            TARGET_REQUESTS.incrementAndGet();
-            response.header(HeaderValues.CONTENT_TYPE_JSON).send(redirectedKeys);
-        });
-        return WebServer.builder().port(0).tls(tls).addRouting(routing).build().start();
-    }
-
     @BeforeEach
     void setUp() {
         resetResponses();
@@ -236,6 +218,60 @@ class OidcJwkSetRedirectTest {
         }
     }
 
+    private static WebServer server(Tls tls) {
+        HttpRouting.Builder routing = HttpRouting.builder();
+        routing.get("/jwks", (_, response) -> {
+            SOURCE_REQUESTS.incrementAndGet();
+            String location = redirectLocation;
+            if (location != null) {
+                response.status(redirectStatus).header(HeaderNames.LOCATION, location).send();
+            } else {
+                response.header(HeaderValues.CONTENT_TYPE_JSON).send(sourceKeys);
+            }
+        });
+        routing.get("/target", (_, response) -> {
+            TARGET_REQUESTS.incrementAndGet();
+            response.header(HeaderValues.CONTENT_TYPE_JSON).send(redirectedKeys);
+        });
+        return WebServer.builder().port(0).tls(tls).addRouting(routing).build().start();
+    }
+
+    private static OidcTenantConfig tenant(URI jwksUri, boolean tlsRequired, boolean discovered) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER)
+                .endpoints(endpoints -> {
+                    endpoints.tlsRequired(tlsRequired);
+                    if (!discovered) {
+                        endpoints.jwksUri(jwksUri);
+                    }
+                })
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://default")))
+                .webClient(WebClientConfig.builder()
+                                   .followRedirects(true)
+                                   .readTimeout(Duration.ofSeconds(5))
+                                   .tls(tls -> tls.trust(trust -> trust.keystore(store -> store
+                                           .passphrase("password")
+                                           .trustStore(true)
+                                           .keystore(Resource.create("client.p12")))))
+                                   .buildPrototype())
+                .buildPrototype();
+    }
+
+    private static void assertRedirectFailure(Supplier<JwkKeys> load, int status) {
+        IllegalStateException exception = assertThrows(IllegalStateException.class, load::get);
+        assertThat(exception.getCause().getMessage(), containsString("JWK Set endpoint returned status: " + status));
+    }
+
+    private static void resetResponses() {
+        redirectLocation = null;
+        redirectStatus = 302;
+        sourceKeys = originalKeys;
+        SOURCE_REQUESTS.set(0);
+        TARGET_REQUESTS.set(0);
+    }
+
     private Stream<DynamicTest> refreshTests(boolean periodic) {
         return targets().stream()
                 .flatMap(target -> Stream.of(false, true)
@@ -309,47 +345,11 @@ class OidcJwkSetRedirectTest {
                                                 .buildPrototype());
     }
 
-    private static OidcTenantConfig tenant(URI jwksUri, boolean tlsRequired, boolean discovered) {
-        return OidcTenantConfig.builder()
-                .issuer(ISSUER)
-                .endpoints(endpoints -> {
-                    endpoints.tlsRequired(tlsRequired);
-                    if (!discovered) {
-                        endpoints.jwksUri(jwksUri);
-                    }
-                })
-                .protectedResource(resource -> resource.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience("api://default")))
-                .webClient(WebClientConfig.builder()
-                                   .followRedirects(true)
-                                   .readTimeout(Duration.ofSeconds(5))
-                                   .tls(tls -> tls.trust(trust -> trust.keystore(store -> store
-                                           .passphrase("password")
-                                           .trustStore(true)
-                                           .keystore(Resource.create("client.p12")))))
-                                   .buildPrototype())
-                .buildPrototype();
-    }
-
     private List<RedirectTarget> targets() {
         return List.of(new RedirectTarget("relative HTTPS", "/target"),
                        new RedirectTarget("same-origin HTTPS", httpsUri.resolve("target").toString()),
                        new RedirectTarget("cross-origin HTTPS", otherHttpsUri.resolve("target").toString()),
                        new RedirectTarget("HTTPS-to-HTTP", httpUri.resolve("target").toString()));
-    }
-
-    private static void assertRedirectFailure(Supplier<JwkKeys> load, int status) {
-        IllegalStateException exception = assertThrows(IllegalStateException.class, load::get);
-        assertThat(exception.getCause().getMessage(), containsString("JWK Set endpoint returned status: " + status));
-    }
-
-    private static void resetResponses() {
-        redirectLocation = null;
-        redirectStatus = 302;
-        sourceKeys = originalKeys;
-        SOURCE_REQUESTS.set(0);
-        TARGET_REQUESTS.set(0);
     }
 
     private record RedirectTarget(String name, String location) {

@@ -163,7 +163,7 @@ class OidcEndpointPolicyIT {
 
     private static OidcProviderConfig mixedProviderConfig(TestOidcServer idp) {
         return OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                      it -> {
+                                                                      _ -> {
                                                                       },
                                                                       tenant -> tenant
                                                                               .tokenTransport(transport -> transport

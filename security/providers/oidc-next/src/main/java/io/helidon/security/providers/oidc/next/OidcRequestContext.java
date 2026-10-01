@@ -64,7 +64,7 @@ final class OidcRequestContext {
     String bearerChallengeRealm() {
         return tenantContext
                 .map(OidcTenantContext::bearerChallengeRealm)
-                .orElse(OidcProtectedResourceConfigBlueprint.DEFAULT_CHALLENGE_REALM);
+                .orElse(OidcResponseFactory.DEFAULT_CHALLENGE_REALM);
     }
 
     boolean bearerTokenPresent() {

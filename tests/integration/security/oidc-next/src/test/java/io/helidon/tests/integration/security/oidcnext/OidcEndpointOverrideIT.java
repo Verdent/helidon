@@ -74,7 +74,7 @@ class OidcEndpointOverrideIT {
                         .send("{\"access_token\":\"literal\",\"token_type\":\"Bearer\"}")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -108,7 +108,7 @@ class OidcEndpointOverrideIT {
                 }))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport

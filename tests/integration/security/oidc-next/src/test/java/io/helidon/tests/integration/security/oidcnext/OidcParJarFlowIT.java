@@ -19,7 +19,6 @@ package io.helidon.tests.integration.security.oidcnext;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
 import java.util.Set;
 
 import io.helidon.common.uri.UriQuery;
@@ -44,6 +43,7 @@ class OidcParJarFlowIT {
     @Test
     void authorizationCodeFlowUsesPushedAuthorizationRequestFromWellKnownMetadata() {
         try (TestOidcServer idp = TestOidcServer.builder()
+                .parEnabled(true)
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
                         .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user
@@ -55,7 +55,7 @@ class OidcParJarFlowIT {
                         .idToken(id -> id.includeUserClaims("preferred_username")))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfigFromWellKnown(idp,
-                                                                                                                    it -> {
+                                                                                                                    _ -> {
                                                                                                                     });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -95,6 +95,7 @@ class OidcParJarFlowIT {
     @Test
     void authorizationCodeFlowUsesSignedRequestObjectWithPushedAuthorizationRequest() {
         try (TestOidcServer idp = TestOidcServer.builder()
+                .parEnabled(true)
                 .client(OidcIntegrationSupport.CLIENT_ID, client -> client
                         .clientSecret(OidcIntegrationSupport.CLIENT_SECRET))
                 .user("alice", user -> user
@@ -113,10 +114,13 @@ class OidcParJarFlowIT {
                                     .signingJwk(jwk -> jwk.resourcePath("oidc-next-it-sign-jwk.json"))
                                     .signingKeyId("sign-rsa")
                                     .signingAlgorithm("RS256")),
-                    tenant -> tenant.endpoints(endpoints -> {
-                        OidcIntegrationSupport.authorizationCodeEndpoints(idp, endpoints);
-                        endpoints.pushedAuthorizationRequestEndpointUri(idp.pushedAuthorizationRequestEndpointUri());
-                    }));
+                    tenant -> {
+                        tenant.endpoints(endpoints -> {
+                            OidcIntegrationSupport.authorizationCodeEndpoints(idp, endpoints);
+                            endpoints.pushedAuthorizationRequestEndpointUri(idp.pushedAuthorizationRequestEndpointUri());
+                        });
+                        OidcIntegrationSupport.trustParEndpoint(tenant);
+                    });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
                                                                          .protectedRoute(routing, "/resource"));

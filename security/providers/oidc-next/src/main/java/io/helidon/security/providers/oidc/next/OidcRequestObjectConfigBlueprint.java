@@ -41,11 +41,6 @@ import io.helidon.common.configurable.ResourceConfig;
 @Prototype.CustomMethods(OidcRequestObjectConfigSupport.class)
 interface OidcRequestObjectConfigBlueprint {
     /**
-     * Default JWE content encryption algorithm defined by OpenID Connect client registration.
-     */
-    String DEFAULT_CONTENT_ENCRYPTION_ALGORITHM = "A128CBC-HS256";
-
-    /**
      * Request Object mode.
      *
      * @return Request Object mode
@@ -104,7 +99,7 @@ interface OidcRequestObjectConfigBlueprint {
     /**
      * JWE {@code enc} header value used to encrypt the signed Request Object.
      * <p>
-     * OpenID Connect registration defines {@value #DEFAULT_CONTENT_ENCRYPTION_ALGORITHM} as the default when
+     * OpenID Connect registration defines {@code A128CBC-HS256} as the default when
      * {@link #encryptionAlgorithm()} is configured and this option is omitted.
      *
      * @return Request Object JWE content encryption algorithm

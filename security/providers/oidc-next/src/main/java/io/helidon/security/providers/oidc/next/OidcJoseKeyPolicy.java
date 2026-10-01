@@ -248,7 +248,7 @@ final class OidcJoseKeyPolicy {
         try {
             validateVerificationKey(jwk, algorithm);
             return true;
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }

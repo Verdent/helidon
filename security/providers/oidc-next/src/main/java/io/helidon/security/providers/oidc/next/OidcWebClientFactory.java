@@ -154,7 +154,7 @@ final class OidcWebClientFactory {
             return suffix.kind() == UriHost.Kind.DNS
                     && firstDot > 0
                     && host.substring(firstDot + 1).equals(suffix.value());
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }

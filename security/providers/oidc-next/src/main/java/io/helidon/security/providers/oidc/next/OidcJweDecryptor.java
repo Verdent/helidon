@@ -103,13 +103,13 @@ final class OidcJweDecryptor {
          */
         key.usage()
                 .filter(usage -> !Jwk.USE_ENCRYPTION.equals(usage))
-                .ifPresent(usage -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(tokenDescription + " decryption JWK use must be enc");
                 });
         key.operations()
                 .filter(operations -> !operations.contains(Jwk.OPERATION_UNWRAP_KEY)
                         && !operations.contains(Jwk.OPERATION_DECRYPT))
-                .ifPresent(operations -> {
+                .ifPresent(_ -> {
                     throw new IllegalStateException(
                             tokenDescription + " decryption JWK key_ops must allow unwrapKey or decrypt");
                 });

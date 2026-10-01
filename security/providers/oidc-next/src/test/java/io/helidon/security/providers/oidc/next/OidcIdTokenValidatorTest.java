@@ -467,17 +467,6 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token is not a valid signed or encrypted JWT");
     }
 
-    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken) {
-        return validator.validate(idToken, tenantContext(), authenticationRequestState(), VALIDATION_TIME);
-    }
-
-    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken, OidcTenantConfig tenantConfig) {
-        return validator.validate(idToken,
-                                  OidcTenantContext.ready("default", tenantConfig),
-                                  authenticationRequestState(),
-                                  VALIDATION_TIME);
-    }
-
     private static OidcTenantContext tenantContext() {
         return OidcTenantContext.ready("default", tenantConfig());
     }
@@ -616,5 +605,16 @@ class OidcIdTokenValidatorTest {
     private static void assertFailure(OidcValidationResult<OidcValidatedIdToken> result, String description) {
         assertThat(result.succeeded(), is(false));
         assertThat(result.errorDescription().orElse(""), is(description));
+    }
+
+    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken) {
+        return validator.validate(idToken, tenantContext(), authenticationRequestState(), VALIDATION_TIME);
+    }
+
+    private OidcValidationResult<OidcValidatedIdToken> validate(String idToken, OidcTenantConfig tenantConfig) {
+        return validator.validate(idToken,
+                                  OidcTenantContext.ready("default", tenantConfig),
+                                  authenticationRequestState(),
+                                  VALIDATION_TIME);
     }
 }

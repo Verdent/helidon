@@ -39,8 +39,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcJoseKeyPolicyTest {
@@ -68,9 +68,7 @@ class OidcJoseKeyPolicyTest {
                                                                  "client-secret"));
 
             assertThat(failure.getMessage(), containsString(Integer.toString(minimumOctets)));
-            assertDoesNotThrow(() -> OidcJoseKeyPolicy.validateClientSecret("a".repeat(minimumOctets),
-                                                                           algorithm,
-                                                                           "client-secret"));
+            OidcJoseKeyPolicy.validateClientSecret("a".repeat(minimumOctets), algorithm, "client-secret");
         }
     }
 
@@ -78,8 +76,7 @@ class OidcJoseKeyPolicyTest {
     void hmacMinimumCountsUtf8OctetsRatherThanCharacters() {
         assertThrows(IllegalArgumentException.class,
                      () -> OidcJoseKeyPolicy.validateClientSecret("é".repeat(15), "HS256", "client-secret"));
-        assertDoesNotThrow(
-                () -> OidcJoseKeyPolicy.validateClientSecret("é".repeat(16), "HS256", "client-secret"));
+        OidcJoseKeyPolicy.validateClientSecret("é".repeat(16), "HS256", "client-secret");
     }
 
     @Test
@@ -140,8 +137,7 @@ class OidcJoseKeyPolicyTest {
             assertThat(OidcJoseKeyPolicy.isEligibleRsaEncryptionKey(minimumKey, algorithm), is(true));
             assertThrows(IllegalArgumentException.class,
                          () -> OidcJoseKeyPolicy.validateRsaDecryptionKey(weakKey, algorithm, "decryption JWK"));
-            assertDoesNotThrow(
-                    () -> OidcJoseKeyPolicy.validateRsaDecryptionKey(minimumKey, algorithm, "decryption JWK"));
+            OidcJoseKeyPolicy.validateRsaDecryptionKey(minimumKey, algorithm, "decryption JWK");
         }
     }
 
@@ -294,8 +290,7 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void acceptsRsaAtExactly2048BitsAndRejects1024BitConfiguredKey() {
-        assertDoesNotThrow(
-                () -> OidcJoseKeyPolicy.validateConfiguredRsaKey(rsa(minimumRsa, null, false), "configured JWK"));
+        OidcJoseKeyPolicy.validateConfiguredRsaKey(rsa(minimumRsa, null, false), "configured JWK");
         IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
                 () -> OidcJoseKeyPolicy.validateConfiguredRsaKey(rsa(weakRsa, null, false), "configured JWK"));
@@ -310,8 +305,8 @@ class OidcJoseKeyPolicyTest {
                 () -> OidcJweDecryptor.create(Optional.of(rsaResource(weakRsa)), "decryption-jwk", "token"));
 
         assertThat(failure.getMessage(), containsString("2048"));
-        assertDoesNotThrow(
-                () -> OidcJweDecryptor.create(Optional.of(rsaResource(minimumRsa)), "decryption-jwk", "token"));
+        assertThat(OidcJweDecryptor.create(Optional.of(rsaResource(minimumRsa)), "decryption-jwk", "token"),
+                   is(notNullValue()));
     }
 
     private static JwkRSA rsa(KeyPair keyPair, String algorithm, boolean includePrivateKey) {

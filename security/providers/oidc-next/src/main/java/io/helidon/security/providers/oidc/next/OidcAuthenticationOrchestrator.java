@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.ProviderRequest;
 
 final class OidcAuthenticationOrchestrator {
     private static final System.Logger LOGGER = System.getLogger(OidcAuthenticationOrchestrator.class.getName());
@@ -57,11 +58,7 @@ final class OidcAuthenticationOrchestrator {
                                                   accessTokenValidators);
     }
 
-    AuthenticationResponse authenticate(io.helidon.security.ProviderRequest providerRequest) {
-        if (providerRequest == null) {
-            return AuthenticationResponse.abstain();
-        }
-
+    AuthenticationResponse authenticate(ProviderRequest providerRequest) {
         OidcRequestContext context = new OidcRequestContext(providerRequest, tenantRuntimeRegistry);
         if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
             return OidcResponseFactory.tenantUnavailable();

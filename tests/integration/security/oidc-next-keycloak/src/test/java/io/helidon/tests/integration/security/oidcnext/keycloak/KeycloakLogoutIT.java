@@ -63,15 +63,14 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 @Testcontainers(disabledWithoutDocker = true)
 class KeycloakLogoutIT {
-    private static final long RACE_TIMEOUT_SECONDS = 30;
-
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
+    private static final long RACE_TIMEOUT_SECONDS = 30;
 
     @Test
     void localLogoutRedirectsToKeycloakEndSessionEndpointAndClearsLocalCookie() {
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig(
-                authorizationCode -> {
+                _ -> {
                 });
         WebServer rpServer = KeycloakOidcIntegrationSupport.rpServer(
                 providerConfig,
@@ -109,7 +108,7 @@ class KeycloakLogoutIT {
         int rpPort = availablePort();
         URI postLogoutRedirectUri = URI.create("http://localhost:" + rpPort + "/logged-out");
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig(
-                authorizationCode -> {
+                _ -> {
                 },
                 tenant -> tenant.logout(logout -> logout.endSession(endSession -> endSession
                         .postLogoutRedirectUri(postLogoutRedirectUri))));
@@ -118,7 +117,7 @@ class KeycloakLogoutIT {
                 providerConfig,
                 routing -> {
                     KeycloakOidcIntegrationSupport.protectedRoute(routing, "/resource");
-                    routing.get("/logged-out", (request, response) -> {
+                    routing.get("/logged-out", (_, response) -> {
                         response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
                         response.send("logged-out");
                     });
@@ -167,7 +166,7 @@ class KeycloakLogoutIT {
                 .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
                 .buildPrototype();
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig(
-                authorizationCode -> {
+                _ -> {
                 },
                 tenant -> tenant
                         .protectedResource(resource -> resource
@@ -350,6 +349,12 @@ class KeycloakLogoutIT {
         }
     }
 
+    private static int availablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
+    }
+
     private record ResourceResponse(Status status, List<String> setCookies, String body) {
     }
 
@@ -415,9 +420,4 @@ class KeycloakLogoutIT {
         }
     }
 
-    private static int availablePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        }
-    }
 }

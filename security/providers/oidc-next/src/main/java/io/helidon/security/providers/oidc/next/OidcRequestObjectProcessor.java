@@ -74,72 +74,6 @@ final class OidcRequestObjectProcessor {
         };
     }
 
-    String process(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
-        SignedJwt signedJwt = sign(clientId, issuer, authorizationParameters, now);
-        if (requestObject.encryptionAlgorithm().isEmpty()) {
-            return signedJwt.tokenContent();
-        }
-        return encrypt(signedJwt);
-    }
-
-    private SignedJwt sign(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
-        /*
-         * Spec: RFC 9101, 4 Request Object
-         * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
-         * Quote: "It MUST contain all the parameters (including extension parameters) used to process the OAuth 2.0
-         * authorization request except the `request` and `request_uri` parameters".
-         * Quote: "The parameters are represented as the JWT Claims of the object."
-         * Quote: "The JWT Claims Set is then signed or signed and encrypted."
-         * Quote: "The `request` and `request_uri` parameters MUST NOT be included in Request Objects."
-         */
-        Jwt.Builder jwt = Jwt.builder()
-                .algorithm(signingJwk.algorithm())
-                .issuer(clientId)
-                .addAudience(issuer)
-                .issueTime(now)
-                .expirationTime(now.plus(requestObject.lifetime()))
-                .jwtId(UUID.randomUUID().toString())
-                .serializeDerivedClaims(false);
-        Optional.ofNullable(signingJwk.keyId()).ifPresent(jwt::keyId);
-
-        for (String name : authorizationParameters.names()) {
-            if (REQUEST.equals(name) || REQUEST_URI.equals(name)) {
-                continue;
-            }
-            List<String> values = authorizationParameters.all(name);
-            if (values.size() == 1) {
-                jwt.addPayloadClaim(name, values.getFirst());
-            } else {
-                jwt.addPayloadClaim(name, values);
-            }
-        }
-
-        return SignedJwt.sign(jwt.build(), signingJwk);
-    }
-
-    private String encrypt(SignedJwt signedJwt) {
-        /*
-         * Spec: RFC 9101, 4 Request Object
-         * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
-         * Quote: "When both signature and encryption are being applied, the JWT MUST be signed, then encrypted".
-         * Quote: "The result is a Nested JWT".
-         */
-        String algorithm = requestObject.encryptionAlgorithm().orElseThrow();
-        String contentEncryption = requestObject.contentEncryptionAlgorithm()
-                .orElse(OidcRequestObjectConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
-        JwkKeys keys = jwkSetManager.jwkKeys(requestObject.encryptionKeyId());
-        Jwk encryptionJwk = selectEncryptionJwk(keys, requestObject.encryptionKeyId(), algorithm);
-        EncryptedJwt.Builder builder = EncryptedJwt.builder(signedJwt)
-                .algorithm(supportedAlgorithm(algorithm))
-                .encryption(supportedEncryption(contentEncryption));
-        if (encryptionJwk.keyId() == null) {
-            builder.jwk(encryptionJwk);
-        } else {
-            builder.jwks(keys, encryptionJwk.keyId());
-        }
-        return builder.build().token();
-    }
-
     static Jwk selectEncryptionJwk(JwkKeys keys, Optional<String> configuredKeyId, String algorithm) {
         List<Jwk> availableKeys = keys.keys();
         if (configuredKeyId.isPresent()) {
@@ -178,6 +112,14 @@ final class OidcRequestObjectProcessor {
             return false;
         }
         return true;
+    }
+
+    String process(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
+        SignedJwt signedJwt = sign(clientId, issuer, authorizationParameters, now);
+        if (requestObject.encryptionAlgorithm().isEmpty()) {
+            return signedJwt.tokenContent();
+        }
+        return encrypt(signedJwt);
     }
 
     private static EncryptedJwt.SupportedAlgorithm supportedAlgorithm(String algorithm) {
@@ -250,5 +192,63 @@ final class OidcRequestObjectProcessor {
                             + OidcClientAuthenticationSupport.privateKeyJwtAlgorithms());
         }
         return signingJwk;
+    }
+
+    private SignedJwt sign(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
+        /*
+         * Spec: RFC 9101, 4 Request Object
+         * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
+         * Quote: "It MUST contain all the parameters (including extension parameters) used to process the OAuth 2.0
+         * authorization request except the `request` and `request_uri` parameters".
+         * Quote: "The parameters are represented as the JWT Claims of the object."
+         * Quote: "The JWT Claims Set is then signed or signed and encrypted."
+         * Quote: "The `request` and `request_uri` parameters MUST NOT be included in Request Objects."
+         */
+        Jwt.Builder jwt = Jwt.builder()
+                .algorithm(signingJwk.algorithm())
+                .issuer(clientId)
+                .addAudience(issuer)
+                .issueTime(now)
+                .expirationTime(now.plus(requestObject.lifetime()))
+                .jwtId(UUID.randomUUID().toString())
+                .serializeDerivedClaims(false);
+        Optional.ofNullable(signingJwk.keyId()).ifPresent(jwt::keyId);
+
+        for (String name : authorizationParameters.names()) {
+            if (REQUEST.equals(name) || REQUEST_URI.equals(name)) {
+                continue;
+            }
+            List<String> values = authorizationParameters.all(name);
+            if (values.size() == 1) {
+                jwt.addPayloadClaim(name, values.getFirst());
+            } else {
+                jwt.addPayloadClaim(name, values);
+            }
+        }
+
+        return SignedJwt.sign(jwt.build(), signingJwk);
+    }
+
+    private String encrypt(SignedJwt signedJwt) {
+        /*
+         * Spec: RFC 9101, 4 Request Object
+         * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
+         * Quote: "When both signature and encryption are being applied, the JWT MUST be signed, then encrypted".
+         * Quote: "The result is a Nested JWT".
+         */
+        String algorithm = requestObject.encryptionAlgorithm().orElseThrow();
+        String contentEncryption = requestObject.contentEncryptionAlgorithm()
+                .orElse(OidcRequestObjectConfigSupport.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+        JwkKeys keys = jwkSetManager.jwkKeys(requestObject.encryptionKeyId());
+        Jwk encryptionJwk = selectEncryptionJwk(keys, requestObject.encryptionKeyId(), algorithm);
+        EncryptedJwt.Builder builder = EncryptedJwt.builder(signedJwt)
+                .algorithm(supportedAlgorithm(algorithm))
+                .encryption(supportedEncryption(contentEncryption));
+        if (encryptionJwk.keyId() == null) {
+            builder.jwk(encryptionJwk);
+        } else {
+            builder.jwks(keys, encryptionJwk.keyId());
+        }
+        return builder.build().token();
     }
 }

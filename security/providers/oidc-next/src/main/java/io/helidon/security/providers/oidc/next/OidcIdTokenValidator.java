@@ -294,7 +294,7 @@ final class OidcIdTokenValidator {
             return;
         }
         authorizedParty.filter(value -> !clientId.equals(value))
-                .ifPresent(value -> collector.fatal(jwt, "JWT authorized party claim does not match client id"));
+                .ifPresent(_ -> collector.fatal(jwt, "JWT authorized party claim does not match client id"));
         audiences.stream()
                 .flatMap(List::stream)
                 .filter(audience -> !clientId.equals(audience))

@@ -80,20 +80,6 @@ final class OidcScopeSupport {
         validateScopeClaims(name -> Optional.ofNullable(claims.get(name)), subjectMapping, source);
     }
 
-    private static void validateScopeClaims(ClaimSource claims, OidcSubjectMappingConfig subjectMapping, String source) {
-        claims.value(STANDARD_SCOPE_CLAIM)
-                .ifPresent(value -> scopeClaimValues(value, source + " scope claim", true));
-        if (!subjectMapping.scopeGrantsEnabled()) {
-            return;
-        }
-        for (String claimPath : subjectMapping.scopeClaimPaths()) {
-            if (!STANDARD_SCOPE_CLAIM.equals(claimPath)) {
-                claimValue(claims, claimPath)
-                        .ifPresent(value -> scopeClaimValues(value, source + " scope claim " + claimPath, false));
-            }
-        }
-    }
-
     static List<String> scopeClaimValues(JsonValue value, String source, boolean standardScope) {
         if (value.type() == JsonValueType.STRING) {
             return parseScopeString(value.asString().value(), source);
@@ -120,6 +106,20 @@ final class OidcScopeSupport {
 
     static Optional<JsonValue> claimValue(JsonObject claims, String claimPath) {
         return claimValue(claims::value, claimPath);
+    }
+
+    private static void validateScopeClaims(ClaimSource claims, OidcSubjectMappingConfig subjectMapping, String source) {
+        claims.value(STANDARD_SCOPE_CLAIM)
+                .ifPresent(value -> scopeClaimValues(value, source + " scope claim", true));
+        if (!subjectMapping.scopeGrantsEnabled()) {
+            return;
+        }
+        for (String claimPath : subjectMapping.scopeClaimPaths()) {
+            if (!STANDARD_SCOPE_CLAIM.equals(claimPath)) {
+                claimValue(claims, claimPath)
+                        .ifPresent(value -> scopeClaimValues(value, source + " scope claim " + claimPath, false));
+            }
+        }
     }
 
     private static Optional<JsonValue> claimValue(ClaimSource claims, String claimPath) {

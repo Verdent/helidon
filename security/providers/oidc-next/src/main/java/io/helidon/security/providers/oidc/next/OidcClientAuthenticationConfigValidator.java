@@ -168,6 +168,22 @@ final class OidcClientAuthenticationConfigValidator {
                         + "must be configured for " + purpose);
     }
 
+    static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTokenValidationConfig tokenValidation) {
+        OidcClientAuthenticationMethod method = introspectionEndpointAuthenticationMethod(Optional.empty(),
+                                                                                          tokenValidation.introspection());
+        return OidcClientAuthenticationSupport.usesMutualTls(method);
+    }
+
+    static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(
+            Optional<String> clientSecret,
+            Optional<OidcClientAuthenticationMethod> authenticationMethod) {
+        return authenticationMethod
+                .orElseGet(() -> clientSecret
+                        .isPresent()
+                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
+                        : OidcClientAuthenticationMethod.NONE);
+    }
+
     private static void validateConfidentialTokenEndpointGrant(OidcTenantConfig tenant,
                                                                OidcEndpointConfig endpoints,
                                                                String operation) {
@@ -239,22 +255,6 @@ final class OidcClientAuthenticationConfigValidator {
         }
     }
 
-    static boolean mutualTlsIntrospectionEndpointAuthentication(OidcTokenValidationConfig tokenValidation) {
-        OidcClientAuthenticationMethod method = introspectionEndpointAuthenticationMethod(Optional.empty(),
-                                                                                          tokenValidation.introspection());
-        return OidcClientAuthenticationSupport.usesMutualTls(method);
-    }
-
-    static OidcClientAuthenticationMethod tokenEndpointAuthenticationMethod(
-            Optional<String> clientSecret,
-            Optional<OidcClientAuthenticationMethod> authenticationMethod) {
-        return authenticationMethod
-                .orElseGet(() -> clientSecret
-                        .isPresent()
-                        ? OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC
-                        : OidcClientAuthenticationMethod.NONE);
-    }
-
     private static OidcClientAuthenticationMethod introspectionEndpointAuthenticationMethod(
             Optional<String> tenantClientSecret,
             OidcIntrospectionConfig introspection) {
@@ -276,7 +276,7 @@ final class OidcClientAuthenticationConfigValidator {
                 case PRIVATE_KEY_JWT -> !OidcClientAuthenticationSupport.isPrivateKeyJwtAlgorithm(algorithm);
                 default -> false;
                 })
-                .ifPresent(algorithm -> {
+                .ifPresent(_ -> {
                     String algorithms = switch (method) {
                     case CLIENT_SECRET_JWT -> OidcClientAuthenticationSupport.clientSecretJwtAlgorithms();
                     case PRIVATE_KEY_JWT -> OidcClientAuthenticationSupport.privateKeyJwtAlgorithms();

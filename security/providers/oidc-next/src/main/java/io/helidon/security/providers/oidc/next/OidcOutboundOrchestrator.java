@@ -73,51 +73,6 @@ final class OidcOutboundOrchestrator {
                 .isPresent();
     }
 
-    private Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenantConfig,
-                                                       SecurityEnvironment outboundEnv,
-                                                       EndpointConfig endpointConfig) {
-        if (!outboundTargetTlsAllowed(tenantConfig, outboundEnv)) {
-            return Optional.empty();
-        }
-
-        Optional<OidcOutboundPolicy> endpointPolicy = endpointConfig == null
-                ? Optional.empty()
-                : endpointConfig.instance(OidcOutboundPolicy.class);
-        if (endpointPolicy.isPresent()) {
-            return endpointPolicy;
-        }
-
-        if (!outboundConfig.targets().isEmpty()) {
-            return matchingTarget(outboundEnv)
-                    .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget));
-        }
-        return Optional.empty();
-    }
-
-    private Optional<OutboundTarget> matchingTarget(SecurityEnvironment outboundEnv) {
-        if (outboundEnv == null || outboundEnv.targetUri() == null) {
-            return Optional.empty();
-        }
-        String targetScheme = outboundEnv.targetUri().getScheme();
-        SecurityEnvironment targetEnv = targetScheme == null
-                ? outboundEnv
-                : outboundEnv.derive()
-                        .transport(targetScheme.toLowerCase(Locale.ROOT))
-                        .build();
-        return outboundConfig.findTarget(targetEnv);
-    }
-
-    private boolean outboundTargetTlsAllowed(OidcTenantConfig tenantConfig, SecurityEnvironment outboundEnv) {
-        if (!tenantConfig.endpoints().tlsRequired()) {
-            return true;
-        }
-        if (outboundEnv == null || outboundEnv.targetUri() == null) {
-            return false;
-        }
-        String scheme = outboundEnv.targetUri().getScheme();
-        return "https".equalsIgnoreCase(scheme);
-    }
-
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig endpointConfig) {
@@ -169,18 +124,6 @@ final class OidcOutboundOrchestrator {
             return OutboundSecurityResponse.abstain();
         }
         OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
-        if (policy.strategyCount() > 1) {
-            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-                tenantContext.ifPresent(readyTenant -> {
-                    String tenantId = OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId());
-                    LOGGER.log(System.Logger.Level.DEBUG,
-                               "OIDC outbound failed: tenant="
-                                       + tenantId
-                                       + ", reason=ambiguous-outbound-policy");
-                });
-            }
-            return OidcResponseFactory.ambiguousOutboundRequest();
-        }
         if (policy.tokenPropagationEnabled()) {
             return propagateToken(providerRequest, outboundEnv, policy);
         }
@@ -191,6 +134,59 @@ final class OidcOutboundOrchestrator {
             return secureWithTokenExchange(providerRequest, tenantContext.orElseThrow(), outboundEnv, policy);
         }
         return OutboundSecurityResponse.abstain();
+    }
+
+    private static String safeTargetUri(SecurityEnvironment outboundEnv) {
+        if (outboundEnv == null || outboundEnv.targetUri() == null) {
+            return "<unknown>";
+        }
+        return OidcDiagnostics.safeUri(outboundEnv.targetUri());
+    }
+
+    private Optional<OidcOutboundPolicy> outboundPolicy(OidcTenantConfig tenantConfig,
+                                                       SecurityEnvironment outboundEnv,
+                                                       EndpointConfig endpointConfig) {
+        if (!outboundTargetTlsAllowed(tenantConfig, outboundEnv)) {
+            return Optional.empty();
+        }
+
+        Optional<OidcOutboundPolicy> endpointPolicy = endpointConfig == null
+                ? Optional.empty()
+                : endpointConfig.instance(OidcOutboundPolicyConfig.class)
+                        .flatMap(OidcOutboundPolicy::fromConfig);
+        if (endpointPolicy.isPresent()) {
+            return endpointPolicy;
+        }
+
+        if (!outboundConfig.targets().isEmpty()) {
+            return matchingTarget(outboundEnv)
+                    .flatMap(target -> targetPolicyCache.computeIfAbsent(target, OidcOutboundPolicy::fromTarget));
+        }
+        return Optional.empty();
+    }
+
+    private Optional<OutboundTarget> matchingTarget(SecurityEnvironment outboundEnv) {
+        if (outboundEnv == null || outboundEnv.targetUri() == null) {
+            return Optional.empty();
+        }
+        String targetScheme = outboundEnv.targetUri().getScheme();
+        SecurityEnvironment targetEnv = targetScheme == null
+                ? outboundEnv
+                : outboundEnv.derive()
+                        .transport(targetScheme.toLowerCase(Locale.ROOT))
+                        .build();
+        return outboundConfig.findTarget(targetEnv);
+    }
+
+    private boolean outboundTargetTlsAllowed(OidcTenantConfig tenantConfig, SecurityEnvironment outboundEnv) {
+        if (!tenantConfig.endpoints().tlsRequired()) {
+            return true;
+        }
+        if (outboundEnv == null || outboundEnv.targetUri() == null) {
+            return false;
+        }
+        String scheme = outboundEnv.targetUri().getScheme();
+        return "https".equalsIgnoreCase(scheme);
     }
 
     private OutboundSecurityResponse propagateToken(ProviderRequest providerRequest,
@@ -365,12 +361,5 @@ final class OidcOutboundOrchestrator {
                     return false;
                 })
                 .orElse(false);
-    }
-
-    private static String safeTargetUri(SecurityEnvironment outboundEnv) {
-        if (outboundEnv == null || outboundEnv.targetUri() == null) {
-            return "<unknown>";
-        }
-        return OidcDiagnostics.safeUri(outboundEnv.targetUri());
     }
 }

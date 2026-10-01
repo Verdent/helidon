@@ -52,7 +52,7 @@ class OidcLogoutFlowIT {
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(
                     idp,
-                    authorizationCode -> {
+                    _ -> {
                     },
                     tenant -> tenant
                             .endpoints(endpoints -> {

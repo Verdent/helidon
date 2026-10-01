@@ -100,17 +100,17 @@ class OidcIntrospectionAccessTokenValidationTest {
     private static final String JWT_CLIENT_SECRET = "0123456789abcdef".repeat(4);
     private static final String INTROSPECTION_JWT_SECRET = "fedcba9876543210".repeat(4);
     private static final AtomicInteger DISCOVERY_REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
+    private static final AtomicInteger ACTIVE_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger MAX_ACTIVE_REQUESTS = new AtomicInteger();
+    private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
 
     private static int responseStatus;
     private static String responseBody;
     private static String responseContentType;
     private static volatile String discoveryResponseBody;
     private static String redirectLocation;
-    private static final AtomicInteger REDIRECTED_REQUEST_COUNT = new AtomicInteger();
-    private static final AtomicInteger REQUEST_COUNT = new AtomicInteger();
-    private static final AtomicInteger ACTIVE_REQUESTS = new AtomicInteger();
-    private static final AtomicInteger MAX_ACTIVE_REQUESTS = new AtomicInteger();
-    private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
     private static volatile CountDownLatch introspectionRequestsStarted;
     private static volatile CountDownLatch releaseIntrospectionResponses;
     private static volatile Map<HeaderName, String> introspectionResponseHeaders = Map.of();
@@ -126,7 +126,7 @@ class OidcIntrospectionAccessTokenValidationTest {
             response.header(HeaderValues.CONTENT_TYPE_JSON).send(discoveryResponseBody);
         });
         routing.post("/introspect", OidcIntrospectionAccessTokenValidationTest::handleIntrospection);
-        routing.post("/redirected-introspect", (request, response) -> {
+        routing.post("/redirected-introspect", (_, response) -> {
             REDIRECTED_REQUEST_COUNT.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(validResponse(_ -> { }));
@@ -1189,6 +1189,110 @@ class OidcIntrospectionAccessTokenValidationTest {
         }
     }
 
+    private static OidcTenantConfig introspectionTenant(OidcClientAuthenticationMethod authenticationMethod,
+                                                        URI introspectionEndpointUri) {
+        return OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.introspectionEndpointUri(introspectionEndpointUri)
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .introspection(introspection -> introspection.authenticationMethod(authenticationMethod))))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig redirectFollowingTenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .followRedirects(true)
+                .buildPrototype();
+    }
+
+    private static JsonObject validResponse(Consumer<JsonObject.Builder> customizer) {
+        Instant now = Instant.now();
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("active", true)
+                .set("sub", SUBJECT)
+                .set("username", USERNAME)
+                .set("preferred_username", USERNAME)
+                .set("email", "user1@example.org")
+                .set("iss", ISSUER.toString())
+                .setStrings("aud", List.of(AUDIENCE))
+                .set("exp", now.plus(1, ChronoUnit.HOURS).getEpochSecond())
+                .set("iat", now.minus(1, ChronoUnit.MINUTES).getEpochSecond())
+                .set("nbf", now.minus(1, ChronoUnit.MINUTES).getEpochSecond())
+                .set("scope", "resource.read resource.write")
+                .setStrings("groups", List.of("admin", "auditor"))
+                .set("client_id", "calling-client")
+                .set("token_type", "Bearer");
+        customizer.accept(builder);
+        return builder.build();
+    }
+
+    private static String basicAuthorization() {
+        byte[] credentials = (formEncode(CLIENT_ID) + ":" + formEncode(CLIENT_SECRET))
+                .getBytes(StandardCharsets.UTF_8);
+        return "Basic " + Base64.getEncoder()
+                .encodeToString(credentials);
+    }
+
+    private static String formEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static void assertIntrospectionUnavailable(AuthenticationResponse response) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(503));
+        assertThat(response.description().orElseThrow(), is("Bearer Token validation is unavailable"));
+        assertThat(response.user().isEmpty(), is(true));
+        assertThat(response.service().isEmpty(), is(true));
+        for (HeaderName header : List.of(HeaderNames.WWW_AUTHENTICATE, HeaderNames.SET_COOKIE,
+                                         HeaderNames.LOCATION, HeaderNames.RETRY_AFTER)) {
+            assertThat(response.responseHeaders().containsKey(header.defaultCase()), is(false));
+        }
+    }
+
+    private static void assertInvalidToken(AuthenticationResponse response, String ignoredDescription) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(401));
+        assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
+        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
+                   is("Bearer realm=\"helidon\", error=\"invalid_token\", "
+                              + "error_description=\"Bearer Token is invalid\""));
+        assertThat(response.responseHeaders().containsKey("Location"), is(false));
+    }
+
+    private static Map<String, List<String>> formParameters(Parameters parameters) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (String name : parameters.names()) {
+            result.put(name, parameters.all(name));
+        }
+        return result;
+    }
+
     private OidcProvider limitedIntrospectionProvider(Duration readTimeout) {
         return provider(tenant -> tenant
                 .webClient(WebClientConfig.builder().readTimeout(readTimeout).buildPrototype())
@@ -1360,110 +1464,6 @@ class OidcIntrospectionAccessTokenValidationTest {
         return OidcProvider.create(OidcProviderConfig.builder()
                                            .putTenant("default", tenantBuilder.buildPrototype())
                                            .buildPrototype());
-    }
-
-    private static OidcTenantConfig introspectionTenant(OidcClientAuthenticationMethod authenticationMethod,
-                                                        URI introspectionEndpointUri) {
-        return OidcTenantConfig.builder()
-                .issuer(ISSUER.toString())
-                .clientId(CLIENT_ID)
-                .clientSecret(CLIENT_SECRET)
-                .webClient(mutualTlsWebClient())
-                .endpoints(it -> it.introspectionEndpointUri(introspectionEndpointUri)
-                        .tlsRequired(false))
-                .protectedResource(resource -> resource.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.INTROSPECTION)
-                        .audience(AUDIENCE)
-                        .introspection(introspection -> introspection.authenticationMethod(authenticationMethod))))
-                .buildPrototype();
-    }
-
-    private static WebClientConfig mutualTlsWebClient() {
-        Keys privateKeyConfig = Keys.builder()
-                .keystore(store -> store
-                        .passphrase("password")
-                        .keystore(Resource.create("client.p12")))
-                .build();
-        return WebClientConfig.builder()
-                .tls(tls -> tls
-                        .privateKey(privateKeyConfig)
-                        .privateKeyCertChain(privateKeyConfig))
-                .buildPrototype();
-    }
-
-    private static WebClientConfig tenantWebClient() {
-        return WebClientConfig.builder()
-                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
-                .buildPrototype();
-    }
-
-    private static WebClientConfig redirectFollowingTenantWebClient() {
-        return WebClientConfig.builder()
-                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
-                .followRedirects(true)
-                .buildPrototype();
-    }
-
-    private static JsonObject validResponse(Consumer<JsonObject.Builder> customizer) {
-        Instant now = Instant.now();
-        JsonObject.Builder builder = JsonObject.builder()
-                .set("active", true)
-                .set("sub", SUBJECT)
-                .set("username", USERNAME)
-                .set("preferred_username", USERNAME)
-                .set("email", "user1@example.org")
-                .set("iss", ISSUER.toString())
-                .setStrings("aud", List.of(AUDIENCE))
-                .set("exp", now.plus(1, ChronoUnit.HOURS).getEpochSecond())
-                .set("iat", now.minus(1, ChronoUnit.MINUTES).getEpochSecond())
-                .set("nbf", now.minus(1, ChronoUnit.MINUTES).getEpochSecond())
-                .set("scope", "resource.read resource.write")
-                .setStrings("groups", List.of("admin", "auditor"))
-                .set("client_id", "calling-client")
-                .set("token_type", "Bearer");
-        customizer.accept(builder);
-        return builder.build();
-    }
-
-    private static String basicAuthorization() {
-        byte[] credentials = (formEncode(CLIENT_ID) + ":" + formEncode(CLIENT_SECRET))
-                .getBytes(StandardCharsets.UTF_8);
-        return "Basic " + Base64.getEncoder()
-                .encodeToString(credentials);
-    }
-
-    private static String formEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private static void assertIntrospectionUnavailable(AuthenticationResponse response) {
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.statusCode().orElse(-1), is(503));
-        assertThat(response.description().orElseThrow(), is("Bearer Token validation is unavailable"));
-        assertThat(response.user().isEmpty(), is(true));
-        assertThat(response.service().isEmpty(), is(true));
-        for (HeaderName header : List.of(HeaderNames.WWW_AUTHENTICATE, HeaderNames.SET_COOKIE,
-                                         HeaderNames.LOCATION, HeaderNames.RETRY_AFTER)) {
-            assertThat(response.responseHeaders().containsKey(header.defaultCase()), is(false));
-        }
-    }
-
-    private static void assertInvalidToken(AuthenticationResponse response, String ignoredDescription) {
-        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
-        assertThat(response.statusCode().orElse(-1), is(401));
-        assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
-        assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
-                   is("Bearer realm=\"helidon\", error=\"invalid_token\", "
-                              + "error_description=\"Bearer Token is invalid\""));
-        assertThat(response.responseHeaders().containsKey("Location"), is(false));
-    }
-
-    private static Map<String, List<String>> formParameters(Parameters parameters) {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        for (String name : parameters.names()) {
-            result.put(name, parameters.all(name));
-        }
-        return result;
     }
 
     private record RecordedRequest(String method,

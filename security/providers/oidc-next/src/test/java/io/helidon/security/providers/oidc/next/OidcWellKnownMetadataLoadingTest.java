@@ -120,7 +120,7 @@ class OidcWellKnownMetadataLoadingTest {
             }
             response.send(PROVIDER_METADATA.get());
         });
-        routing.get("/redirected-openid-configuration", (request, response) -> {
+        routing.get("/redirected-openid-configuration", (_, response) -> {
             REDIRECTED_WELL_KNOWN_REQUESTS.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(PROVIDER_METADATA.get());
@@ -2485,6 +2485,24 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    @Test
+    void jwtProtectedResourceTenantFailsWhenWellKnownMetadataJwkSetUriIsMissing() {
+        PROVIDER_METADATA.set(JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .build()
+                .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .endpoints(it -> it.tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+    }
+
     private static OidcTenantConfig.Builder staticHttpsAuthorizationCodeTenant(
             URI wellKnownUri,
             Consumer<OidcEndpointConfig.Builder> endpointCustomizer) {
@@ -2513,8 +2531,8 @@ class OidcWellKnownMetadataLoadingTest {
 
     private static OutboundTarget clientCredentialsTarget() {
         return OutboundTarget.builder("api")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
@@ -2523,19 +2541,6 @@ class OidcWellKnownMetadataLoadingTest {
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
-                .buildPrototype();
-    }
-
-    private OidcTenantConfig userInfoJwtTenant(Consumer<OidcUserInfoJwtConfig.Builder> customizer) {
-        return OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .clientId("client-id")
-                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
-                        .tokenEndpointUri(tokenEndpointUri)
-                        .tlsRequired(false))
-                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .userInfo(userInfo -> userInfo.jwt(customizer))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 
@@ -2560,6 +2565,64 @@ class OidcWellKnownMetadataLoadingTest {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
                 .followRedirects(true)
+                .buildPrototype();
+    }
+
+    private static OidcProviderConfig multiIssuerProviderConfig(OidcTenantConfig tenantConfig,
+                                                                URI otherRedirectionEndpointUri) {
+        OidcTenantConfig otherTenant = OidcTenantConfig.builder()
+                .issuer("https://other-issuer.example")
+                .clientId("other-client")
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(URI.create("https://other-issuer.example/authorize"))
+                        .tokenEndpointUri(URI.create("https://other-issuer.example/token"))
+                        .jwksUri(URI.create("https://other-issuer.example/jwks")))
+                .authorizationCode(authorizationCode -> authorizationCode
+                        .redirectionEndpointUri(otherRedirectionEndpointUri))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("other-cookie-password")))
+                .buildPrototype();
+        return OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .putTenant("other", otherTenant)
+                .buildPrototype();
+    }
+
+    private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {
+        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
+                .putTenant("tenant", tenantConfig)
+                .buildPrototype());
+        return registry.tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
+                .orElseThrow();
+    }
+
+    private static ResourceConfig idTokenDecryptionKeys() {
+        return ResourceConfig.builder().resourcePath("oidc-next-encrypt-jwk.json").buildPrototype();
+    }
+
+    private static void assertReadyTenant(OidcTenantConfig tenant) {
+        int requests = WELL_KNOWN_REQUESTS.get();
+        OidcTenantContext context = tenantContext(tenant);
+        try {
+            assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
+                       context.state(), is(OidcTenantState.READY));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
+        } finally {
+            if (context.ready()) {
+                context.webClient().closeResource();
+            }
+        }
+    }
+
+    private OidcTenantConfig userInfoJwtTenant(Consumer<OidcUserInfoJwtConfig.Builder> customizer) {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId("client-id")
+                .endpoints(it -> it.authorizationEndpointUri(authorizationEndpointUri)
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .userInfo(userInfo -> userInfo.jwt(customizer))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }
 
@@ -2595,24 +2658,6 @@ class OidcWellKnownMetadataLoadingTest {
                 .setStrings("token_endpoint_auth_methods_supported", List.of("none", "client_secret_basic"));
     }
 
-    @Test
-    void jwtProtectedResourceTenantFailsWhenWellKnownMetadataJwkSetUriIsMissing() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .build()
-                .toString());
-        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .endpoints(it -> it.tlsRequired(false))
-                .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
-                                .audience("api://default")))
-                .buildPrototype();
-
-        OidcTenantContext context = tenantContext(tenantConfig);
-
-        assertThat(context.state(), is(OidcTenantState.FAILED));
-    }
-
     private OidcTenantConfig authorizationCodeTenantConfig() {
         return OidcTenantConfig.builder()
                 .issuer(issuer.toString())
@@ -2620,25 +2665,6 @@ class OidcWellKnownMetadataLoadingTest {
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
-                .buildPrototype();
-    }
-
-    private static OidcProviderConfig multiIssuerProviderConfig(OidcTenantConfig tenantConfig,
-                                                                URI otherRedirectionEndpointUri) {
-        OidcTenantConfig otherTenant = OidcTenantConfig.builder()
-                .issuer("https://other-issuer.example")
-                .clientId("other-client")
-                .endpoints(endpoints -> endpoints
-                        .authorizationEndpointUri(URI.create("https://other-issuer.example/authorize"))
-                        .tokenEndpointUri(URI.create("https://other-issuer.example/token"))
-                        .jwksUri(URI.create("https://other-issuer.example/jwks")))
-                .authorizationCode(authorizationCode -> authorizationCode
-                        .redirectionEndpointUri(otherRedirectionEndpointUri))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("other-cookie-password")))
-                .buildPrototype();
-        return OidcProviderConfig.builder()
-                .putTenant("tenant", tenantConfig)
-                .putTenant("other", otherTenant)
                 .buildPrototype();
     }
 
@@ -2667,32 +2693,6 @@ class OidcWellKnownMetadataLoadingTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
-    }
-
-    private static OidcTenantContext tenantContext(OidcTenantConfig tenantConfig) {
-        OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(OidcProviderConfig.builder()
-                .putTenant("tenant", tenantConfig)
-                .buildPrototype());
-        return registry.tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
-                .orElseThrow();
-    }
-
-    private static ResourceConfig idTokenDecryptionKeys() {
-        return ResourceConfig.builder().resourcePath("oidc-next-encrypt-jwk.json").buildPrototype();
-    }
-
-    private static void assertReadyTenant(OidcTenantConfig tenant) {
-        int requests = WELL_KNOWN_REQUESTS.get();
-        OidcTenantContext context = tenantContext(tenant);
-        try {
-            assertThat(context.failureCause().map(Throwable::getMessage).orElse("tenant state"),
-                       context.state(), is(OidcTenantState.READY));
-            assertThat(WELL_KNOWN_REQUESTS.get(), is(requests + 1));
-        } finally {
-            if (context.ready()) {
-                context.webClient().closeResource();
-            }
-        }
     }
 
     private OidcTenantConfig.Builder jwtIntrospectionTenant(OidcClientAuthenticationMethod method,
@@ -2728,20 +2728,12 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     private static final class MutableClock extends Clock {
-        private volatile Instant instant;
         private final ZoneId zone;
+        private volatile Instant instant;
 
         private MutableClock(Instant instant, ZoneId zone) {
             this.instant = instant;
             this.zone = zone;
-        }
-
-        private static MutableClock create(Instant instant) {
-            return new MutableClock(instant, ZoneId.of("UTC"));
-        }
-
-        private void advance(Duration duration) {
-            instant = instant.plus(duration);
         }
 
         @Override
@@ -2757,6 +2749,14 @@ class OidcWellKnownMetadataLoadingTest {
         @Override
         public Instant instant() {
             return instant;
+        }
+
+        private static MutableClock create(Instant instant) {
+            return new MutableClock(instant, ZoneId.of("UTC"));
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
         }
     }
 }

@@ -111,7 +111,7 @@ final class OidcCertificateBoundAccessTokenSupport {
         }
         try {
             return Base64.getUrlDecoder().decode(value).length == 32;
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }

@@ -50,7 +50,7 @@ class OidcNegativeFlowIT {
                 .defaultScopes("openid", "profile")
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -91,7 +91,7 @@ class OidcNegativeFlowIT {
                                       .toString())))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport
@@ -138,7 +138,7 @@ class OidcNegativeFlowIT {
                 }))
                 .build()) {
             OidcProviderConfig providerConfig = OidcIntegrationSupport.authorizationCodeProviderConfig(idp,
-                                                                                                      it -> {
+                                                                                                      _ -> {
                                                                                                       });
             WebServer rpServer = OidcIntegrationSupport.rpServer(providerConfig,
                                                                  routing -> OidcIntegrationSupport

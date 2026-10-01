@@ -77,26 +77,6 @@ final class OidcTokenResponse {
         return create(json, false);
     }
 
-    private static OidcTokenResponse create(JsonObject json, boolean requireIdToken) {
-        String accessToken = requiredString(json, "access_token");
-        String tokenType = requiredString(json, "token_type");
-        Optional<String> idToken = requireIdToken
-                ? Optional.of(requiredString(json, "id_token"))
-                : stringValue(json, "id_token");
-        if (!"bearer".equalsIgnoreCase(tokenType)) {
-            throw new IllegalArgumentException("Token Endpoint response token_type is not supported");
-        }
-        return new OidcTokenResponse(accessToken,
-                                     tokenType,
-                                     idToken,
-                                     stringValue(json, "refresh_token"),
-                                     OidcTokenLifetime.expiresIn(json),
-                                     stringValue(json, "scope")
-                                             .map(scope -> OidcScopeSupport.validateScopeString(
-                                                     scope,
-                                                     "Token Endpoint response field scope")));
-    }
-
     String accessToken() {
         return accessToken;
     }
@@ -119,6 +99,26 @@ final class OidcTokenResponse {
 
     Optional<String> scope() {
         return scope;
+    }
+
+    private static OidcTokenResponse create(JsonObject json, boolean requireIdToken) {
+        String accessToken = requiredString(json, "access_token");
+        String tokenType = requiredString(json, "token_type");
+        Optional<String> idToken = requireIdToken
+                ? Optional.of(requiredString(json, "id_token"))
+                : stringValue(json, "id_token");
+        if (!"bearer".equalsIgnoreCase(tokenType)) {
+            throw new IllegalArgumentException("Token Endpoint response token_type is not supported");
+        }
+        return new OidcTokenResponse(accessToken,
+                                     tokenType,
+                                     idToken,
+                                     stringValue(json, "refresh_token"),
+                                     OidcTokenLifetime.expiresIn(json),
+                                     stringValue(json, "scope")
+                                             .map(scope -> OidcScopeSupport.validateScopeString(
+                                                     scope,
+                                                     "Token Endpoint response field scope")));
     }
 
     private static String requiredString(JsonObject json, String name) {

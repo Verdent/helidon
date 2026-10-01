@@ -200,14 +200,14 @@ public class TcpClientConnection implements ClientConnection, ConnectionObservat
 
         try {
             return connect(tls, target);
-        } catch (RuntimeException failure) {
+        } catch (RuntimeException | Error failure) {
             if (transportObservation != null) {
                 transportObservation.failed(failure);
-                try {
-                    closeResource();
-                } catch (RuntimeException closeFailure) {
-                    failure.addSuppressed(closeFailure);
-                }
+            }
+            try {
+                closeResource();
+            } catch (RuntimeException | Error closeFailure) {
+                failure.addSuppressed(closeFailure);
             }
             throw failure;
         }
@@ -468,6 +468,11 @@ public class TcpClientConnection implements ClientConnection, ConnectionObservat
                                        serverNamesOverride);
             try {
                 sslSocket.startHandshake();
+                if (transportObservation != null) {
+                    transportObservation.handshakeStarted().close(HandshakeOutcome.SUCCESS);
+                }
+                // The listener can reject this TLS peer before any application request (or credentials) is sent.
+                webClient.prototype().connectionListener().tlsHandshakeCompleted(sslSocket.getSession());
             } catch (IOException e) {
                 try {
                     sslSocket.close();
@@ -475,9 +480,13 @@ public class TcpClientConnection implements ClientConnection, ConnectionObservat
                     e.addSuppressed(ex);
                 }
                 throw new UncheckedIOException("Failed to execute SSL handshake", e);
-            }
-            if (transportObservation != null) {
-                transportObservation.handshakeStarted().close(HandshakeOutcome.SUCCESS);
+            } catch (RuntimeException | Error e) {
+                try {
+                    sslSocket.close();
+                } catch (IOException ex) {
+                    e.addSuppressed(ex);
+                }
+                throw e;
             }
             if (LOGGER.isLoggable(TRACE)) {
                 debugTls(sslSocket, channelId);

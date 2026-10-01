@@ -402,6 +402,8 @@ public class UnixDomainSocketClientConnection implements ClientConnection, Conne
                 if (transportObservation != null) {
                     transportObservation.handshakeStarted().close(HandshakeOutcome.SUCCESS);
                 }
+                // The listener can reject this TLS peer before any application request (or credentials) is sent.
+                this.webClient.prototype().connectionListener().tlsHandshakeCompleted(engine.getSession());
                 if (LOGGER.isLoggable(TRACE)) {
                     debugTls(engine, channelId);
                 }
@@ -416,7 +418,7 @@ public class UnixDomainSocketClientConnection implements ClientConnection, Conne
         } catch (IOException e) {
             closeChannelOnFailure(e);
             throw new UncheckedIOException(e);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             closeChannelOnFailure(e);
             throw e;
         }

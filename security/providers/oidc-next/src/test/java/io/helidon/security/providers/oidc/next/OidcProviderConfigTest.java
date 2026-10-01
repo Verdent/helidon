@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -58,8 +59,8 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcProviderConfigTest {
@@ -2443,13 +2444,13 @@ class OidcProviderConfigTest {
                     IllegalArgumentException.class,
                     () -> clientSecretJwtTokenTenant("a".repeat(minimum - 1), algorithm));
             assertThat(tokenFailure.getMessage(), containsString(minimum + " UTF-8 octets"));
-            assertDoesNotThrow(() -> clientSecretJwtTokenTenant("a".repeat(minimum), algorithm));
+            assertThat(clientSecretJwtTokenTenant("a".repeat(minimum), algorithm), is(notNullValue()));
 
             IllegalArgumentException introspectionFailure = assertThrows(
                     IllegalArgumentException.class,
                     () -> clientSecretJwtIntrospectionTenant("a".repeat(minimum - 1), algorithm));
             assertThat(introspectionFailure.getMessage(), containsString(minimum + " UTF-8 octets"));
-            assertDoesNotThrow(() -> clientSecretJwtIntrospectionTenant("a".repeat(minimum), algorithm));
+            assertThat(clientSecretJwtIntrospectionTenant("a".repeat(minimum), algorithm), is(notNullValue()));
         }
     }
 
@@ -3064,7 +3065,7 @@ class OidcProviderConfigTest {
     @Test
     void outboundTargetOperationsCannotBeAmbiguous() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenPropagationEnabled(true)
                                                                .clientCredentialsGrantEnabled(true)
                                                                .buildPrototype());
@@ -3377,8 +3378,8 @@ class OidcProviderConfigTest {
 
     private static OutboundTarget clientCredentialsTarget() {
         return OutboundTarget.builder("api")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
@@ -3432,6 +3433,18 @@ class OidcProviderConfigTest {
         }
     }
 
+    private static String configMetadata() throws IOException {
+        String resource = "META-INF/helidon/config-metadata.json";
+        Enumeration<URL> resources = OidcProviderConfigTest.class.getClassLoader().getResources(resource);
+        StringBuilder metadata = new StringBuilder();
+        while (resources.hasMoreElements()) {
+            try (var stream = resources.nextElement().openStream()) {
+                metadata.append(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+        return metadata.toString();
+    }
+
     private static final class TestTlsManager implements TlsManager {
         private SSLContext sslContext;
 
@@ -3470,15 +3483,4 @@ class OidcProviderConfigTest {
         }
     }
 
-    private static String configMetadata() throws IOException {
-        String resource = "META-INF/helidon/config-metadata.json";
-        Enumeration<java.net.URL> resources = OidcProviderConfigTest.class.getClassLoader().getResources(resource);
-        StringBuilder metadata = new StringBuilder();
-        while (resources.hasMoreElements()) {
-            try (var stream = resources.nextElement().openStream()) {
-                metadata.append(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
-            }
-        }
-        return metadata.toString();
-    }
 }

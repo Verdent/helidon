@@ -32,7 +32,7 @@ import io.helidon.http.Status;
 import io.helidon.security.Security;
 import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
-import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
@@ -346,8 +346,8 @@ class OidcOutboundFlowIT {
 
     private static OutboundTarget tokenPropagationTarget(String audience) {
         return outboundTarget("propagation")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audience(audience)
                                       .buildPrototype())
@@ -356,8 +356,8 @@ class OidcOutboundFlowIT {
 
     private static OutboundTarget clientCredentialsTarget() {
         return outboundTarget("client-credentials")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
                                       .addClientCredentialsScope("orders.read")
                                       .addClientCredentialsResource(DOWNSTREAM_RESOURCE)
@@ -367,8 +367,8 @@ class OidcOutboundFlowIT {
 
     private static OutboundTarget tokenExchangeTarget() {
         return outboundTarget("token-exchange")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenExchangeEnabled(true)
                                       .addTokenExchangeScope("orders.read")
                                       .tokenExchangeResource(DOWNSTREAM_RESOURCE)
@@ -390,7 +390,7 @@ class OidcOutboundFlowIT {
         return OidcIntegrationSupport.rpServer(providerConfig,
                                                routing -> routing.get("/proxy",
                                                                       SecurityFeature.authenticate(),
-                                                                      (request, response) -> {
+                                                                      (_, response) -> {
                                                                           WebClient outbound =
                                                                                   OidcIntegrationSupport.outboundClient();
                                                                           try (HttpClientResponse downstreamResponse =

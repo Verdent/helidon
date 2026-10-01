@@ -169,6 +169,10 @@ final class OidcSingleFlightCache<K, V, R> {
         }
     }
 
+    int size() {
+        return values.size();
+    }
+
     private R await(CompletableFuture<Resolution<V, R>> existing,
                     OidcRemoteWorkLimiter limiter,
                     Supplier<R> rejectedResultFactory) {
@@ -191,10 +195,6 @@ final class OidcSingleFlightCache<K, V, R> {
             }
             throw new IllegalStateException("OIDC single-flight load failed", cause);
         }
-    }
-
-    int size() {
-        return values.size();
     }
 
     private Optional<V> cachedValue(K key, Predicate<V> valid) {

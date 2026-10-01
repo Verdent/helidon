@@ -256,7 +256,8 @@ class OidcTenantLifecycleTest {
         ProviderRequest request = OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
                                                            SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
@@ -513,7 +514,8 @@ class OidcTenantLifecycleTest {
         OidcOutboundOrchestrator outbound = new OidcOutboundOrchestrator(config, registry);
         ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
@@ -543,7 +545,8 @@ class OidcTenantLifecycleTest {
         ProviderRequest request = OidcProviderTest.request(OidcEndpointPolicy.protectedResource(),
                                                            SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
@@ -625,20 +628,12 @@ class OidcTenantLifecycleTest {
     }
 
     private static final class MutableClock extends Clock {
-        private volatile Instant instant;
         private final ZoneId zone;
+        private volatile Instant instant;
 
         private MutableClock(Instant instant, ZoneId zone) {
             this.instant = instant;
             this.zone = zone;
-        }
-
-        private static MutableClock create(Instant instant) {
-            return new MutableClock(instant, ZoneId.of("UTC"));
-        }
-
-        private void advance(Duration duration) {
-            instant = instant.plus(duration);
         }
 
         @Override
@@ -654,6 +649,14 @@ class OidcTenantLifecycleTest {
         @Override
         public Instant instant() {
             return instant;
+        }
+
+        private static MutableClock create(Instant instant) {
+            return new MutableClock(instant, ZoneId.of("UTC"));
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
         }
     }
 }

@@ -104,6 +104,10 @@ class OidcFeatureRouteTest {
     private static final String NONCE = "nonce";
     private static final String PKCE_VERIFIER = "pkce-verifier";
     private static final AtomicInteger TOKEN_REQUESTS = new AtomicInteger();
+    private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicReference<String> TOKEN_CLIENT_ASSERTION = new AtomicReference<>();
+    private static final AtomicReference<String> COLLIDING_ISSUER_METADATA = new AtomicReference<>();
+    private static final AtomicInteger ATTACKER_TOKEN_REQUESTS = new AtomicInteger();
 
     private static JwkKeys signKeys;
     private static JwkKeys encryptKeys;
@@ -113,10 +117,6 @@ class OidcFeatureRouteTest {
     private static String userInfoEndpointResponseBody;
     private static Status userInfoEndpointStatus;
     private static String userInfoEndpointContentType;
-    private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
-    private static final AtomicReference<String> TOKEN_CLIENT_ASSERTION = new AtomicReference<>();
-    private static final AtomicReference<String> COLLIDING_ISSUER_METADATA = new AtomicReference<>();
-    private static final AtomicInteger ATTACKER_TOKEN_REQUESTS = new AtomicInteger();
 
     @BeforeAll
     static void initClass() {
@@ -138,7 +138,7 @@ class OidcFeatureRouteTest {
             TOKEN_CLIENT_ASSERTION.set(request.content().as(Parameters.class).first("client_assertion").orElse(""));
             tokenEndpointResponse(response);
         });
-        routing.post("/attacker-token", (request, response) -> {
+        routing.post("/attacker-token", (_, response) -> {
             ATTACKER_TOKEN_REQUESTS.incrementAndGet();
             tokenEndpointResponse(response);
         });
@@ -152,9 +152,9 @@ class OidcFeatureRouteTest {
             }
             response.send(userInfoEndpointResponseBody);
         });
-        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+        routing.get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(verifyJwkSet));
-        routing.get("/single-jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
+        routing.get("/single-jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(singleVerifyJwkSet));
     }
 
@@ -496,7 +496,8 @@ class OidcFeatureRouteTest {
                                 assertThat(authentication.user().isEmpty(), is(true));
                                 assertThat(authentication.responseHeaders().isEmpty(), is(true));
                                 EndpointConfig outboundConfig = EndpointConfig.builder()
-                                        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                                        .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                                                .clientCredentialsGrantEnabled(true).buildPrototype())
                                         .build();
                                 SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                                         .targetUri(URI.create("https://downstream.example/service")).build();
@@ -2745,7 +2746,7 @@ class OidcFeatureRouteTest {
     private static WebServer wellKnownEndSessionServer(AtomicInteger metadataRequestCount) {
         AtomicReference<URI> issuer = new AtomicReference<>();
         HttpRouting.Builder routing = HttpRouting.builder();
-        routing.get("/.well-known/openid-configuration", (request, response) -> {
+        routing.get("/.well-known/openid-configuration", (_, response) -> {
             metadataRequestCount.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(JsonObject.builder()

@@ -48,6 +48,13 @@ final class OidcAuthenticationRequestFactory {
         this.secureRandom = secureRandom;
     }
 
+    static String codeChallenge(String verifier, OidcPkceMethod method) {
+        return switch (method) {
+        case PLAIN -> verifier;
+        case S256 -> base64Url(sha256(verifier));
+        };
+    }
+
     OidcAuthenticationRequest create(OidcRequestContext context) {
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
@@ -112,11 +119,19 @@ final class OidcAuthenticationRequestFactory {
                                                      browserSessionGeneration.cookie().toString()));
     }
 
-    static String codeChallenge(String verifier, OidcPkceMethod method) {
-        return switch (method) {
-        case PLAIN -> verifier;
-        case S256 -> base64Url(sha256(verifier));
-        };
+    private static byte[] sha256(String value) {
+        try {
+            return MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.US_ASCII));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
+    private static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
     }
 
     private Parameters authorizationParameters(String clientId,
@@ -359,20 +374,5 @@ final class OidcAuthenticationRequestFactory {
         byte[] bytes = new byte[RANDOM_VALUE_BYTES];
         secureRandom.nextBytes(bytes);
         return base64Url(bytes);
-    }
-
-    private static byte[] sha256(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.US_ASCII));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
-        }
-    }
-
-    private static String base64Url(byte[] bytes) {
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(bytes);
     }
 }

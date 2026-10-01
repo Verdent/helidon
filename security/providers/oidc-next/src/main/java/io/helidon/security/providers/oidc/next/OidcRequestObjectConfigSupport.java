@@ -16,12 +16,15 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.common.configurable.ResourceConfig;
 
 final class OidcRequestObjectConfigSupport {
+    static final String DEFAULT_CONTENT_ENCRYPTION_ALGORITHM = "A128CBC-HS256";
+
     private OidcRequestObjectConfigSupport() {
     }
 
@@ -34,6 +37,7 @@ final class OidcRequestObjectConfigSupport {
     @Prototype.BuilderMethod
     static void signingJwk(OidcRequestObjectConfig.BuilderBase<?, ?> builder,
                            Consumer<ResourceConfig.Builder> consumer) {
+        Objects.requireNonNull(consumer, "consumer");
         ResourceConfig.Builder resource = ResourceConfig.builder();
         consumer.accept(resource);
         builder.signingJwk(resource.buildPrototype());

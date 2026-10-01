@@ -29,7 +29,7 @@ module io.helidon.security.providers.oidc.next {
     requires static io.helidon.common.features.api;
     requires static io.helidon.config.metadata;
 
-    requires io.helidon.builder.api;
+    requires transitive io.helidon.builder.api;
     requires io.helidon.common;
     requires transitive io.helidon.common.configurable;
     requires io.helidon.common.parameters;
@@ -42,9 +42,9 @@ module io.helidon.security.providers.oidc.next {
     requires transitive io.helidon.security;
     requires io.helidon.json;
     requires io.helidon.security.jwt;
-    requires io.helidon.security.providers.common;
+    requires transitive io.helidon.security.providers.common;
     requires transitive io.helidon.webclient;
-    requires static io.helidon.webserver;
+    requires static transitive io.helidon.webserver;
 
     exports io.helidon.security.providers.oidc.next;
 

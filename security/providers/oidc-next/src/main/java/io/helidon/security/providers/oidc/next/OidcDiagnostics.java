@@ -42,7 +42,7 @@ final class OidcDiagnostics {
         try {
             return new URI(scheme, null, uri.getHost(), uri.getPort(), uri.getRawPath(), null, null)
                     .toASCIIString();
-        } catch (URISyntaxException e) {
+        } catch (URISyntaxException _) {
             return sanitizeLogValue(scheme + "://<invalid>");
         }
     }

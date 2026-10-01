@@ -225,7 +225,8 @@ class OidcTokenPropagationTest {
                 .method("GET")
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
@@ -245,7 +246,8 @@ class OidcTokenPropagationTest {
                 .method("GET")
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
@@ -343,7 +345,7 @@ class OidcTokenPropagationTest {
     @Test
     void tokenPropagationRequiresAudienceWhenAudienceValidationIsEnabled() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenPropagationEnabled(true)
                                                                .buildPrototype());
 
@@ -469,7 +471,7 @@ class OidcTokenPropagationTest {
                                     .mode(OidcCertificateBoundAccessTokenMode.IF_PRESENT))))
                     .buildPrototype();
             OutboundTarget target = OutboundTarget.builder("orders").addHost("localhost").addTransport("https")
-                    .addPath("/orders/.*").customObject(OidcOutboundTargetConfig.class, OidcOutboundTargetConfig.builder()
+                    .addPath("/orders/.*").customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
                             .tokenPropagationEnabled(true).audience("api://orders").buildPrototype()).build();
             try (OidcProvider forwardingProvider = provider(tenant, target);
                  OidcProvider receivingProvider = provider(tenant)) {
@@ -500,7 +502,8 @@ class OidcTokenPropagationTest {
                     SecurityEnvironment outbound = inbound.derive().clearHeaders().targetUri(downstreamUri)
                             .transport("https").path("/orders/42").method("GET").build();
                     for (EndpointConfig policy : List.of(EndpointConfig.create(), EndpointConfig.builder()
-                            .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+                            .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                                    .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
                             .build())) {
                         var propagated = forwardingProvider.outboundSecurity(request, outbound, policy);
                         assertThat(propagated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
@@ -550,8 +553,8 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audience("api://orders")
                                       .buildPrototype())
@@ -563,8 +566,8 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audience("api://orders")
                                       .buildPrototype())
@@ -577,8 +580,8 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audienceValidationEnabled(false)
                                       .buildPrototype())
@@ -591,8 +594,8 @@ class OidcTokenPropagationTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audience(audience)
                                       .buildPrototype())

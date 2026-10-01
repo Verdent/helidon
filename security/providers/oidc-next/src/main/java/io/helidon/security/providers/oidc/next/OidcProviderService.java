@@ -16,6 +16,8 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Objects;
+
 import io.helidon.config.Config;
 import io.helidon.security.spi.SecurityProvider;
 import io.helidon.security.spi.SecurityProviderService;
@@ -27,7 +29,7 @@ public final class OidcProviderService implements SecurityProviderService {
     static final String PROVIDER_CONFIG_KEY = "oidc-next";
 
     /**
-     * Create a provider service.
+     * Create a provider service. The public no-argument constructor is required by the Security Provider SPI.
      */
     public OidcProviderService() {
     }
@@ -44,6 +46,7 @@ public final class OidcProviderService implements SecurityProviderService {
 
     @Override
     public SecurityProvider create(Config config) {
+        Objects.requireNonNull(config, "config");
         return OidcProvider.create(config);
     }
 }

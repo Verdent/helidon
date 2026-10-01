@@ -18,6 +18,9 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class OidcRemoteWorkLimiterTest {
     @Test
@@ -129,17 +131,22 @@ class OidcRemoteWorkLimiterTest {
     }
 
     @Test
-    void zeroQueueRejectsImmediatelyRegardlessOfAdmissionTimeout() {
+    void zeroQueueRejectsImmediatelyRegardlessOfAdmissionTimeout() throws Exception {
         OidcRemoteWorkLimiter limiter = new OidcRemoteWorkLimiter(OidcRemoteWorkConfig.builder()
                                                                           .maxConcurrent(1)
                                                                           .maxQueued(0)
                                                                           .admissionTimeout(Duration.ofHours(1))
                                                                           .buildPrototype());
-        try (OidcRemoteWorkLimiter.Permit ignored = limiter.acquireActive().orElseThrow()) {
-            assertTimeoutPreemptively(Duration.ofSeconds(1),
-                                      () -> assertThat(limiter.acquireActive().isEmpty(), is(true)));
-            assertTimeoutPreemptively(Duration.ofSeconds(1),
-                                      () -> assertThat(limiter.acquireWaiter().isEmpty(), is(true)));
+        try (OidcRemoteWorkLimiter.Permit _ = limiter.acquireActive().orElseThrow();
+                ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Bound the test despite the one-hour admission timeout if zero-queue rejection regresses.
+            Future<Boolean> rejected = executor.submit(() -> limiter.acquireActive().isEmpty()
+                    && limiter.acquireWaiter().isEmpty());
+            try {
+                assertThat(rejected.get(1, TimeUnit.SECONDS), is(true));
+            } finally {
+                rejected.cancel(true);
+            }
         }
     }
 
@@ -151,7 +158,7 @@ class OidcRemoteWorkLimiterTest {
                                                                           .admissionTimeout(Duration.ofHours(1))
                                                                           .buildPrototype());
         AtomicBoolean admitted = new AtomicBoolean(true);
-        try (OidcRemoteWorkLimiter.Permit ignored = limiter.acquireWaiter().orElseThrow()) {
+        try (OidcRemoteWorkLimiter.Permit _ = limiter.acquireWaiter().orElseThrow()) {
             Thread overflow = Thread.ofVirtual().start(() -> {
                 var permit = limiter.acquireWaiter();
                 admitted.set(permit.isPresent());
@@ -180,7 +187,7 @@ class OidcRemoteWorkLimiterTest {
                                                                           .buildPrototype());
         AtomicBoolean admitted = new AtomicBoolean(true);
         AtomicBoolean interrupted = new AtomicBoolean();
-        try (OidcRemoteWorkLimiter.Permit ignored = limiter.acquireActive().orElseThrow()) {
+        try (OidcRemoteWorkLimiter.Permit _ = limiter.acquireActive().orElseThrow()) {
             Thread queued = Thread.ofVirtual().start(() -> {
                 var permit = limiter.acquireActive();
                 admitted.set(permit.isPresent());

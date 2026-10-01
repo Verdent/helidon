@@ -26,10 +26,11 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Resolves and validates Token Endpoint metadata needed only by request-time outbound policies.
  * <p>
- * Tenant initialization cannot see an {@link OidcOutboundPolicy} supplied later through an endpoint configuration. A
- * tenant that otherwise needs no Token Endpoint therefore remains ready without loading well-known metadata. The first
- * outbound token cache miss resolves that metadata here. One fair, interruptible single-flight slot per configured
- * tenant publishes the result to every grant and retains successful metadata for this resolver's lifetime.
+ * Tenant initialization cannot see an {@link OidcOutboundPolicyConfig} supplied later through an endpoint
+ * configuration. A tenant that otherwise needs no Token Endpoint therefore remains ready without loading well-known
+ * metadata. The first outbound token cache miss resolves that metadata here. One fair, interruptible single-flight
+ * slot per configured tenant publishes the result to every grant and retains successful metadata for this resolver's
+ * lifetime.
  * <p>
  * The provider's configured tenant map bounds slot cardinality. An LRU is deliberately not used: eviction could discard
  * an active resolution or a successfully published provider-lifetime result and permit duplicate discovery.

@@ -82,7 +82,6 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
@@ -1089,7 +1088,7 @@ class OidcClientCredentialsGrantTest {
             List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
             for (int i = 0; i < taskCount; i++) {
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     return provider.outboundSecurity(providerRequest(),
                                                      outboundEnvironment(),
                                                      EndpointConfig.create());
@@ -1097,7 +1096,7 @@ class OidcClientCredentialsGrantTest {
             }
 
             start.countDown();
-            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(tokenRequestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseTokenResponse.countDown();
             for (Future<OutboundSecurityResponse> future : futures) {
                 assertThat(future.get().requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
@@ -1129,13 +1128,13 @@ class OidcClientCredentialsGrantTest {
             List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
             for (int i = 0; i < taskCount; i++) {
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     return provider.outboundSecurity(providerRequest(), outboundEnvironment(), endpointConfig);
                 }));
             }
 
             start.countDown();
-            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(tokenRequestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseTokenResponse.countDown();
             for (Future<OutboundSecurityResponse> future : futures) {
                 assertThat(future.get(10, TimeUnit.SECONDS)
@@ -1168,8 +1167,9 @@ class OidcClientCredentialsGrantTest {
                 assertThat(METADATA_REQUEST_COUNT.get(), is(0));
                 metadataResponseStatus = 503;
                 EndpointConfig first = clientCredentialsEndpointConfig();
-                EndpointConfig other = EndpointConfig.builder().customObject(OidcOutboundPolicy.class,
-                        OidcOutboundPolicy.clientCredentialsGrant(List.of("other"), List.of())).build();
+                EndpointConfig other = EndpointConfig.builder().customObject(OidcOutboundPolicyConfig.class,
+                        OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+                                .addClientCredentialsScope("other").buildPrototype()).build();
                 assertThat(outbound.secure(providerRequest(), outboundEnvironment(), first).status(),
                            is(SecurityResponse.SecurityStatus.FAILURE));
                 assertThat(METADATA_REQUEST_COUNT.get(), is(1));
@@ -1227,7 +1227,7 @@ class OidcClientCredentialsGrantTest {
             List<Future<Boolean>> futures = new ArrayList<>(taskCount);
             for (int i = 0; i < taskCount; i++) {
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     assertThrows(OidcProviderMetadataLoader.RetryableDiscoveryException.class,
                                  () -> resolver.clientCredentialsEndpointClient(tenantContext));
                     return true;
@@ -1235,7 +1235,7 @@ class OidcClientCredentialsGrantTest {
             }
 
             start.countDown();
-            assertTrue(metadataRequestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(metadataRequestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseMetadataResponse.countDown();
             for (Future<Boolean> future : futures) {
                 assertThat(future.get(10, TimeUnit.SECONDS), is(true));
@@ -1294,7 +1294,7 @@ class OidcClientCredentialsGrantTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<OidcEndpointClient> leader = executor.submit(
                     () -> resolver.clientCredentialsEndpointClient(tenantContext));
-            assertTrue(metadataRequestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(metadataRequestStarted.await(5, TimeUnit.SECONDS), is(true));
 
             Thread follower = Thread.ofVirtual().start(() -> {
                 try {
@@ -1485,7 +1485,8 @@ class OidcClientCredentialsGrantTest {
                         .buildPrototype())
                 .buildPrototype());
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
                 .build();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -1532,7 +1533,7 @@ class OidcClientCredentialsGrantTest {
     @Test
     void clientCredentialsGrantScopeWithoutClientCredentialsGrantIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .addClientCredentialsScope("orders.read")
                                                                .buildPrototype());
 
@@ -1583,7 +1584,7 @@ class OidcClientCredentialsGrantTest {
     @Test
     void clientCredentialsGrantResourceWithoutClientCredentialsGrantIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .addClientCredentialsResource("https://orders.example.com")
                                                                .buildPrototype());
 
@@ -1636,7 +1637,7 @@ class OidcClientCredentialsGrantTest {
 
     private static void await(CountDownLatch latch) {
         try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertThat(latch.await(5, TimeUnit.SECONDS), is(true));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for Token Endpoint test response", e);
@@ -1649,6 +1650,261 @@ class OidcClientCredentialsGrantTest {
                 .header(HeaderNames.CACHE_CONTROL, "no-store")
                 .header(HeaderNames.PRAGMA, "no-cache")
                 .send(tokenResponse("redirected-access-token", 600));
+    }
+
+    private static WebClientConfig tenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig)
+                        .trust(trust -> trust
+                                .keystore(store -> store
+                                        .passphrase("password")
+                                        .trustStore(true)
+                                        .keystore(Resource.create("client.p12")))))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig redirectFollowingTenantWebClient() {
+        return WebClientConfig.builder()
+                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
+                .followRedirects(true)
+                .buildPrototype();
+    }
+
+    private static Tls serverTls() {
+        Keys privateKeyConfig = serverKeys();
+        return Tls.builder()
+                .clientAuth(TlsClientAuth.REQUIRED)
+                .privateKey(privateKeyConfig)
+                .privateKeyCertChain(privateKeyConfig)
+                .trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("server.p12"))))
+                .build();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+    }
+
+    private static Keys serverKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("server.p12")))
+                .build();
+    }
+
+    private static OutboundTarget clientCredentialsTarget() {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
+                                      .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
+    }
+
+    private static OutboundTarget scopedClientCredentialsTarget(String... scopes) {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class, scopedTargetConfig(scopes))
+                .build();
+    }
+
+    private static OutboundTarget resourceClientCredentialsTarget(String... resources) {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class, resourceTargetConfig(resources))
+                .build();
+    }
+
+    private static OutboundTarget scopedResourceClientCredentialsTarget(List<String> scopes, List<String> resources) {
+        return OutboundTarget.builder("api")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class, scopedResourceTargetConfig(scopes, resources))
+                .build();
+    }
+
+    private static OutboundTarget billingScopedResourceClientCredentialsTarget(List<String> scopes, List<String> resources) {
+        return OutboundTarget.builder("billing")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/billing")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class, scopedResourceTargetConfig(scopes, resources))
+                .build();
+    }
+
+    private static OutboundTarget billingClientCredentialsTarget(String... scopes) {
+        return OutboundTarget.builder("billing")
+                .addTransport("https")
+                .addHost("api.example.com")
+                .addPath("/billing")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class, scopedTargetConfig(scopes))
+                .build();
+    }
+
+    private static OidcOutboundPolicyConfig scopedTargetConfig(String... scopes) {
+        OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
+                .clientCredentialsGrantEnabled(true);
+        for (String scope : scopes) {
+            builder.addClientCredentialsScope(scope);
+        }
+        return builder.buildPrototype();
+    }
+
+    private static OidcOutboundPolicyConfig resourceTargetConfig(String... resources) {
+        OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
+                .clientCredentialsGrantEnabled(true);
+        for (String resource : resources) {
+            builder.addClientCredentialsResource(resource);
+        }
+        return builder.buildPrototype();
+    }
+
+    private static OidcOutboundPolicyConfig scopedResourceTargetConfig(List<String> scopes, List<String> resources) {
+        OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
+                .clientCredentialsGrantEnabled(true);
+        scopes.forEach(builder::addClientCredentialsScope);
+        resources.forEach(builder::addClientCredentialsResource);
+        return builder.buildPrototype();
+    }
+
+    private static OutboundTarget clientCredentialsTargetForAllTransports() {
+        return OutboundTarget.builder("api")
+                .addHost("api.example.com")
+                .addPath("/resource")
+                .addMethod("GET")
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
+                                      .clientCredentialsGrantEnabled(true)
+                                      .buildPrototype())
+                .build();
+    }
+
+    private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
+        List<OutboundTarget> targets = outboundTargets.length == 0
+                ? List.of(clientCredentialsTarget())
+                : List.of(outboundTargets);
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenant)
+                                           .outboundTargets(targets)
+                                           .buildPrototype());
+    }
+
+    private static OidcProvider endpointPolicyProvider(OidcTenantConfig tenant) {
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenant)
+                                           .buildPrototype());
+    }
+
+    private static EndpointConfig clientCredentialsEndpointConfig() {
+        return EndpointConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                .build();
+    }
+
+    private static ProviderRequest providerRequest() {
+        return OidcProviderTest.request(null, SecurityEnvironment.create());
+    }
+
+    private static SecurityEnvironment outboundEnvironment() {
+        return outboundEnvironment("https://api.example.com/resource", "/resource");
+    }
+
+    private static SecurityEnvironment outboundEnvironment(long timeShiftSeconds) {
+        return outboundEnvironment("https://api.example.com/resource", "/resource", timeShiftSeconds);
+    }
+
+    private static SecurityEnvironment outboundEnvironment(String targetUri, String path) {
+        return outboundEnvironment(targetUri, path, "GET");
+    }
+
+    private static SecurityEnvironment outboundEnvironment(String targetUri, String path, String method) {
+        return outboundEnvironment(targetUri, path, method, 0);
+    }
+
+    private static SecurityEnvironment outboundEnvironment(String targetUri, String path, long timeShiftSeconds) {
+        return outboundEnvironment(targetUri, path, "GET", timeShiftSeconds);
+    }
+
+    private static SecurityEnvironment outboundEnvironment(String targetUri,
+                                                          String path,
+                                                          String method,
+                                                          long timeShiftSeconds) {
+        URI uri = URI.create(targetUri);
+        return SecurityEnvironment.builder()
+                .targetUri(uri)
+                .transport(uri.getScheme())
+                .path(path)
+                .method(method)
+                .header(EXISTING_HEADER_NAME, EXISTING_HEADER_VALUE)
+                .time(SecurityTime.builder()
+                              .shiftBySeconds(timeShiftSeconds)
+                              .build())
+                .build();
+    }
+
+    private static JsonObject tokenResponse(String accessToken, Integer expiresIn) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("access_token", accessToken)
+                .set("token_type", "Bearer");
+        if (expiresIn != null) {
+            builder.set("expires_in", expiresIn);
+        }
+        return builder.build();
+    }
+
+    private static Map<String, List<String>> formParameters(Parameters parameters) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (String name : parameters.names()) {
+            result.put(name, parameters.all(name));
+        }
+        return result;
+    }
+
+    private static Jwk clientSecretJwk() {
+        return JwkOctet.create(JsonObject.builder()
+                                      .set("kty", "oct")
+                                      .set("alg", "HS256")
+                                      .set("kid", "client-secret")
+                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                                      .build());
+    }
+
+    private static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
     }
 
     private OidcTenantConfig confidentialTenant() {
@@ -1753,245 +2009,6 @@ class OidcClientCredentialsGrantTest {
                 .buildPrototype();
     }
 
-    private static WebClientConfig tenantWebClient() {
-        return WebClientConfig.builder()
-                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
-                .buildPrototype();
-    }
-
-    private static WebClientConfig mutualTlsWebClient() {
-        Keys privateKeyConfig = clientKeys();
-        return WebClientConfig.builder()
-                .tls(tls -> tls
-                        .privateKey(privateKeyConfig)
-                        .privateKeyCertChain(privateKeyConfig)
-                        .trust(trust -> trust
-                                .keystore(store -> store
-                                        .passphrase("password")
-                                        .trustStore(true)
-                                        .keystore(Resource.create("client.p12")))))
-                .buildPrototype();
-    }
-
-    private static WebClientConfig redirectFollowingTenantWebClient() {
-        return WebClientConfig.builder()
-                .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
-                .followRedirects(true)
-                .buildPrototype();
-    }
-
-    private static Tls serverTls() {
-        Keys privateKeyConfig = serverKeys();
-        return Tls.builder()
-                .clientAuth(TlsClientAuth.REQUIRED)
-                .privateKey(privateKeyConfig)
-                .privateKeyCertChain(privateKeyConfig)
-                .trust(trust -> trust
-                        .keystore(store -> store
-                                .passphrase("password")
-                                .trustStore(true)
-                                .keystore(Resource.create("server.p12"))))
-                .build();
-    }
-
-    private static Keys clientKeys() {
-        return Keys.builder()
-                .keystore(store -> store
-                        .passphrase("password")
-                        .keystore(Resource.create("client.p12")))
-                .build();
-    }
-
-    private static Keys serverKeys() {
-        return Keys.builder()
-                .keystore(store -> store
-                        .passphrase("password")
-                        .keystore(Resource.create("server.p12")))
-                .build();
-    }
-
-    private static OutboundTarget clientCredentialsTarget() {
-        return OutboundTarget.builder("api")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/resource")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
-                                      .buildPrototype())
-                .build();
-    }
-
-    private static OutboundTarget scopedClientCredentialsTarget(String... scopes) {
-        return OutboundTarget.builder("api")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/resource")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class, scopedTargetConfig(scopes))
-                .build();
-    }
-
-    private static OutboundTarget resourceClientCredentialsTarget(String... resources) {
-        return OutboundTarget.builder("api")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/resource")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class, resourceTargetConfig(resources))
-                .build();
-    }
-
-    private static OutboundTarget scopedResourceClientCredentialsTarget(List<String> scopes, List<String> resources) {
-        return OutboundTarget.builder("api")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/resource")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class, scopedResourceTargetConfig(scopes, resources))
-                .build();
-    }
-
-    private static OutboundTarget billingScopedResourceClientCredentialsTarget(List<String> scopes, List<String> resources) {
-        return OutboundTarget.builder("billing")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/billing")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class, scopedResourceTargetConfig(scopes, resources))
-                .build();
-    }
-
-    private static OutboundTarget billingClientCredentialsTarget(String... scopes) {
-        return OutboundTarget.builder("billing")
-                .addTransport("https")
-                .addHost("api.example.com")
-                .addPath("/billing")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class, scopedTargetConfig(scopes))
-                .build();
-    }
-
-    private static OidcOutboundTargetConfig scopedTargetConfig(String... scopes) {
-        OidcOutboundTargetConfig.Builder builder = OidcOutboundTargetConfig.builder()
-                .clientCredentialsGrantEnabled(true);
-        for (String scope : scopes) {
-            builder.addClientCredentialsScope(scope);
-        }
-        return builder.buildPrototype();
-    }
-
-    private static OidcOutboundTargetConfig resourceTargetConfig(String... resources) {
-        OidcOutboundTargetConfig.Builder builder = OidcOutboundTargetConfig.builder()
-                .clientCredentialsGrantEnabled(true);
-        for (String resource : resources) {
-            builder.addClientCredentialsResource(resource);
-        }
-        return builder.buildPrototype();
-    }
-
-    private static OidcOutboundTargetConfig scopedResourceTargetConfig(List<String> scopes, List<String> resources) {
-        OidcOutboundTargetConfig.Builder builder = OidcOutboundTargetConfig.builder()
-                .clientCredentialsGrantEnabled(true);
-        scopes.forEach(builder::addClientCredentialsScope);
-        resources.forEach(builder::addClientCredentialsResource);
-        return builder.buildPrototype();
-    }
-
-    private static OutboundTarget clientCredentialsTargetForAllTransports() {
-        return OutboundTarget.builder("api")
-                .addHost("api.example.com")
-                .addPath("/resource")
-                .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
-                                      .buildPrototype())
-                .build();
-    }
-
-    private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
-        List<OutboundTarget> targets = outboundTargets.length == 0
-                ? List.of(clientCredentialsTarget())
-                : List.of(outboundTargets);
-        return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", tenant)
-                                           .outboundTargets(targets)
-                                           .buildPrototype());
-    }
-
-    private static OidcProvider endpointPolicyProvider(OidcTenantConfig tenant) {
-        return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", tenant)
-                                           .buildPrototype());
-    }
-
-    private static EndpointConfig clientCredentialsEndpointConfig() {
-        return EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
-                .build();
-    }
-
-    private static ProviderRequest providerRequest() {
-        return OidcProviderTest.request(null, SecurityEnvironment.create());
-    }
-
-    private static SecurityEnvironment outboundEnvironment() {
-        return outboundEnvironment("https://api.example.com/resource", "/resource");
-    }
-
-    private static SecurityEnvironment outboundEnvironment(long timeShiftSeconds) {
-        return outboundEnvironment("https://api.example.com/resource", "/resource", timeShiftSeconds);
-    }
-
-    private static SecurityEnvironment outboundEnvironment(String targetUri, String path) {
-        return outboundEnvironment(targetUri, path, "GET");
-    }
-
-    private static SecurityEnvironment outboundEnvironment(String targetUri, String path, String method) {
-        return outboundEnvironment(targetUri, path, method, 0);
-    }
-
-    private static SecurityEnvironment outboundEnvironment(String targetUri, String path, long timeShiftSeconds) {
-        return outboundEnvironment(targetUri, path, "GET", timeShiftSeconds);
-    }
-
-    private static SecurityEnvironment outboundEnvironment(String targetUri,
-                                                          String path,
-                                                          String method,
-                                                          long timeShiftSeconds) {
-        URI uri = URI.create(targetUri);
-        return SecurityEnvironment.builder()
-                .targetUri(uri)
-                .transport(uri.getScheme())
-                .path(path)
-                .method(method)
-                .header(EXISTING_HEADER_NAME, EXISTING_HEADER_VALUE)
-                .time(SecurityTime.builder()
-                              .shiftBySeconds(timeShiftSeconds)
-                              .build())
-                .build();
-    }
-
-    private static JsonObject tokenResponse(String accessToken, Integer expiresIn) {
-        JsonObject.Builder builder = JsonObject.builder()
-                .set("access_token", accessToken)
-                .set("token_type", "Bearer");
-        if (expiresIn != null) {
-            builder.set("expires_in", expiresIn);
-        }
-        return builder.build();
-    }
-
-    private static Map<String, List<String>> formParameters(Parameters parameters) {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        for (String name : parameters.names()) {
-            result.put(name, parameters.all(name));
-        }
-        return result;
-    }
-
     private void assertClientAssertionClaims(SignedJwt signedJwt) {
         assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
         assertThat(signedJwt.getJwt().subject().orElse(""), is(CLIENT_ID));
@@ -2000,21 +2017,6 @@ class OidcClientCredentialsGrantTest {
         assertThat(signedJwt.getJwt().issueTime().isPresent(), is(true));
         assertThat(signedJwt.getJwt().expirationTime().isPresent(), is(true));
         assertThat(signedJwt.getJwt().payloadClaimsJson().keySet(), is(Set.of("iss", "sub", "aud", "jti", "iat", "exp")));
-    }
-
-    private static Jwk clientSecretJwk() {
-        return JwkOctet.create(JsonObject.builder()
-                                      .set("kty", "oct")
-                                      .set("alg", "HS256")
-                                      .set("kid", "client-secret")
-                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
-                                      .build());
-    }
-
-    private static String base64Url(byte[] bytes) {
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(bytes);
     }
 
     private static final class MutableClock extends Clock {

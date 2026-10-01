@@ -20,19 +20,19 @@ import java.util.List;
 
 import io.helidon.builder.api.Prototype;
 
-final class OidcOutboundTargetConfigDecorator
-        implements Prototype.BuilderDecorator<OidcOutboundTargetConfig.BuilderBase<?, ?>> {
-    private static final System.Logger LOGGER = System.getLogger(OidcOutboundTargetConfigDecorator.class.getName());
+final class OidcOutboundPolicyConfigDecorator
+        implements Prototype.BuilderDecorator<OidcOutboundPolicyConfig.BuilderBase<?, ?>> {
+    private static final System.Logger LOGGER = System.getLogger(OidcOutboundPolicyConfigDecorator.class.getName());
 
     @Override
-    public void decorate(OidcOutboundTargetConfig.BuilderBase<?, ?> target) {
+    public void decorate(OidcOutboundPolicyConfig.BuilderBase<?, ?> target) {
         int strategyCount = 0;
         strategyCount += target.tokenPropagationEnabled() ? 1 : 0;
         strategyCount += target.clientCredentialsGrantEnabled() ? 1 : 0;
         strategyCount += target.tokenExchangeEnabled() ? 1 : 0;
         if (strategyCount > 1) {
             throw new IllegalArgumentException(
-                    "Only one OIDC outbound strategy can be enabled on the same outbound target");
+                    "Only one OIDC outbound strategy can be enabled on the same policy");
         }
         if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsScopes().isEmpty()) {
             throw new IllegalArgumentException(

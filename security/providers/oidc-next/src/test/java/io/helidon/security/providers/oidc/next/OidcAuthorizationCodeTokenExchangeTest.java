@@ -156,7 +156,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     static void routing(HttpRouting.Builder routing) {
         routing.post("/token", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
         routing.post("/par", OidcAuthorizationCodeTokenExchangeTest::handleTokenEndpoint);
-        routing.get("/jwks", (request, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(JWK_SET.get()));
+        routing.get("/jwks", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON).send(JWK_SET.get()));
         routing.get("/.well-known/openid-configuration", (_, response) -> {
             HTTP_METADATA_REQUESTS.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON).send("{}");
@@ -1541,6 +1541,190 @@ class OidcAuthorizationCodeTokenExchangeTest {
         MUTUAL_TLS_CERTIFICATE_PRESENT.set(request.remotePeer().tlsCertificates().isPresent());
     }
 
+    private static OidcAuthenticationRequest authenticationRequest(OidcTenantConfig tenantConfig,
+                                                                   SecurityEnvironment environment) {
+        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
+                .putTenant("default", tenantConfig)
+                .buildPrototype();
+        OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(providerConfig);
+        OidcRequestContext requestContext = new OidcRequestContext(OidcProviderTest.request(null, environment),
+                                                                   tenantRuntimeRegistry);
+        return new OidcAuthenticationRequestFactory().create(requestContext);
+    }
+
+    private static WebClientConfig conventionalTlsWebClient() {
+        return WebClientConfig.builder()
+                .tls(tls -> tls.trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("client.p12")))))
+                .buildPrototype();
+    }
+
+    private static WebClientConfig mutualTlsWebClient() {
+        Keys privateKeyConfig = clientKeys();
+        return WebClientConfig.builder()
+                .tls(tls -> tls
+                        .privateKey(privateKeyConfig)
+                        .privateKeyCertChain(privateKeyConfig)
+                        .trust(trust -> trust
+                                .keystore(store -> store
+                                        .passphrase("password")
+                                        .trustStore(true)
+                                        .keystore(Resource.create("client.p12")))))
+                .buildPrototype();
+    }
+
+    private static Tls serverTls(TlsClientAuth clientAuth) {
+        Keys privateKeyConfig = serverKeys();
+        return Tls.builder()
+                .clientAuth(clientAuth)
+                .privateKey(privateKeyConfig)
+                .privateKeyCertChain(privateKeyConfig)
+                .trust(trust -> trust
+                        .keystore(store -> store
+                                .passphrase("password")
+                                .trustStore(true)
+                                .keystore(Resource.create("server.p12"))))
+                .build();
+    }
+
+    private static Keys clientKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("client.p12")))
+                .build();
+    }
+
+    private static Keys serverKeys() {
+        return Keys.builder()
+                .keystore(store -> store
+                        .passphrase("password")
+                        .keystore(Resource.create("server.p12")))
+                .build();
+    }
+
+    private static void assertEncryptedRequestObject(String requestObject,
+                                                     String expectedContentEncryption) throws Exception {
+        assertThat(requestObject.split("\\.", -1).length, is(5));
+        EncryptedJwt encryptedJwt = EncryptedJwt.parseToken(requestObject);
+        assertThat(encryptedJwt.headers().algorithm().orElse(""), is("RSA-OAEP-256"));
+        assertThat(encryptedJwt.headers().encryption().orElse(""), is(expectedContentEncryption));
+        assertThat(encryptedJwt.headers().contentType().orElse(""), is("JWT"));
+        assertThat(encryptedJwt.headers().keyId().orElse(""), is("encrypt-rsa"));
+
+        JwkRSA encryptionKey = (JwkRSA) encryptKeys.forKeyId("encrypt-rsa").orElseThrow();
+        byte[] decryptedPayload = encryptedJwt.decryptPayload(encryptKeys, encryptionKey);
+        String signedRequestObject = new String(decryptedPayload, StandardCharsets.UTF_8);
+        String[] signedParts = signedRequestObject.split("\\.", -1);
+        assertThat(signedParts.length, is(3));
+        JsonObject signedHeader = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[0])).readJsonObject();
+        JsonObject signedClaims = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[1])).readJsonObject();
+        byte[] signedBytes = (signedParts[0] + "." + signedParts[1]).getBytes(StandardCharsets.US_ASCII);
+        byte[] signature = Base64.getUrlDecoder().decode(signedParts[2]);
+        assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
+        assertThat(signedHeader.stringValue("alg").orElse(""), is("RS256"));
+        assertThat(signedHeader.stringValue("kid").orElse(""), is("sign-rsa"));
+        assertThat(signedClaims.stringValue("iss").orElse(""), is(CLIENT_ID));
+        assertThat(signedClaims.value("aud").orElseThrow()
+                           .asArray()
+                           .values()
+                           .stream()
+                           .map(value -> value.asString().value())
+                           .toList(),
+                   is(List.of(ISSUER.toString())));
+        assertThat(signedClaims.stringValue("response_type").orElse(""), is("code"));
+        assertThat(signedClaims.stringValue("client_id").orElse(""), is(CLIENT_ID));
+        assertThat(signedClaims.containsKey("state"), is(true));
+        assertThat(signedClaims.containsKey("nonce"), is(true));
+        assertThat(signedClaims.containsKey("code_challenge"), is(true));
+        assertThat(signedClaims.containsKey("request"), is(false));
+        assertThat(signedClaims.containsKey("request_uri"), is(false));
+
+        JWEObject nimbusJwe = JWEObject.parse(requestObject);
+        nimbusJwe.decrypt(new RSADecrypter((RSAPrivateKey) encryptionKey.privateKey().orElseThrow()));
+        SignedJWT nimbusSignedJwt = SignedJWT.parse(nimbusJwe.getPayload().toString());
+        JwkRSA signingKey = (JwkRSA) signKeys.forKeyId("sign-rsa").orElseThrow();
+        assertThat(nimbusSignedJwt.verify(new RSASSAVerifier((RSAPublicKey) signingKey.publicKey())), is(true));
+        assertThat(nimbusSignedJwt.getJWTClaimsSet().getIssuer(), is(CLIENT_ID));
+    }
+
+    private static JsonObject validTokenResponse() {
+        return validTokenResponse(_ -> { });
+    }
+
+    private static JsonObject validTokenResponse(Consumer<JsonObject.Builder> customizer) {
+        JsonObject.Builder builder = JsonObject.builder()
+                .set("access_token", "access-token")
+                .set("token_type", "Bearer")
+                .set("id_token", "id-token")
+                .set("refresh_token", "refresh-token")
+                .set("expires_in", 3600)
+                .set("scope", "openid profile");
+        customizer.accept(builder);
+        return builder.build();
+    }
+
+    private static JsonObject validRefreshResponse() {
+        return JsonObject.builder()
+                .set("access_token", "refreshed-access-token")
+                .set("token_type", "Bearer")
+                .set("expires_in", 600)
+                .build();
+    }
+
+    private static JsonObject validPushedAuthorizationResponse() {
+        return validPushedAuthorizationResponse(PUSHED_AUTHORIZATION_REQUEST_URI);
+    }
+
+    private static JsonObject validPushedAuthorizationResponse(String requestUri) {
+        return JsonObject.builder()
+                .set("request_uri", requestUri)
+                .set("expires_in", 90)
+                .build();
+    }
+
+    private static Parameters authorizationRequestParameters() {
+        return Parameters.builder("test-authorization-request")
+                .add("response_type", "code")
+                .add("client_id", CLIENT_ID)
+                .add("redirect_uri", REDIRECTION_ENDPOINT_URI.toString())
+                .add("scope", "openid profile")
+                .add("state", "state-value")
+                .add("nonce", "nonce-value")
+                .add("prompt", "login consent")
+                .add("resource", "https://api.example.com")
+                .add("resource", "urn:example:contacts")
+                .add("code_challenge", "challenge-value")
+                .add("code_challenge_method", "S256")
+                .build();
+    }
+
+    private static Map<String, List<String>> formParameters(Parameters parameters) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (String name : parameters.names()) {
+            result.put(name, parameters.all(name));
+        }
+        return result;
+    }
+
+    private static Jwk clientSecretJwk() {
+        return JwkOctet.create(JsonObject.builder()
+                                      .set("kty", "oct")
+                                      .set("alg", "HS256")
+                                      .set("kid", "client-secret")
+                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                                      .build());
+    }
+
+    private static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
+    }
+
     private OidcPushedAuthorizationRequestResult pushedAuthorizationRequest(OidcTenantConfig tenantConfig,
                                                                             Parameters parameters) {
         return OidcTenantContext.ready("default", tenantConfig)
@@ -1628,17 +1812,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
             assertThat(result.response().orElseThrow().requestUri(), is(PUSHED_AUTHORIZATION_REQUEST_URI));
             assertThat(result.response().orElseThrow().expiresIn(), is(90L));
         }
-    }
-
-    private static OidcAuthenticationRequest authenticationRequest(OidcTenantConfig tenantConfig,
-                                                                   SecurityEnvironment environment) {
-        OidcProviderConfig providerConfig = OidcProviderConfig.builder()
-                .putTenant("default", tenantConfig)
-                .buildPrototype();
-        OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(providerConfig);
-        OidcRequestContext requestContext = new OidcRequestContext(OidcProviderTest.request(null, environment),
-                                                                   tenantRuntimeRegistry);
-        return new OidcAuthenticationRequestFactory().create(requestContext);
     }
 
     private OidcTokenEndpointResult exchange(OidcTenantConfig tenantConfig, String pkceVerifier) {
@@ -1877,60 +2050,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .buildPrototype();
     }
 
-    private static WebClientConfig conventionalTlsWebClient() {
-        return WebClientConfig.builder()
-                .tls(tls -> tls.trust(trust -> trust
-                        .keystore(store -> store
-                                .passphrase("password")
-                                .trustStore(true)
-                                .keystore(Resource.create("client.p12")))))
-                .buildPrototype();
-    }
-
-    private static WebClientConfig mutualTlsWebClient() {
-        Keys privateKeyConfig = clientKeys();
-        return WebClientConfig.builder()
-                .tls(tls -> tls
-                        .privateKey(privateKeyConfig)
-                        .privateKeyCertChain(privateKeyConfig)
-                        .trust(trust -> trust
-                                .keystore(store -> store
-                                        .passphrase("password")
-                                        .trustStore(true)
-                                        .keystore(Resource.create("client.p12")))))
-                .buildPrototype();
-    }
-
-    private static Tls serverTls(TlsClientAuth clientAuth) {
-        Keys privateKeyConfig = serverKeys();
-        return Tls.builder()
-                .clientAuth(clientAuth)
-                .privateKey(privateKeyConfig)
-                .privateKeyCertChain(privateKeyConfig)
-                .trust(trust -> trust
-                        .keystore(store -> store
-                                .passphrase("password")
-                                .trustStore(true)
-                                .keystore(Resource.create("server.p12"))))
-                .build();
-    }
-
-    private static Keys clientKeys() {
-        return Keys.builder()
-                .keystore(store -> store
-                        .passphrase("password")
-                        .keystore(Resource.create("client.p12")))
-                .build();
-    }
-
-    private static Keys serverKeys() {
-        return Keys.builder()
-                .keystore(store -> store
-                        .passphrase("password")
-                        .keystore(Resource.create("server.p12")))
-                .build();
-    }
-
     private OidcTenantConfig encryptedRequestObjectTenant(URI serverUri,
                                                            boolean pushedAuthorizationRequest,
                                                            boolean pinEncryptionKey,
@@ -1969,110 +2088,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
                 .buildPrototype();
     }
 
-    private static void assertEncryptedRequestObject(String requestObject,
-                                                     String expectedContentEncryption) throws Exception {
-        assertThat(requestObject.split("\\.", -1).length, is(5));
-        EncryptedJwt encryptedJwt = EncryptedJwt.parseToken(requestObject);
-        assertThat(encryptedJwt.headers().algorithm().orElse(""), is("RSA-OAEP-256"));
-        assertThat(encryptedJwt.headers().encryption().orElse(""), is(expectedContentEncryption));
-        assertThat(encryptedJwt.headers().contentType().orElse(""), is("JWT"));
-        assertThat(encryptedJwt.headers().keyId().orElse(""), is("encrypt-rsa"));
-
-        JwkRSA encryptionKey = (JwkRSA) encryptKeys.forKeyId("encrypt-rsa").orElseThrow();
-        byte[] decryptedPayload = encryptedJwt.decryptPayload(encryptKeys, encryptionKey);
-        String signedRequestObject = new String(decryptedPayload, StandardCharsets.UTF_8);
-        String[] signedParts = signedRequestObject.split("\\.", -1);
-        assertThat(signedParts.length, is(3));
-        JsonObject signedHeader = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[0])).readJsonObject();
-        JsonObject signedClaims = JsonParser.create(Base64.getUrlDecoder().decode(signedParts[1])).readJsonObject();
-        byte[] signedBytes = (signedParts[0] + "." + signedParts[1]).getBytes(StandardCharsets.US_ASCII);
-        byte[] signature = Base64.getUrlDecoder().decode(signedParts[2]);
-        assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
-        assertThat(signedHeader.stringValue("alg").orElse(""), is("RS256"));
-        assertThat(signedHeader.stringValue("kid").orElse(""), is("sign-rsa"));
-        assertThat(signedClaims.stringValue("iss").orElse(""), is(CLIENT_ID));
-        assertThat(signedClaims.value("aud").orElseThrow()
-                           .asArray()
-                           .values()
-                           .stream()
-                           .map(value -> value.asString().value())
-                           .toList(),
-                   is(List.of(ISSUER.toString())));
-        assertThat(signedClaims.stringValue("response_type").orElse(""), is("code"));
-        assertThat(signedClaims.stringValue("client_id").orElse(""), is(CLIENT_ID));
-        assertThat(signedClaims.containsKey("state"), is(true));
-        assertThat(signedClaims.containsKey("nonce"), is(true));
-        assertThat(signedClaims.containsKey("code_challenge"), is(true));
-        assertThat(signedClaims.containsKey("request"), is(false));
-        assertThat(signedClaims.containsKey("request_uri"), is(false));
-
-        JWEObject nimbusJwe = JWEObject.parse(requestObject);
-        nimbusJwe.decrypt(new RSADecrypter((RSAPrivateKey) encryptionKey.privateKey().orElseThrow()));
-        SignedJWT nimbusSignedJwt = SignedJWT.parse(nimbusJwe.getPayload().toString());
-        JwkRSA signingKey = (JwkRSA) signKeys.forKeyId("sign-rsa").orElseThrow();
-        assertThat(nimbusSignedJwt.verify(new RSASSAVerifier((RSAPublicKey) signingKey.publicKey())), is(true));
-        assertThat(nimbusSignedJwt.getJWTClaimsSet().getIssuer(), is(CLIENT_ID));
-    }
-
-    private static JsonObject validTokenResponse() {
-        return validTokenResponse(_ -> { });
-    }
-
-    private static JsonObject validTokenResponse(Consumer<JsonObject.Builder> customizer) {
-        JsonObject.Builder builder = JsonObject.builder()
-                .set("access_token", "access-token")
-                .set("token_type", "Bearer")
-                .set("id_token", "id-token")
-                .set("refresh_token", "refresh-token")
-                .set("expires_in", 3600)
-                .set("scope", "openid profile");
-        customizer.accept(builder);
-        return builder.build();
-    }
-
-    private static JsonObject validRefreshResponse() {
-        return JsonObject.builder()
-                .set("access_token", "refreshed-access-token")
-                .set("token_type", "Bearer")
-                .set("expires_in", 600)
-                .build();
-    }
-
-    private static JsonObject validPushedAuthorizationResponse() {
-        return validPushedAuthorizationResponse(PUSHED_AUTHORIZATION_REQUEST_URI);
-    }
-
-    private static JsonObject validPushedAuthorizationResponse(String requestUri) {
-        return JsonObject.builder()
-                .set("request_uri", requestUri)
-                .set("expires_in", 90)
-                .build();
-    }
-
-    private static Parameters authorizationRequestParameters() {
-        return Parameters.builder("test-authorization-request")
-                .add("response_type", "code")
-                .add("client_id", CLIENT_ID)
-                .add("redirect_uri", REDIRECTION_ENDPOINT_URI.toString())
-                .add("scope", "openid profile")
-                .add("state", "state-value")
-                .add("nonce", "nonce-value")
-                .add("prompt", "login consent")
-                .add("resource", "https://api.example.com")
-                .add("resource", "urn:example:contacts")
-                .add("code_challenge", "challenge-value")
-                .add("code_challenge_method", "S256")
-                .build();
-    }
-
-    private static Map<String, List<String>> formParameters(Parameters parameters) {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        for (String name : parameters.names()) {
-            result.put(name, parameters.all(name));
-        }
-        return result;
-    }
-
     private void assertClientAssertionClaims(SignedJwt signedJwt) {
         assertThat(signedJwt.getJwt().issuer().orElse(""), is(CLIENT_ID));
         assertThat(signedJwt.getJwt().subject().orElse(""), is(CLIENT_ID));
@@ -2081,21 +2096,6 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(signedJwt.getJwt().issueTime().isPresent(), is(true));
         assertThat(signedJwt.getJwt().expirationTime().isPresent(), is(true));
         assertThat(signedJwt.getJwt().payloadClaimsJson().keySet(), is(Set.of("iss", "sub", "aud", "jti", "iat", "exp")));
-    }
-
-    private static Jwk clientSecretJwk() {
-        return JwkOctet.create(JsonObject.builder()
-                                      .set("kty", "oct")
-                                      .set("alg", "HS256")
-                                      .set("kid", "client-secret")
-                                      .set("k", base64Url(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8)))
-                                      .build());
-    }
-
-    private static String base64Url(byte[] bytes) {
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(bytes);
     }
 
     private record RecordedRequest(String method,

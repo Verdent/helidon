@@ -75,6 +75,14 @@ final class OidcUserInfoJwtProcessor {
         return validateEncrypted(token, headers, tenantContext, idToken, validationTime);
     }
 
+    private static String decodeUtf8(byte[] payload) throws CharacterCodingException {
+        return StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(payload))
+                .toString();
+    }
+
     private OidcValidationResult<JsonObject> validateEncrypted(String token,
                                                                JwtHeaders headers,
                                                                OidcTenantContext tenantContext,
@@ -85,7 +93,7 @@ final class OidcUserInfoJwtProcessor {
             return OidcValidationResult.failure("UserInfo JWE alg header does not match registration");
         }
         String expectedContentEncryption = config.contentEncryptionAlgorithm()
-                .orElse(OidcUserInfoJwtConfigBlueprint.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
+                .orElse(OidcUserInfoJwtConfigDecorator.DEFAULT_CONTENT_ENCRYPTION_ALGORITHM);
         if (headers.encryption().filter(expectedContentEncryption::equals).isEmpty()) {
             return OidcValidationResult.failure("UserInfo JWE enc header does not match registration");
         }
@@ -134,13 +142,5 @@ final class OidcUserInfoJwtProcessor {
         } finally {
             Arrays.fill(payload, (byte) 0);
         }
-    }
-
-    private static String decodeUtf8(byte[] payload) throws CharacterCodingException {
-        return StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(payload))
-                .toString();
     }
 }

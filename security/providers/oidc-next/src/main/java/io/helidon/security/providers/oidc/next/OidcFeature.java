@@ -40,6 +40,10 @@ import io.helidon.webserver.spi.ServerFeature;
 
 /**
  * OpenID Connect HTTP feature for Redirection Endpoint and logout routes.
+ * <p>
+ * The feature uses {@link OidcProviderConfig}'s Blueprint builder for the same tenant options as
+ * {@link OidcProvider}, instead of exposing a second builder with duplicate configuration.
+ * {@link #create(OidcProvider)} explicitly shares an existing provider's runtime.
  */
 public final class OidcFeature implements HttpFeature, ServerFeature {
     private static final System.Logger LOGGER = System.getLogger(OidcFeature.class.getName());
@@ -72,6 +76,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
      * @return OIDC HTTP feature
      */
     public static OidcFeature create(Config config) {
+        Objects.requireNonNull(config, "config");
         return create(OidcProviderConfig.create(config));
     }
 
@@ -85,6 +90,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
      * @return OIDC HTTP feature
      */
     public static OidcFeature create(OidcProviderConfig config) {
+        Objects.requireNonNull(config, "config");
         return new OidcFeature(config, OidcTenantRuntimeRegistry.create(config), true);
     }
 
@@ -102,6 +108,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
 
     @Override
     public void setup(HttpRouting.Builder routing) {
+        Objects.requireNonNull(routing, "routing");
         tenantRuntimeRegistry.requireOpen();
         // Create lifecycle state per built routing, including copied/reused builders and direct setup(routing) calls.
         HttpFeature lifecycle = target -> target.addFeature(new RuntimeLifecycle(tenantRuntimeRegistry, ownsRuntime));
@@ -114,6 +121,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
 
     @Override
     public void setup(ServerFeatureContext featureContext) {
+        Objects.requireNonNull(featureContext, "featureContext");
         String featureSocket = socket();
         if (!featureContext.socketExists(featureSocket)) {
             if (socketRequired()) {

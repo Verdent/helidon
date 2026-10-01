@@ -317,7 +317,8 @@ class OidcTenantRuntimeTest {
                                                   .header("Authorization", "Bearer access-token")
                                                   .build());
         EndpointConfig outboundConfig = EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.clientCredentialsGrant())
+                .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                        .clientCredentialsGrantEnabled(true).buildPrototype())
                 .build();
 
         assertThat(provider.authenticate(request).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
@@ -395,8 +396,8 @@ class OidcTenantRuntimeTest {
                 .addHost("api.example.com")
                 .addPath("/resource")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();

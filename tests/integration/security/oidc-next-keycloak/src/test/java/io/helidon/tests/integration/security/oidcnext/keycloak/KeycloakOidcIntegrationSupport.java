@@ -46,9 +46,10 @@ import io.helidon.security.SecurityContext;
 import io.helidon.security.Subject;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
+import io.helidon.security.providers.oidc.next.OidcEndpointConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
-import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcPushedAuthorizationRequestMode;
@@ -122,23 +123,34 @@ final class KeycloakOidcIntegrationSupport {
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig() {
-        return authorizationCodeProviderConfig(authorizationCode -> {
+        return authorizationCodeProviderConfig(_ -> {
         });
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig(
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer) {
-        return authorizationCodeProviderConfig(authorizationCodeCustomizer, tenant -> {
+        return authorizationCodeProviderConfig(authorizationCodeCustomizer, _ -> {
         });
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig(
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
             Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
-        return authorizationCodeProviderConfig(KeycloakOidcContainer.issuer(),
-                                               KeycloakOidcContainer.metadataUri(),
-                                               authorizationCodeCustomizer,
-                                               tenantCustomizer);
+        URI issuer = KeycloakOidcContainer.issuer();
+        URI protocol = URI.create(issuer + "/protocol/openid-connect/");
+        // Keycloak's HTTP dev-mode metadata advertises an HTTP PAR URL even if this client disables PAR.
+        // Explicit endpoints keep these HTTP tests independent of PAR; the HTTPS PAR test still exercises discovery.
+        return configuredAuthorizationCodeProviderConfig(issuer,
+                                                         endpoints -> endpoints
+                                                                 .authorizationEndpointUri(protocol.resolve("auth"))
+                                                                 .tokenEndpointUri(protocol.resolve("token"))
+                                                                 .jwksUri(protocol.resolve("certs"))
+                                                                 .introspectionEndpointUri(protocol.resolve("token/introspect"))
+                                                                 .userInfoEndpointUri(protocol.resolve("userinfo"))
+                                                                 .endSessionEndpointUri(protocol.resolve("logout"))
+                                                                 .tlsRequired(false),
+                                                         authorizationCodeCustomizer,
+                                                         tenantCustomizer);
     }
 
     static OidcProviderConfig authorizationCodeProviderConfig(
@@ -146,31 +158,15 @@ final class KeycloakOidcIntegrationSupport {
             URI metadataUri,
             Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
             Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
-        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .clientId(WEB_CLIENT_ID)
-                .clientSecret(WEB_CLIENT_SECRET)
-                .endpoints(endpoints -> endpoints
-                        .wellKnownUri(metadataUri)
-                        .tlsRequired(false))
-                .authorizationCode(authorizationCode -> {
-                    authorizationCode.pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.DISABLED);
-                    authorizationCode.scopes(List.of("openid", "profile", "email"));
-                    authorizationCodeCustomizer.accept(authorizationCode);
-                })
-                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .logout(logout -> logout.endSession(endSession -> {
-                }))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
-        tenantCustomizer.accept(tenant);
-        return OidcProviderConfig.builder()
-                .putTenant("default", tenant.buildPrototype())
-                .buildPrototype();
+        return configuredAuthorizationCodeProviderConfig(issuer,
+                                                         endpoints -> endpoints.wellKnownUri(metadataUri).tlsRequired(false),
+                                                         authorizationCodeCustomizer,
+                                                         tenantCustomizer);
     }
 
     static OidcProviderConfig mixedProviderConfig() {
         return authorizationCodeProviderConfig(
-                authorizationCode -> {
+                _ -> {
                 },
                 tenant -> tenant
                         .tokenTransport(transport -> transport.secureTransportRequired(false))
@@ -186,7 +182,7 @@ final class KeycloakOidcIntegrationSupport {
 
     static OidcProviderConfig authorizationCodeRefreshProviderConfig() {
         return authorizationCodeProviderConfig(
-                authorizationCode -> {
+                _ -> {
                 },
                 tenant -> tenant
                         .protectedResource(resource -> resource
@@ -335,7 +331,7 @@ final class KeycloakOidcIntegrationSupport {
     }
 
     static void protectedRoute(HttpRouting.Builder routing, String path, SecurityHandler securityHandler) {
-        routing.get(path, securityHandler, (request, response) -> {
+        routing.get(path, securityHandler, (_, response) -> {
             Subject subject = currentSubject();
             Object email = subject.principal().abacAttributeRaw("email");
             response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
@@ -424,8 +420,8 @@ final class KeycloakOidcIntegrationSupport {
                 .addHost(downstreamUri.getHost())
                 .addPath("/downstream")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenPropagationEnabled(true)
                                       .audienceValidationEnabled(false)
                                       .buildPrototype())
@@ -438,8 +434,8 @@ final class KeycloakOidcIntegrationSupport {
                 .addHost(downstreamUri.getHost())
                 .addPath("/downstream")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
@@ -451,8 +447,8 @@ final class KeycloakOidcIntegrationSupport {
                 .addHost(downstreamUri.getHost())
                 .addPath("/downstream")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenExchangeEnabled(true)
                                       .tokenExchangeAudience(API_AUDIENCE)
                                       .buildPrototype())
@@ -491,6 +487,31 @@ final class KeycloakOidcIntegrationSupport {
         return URI.create(matcher.group(1).replace("&amp;", "&"));
     }
 
+    private static OidcProviderConfig configuredAuthorizationCodeProviderConfig(
+            URI issuer,
+            Consumer<OidcEndpointConfig.Builder> endpointCustomizer,
+            Consumer<OidcAuthorizationCodeConfig.Builder> authorizationCodeCustomizer,
+            Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId(WEB_CLIENT_ID)
+                .clientSecret(WEB_CLIENT_SECRET)
+                .endpoints(endpointCustomizer)
+                .authorizationCode(authorizationCode -> {
+                    authorizationCode.pushedAuthorizationRequests(OidcPushedAuthorizationRequestMode.DISABLED);
+                    authorizationCode.scopes(List.of("openid", "profile", "email"));
+                    authorizationCodeCustomizer.accept(authorizationCode);
+                })
+                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
+                .logout(logout -> logout.endSession(_ -> {
+                }))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+        tenantCustomizer.accept(tenant);
+        return OidcProviderConfig.builder()
+                .putTenant("default", tenant.buildPrototype())
+                .buildPrototype();
+    }
+
     static final class BrowserSession implements AutoCloseable {
         private final WebClient client;
         private final Map<String, String> cookies = new LinkedHashMap<>();
@@ -515,7 +536,7 @@ final class KeycloakOidcIntegrationSupport {
         }
 
         HttpClientResponse post(URI uri, Parameters form) {
-            return post(uri, form, request -> {
+            return post(uri, form, _ -> {
             });
         }
 

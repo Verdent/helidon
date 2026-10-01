@@ -77,7 +77,6 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 class OidcJwtAccessTokenValidationTest {
@@ -831,13 +830,13 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
                     .mapToObj(_ -> executor.submit(() -> {
-                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                         return manager.jwkKeys();
                     }))
                     .toList();
 
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
             for (Future<JwkKeys> future : futures) {
                 assertThat(future.get().forKeyId("verify-rsa").isPresent(), is(true));
@@ -868,7 +867,7 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
 
             RuntimeException cohortFailure = failedJwkCall(futures.getFirst());
@@ -912,7 +911,7 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
 
             RuntimeException cohortFailure = failedJwkCall(futures.getFirst());
@@ -952,7 +951,7 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = concurrentJwkCalls(executor, threads, start, manager::jwkKeys);
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
 
             for (Future<JwkKeys> future : futures) {
@@ -992,13 +991,13 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
                     .mapToObj(_ -> executor.submit(() -> {
-                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                         return manager.jwkKeys();
                     }))
                     .toList();
 
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
             for (Future<JwkKeys> future : futures) {
                 future.get();
@@ -1028,13 +1027,13 @@ class OidcJwtAccessTokenValidationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<JwkKeys>> futures = IntStream.range(0, threads)
                     .mapToObj(_ -> executor.submit(() -> {
-                        assertTrue(start.await(5, TimeUnit.SECONDS));
+                        assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                         return manager.jwkKeys(Optional.of("verify-rsa"));
                     }))
                     .toList();
 
             start.countDown();
-            assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(requestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseResponse.countDown();
             for (Future<JwkKeys> future : futures) {
                 assertThat(future.get().forKeyId("verify-rsa").isPresent(), is(true));
@@ -1355,24 +1354,6 @@ class OidcJwtAccessTokenValidationTest {
                                 .mode(certificateBoundAccessTokenMode)))));
     }
 
-    private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
-        providerMetadata.set(JsonObject.builder()
-                                     .set("issuer", discoveryIssuer.toString())
-                                     .set("jwks_uri", remoteJwksUri.toString())
-                                     .build().toString());
-        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
-                .issuer(discoveryIssuer.toString())
-                .endpoints(it -> it.wellKnownUri(wellKnownUri)
-                        .tlsRequired(false))
-                .protectedResource(it -> it.tokenValidation(validation -> validation
-                        .method(OidcTokenValidationMethod.JWT)
-                        .audience(AUDIENCE)));
-        tenantCustomizer.accept(tenantBuilder);
-        return OidcProvider.create(OidcProviderConfig.builder()
-                                           .putTenant("default", tenantBuilder.buildPrototype())
-                                           .buildPrototype());
-    }
-
     private static WebClientConfig tenantWebClient() {
         return WebClientConfig.builder()
                 .addHeader(TENANT_WEBCLIENT_HEADER, TENANT_WEBCLIENT_HEADER_VALUE)
@@ -1506,9 +1487,27 @@ class OidcJwtAccessTokenValidationTest {
                               + "error_description=\"Bearer Token is invalid\""));
     }
 
+    private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {
+        providerMetadata.set(JsonObject.builder()
+                                     .set("issuer", discoveryIssuer.toString())
+                                     .set("jwks_uri", remoteJwksUri.toString())
+                                     .build().toString());
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder()
+                .issuer(discoveryIssuer.toString())
+                .endpoints(it -> it.wellKnownUri(wellKnownUri)
+                        .tlsRequired(false))
+                .protectedResource(it -> it.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)));
+        tenantCustomizer.accept(tenantBuilder);
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenantBuilder.buildPrototype())
+                                           .buildPrototype());
+    }
+
     private static final class MutableClock extends Clock {
-        private Instant instant;
         private final ZoneId zone;
+        private Instant instant;
 
         private MutableClock(Instant instant, ZoneId zone) {
             this.instant = instant;

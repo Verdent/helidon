@@ -16,8 +16,6 @@
 
 package io.helidon.tests.integration.security.oidcnext.idp;
 
-import java.io.UncheckedIOException;
-import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +24,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -42,7 +39,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
-import io.helidon.common.parameters.Parameters;
+import io.helidon.common.pki.Keys;
+import io.helidon.common.tls.Tls;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
@@ -54,6 +52,7 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.webserver.WebServer;
+import io.helidon.webserver.WebServerConfig;
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
@@ -62,6 +61,9 @@ import io.helidon.webserver.http.ServerResponse;
  * In-process OpenID Connect identity provider for integration tests.
  */
 public final class TestOidcServer implements AutoCloseable {
+    private static final String PAR_SOCKET = "par";
+    private static final String PAR_CERTIFICATE = "oidc-next-par-localhost.crt";
+    private static final String PAR_PRIVATE_KEY = "oidc-next-par-localhost.key";
     private static final String SIGNING_RESOURCE = "oidc-next-it-sign-jwk.json";
     private static final String VERIFY_RESOURCE = "oidc-next-it-verify-jwk.json";
     private static final String SIGNING_KEY_ID = "sign-rsa";
@@ -101,17 +103,24 @@ public final class TestOidcServer implements AutoCloseable {
         routing.get("/.well-known/openid-configuration", this::metadataEndpoint);
         routing.get("/authorize", this::authorizationEndpoint);
         routing.post("/authorize/login", this::loginEndpoint);
-        routing.post("/par", this::pushedAuthorizationEndpoint);
         routing.post("/token", this::tokenEndpoint);
         routing.get("/jwks", this::jwksEndpoint);
         routing.post("/introspect", this::introspectionEndpoint);
         routing.get("/userinfo", this::userInfoEndpoint);
         routing.get("/logout", this::logoutEndpoint);
-        this.server = WebServer.builder()
+        WebServerConfig.Builder serverBuilder = WebServer.builder()
                 .port(0)
-                .addRouting(routing)
-                .build()
-                .start();
+                .addRouting(routing);
+        if (config.parEnabled()) {
+            // RFC 9126 requires TLS for PAR even when local integration tests use HTTP for the other endpoints.
+            Keys keys = Keys.builder().pem(pem -> pem
+                    .key(Resource.create(PAR_PRIVATE_KEY))
+                    .certChain(Resource.create(PAR_CERTIFICATE))).build();
+            Tls tls = Tls.builder().privateKey(keys).privateKeyCertChain(keys).build();
+            serverBuilder.putSocket(PAR_SOCKET, socket -> socket.port(0).tls(tls))
+                    .routing(PAR_SOCKET, par -> par.post("/par", this::pushedAuthorizationEndpoint));
+        }
+        this.server = serverBuilder.build().start();
         this.issuer = config.issuer()
                 .orElseGet(() -> URI.create("http://localhost:" + server.port()));
     }
@@ -139,6 +148,15 @@ public final class TestOidcServer implements AutoCloseable {
     }
 
     /**
+     * Whether this test provider exposes an HTTPS PAR endpoint.
+     *
+     * @return whether PAR is enabled
+     */
+    public boolean parEnabled() {
+        return config.parEnabled();
+    }
+
+    /**
      * Metadata endpoint URI.
      *
      * @return metadata URI
@@ -162,7 +180,10 @@ public final class TestOidcServer implements AutoCloseable {
      * @return Pushed Authorization Request endpoint URI
      */
     public URI pushedAuthorizationRequestEndpointUri() {
-        return issuer.resolve("/par");
+        if (!config.parEnabled()) {
+            throw new IllegalStateException("Pushed Authorization Requests are not enabled for this test server");
+        }
+        return URI.create("https://localhost:" + server.port(PAR_SOCKET) + "/par");
     }
 
     /**
@@ -291,7 +312,6 @@ public final class TestOidcServer implements AutoCloseable {
         JsonObject.Builder builder = JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri().toString())
-                .set("pushed_authorization_request_endpoint", pushedAuthorizationRequestEndpointUri().toString())
                 .set("token_endpoint", tokenEndpointUri().toString())
                 .set("jwks_uri", jwksUri().toString())
                 .set("introspection_endpoint", introspectionEndpointUri().toString())
@@ -304,6 +324,9 @@ public final class TestOidcServer implements AutoCloseable {
                 .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
                 .setStrings("subject_types_supported", List.of("public"))
                 .setStrings("id_token_signing_alg_values_supported", List.of(SIGNING_ALGORITHM));
+        if (config.parEnabled()) {
+            builder.set("pushed_authorization_request_endpoint", pushedAuthorizationRequestEndpointUri().toString());
+        }
         config.metadata().claims().forEach((name, value) -> TestOidcJsonSupport.set(builder, name, value));
         return builder.build();
     }
@@ -311,6 +334,50 @@ public final class TestOidcServer implements AutoCloseable {
     @Override
     public void close() {
         server.stop();
+    }
+
+    private static void sendJson(ServerResponse response, JsonObject json) {
+        response.header(HeaderValues.CONTENT_TYPE_JSON)
+                .send(json.toString());
+    }
+
+    private static String appendQuery(URI uri, Map<String, String> parameters) {
+        StringBuilder result = new StringBuilder(uri.toString());
+        result.append(uri.getQuery() == null ? '?' : '&');
+        boolean first = true;
+        for (Map.Entry<String, String> entry : parameters.entrySet()) {
+            if (!first) {
+                result.append('&');
+            }
+            first = false;
+            result.append(urlEncode(entry.getKey()))
+                    .append('=')
+                    .append(urlEncode(entry.getValue()));
+        }
+        return result.toString();
+    }
+
+    private static String required(Map<String, List<String>> parameters, String name) {
+        return first(parameters, name)
+                .filter(value -> !value.isBlank())
+                .orElseThrow(() -> new IllegalArgumentException(name + " is required"));
+    }
+
+    private static Optional<String> first(Map<String, List<String>> parameters, String name) {
+        return Optional.ofNullable(parameters.get(name))
+                .filter(values -> !values.isEmpty())
+                .map(List::getFirst);
+    }
+
+    private static String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static String escapeHtml(String value) {
+        return value.replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private void metadataEndpoint(ServerRequest request, ServerResponse response) {
@@ -915,53 +982,39 @@ public final class TestOidcServer implements AutoCloseable {
         return form.toString();
     }
 
-    private static void sendJson(ServerResponse response, JsonObject json) {
-        response.header(HeaderValues.CONTENT_TYPE_JSON)
-                .send(json.toString());
+    private interface DefaultSender {
+        void send(TestOidcRequest request, ServerResponse response);
     }
 
-    private static String appendQuery(URI uri, Map<String, String> parameters) {
-        StringBuilder result = new StringBuilder(uri.toString());
-        result.append(uri.getQuery() == null ? '?' : '&');
-        boolean first = true;
-        for (Map.Entry<String, String> entry : parameters.entrySet()) {
-            if (!first) {
-                result.append('&');
-            }
-            first = false;
-            result.append(urlEncode(entry.getKey()))
-                    .append('=')
-                    .append(urlEncode(entry.getValue()));
-        }
-        return result.toString();
+    private record AuthorizationCode(String clientId,
+                                     String username,
+                                     URI redirectUri,
+                                     List<String> scopes,
+                                     String nonce,
+                                     String codeChallenge,
+                                     String codeChallengeMethod) {
     }
 
-    private static String required(Map<String, List<String>> parameters, String name) {
-        return first(parameters, name)
-                .filter(value -> !value.isBlank())
-                .orElseThrow(() -> new IllegalArgumentException(name + " is required"));
+    private record RefreshState(String clientId, String subject, String username, List<String> scopes) {
     }
 
-    private static Optional<String> first(Map<String, List<String>> parameters, String name) {
-        return Optional.ofNullable(parameters.get(name))
-                .filter(values -> !values.isEmpty())
-                .map(List::getFirst);
+    private record IssuedAccessToken(String clientId,
+                                     String subject,
+                                     String username,
+                                     List<String> scopes,
+                                     Instant issuedAt,
+                                     Instant expiresAt,
+                                     List<String> audiences,
+                                     Map<String, JsonValue> claims) {
     }
 
-    private static String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private static String escapeHtml(String value) {
-        return value.replace("&", "&amp;")
-                .replace("\"", "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
+    private record AuthorizationUser(String username, TestOidcUserConfig user) {
     }
 
     /**
      * Builder for {@link TestOidcServer}.
      */
+    // This nested builder must qualify the common Builder interface, which has the same simple name.
     public static final class Builder implements io.helidon.common.Builder<Builder, TestOidcServer> {
         private final TestOidcServerConfig.Builder delegate = TestOidcServerConfig.builder();
         private final TestOidcProviderMetadataConfig.Builder metadata = TestOidcProviderMetadataConfig.builder();
@@ -1060,6 +1113,17 @@ public final class TestOidcServer implements AutoCloseable {
          */
         public Builder browserLogin(boolean enabled) {
             delegate.browserLogin(enabled);
+            return this;
+        }
+
+        /**
+         * Enable HTTPS Pushed Authorization Requests for this test identity provider.
+         *
+         * @param enabled whether PAR is enabled
+         * @return this builder
+         */
+        public Builder parEnabled(boolean enabled) {
+            delegate.parEnabled(enabled);
             return this;
         }
 
@@ -1410,10 +1474,6 @@ public final class TestOidcServer implements AutoCloseable {
         }
     }
 
-    private interface DefaultSender {
-        void send(TestOidcRequest request, ServerResponse response);
-    }
-
     private class EndpointContext implements TestOidcEndpointContext {
         private final TestOidcRequest request;
         private final ServerResponse response;
@@ -1462,28 +1522,4 @@ public final class TestOidcServer implements AutoCloseable {
         }
     }
 
-    private record AuthorizationCode(String clientId,
-                                     String username,
-                                     URI redirectUri,
-                                     List<String> scopes,
-                                     String nonce,
-                                     String codeChallenge,
-                                     String codeChallengeMethod) {
-    }
-
-    private record RefreshState(String clientId, String subject, String username, List<String> scopes) {
-    }
-
-    private record IssuedAccessToken(String clientId,
-                                     String subject,
-                                     String username,
-                                     List<String> scopes,
-                                     Instant issuedAt,
-                                     Instant expiresAt,
-                                     List<String> audiences,
-                                     Map<String, JsonValue> claims) {
-    }
-
-    private record AuthorizationUser(String username, TestOidcUserConfig user) {
-    }
 }

@@ -48,6 +48,14 @@ interface TestOidcServerConfigBlueprint {
     @Option.DefaultBoolean(false)
     boolean browserLogin();
 
+    /**
+     * Whether to expose the PAR endpoint on an HTTPS-only listener and advertise it in metadata.
+     *
+     * @return whether the PAR endpoint is enabled
+     */
+    @Option.DefaultBoolean(false)
+    boolean parEnabled();
+
     @Option.Default("create()")
     TestOidcTokenDefaults tokenDefaults();
 

@@ -88,7 +88,7 @@ class KeycloakTokenPropagationIT {
     private static WebServer proxyServer(OidcProviderConfig providerConfig, URI downstreamUri) {
         return KeycloakOidcIntegrationSupport.rpServer(
                 providerConfig,
-                routing -> routing.get("/proxy", SecurityFeature.authenticate(), (request, response) -> {
+                routing -> routing.get("/proxy", SecurityFeature.authenticate(), (_, response) -> {
                     WebClient outbound = KeycloakOidcIntegrationSupport.outboundClient();
                     try (HttpClientResponse downstreamResponse = outbound.get()
                             .uri(downstreamUri)

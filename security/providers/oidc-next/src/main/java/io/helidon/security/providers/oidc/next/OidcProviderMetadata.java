@@ -220,6 +220,22 @@ final class OidcProviderMetadata {
                                         true);
     }
 
+    static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {
+        /*
+         * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
+         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+         * Quote: "OpenID Providers supporting Discovery MUST make a JSON document available at the path formed by
+         * concatenating the string `/.well-known/openid-configuration` to the Issuer."
+         * Quote: "If the Issuer value contains a path component, any terminating `/` MUST be removed before appending
+         * `/.well-known/openid-configuration`."
+         */
+        Optional<URI> configuredWellKnownUri = endpoints.wellKnownUri();
+        if (configuredWellKnownUri.isPresent()) {
+            return configuredWellKnownUri;
+        }
+        return issuer.map(OidcEndpointUris::oidcWellKnownUri);
+    }
+
     OidcProviderMetadata mergeWellKnownMetadata(OidcProviderMetadata wellKnown) {
         validateWellKnownMetadataIssuer(wellKnown);
         Optional<URI> mergedJwkSetUri = jwkSetUri.or(wellKnown::jwkSetUri);
@@ -429,22 +445,6 @@ final class OidcProviderMetadata {
 
     boolean wellKnownMetadataLoaded() {
         return wellKnownMetadataLoaded;
-    }
-
-    static Optional<URI> wellKnownUri(Optional<String> issuer, OidcEndpointConfig endpoints) {
-        /*
-         * Spec: OpenID Connect Discovery 1.0, 4 Obtaining OpenID Provider Configuration Information
-         * https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
-         * Quote: "OpenID Providers supporting Discovery MUST make a JSON document available at the path formed by
-         * concatenating the string `/.well-known/openid-configuration` to the Issuer."
-         * Quote: "If the Issuer value contains a path component, any terminating `/` MUST be removed before appending
-         * `/.well-known/openid-configuration`."
-         */
-        Optional<URI> configuredWellKnownUri = endpoints.wellKnownUri();
-        if (configuredWellKnownUri.isPresent()) {
-            return configuredWellKnownUri;
-        }
-        return issuer.map(OidcEndpointUris::oidcWellKnownUri);
     }
 
     private static Optional<URI> uriValue(JsonObject json, String name) {

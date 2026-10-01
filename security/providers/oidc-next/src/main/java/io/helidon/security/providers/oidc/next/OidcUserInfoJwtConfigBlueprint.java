@@ -33,11 +33,6 @@ import io.helidon.common.configurable.ResourceConfig;
 @Prototype.Configured
 interface OidcUserInfoJwtConfigBlueprint {
     /**
-     * Default JWE content encryption algorithm defined by OpenID Connect client registration.
-     */
-    String DEFAULT_CONTENT_ENCRYPTION_ALGORITHM = "A128CBC-HS256";
-
-    /**
      * Exact JWS {@code alg} registered as {@code userinfo_signed_response_alg}.
      * <p>
      * When configured without {@link #encryptionAlgorithm()}, the UserInfo response must be a signed JWT. When both
@@ -67,7 +62,7 @@ interface OidcUserInfoJwtConfigBlueprint {
     /**
      * Exact JWE {@code enc} registered as {@code userinfo_encrypted_response_enc}.
      * <p>
-     * OpenID Connect registration defines {@value #DEFAULT_CONTENT_ENCRYPTION_ALGORITHM} as the default when
+     * OpenID Connect registration defines {@code A128CBC-HS256} as the default when
      * {@link #encryptionAlgorithm()} is configured and this option is omitted.
      * Supported values are {@code A128GCM}, {@code A192GCM}, {@code A256GCM}, {@code A128CBC-HS256},
      * {@code A192CBC-HS384}, and {@code A256CBC-HS512}. Values are case-sensitive; unsupported values are rejected

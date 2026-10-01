@@ -76,10 +76,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         return stringListClaim("aud");
     }
 
-    private Optional<String> stringClaim(String claimName) {
-        return stringClaim(claims, claimName);
-    }
-
     private static Optional<String> stringClaim(JsonObject claims, String claimName) {
         /*
          * Spec: RFC 6749, 2.2 Client Identifier
@@ -97,10 +93,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
                     }
                     throw new IllegalArgumentException("Claim " + claimName + " must be a string");
                 });
-    }
-
-    private Optional<Instant> instantClaim(String claimName) {
-        return instantClaim(claims, claimName);
     }
 
     private static Optional<Instant> instantClaim(JsonObject claims, String claimName) {
@@ -129,10 +121,6 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         } catch (ArithmeticException | DateTimeException e) {
             throw new IllegalArgumentException("Claim " + claimName + " must be an integer NumericDate", e);
         }
-    }
-
-    private List<String> stringListClaim(String claimName) {
-        return stringListClaim(claims, claimName);
     }
 
     private static List<String> stringListClaim(JsonObject claims, String claimName) {
@@ -170,5 +158,17 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         stringListClaim(claims, "aud").forEach(builder::addAudience);
         stringListClaim(claims, "groups").forEach(builder::addUserGroup);
         return builder.build();
+    }
+
+    private Optional<String> stringClaim(String claimName) {
+        return stringClaim(claims, claimName);
+    }
+
+    private Optional<Instant> instantClaim(String claimName) {
+        return instantClaim(claims, claimName);
+    }
+
+    private List<String> stringListClaim(String claimName) {
+        return stringListClaim(claims, claimName);
     }
 }

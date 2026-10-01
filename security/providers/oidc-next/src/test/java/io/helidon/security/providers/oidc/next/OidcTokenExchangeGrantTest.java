@@ -68,7 +68,6 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
@@ -103,7 +102,7 @@ class OidcTokenExchangeGrantTest {
 
     @SetUpRoute
     static void routing(HttpRouting.Builder routing) {
-        routing.get("/.well-known/openid-configuration", (request, response) -> {
+        routing.get("/.well-known/openid-configuration", (_, response) -> {
             METADATA_REQUEST_COUNT.incrementAndGet();
             CountDownLatch started = metadataRequestStarted;
             if (started != null) {
@@ -359,7 +358,7 @@ class OidcTokenExchangeGrantTest {
             List<Future<OutboundSecurityResponse>> futures = new ArrayList<>(taskCount);
             for (int i = 0; i < taskCount; i++) {
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     return provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
                                                      outboundEnvironment(),
                                                      EndpointConfig.create());
@@ -367,7 +366,7 @@ class OidcTokenExchangeGrantTest {
             }
 
             start.countDown();
-            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
+            assertThat(tokenRequestStarted.await(5, TimeUnit.SECONDS), is(true));
             releaseTokenResponse.countDown();
             for (Future<OutboundSecurityResponse> future : futures) {
                 assertThat(future.get().requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
@@ -407,7 +406,7 @@ class OidcTokenExchangeGrantTest {
             for (int i = 0; i < taskCount; i++) {
                 String token = "subject-token-" + i;
                 futures.add(executor.submit(() -> {
-                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    assertThat(start.await(5, TimeUnit.SECONDS), is(true));
                     OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(token),
                                                                                   outboundEnvironment(),
                                                                                   endpointConfig);
@@ -419,8 +418,8 @@ class OidcTokenExchangeGrantTest {
             }
 
             start.countDown();
-            assertTrue(tokenRequestStarted.await(5, TimeUnit.SECONDS));
-            assertTrue(overloadObserved.await(5, TimeUnit.SECONDS));
+            assertThat(tokenRequestStarted.await(5, TimeUnit.SECONDS), is(true));
+            assertThat(overloadObserved.await(5, TimeUnit.SECONDS), is(true));
             releaseTokenResponse.countDown();
 
             int succeeded = 0;
@@ -594,7 +593,7 @@ class OidcTokenExchangeGrantTest {
     @Test
     void tokenExchangeRequiresResourceOrAudience() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenExchangeEnabled(true)
                                                                .buildPrototype());
 
@@ -604,7 +603,7 @@ class OidcTokenExchangeGrantTest {
     @Test
     void tokenExchangeScopeWithoutTokenExchangeIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .addTokenExchangeScope("orders.read")
                                                                .buildPrototype());
 
@@ -614,7 +613,7 @@ class OidcTokenExchangeGrantTest {
     @Test
     void invalidTokenExchangeResourceIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenExchangeEnabled(true)
                                                                .tokenExchangeResource("https://orders.example.com#read")
                                                                .buildPrototype());
@@ -625,7 +624,7 @@ class OidcTokenExchangeGrantTest {
     @Test
     void paddedTokenExchangeAudienceIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenExchangeEnabled(true)
                                                                .tokenExchangeAudience(" api://orders")
                                                                .buildPrototype());
@@ -636,7 +635,7 @@ class OidcTokenExchangeGrantTest {
     @Test
     void tokenExchangeIsMutuallyExclusiveWithOtherOutboundStrategies() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcOutboundTargetConfig.builder()
+                                                       () -> OidcOutboundPolicyConfig.builder()
                                                                .tokenExchangeEnabled(true)
                                                                .tokenExchangeAudience("api://orders")
                                                                .clientCredentialsGrantEnabled(true)
@@ -786,38 +785,11 @@ class OidcTokenExchangeGrantTest {
 
     private static void await(CountDownLatch latch) {
         try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertThat(latch.await(5, TimeUnit.SECONDS), is(true));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for Token Endpoint test response", e);
         }
-    }
-
-    private OidcTenantConfig confidentialTenant() {
-        return OidcTenantConfig.builder()
-                .clientId(CLIENT_ID)
-                .clientSecret(CLIENT_SECRET)
-                .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
-                        .tlsRequired(false))
-                .buildPrototype();
-    }
-
-    private OidcTenantConfig confidentialTenantFromWellKnown() {
-        return OidcTenantConfig.builder()
-                .issuer(issuer.toString())
-                .clientId(CLIENT_ID)
-                .clientSecret(CLIENT_SECRET)
-                .endpoints(it -> it.tlsRequired(false))
-                .buildPrototype();
-    }
-
-    private OidcTenantConfig publicClientTenant() {
-        return OidcTenantConfig.builder()
-                .clientId(CLIENT_ID)
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.NONE)
-                .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
-                        .tlsRequired(false))
-                .buildPrototype();
     }
 
     private static OidcProvider provider(OidcTenantConfig tenant, OutboundTarget... outboundTargets) {
@@ -834,8 +806,9 @@ class OidcTokenExchangeGrantTest {
     }
 
     private static EndpointConfig clientCredentialsEndpointConfig(String scope) {
-        return EndpointConfig.builder().customObject(OidcOutboundPolicy.class,
-                OidcOutboundPolicy.clientCredentialsGrant(List.of(scope), List.of())).build();
+        return EndpointConfig.builder().customObject(OidcOutboundPolicyConfig.class,
+                OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+                        .addClientCredentialsScope(scope).buildPrototype()).build();
     }
 
     private static void awaitActive(OidcRemoteWorkLimiter limiter, int count) throws InterruptedException {
@@ -848,10 +821,14 @@ class OidcTokenExchangeGrantTest {
 
     private static EndpointConfig tokenExchangeEndpointConfig() {
         return EndpointConfig.builder()
-                .customObject(OidcOutboundPolicy.class,
-                              OidcOutboundPolicy.tokenExchange(List.of("orders.read", "orders.write"),
-                                                               "https://orders.example.com",
-                                                               "api://orders"))
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
+                                      .tokenExchangeEnabled(true)
+                                      .addTokenExchangeScope("orders.read")
+                                      .addTokenExchangeScope("orders.write")
+                                      .tokenExchangeResource("https://orders.example.com")
+                                      .tokenExchangeAudience("api://orders")
+                                      .buildPrototype())
                 .build();
     }
 
@@ -861,8 +838,8 @@ class OidcTokenExchangeGrantTest {
                 .addHost("api.example.com")
                 .addPath("/orders/.*")
                 .addMethod("GET")
-                .customObject(OidcOutboundTargetConfig.class,
-                              OidcOutboundTargetConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder()
                                       .tokenExchangeEnabled(true)
                                       .addTokenExchangeScope("orders.read")
                                       .addTokenExchangeScope("orders.write")
@@ -915,6 +892,33 @@ class OidcTokenExchangeGrantTest {
             result.put(name, parameters.all(name));
         }
         return result;
+    }
+
+    private OidcTenantConfig confidentialTenant() {
+        return OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig confidentialTenantFromWellKnown() {
+        return OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(it -> it.tlsRequired(false))
+                .buildPrototype();
+    }
+
+    private OidcTenantConfig publicClientTenant() {
+        return OidcTenantConfig.builder()
+                .clientId(CLIENT_ID)
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.NONE)
+                .endpoints(it -> it.tokenEndpointUri(tokenEndpointUri)
+                        .tlsRequired(false))
+                .buildPrototype();
     }
 
     private record RecordedRequest(String method,

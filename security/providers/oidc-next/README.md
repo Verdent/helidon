@@ -184,8 +184,7 @@ import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
-import io.helidon.security.providers.oidc.next.OidcOutboundPolicy;
-import io.helidon.security.providers.oidc.next.OidcOutboundTargetConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcRequestObjectMode;
@@ -2314,12 +2313,12 @@ On overload, outbound security returns `FAILURE` with the controlled description
 an exchanged Bearer token. `PT0S` or `max-queued: 0` provides fail-fast behavior when active capacity is exhausted.
 
 Client Credentials Grant for outbound is only applied through matching `outbound` targets or an endpoint-level
-`OidcOutboundPolicy`.
+`OidcOutboundPolicyConfig`.
 
 Programmatic outbound target configuration:
 
 ```java
-OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+OidcOutboundPolicyConfig targetPolicy = OidcOutboundPolicyConfig.builder()
         .tokenPropagationEnabled(true)
         .audience("api://orders")
         .buildPrototype();
@@ -2328,7 +2327,7 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .addTransport("https")
         .addHost("orders.internal.example")
         .addPath("/orders/.*")
-        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .customObject(OidcOutboundPolicyConfig.class, targetPolicy)
         .build();
 
 OidcProviderConfig config = OidcProviderConfig.builder()
@@ -2341,7 +2340,10 @@ Endpoint-level Token Propagation:
 
 ```java
 EndpointConfig outboundEndpoint = EndpointConfig.builder()
-        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagation("api://orders"))
+        .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                .tokenPropagationEnabled(true)
+                .audience("api://orders")
+                .buildPrototype())
         .build();
 ```
 
@@ -2349,7 +2351,10 @@ Endpoint-level Token Propagation without audience validation is explicit:
 
 ```java
 EndpointConfig outboundEndpoint = EndpointConfig.builder()
-        .customObject(OidcOutboundPolicy.class, OidcOutboundPolicy.tokenPropagationWithoutAudienceValidation())
+        .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                .tokenPropagationEnabled(true)
+                .audienceValidationEnabled(false)
+                .buildPrototype())
         .build();
 ```
 
@@ -2357,9 +2362,11 @@ Endpoint-level Client Credentials Grant:
 
 ```java
 EndpointConfig outboundEndpoint = EndpointConfig.builder()
-        .customObject(OidcOutboundPolicy.class,
-                      OidcOutboundPolicy.clientCredentialsGrant(List.of("inventory.read"),
-                                                                List.of("https://inventory.example.com")))
+        .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                .clientCredentialsGrantEnabled(true)
+                .addClientCredentialsScope("inventory.read")
+                .addClientCredentialsResource("https://inventory.example.com")
+                .buildPrototype())
         .build();
 ```
 
@@ -2367,20 +2374,22 @@ Endpoint-level Token Exchange:
 
 ```java
 EndpointConfig outboundEndpoint = EndpointConfig.builder()
-        .customObject(OidcOutboundPolicy.class,
-                      OidcOutboundPolicy.tokenExchange(List.of("orders.read"),
-                                                       "https://orders.example.com",
-                                                       "api://orders"))
+        .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
+                .tokenExchangeEnabled(true)
+                .addTokenExchangeScope("orders.read")
+                .tokenExchangeResource("https://orders.example.com")
+                .tokenExchangeAudience("api://orders")
+                .buildPrototype())
         .build();
 ```
 
-Use `OidcOutboundPolicy.tokenExchangeForResource(...)` or
-`OidcOutboundPolicy.tokenExchangeForAudience(...)` when only one Token Exchange target parameter is needed.
+Configure only `tokenExchangeResource(...)` or `tokenExchangeAudience(...)` on the policy builder when only one Token
+Exchange target parameter is needed.
 
 Programmatic Client Credentials Grant target configuration with scopes and a resource indicator:
 
 ```java
-OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+OidcOutboundPolicyConfig targetPolicy = OidcOutboundPolicyConfig.builder()
         .clientCredentialsGrantEnabled(true)
         .addClientCredentialsScope("orders.read")
         .addClientCredentialsResource("https://orders.example.com")
@@ -2390,14 +2399,14 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .addTransport("https")
         .addHost("orders.internal.example")
         .addPath("/orders/.*")
-        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .customObject(OidcOutboundPolicyConfig.class, targetPolicy)
         .build();
 ```
 
 Programmatic Token Exchange target configuration with scopes, a resource, and an audience:
 
 ```java
-OidcOutboundTargetConfig targetPolicy = OidcOutboundTargetConfig.builder()
+OidcOutboundPolicyConfig targetPolicy = OidcOutboundPolicyConfig.builder()
         .tokenExchangeEnabled(true)
         .addTokenExchangeScope("orders.read")
         .tokenExchangeResource("https://orders.example.com")
@@ -2408,7 +2417,7 @@ OutboundTarget ordersApi = OutboundTarget.builder("orders-api")
         .addTransport("https")
         .addHost("orders.internal.example")
         .addPath("/orders/.*")
-        .customObject(OidcOutboundTargetConfig.class, targetPolicy)
+        .customObject(OidcOutboundPolicyConfig.class, targetPolicy)
         .build();
 
 OidcProviderConfig config = OidcProviderConfig.builder()
@@ -3160,20 +3169,20 @@ Common outbound target options:
 | `paths` | Path list. Empty or `*` means all paths; values are also treated as regular expressions. |
 | `methods` | HTTP method list. Empty means all methods. |
 
-OIDC outbound target options:
+OIDC outbound policy options (for targets and endpoint-level overrides):
 
 | Key | Description |
 | --- | --- |
-| `token-propagation-enabled` | Use Token Propagation for this outbound target. |
-| `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound target. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
-| `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
-| `client-credentials-resources` | RFC 8707 resource indicators requested by Client Credentials Grant for this outbound target. Each value must be an absolute URI with no fragment. Values are sent as separate OAuth `resource` form parameters and are included in the Client Credentials token cache key. Requires `client-credentials-grant-enabled: true`. |
-| `token-exchange-enabled` | Use RFC 8693 Token Exchange for this outbound target. Requires a current subject `TokenCredential`, confidential Token Endpoint client authentication, and `token-exchange-resource` or `token-exchange-audience`. |
-| `token-exchange-scopes` | Access-token scopes requested by Token Exchange for this outbound target. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `token-exchange-enabled: true`. |
+| `token-propagation-enabled` | Use Token Propagation for this outbound policy. Defaults to `false`. |
+| `client-credentials-grant-enabled` | Use Client Credentials Grant for this outbound policy. Defaults to `false`. Mutual TLS methods require enabled tenant `webclient.tls` with private key plus certificate chain, an SSL context, or a custom TLS manager, and an HTTPS Token Endpoint or HTTPS well-known metadata. |
+| `client-credentials-scopes` | Access-token scopes requested by Client Credentials Grant for this outbound policy. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `client-credentials-grant-enabled: true`. |
+| `client-credentials-resources` | RFC 8707 resource indicators requested by Client Credentials Grant for this outbound policy. Each value must be an absolute URI with no fragment. Values are sent as separate OAuth `resource` form parameters and are included in the Client Credentials token cache key. Requires `client-credentials-grant-enabled: true`. |
+| `token-exchange-enabled` | Use RFC 8693 Token Exchange for this outbound policy. Defaults to `false`. Requires a current subject `TokenCredential`, confidential Token Endpoint client authentication, and `token-exchange-resource` or `token-exchange-audience`. |
+| `token-exchange-scopes` | Access-token scopes requested by Token Exchange for this outbound policy. Each value must be one RFC 6749 `scope-token`. Values are serialized, in configured order, as one OAuth `scope` form parameter. Requires `token-exchange-enabled: true`. |
 | `token-exchange-resource` | RFC 8693 target resource requested by Token Exchange. The value must be an absolute URI with no fragment and is sent as the Token Endpoint `resource` form parameter. Requires `token-exchange-enabled: true`. |
 | `token-exchange-audience` | RFC 8693 target audience requested by Token Exchange. The value is sent as the Token Endpoint `audience` form parameter. Requires `token-exchange-enabled: true`. |
-| `audience` | Expected `aud` claim for Token Propagation to this outbound target. Required by default when `token-propagation-enabled: true`. This identifies the downstream resource server. |
-| `audience-validation-enabled` | Whether Token Propagation audience validation is enabled for this outbound target. Defaults to `true`. Disabling it allows raw or opaque token propagation without local audience validation and should be limited to testing, local development, or legacy deployments. |
+| `audience` | Expected `aud` claim for Token Propagation to this outbound policy. Required by default when `token-propagation-enabled: true`. This identifies the downstream resource server. |
+| `audience-validation-enabled` | Whether Token Propagation audience validation is enabled for this outbound policy. Defaults to `true`. Disabling it allows raw or opaque token propagation without local audience validation and should be limited to testing, local development, or legacy deployments. |
 
 Token validation options:
 

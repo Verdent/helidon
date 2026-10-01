@@ -37,7 +37,7 @@ final class OidcOAuthErrorFields {
         try {
             URI.create(value);
             return true;
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }

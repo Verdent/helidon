@@ -33,11 +33,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class OidcJwtAccessTokenConfigTest {
     @Test
     void defaultTokenValidationRetainsRfc9068Profile() {
-        OidcTokenValidationConfig validation = OidcTokenValidationConfig.create();
-        OidcJwtAccessTokenConfig config = validation.jwt();
+        assertThat(OidcTokenValidationConfig.create().jwt().isEmpty(), is(true));
+        OidcTokenValidationConfig validation = OidcTenantConfig.builder()
+                .issuer("https://issuer.example")
+                .endpoints(endpoints -> endpoints.jwksUri(URI.create("https://issuer.example/jwks")))
+                .protectedResource(resource -> resource.tokenValidation(tokenValidation -> tokenValidation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api")))
+                .buildPrototype()
+                .protectedResource().orElseThrow().tokenValidation();
+        OidcJwtAccessTokenConfig config = validation.jwt().orElseThrow();
 
         assertThat(validation.audienceValidationEnabled(), is(true));
         assertThat(config.profile(), is(OidcJwtAccessTokenProfile.RFC_9068));
+        assertThat(config.typHeaderRequired(), is(true));
         assertThat(config.allowedTypes(), is(List.of("at+jwt", "application/at+jwt")));
         assertThat(config.requiredClaims(), is(List.of()));
         assertThat(config.requiredStringClaims(), is(Map.of()));
@@ -74,7 +83,7 @@ class OidcJwtAccessTokenConfigTest {
         OidcTokenValidationConfig built = fromBuilder.tenants().get("default")
                 .protectedResource().orElseThrow().tokenValidation();
         assertThat(configured, is(built));
-        assertThat(configured.jwt().requiredStringClaims(), is(Map.of("typ", "Bearer")));
+        assertThat(configured.jwt().orElseThrow().requiredStringClaims(), is(Map.of("typ", "Bearer")));
     }
 
     @Test
@@ -95,6 +104,47 @@ class OidcJwtAccessTokenConfigTest {
                         .buildPrototype());
 
         assertThat(exception.getMessage(), containsString("required-string-claims must identify access tokens"));
+    }
+
+    @Test
+    void missingTypRequiresCustomProfileAndSignedTokenKindMarker() {
+        IllegalArgumentException standard = assertThrows(IllegalArgumentException.class,
+                () -> OidcJwtAccessTokenConfig.builder().typHeaderRequired(false).buildPrototype());
+        assertThat(standard.getMessage(), containsString("only for token-validation.jwt.profile CUSTOM"));
+
+        IllegalArgumentException noMarker = assertThrows(IllegalArgumentException.class,
+                () -> OidcJwtAccessTokenConfig.builder()
+                        .profile(OidcJwtAccessTokenProfile.CUSTOM)
+                        .typHeaderRequired(false)
+                        .buildPrototype());
+        assertThat(noMarker.getMessage(), containsString("when the typ header may be absent"));
+
+        OidcJwtAccessTokenConfig custom = OidcJwtAccessTokenConfig.builder()
+                .profile(OidcJwtAccessTokenProfile.CUSTOM)
+                .typHeaderRequired(false)
+                .putRequiredStringClaim("tok_type", "AT")
+                .buildPrototype();
+        assertThat(custom.typHeaderRequired(), is(false));
+    }
+
+    @Test
+    void customMissingTypLayoutLoadsFromConfiguration() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "issuer", "https://issuer.example",
+                        "endpoints.jwks-uri", "https://issuer.example/jwks",
+                        "protected-resource.token-validation.method", "JWT",
+                        "protected-resource.token-validation.audience", "api",
+                        "protected-resource.token-validation.jwt.profile", "CUSTOM",
+                        "protected-resource.token-validation.jwt.typ-header-required", "false",
+                        "protected-resource.token-validation.jwt.required-string-claims.tok_type", "AT")))
+                .build();
+        OidcJwtAccessTokenConfig jwt = OidcProviderConfig.create(config)
+                .tenants().get("default")
+                .protectedResource().orElseThrow().tokenValidation().jwt().orElseThrow();
+
+        assertThat(jwt.typHeaderRequired(), is(false));
+        assertThat(jwt.requiredStringClaims(), is(Map.of("tok_type", "AT")));
     }
 
     @Test
@@ -164,6 +214,6 @@ class OidcJwtAccessTokenConfigTest {
         OidcTokenValidationConfig validation = OidcProviderConfig.create(config)
                 .tenants().get("default").protectedResource().orElseThrow().tokenValidation();
         assertThat(validation.audienceValidationEnabled(), is(false));
-        assertThat(validation.jwt().requiredStringClaims(), is(Map.of("typ", "Bearer")));
+        assertThat(validation.jwt().orElseThrow().requiredStringClaims(), is(Map.of("typ", "Bearer")));
     }
 }

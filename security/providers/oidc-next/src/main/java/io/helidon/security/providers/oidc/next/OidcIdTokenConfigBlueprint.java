@@ -87,13 +87,15 @@ interface OidcIdTokenConfigBlueprint {
      * Additional ID Token audience values trusted by this client.
      * <p>
      * The configured {@code client-id} is always required as an ID Token audience and should not be listed here. This
-     * option is only for other {@code aud} values that may appear in the same ID Token.
+     * option is only for other {@code aud} values that may appear in the same ID Token. When omitted, a tenant adapter
+     * may supply its provider-specific default. An explicitly configured list, including an empty list, overrides that
+     * default.
      *
-     * @return trusted additional ID Token audiences
+     * @return explicitly configured or adapter-resolved additional ID Token audiences, if present
      */
     @Option.Configured
     @Option.Singular("trustedAdditionalAudience")
-    List<String> trustedAdditionalAudiences();
+    Optional<List<String>> trustedAdditionalAudiences();
 
     /**
      * ID Token time validation clock skew.

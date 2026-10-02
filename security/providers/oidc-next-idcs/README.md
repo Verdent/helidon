@@ -40,8 +40,16 @@ different actual issuer must set `issuer` explicitly. Configure its normal callb
 cookies and TLS using OIDC Next options. No IDCS-specific cookie sizing/compression heuristic is applied; for very
 large tokens, configure `cookies.compression: GZIP` or increase the bounded chunk/header limits if deployment limits
 permit. Normal Authorization Code Flow still uses S256 PKCE by default.
+
 An explicit `jwks-uri` may use a different path, but must stay on the primary or explicitly configured secure domain
 origin; a signing-key source belonging to another IDCS domain is rejected at configuration time.
+
+Oracle [documents ID Tokens whose audiences include both the client ID and the IDCS issuer](https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/IdentityToken.html).
+For Authorization Code Flow, the adapter trusts only the tenant's exact configured issuer as an additional ID Token
+audience if `id-token.trusted-additional-audiences` was omitted. The client ID is still mandatory, a multi-audience
+token must have `azp` equal to the client ID, and any other audience is rejected. An explicitly configured audience
+list, including an empty one, replaces the adapter default. Use `issuer` to pin a tenant with a different actual issuer;
+audience comparisons are exact, including trailing slashes.
 
 Because different IDCS domains can report the same wire `iss` and `sub`, the adapter qualifies the *local principal ID*
 with its normalized, configured domain URL. The ID Token and access-token issuer claims are still checked unchanged.
@@ -57,6 +65,36 @@ requires the issuer to identify the URL from which its document is fetched, so O
 well-known loader unchanged. This adapter does not automatically download IDCS discovery metadata; if an instance
 differs from the documented endpoints, supply those endpoint overrides explicitly. It does not substitute an
 unverified metadata issuer or silently downgrade a failed discovery request to static settings.
+
+## JWT access tokens for protected resources
+
+Oracle documents the signed payload claim [`tok_type: AT` for access tokens](https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/AccessToken.html)
+and [`tok_type: IT` for ID Tokens](https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/IdentityToken.html).
+Its [published access-token example](https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/op-oauth2-v1-token-post.html)
+has no JOSE header `typ`. For an IDCS tenant using Protected Resource `method: JWT` without an explicit
+`token-validation.jwt` block, the adapter supplies a `CUSTOM` access-token layout that permits the missing header
+but requires the exact signed `tok_type: AT` claim. A present `typ` must be `JWT`, `at+jwt`, or
+`application/at+jwt`. OIDC Next still validates the signature against trusted keys, the exact issuer, expiration,
+allowed algorithm, and the resource's configured audience by default. ID Tokens with `tok_type: IT` cannot be
+substituted as access tokens. This uses the distinct signed claim values documented by Oracle to separate token
+kinds, as described in [RFC 8725, section 3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12);
+it does not treat an untyped IDCS token as an RFC 9068 access token.
+
+```yaml
+adapter:
+  idcs:
+    domain-uri: "https://idcs-example.identity.oraclecloud.com"
+protected-resource:
+  token-validation:
+    method: JWT
+    audience: "api://your-resource"
+```
+
+The application must supply its own expected audience. An explicit `token-validation.jwt` block takes full
+precedence over this adapter layout, including an explicitly chosen `RFC_9068` profile. If overriding with
+`CUSTOM`, require a signed claim that distinguishes access tokens from ID Tokens, especially if allowing a missing
+`typ`. Tenants using introspection or browser login without JWT Protected Resource validation are unaffected.
+Actual token layouts and audiences still need to be checked against a live IDCS tenant.
 
 ## Protected signing keys
 
@@ -110,7 +148,8 @@ compatibility; do not rely on the compatibility flag to manufacture a missing to
 
 The module uses Helidon's configured-provider service mechanism. It does not use reflective access, unsafe APIs, an
 alternate OIDC validation path, or a global WebClient Authorization header. Unit and synthetic HTTPS tests cover
-provider discovery, mixed tenants, standard and certificate-based signing-key grants, public/protected JWKS, and a
-full authorization-code callback with an IDCS-like issuer. Live IDCS interoperability depends on the tenant's
-actual issuer, registered callback, PKCE support, client grants and signing-key access policy and has not yet been
-claimed by these tests.
+provider discovery, mixed tenants, standard and certificate-based signing-key grants, public/protected JWKS,
+an IDCS-like untyped access-token layout, and a full authorization-code callback with an IDCS-like issuer and
+additional issuer audience.
+Live IDCS interoperability depends on the tenant's actual issuer, registered callback, PKCE support, client grants
+and signing-key access policy and has not yet been claimed by these tests.

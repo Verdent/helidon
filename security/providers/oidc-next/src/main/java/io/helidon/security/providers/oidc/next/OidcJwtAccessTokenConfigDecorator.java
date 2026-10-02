@@ -44,6 +44,16 @@ final class OidcJwtAccessTokenConfigDecorator implements Prototype.BuilderDecora
             throw new IllegalArgumentException("token-validation.jwt.required-string-claims must identify access tokens "
                                                       + "when custom header types are allowed");
         }
+        if (!target.typHeaderRequired()) {
+            if (target.profile() != OidcJwtAccessTokenProfile.CUSTOM) {
+                throw new IllegalArgumentException("token-validation.jwt.typ-header-required can be false only for "
+                                                           + "token-validation.jwt.profile CUSTOM");
+            }
+            if (target.requiredStringClaims().isEmpty()) {
+                throw new IllegalArgumentException("token-validation.jwt.required-string-claims must identify access "
+                                                           + "tokens when the typ header may be absent");
+            }
+        }
         for (String claim : target.requiredClaims()) {
             if (claim == null || claim.isBlank() || !claim.equals(claim.strip())) {
                 throw new IllegalArgumentException("token-validation.jwt.required-claims must not contain blank or padded names");

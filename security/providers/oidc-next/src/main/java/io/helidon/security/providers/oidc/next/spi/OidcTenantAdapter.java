@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.Optional;
 
 import io.helidon.config.NamedService;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.webclient.api.WebClient;
 
@@ -39,6 +40,17 @@ public interface OidcTenantAdapter extends NamedService {
      * @param tenant tenant builder
      */
     void configure(OidcTenantConfig.BuilderBase<?, ?> tenant);
+
+    /**
+     * Provider-specific JWT access-token layout to use when this tenant enables JWT validation without configuring
+     * {@code protected-resource.token-validation.jwt}. Explicit tenant layouts always take precedence. The normal
+     * RFC 9068 profile is used when this method returns empty.
+     *
+     * @return provider-specific default JWT access-token layout, if any
+     */
+    default Optional<OidcJwtAccessTokenConfig> jwtAccessTokenDefaults() {
+        return Optional.empty();
+    }
 
     /**
      * Trusted domain namespace for local principal identities when an adapter's provider shares its wire issuer

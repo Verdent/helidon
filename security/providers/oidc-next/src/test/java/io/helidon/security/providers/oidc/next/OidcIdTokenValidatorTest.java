@@ -309,10 +309,16 @@ class OidcIdTokenValidatorTest {
         String idToken = signedIdToken(it -> it.addAudience("other-audience")
                 .addPayloadClaim("azp", CLIENT_ID));
 
-        var result = validate(idToken, tenantConfig(it -> it.idToken(idTokenConfig -> idTokenConfig
-                .addTrustedAdditionalAudience("other-audience"))));
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idTokenConfig -> idTokenConfig
+                .addTrustedAdditionalAudience("other-audience")));
+        var result = validate(idToken, tenant);
 
         assertThat(result.succeeded(), is(true));
+
+        String untrusted = signedIdToken(it -> it.addAudience("other-audience")
+                .addAudience("third-audience")
+                .addPayloadClaim("azp", CLIENT_ID));
+        assertFailure(validate(untrusted, tenant), "ID Token claims are invalid");
     }
 
     @Test

@@ -112,6 +112,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     }
 
     private JwtValidator headerValidator(OidcTokenValidationConfig tokenValidation) {
+        OidcJwtAccessTokenConfig layout = tokenValidation.jwt().orElseThrow();
         return JwtValidator.builder()
                 .addCriticalValidator()
                 .addValidator(JwtScope.HEADER, (jwt, collector) -> {
@@ -134,8 +135,16 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                 .addValidator(JwtScope.HEADER, (jwt, collector) -> {
                     String type = jwt.type().orElse(null);
                     if (type == null) {
-                        collector.fatal(jwt, "JWT typ header is mandatory");
-                    } else if (tokenValidation.jwt().allowedTypes().stream()
+                        /*
+                         * RFC 8725, 3.12 permits mutually exclusive signed claim values to distinguish JWT kinds.
+                         * A CUSTOM layout allowing a missing header must configure such a claim, checked below
+                         * only after signature verification; RFC 9068 layouts always require the typ header.
+                         * https://www.rfc-editor.org/rfc/rfc8725.html#section-3.12
+                         */
+                        if (layout.typHeaderRequired()) {
+                            collector.fatal(jwt, "JWT typ header is mandatory");
+                        }
+                    } else if (layout.allowedTypes().stream()
                             .map(allowed -> allowed.toLowerCase(Locale.ROOT))
                             .noneMatch(type.toLowerCase(Locale.ROOT)::equals)) {
                         collector.fatal(jwt, "JWT typ header is not an access token type: " + type);
@@ -148,7 +157,7 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
                                         String expectedIssuer,
                                         Optional<String> expectedAudience,
                                         Instant validationTime) {
-        OidcJwtAccessTokenConfig layout = tokenValidation.jwt();
+        OidcJwtAccessTokenConfig layout = tokenValidation.jwt().orElseThrow();
         boolean rfc9068 = layout.profile() == OidcJwtAccessTokenProfile.RFC_9068;
         JwtValidator.Builder builder = JwtValidator.builder()
                 .addExpirationValidator(it -> it.now(validationTime)

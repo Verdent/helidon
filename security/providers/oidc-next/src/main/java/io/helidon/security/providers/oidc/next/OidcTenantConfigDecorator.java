@@ -46,6 +46,7 @@ final class OidcTenantConfigDecorator
             return;
         }
         target.adapter().ifPresent(adapter -> adapter.configure(target));
+        resolveJwtAccessTokenLayout(target);
         target.adapter().flatMap(adapter -> adapter.principalIdentityNamespace())
                 .filter(namespace -> namespace.isBlank()
                         || !namespace.equals(namespace.strip())
@@ -94,6 +95,29 @@ final class OidcTenantConfigDecorator
         OidcEndpointPolicyResolver.validate(target.protectedResource(), target.authorizationCode(), target.endpointPolicy());
     }
 
+    private static void resolveJwtAccessTokenLayout(OidcTenantConfig.BuilderBase<?, ?> tenant) {
+        tenant.protectedResource().ifPresent(protectedResource -> {
+            OidcTokenValidationConfig validation = protectedResource.tokenValidation();
+            if (validation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()
+                    || validation.jwt().isPresent()) {
+                return;
+            }
+            // Retain whether the entire JWT layout was configured: an explicit RFC 9068 layout must beat the
+            // adapter default, even when it happens to equal the ordinary default by value.
+            OidcJwtAccessTokenConfig jwt = tenant.adapter()
+                    .flatMap(adapter -> adapter.jwtAccessTokenDefaults())
+                    .orElseGet(OidcJwtAccessTokenConfig::create);
+            OidcTokenValidationConfig resolved = OidcTokenValidationConfig.builder()
+                    .from(validation)
+                    .jwt(jwt)
+                    .buildPrototype();
+            tenant.protectedResource(OidcProtectedResourceConfig.builder()
+                                             .from(protectedResource)
+                                             .tokenValidation(resolved)
+                                             .buildPrototype());
+        });
+    }
+
     private static void validateJwkSet(OidcJwkSetConfig jwkSet) {
         if (jwkSet.unknownKeyIdRefreshInterval().isNegative()) {
             throw new IllegalArgumentException("jwk-set.unknown-key-id-refresh-interval must not be negative");
@@ -127,6 +151,7 @@ final class OidcTenantConfigDecorator
         }
         idToken.trustedAdditionalAudiences()
                 .stream()
+                .flatMap(List::stream)
                 .filter(audience -> audience == null
                         || audience.isBlank()
                         || !audience.equals(audience.strip()))
@@ -221,7 +246,10 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
-        if (tokenValidation.jwt().profile() == OidcJwtAccessTokenProfile.CUSTOM) {
+        if (tokenValidation.jwt()
+                .map(OidcJwtAccessTokenConfig::profile)
+                .filter(OidcJwtAccessTokenProfile.CUSTOM::equals)
+                .isPresent()) {
             if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
                 throw new IllegalArgumentException("token-validation.jwt.profile CUSTOM requires token-validation.method JWT");
             }
@@ -815,7 +843,7 @@ final class OidcTenantConfigDecorator
                                     + "is enabled"));
         } else {
             if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
-                String profileWarning = tokenValidation.jwt().profile() == OidcJwtAccessTokenProfile.RFC_9068
+                String profileWarning = tokenValidation.jwt().orElseThrow().profile() == OidcJwtAccessTokenProfile.RFC_9068
                         ? " This relaxes RFC 9068 validation."
                         : "";
                 LOGGER.log(System.Logger.Level.WARNING,

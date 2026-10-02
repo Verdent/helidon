@@ -1298,6 +1298,30 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void customProfileCanValidateSignedAccessTokenMarkerWithoutHeaderType() {
+        String accessToken = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa",
+                                         it -> it.addPayloadClaim("tok_type", "AT"));
+        String idToken = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa",
+                                     it -> it.addPayloadClaim("tok_type", "IT"));
+        String wrongHeader = signedToken(it -> it.type("id+jwt").addPayloadClaim("tok_type", "AT"));
+        String wrongAudience = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa",
+                                          it -> it.audience(List.of("api://other"))
+                                                  .addPayloadClaim("tok_type", "AT"));
+
+        try (OidcProvider strict = customLayoutProvider(layout -> layout
+                .requiredStringClaims(Map.of("tok_type", "AT")));
+             OidcProvider compatible = customLayoutProvider(layout -> layout
+                     .typHeaderRequired(false)
+                     .requiredStringClaims(Map.of("tok_type", "AT")))) {
+            assertInvalidToken(authenticate(strict, accessToken), "Bearer Token JWS header is invalid");
+            assertThat(authenticate(compatible, accessToken).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertInvalidToken(authenticate(compatible, idToken), "Bearer Token JWT claims are invalid");
+            assertInvalidToken(authenticate(compatible, wrongHeader), "Bearer Token JWS header is invalid");
+            assertInvalidToken(authenticate(compatible, wrongAudience), "Bearer Token JWT claims are invalid");
+        }
+    }
+
+    @Test
     void customProfileRejectsIdTokenEvenWhenIssuerAudienceAndSignatureMatch() {
         String token = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "ID"));
 

@@ -456,7 +456,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.idToken().allowedEncryptionAlgorithms(), is(List.of("RSA-OAEP")));
         assertThat(tenant.idToken().allowedContentEncryptionAlgorithms(), is(List.of("A256GCM")));
         assertThat(tenant.idToken().clockSkew(), is(Duration.ofMinutes(2)));
-        assertThat(tenant.idToken().trustedAdditionalAudiences(), is(List.of("api://shared")));
+        assertThat(tenant.idToken().trustedAdditionalAudiences().orElseThrow(), is(List.of("api://shared")));
         assertThat(providerConfig.toString().contains("oidc-next-sign-jwk.json"), is(false));
         assertThat(tenant.clientAssertion().algorithm().orElse(""), is("RS256"));
         assertThat(tenant.clientAssertion().keyId().orElse(""), is("sign-rsa"));

@@ -713,6 +713,11 @@ final class OidcTenantContextFactory {
 
         OidcClientAuthenticationMethod method =
                 OidcClientAuthenticationSupport.tokenEndpointAuthenticationMethod(tenantConfig);
+        if (method == OidcClientAuthenticationMethod.NONE) {
+            // Public clients do not authenticate. Discovery's list of client authentication methods does not
+            // determine whether a registered public client can redeem an authorization code using PKCE.
+            return;
+        }
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
          * https://www.rfc-editor.org/rfc/rfc8414.html#section-2

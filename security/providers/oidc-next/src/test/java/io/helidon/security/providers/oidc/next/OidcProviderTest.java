@@ -453,8 +453,7 @@ class OidcProviderTest {
         assertThat(state.redirectionEndpointUri(), is(REDIRECTION_ENDPOINT_URI));
         assertThat(state.pkceVerifier().isPresent(), is(true));
         assertThat(query.get("code_challenge"),
-                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
-                                                                     OidcPkceMethod.S256)));
+                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow())));
     }
 
     @Test
@@ -571,8 +570,7 @@ class OidcProviderTest {
         assertThat(requestObject.payloadClaimsJson().get("state").asString().value(), is(state.state()));
         assertThat(requestObject.payloadClaimsJson().get("nonce").asString().value(), is(state.nonce()));
         assertThat(requestObject.payloadClaimsJson().get("code_challenge").asString().value(),
-                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
-                                                                     OidcPkceMethod.S256)));
+                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow())));
         assertThat(requestObject.payloadClaimsJson().get("code_challenge_method").asString().value(), is("S256"));
     }
 
@@ -767,8 +765,8 @@ class OidcProviderTest {
     }
 
     @Test
-    void authorizationCodeFlowCanUsePlainPkceMethod() {
-        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceMethod(OidcPkceMethod.PLAIN),
+    void authorizationCodeFlowUsesS256ForConfidentialClient() {
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { },
                                                           builder -> builder.clientSecret("client-secret"));
         OidcProvider provider = provider(tenant);
 
@@ -782,8 +780,9 @@ class OidcProviderTest {
         URI location = URI.create(response.responseHeaders().get("Location").getFirst());
         UriQuery query = UriQuery.create(location);
         OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
-        assertThat(query.get("code_challenge_method"), is("plain"));
-        assertThat(query.get("code_challenge"), is(state.pkceVerifier().orElseThrow()));
+        assertThat(query.get("code_challenge_method"), is("S256"));
+        assertThat(query.get("code_challenge"),
+                   is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow())));
     }
 
     @Test

@@ -153,7 +153,6 @@ class OidcProviderConfigTest {
         assertThat(requestObject.encryptionKeyId().isEmpty(), is(true));
         assertThat(requestObject.lifetime(), is(Duration.ofMinutes(1)));
         assertThat(authorizationCode.pkceRequired(), is(true));
-        assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
         assertThat(tokenTransport.secureTransportRequired(), is(true));
@@ -170,7 +169,6 @@ class OidcProviderConfigTest {
         assertThat(tenantConfig.subjectMapping().principalIdClaimPaths(), is(subjectMapping.principalIdClaimPaths()));
         assertThat(cookies.authenticationRequestCookieName(), is("__Host-helidon-oidc-state"));
         assertThat(cookies.localAuthenticationCookieName(), is("__Host-helidon-oidc-auth"));
-        assertThat(List.of(OidcPkceMethod.values()), is(List.of(OidcPkceMethod.PLAIN, OidcPkceMethod.S256)));
         assertThat(List.of(OidcEndpointCredential.values()),
                    is(List.of(OidcEndpointCredential.BEARER_TOKEN,
                               OidcEndpointCredential.AUTHENTICATION_COOKIE)));
@@ -224,11 +222,9 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void pkceMethodsUseSpecWireNames() {
-        assertThat(OidcPkceMethod.PLAIN.wireName(), is("plain"));
-        assertThat(OidcPkceMethod.S256.wireName(), is("S256"));
-        assertThat(OidcAuthenticationRequestFactory.codeChallenge("plain-verifier", OidcPkceMethod.PLAIN),
-                   is("plain-verifier"));
+    void pkceUsesTheRfc7636S256Challenge() {
+        assertThat(OidcAuthenticationRequestFactory.codeChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+                   is("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"));
     }
 
     @Test
@@ -381,7 +377,6 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.authorization-code.refresh-remote-work.admission-timeout", "PT0.2S"),
                         Map.entry("tenants.default.authorization-code.refresh-result-retention", "PT7S"),
                         Map.entry("tenants.default.authorization-code.refresh-result-cache-capacity", "256"),
-                        Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
                         Map.entry("tenants.default.cookies.protection.password",
                                   "this-password-is-long-enough-for-config-test"),
                         Map.entry("tenants.default.cookies.protection.salt", "AAAAAAAAAAAAAAAAAAAAAA"),
@@ -499,7 +494,6 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.refreshRemoteWork().admissionTimeout(), is(Duration.ofMillis(200)));
         assertThat(authorizationCode.refreshResultRetention(), is(Duration.ofSeconds(7)));
         assertThat(authorizationCode.refreshResultCacheCapacity(), is(256));
-        assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
         OidcCookieProtectionConfig cookieProtection = tenant.cookies().protection().orElseThrow();
         assertThat(cookieProtection.password(), is("this-password-is-long-enough-for-config-test"));
         assertThat(cookieProtection.salt().orElseThrow(), is("AAAAAAAAAAAAAAAAAAAAAA"));
@@ -2282,7 +2276,6 @@ class OidcProviderConfigTest {
 
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
         assertThat(authorizationCode.pkceRequired(), is(false));
-        assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
     }
 
     @Test
@@ -2299,24 +2292,6 @@ class OidcProviderConfigTest {
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("pkce-required"));
-        assertThat(thrown.getMessage(), containsString("NONE"));
-    }
-
-    @Test
-    void authorizationCodeFlowRejectsPlainPkceForPublicClient() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .issuer(ISSUER.toString())
-                .clientId("client-id")
-                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.NONE)
-                .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
-                        .tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
-                        .pkceMethod(OidcPkceMethod.PLAIN))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
-                .buildPrototype());
-
-        assertThat(thrown.getMessage(), containsString("pkce-method"));
-        assertThat(thrown.getMessage(), containsString("S256"));
         assertThat(thrown.getMessage(), containsString("NONE"));
     }
 

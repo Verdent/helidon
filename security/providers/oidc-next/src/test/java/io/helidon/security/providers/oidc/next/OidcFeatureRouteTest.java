@@ -232,6 +232,54 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void sharedIssuerExceptionRejectsWrongCallbackBeforeTokenEndpoint(URI serverUri) {
+        OidcTenantConfig honest = tenantConfig(serverUri,
+                                               code -> code.redirectionEndpointUri(URI.create("/oidc/honest-callback")));
+        OidcTenantConfig other = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .endpoints(endpoints -> endpoints
+                        .authorizationEndpointUri(URI.create("https://other.example/authorize"))
+                        .tokenEndpointUri(serverUri.resolve("attacker-token"))
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .tlsRequired(false))
+                .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/other-callback")))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .buildPrototype();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .issuerUniquenessValidationEnabled(false)
+                .putTenant("honest", honest)
+                .putTenant("other", other)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            String state = authorizationState("other", 4);
+            SetCookie stateCookie = authenticationRequestCookie("other",
+                                                                state,
+                                                                ISSUER.toString(),
+                                                                rpBaseUri(rpServer).resolve("/oidc/other-callback"),
+                                                                other);
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/honest-callback")
+                    .followRedirects(false)
+                    .queryParam("code", "honest-authorization-code")
+                    .queryParam("state", state)
+                    .queryParam("iss", ISSUER.toString())
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                assertThat(ATTACKER_TOKEN_REQUESTS.get(), is(0));
+                assertThat(TOKEN_REQUESTS.get(), is(0));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void sharedCallbackRejectsCollidingDiscoveredIssuerBeforeWrongTokenEndpoint(URI serverUri) {
         String attackerTenantId = "attacker";
         String attackerState = authorizationState(attackerTenantId, 2);

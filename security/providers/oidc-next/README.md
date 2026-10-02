@@ -1200,6 +1200,15 @@ distinct callback path or distinct absolute callback origin for each issuer. Que
 distinct callback routes. The callback is also rejected if the issuer stored in protected Authentication Request state no
 longer matches the initialized tenant issuer; no authorization code is sent to a Token Endpoint after either failure.
 
+`issuer-uniqueness-validation-enabled` defaults to `true` at provider root. Explicitly setting it to `false` permits
+different Authorization/Token Endpoint pairs to publish the same issuer only when both tenants pin that exact issuer and
+both endpoint URIs and use distinct callback paths or absolute origins. This is an exceptional compatibility mode and
+**does not satisfy RFC 9207's requirement that independent authorization servers use unique issuers**. The `iss` value
+cannot distinguish the colliding servers; the distinct registered callback and protected transaction state must do so.
+The same Authorization Endpoint cannot be paired with different Token Endpoints, even in this mode.
+The option does not relax per-token issuer checking, well-known metadata source binding, or callback validation. In
+particular it does not make a tenant-hosted discovery document claiming an unrelated issuer acceptable.
+
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure
 `authorization-code.redirection-endpoint-uri` only when the callback path or absolute callback URI must differ.
@@ -3064,6 +3073,7 @@ Provider options:
 | `default-tenant` | Tenant id used when no tenant is resolved from the request. Auto-filled when exactly one named tenant is configured. In root single-tenant config, this optionally names the synthetic tenant. |
 | `tenant-resolution` | Tenant resolution rules. |
 | `tenants` | Map of tenant id to tenant configuration for multi-tenant applications. Do not combine this with root tenant options. |
+| `issuer-uniqueness-validation-enabled` | Provider-level cross-tenant issuer uniqueness check; defaults to `true`. An explicit `false` is an RFC 9207-nonconformant compatibility option and still requires pinned endpoints and distinct callback routes for colliding issuers. |
 | `outbound` | Provider-level outbound target list using Helidon's common `OutboundTarget` model. Targets can match transport, host, path, and method, and may select Token Propagation, Client Credentials Grant, or Token Exchange. |
 
 Tenant options are configured directly under `oidc-next` for a single tenant, or under `tenants.<tenant-id>` for

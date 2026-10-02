@@ -98,6 +98,21 @@ interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, 
     Optional<String> defaultTenant();
 
     /**
+     * Whether distinct Authorization Servers must have distinct issuer identifiers.
+     * <p>
+     * Defaults to {@code true}, as required by RFC 9207. Disabling this is an explicit compatibility exception for
+     * providers that publish the same issuer for different Authorization/Token Endpoint pairs. Such tenants must pin
+     * both endpoints and use distinct redirection endpoint paths or origins. This option does not disable issuer,
+     * state, redirection endpoint, or ID Token validation, and does not relax well-known metadata issuer binding.
+     * The exceptional configuration is not RFC 9207-conformant.
+     *
+     * @return whether issuer uniqueness is enforced
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean issuerUniquenessValidationEnabled();
+
+    /**
      * Tenant resolution configuration.
      *
      * @return tenant resolution configuration

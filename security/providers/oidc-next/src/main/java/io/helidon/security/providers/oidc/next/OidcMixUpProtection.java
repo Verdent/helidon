@@ -60,12 +60,13 @@ final class OidcMixUpProtection {
                         throw new IllegalArgumentException("Shared-issuer compatibility requires explicit matching "
                                                                    + "issuer and authorization/token endpoints for each tenant");
                     }
-                    if (first.endpoints().authorizationEndpointUri()
-                            .equals(second.endpoints().authorizationEndpointUri())) {
+                    if (OidcUri.sameOrigin(first.endpoints().authorizationEndpointUri().orElseThrow(),
+                                           second.endpoints().authorizationEndpointUri().orElseThrow())
+                            && !first.endpoints().tokenEndpointUri().equals(second.endpoints().tokenEndpointUri())) {
                         // A tenant claiming another AS's authorization endpoint but using a different Token Endpoint
                         // can trick a client into revealing an honest code and its PKCE verifier before ID Token checks.
-                        throw new IllegalArgumentException("Shared-issuer compatibility must not associate the same "
-                                                                   + "authorization-endpoint-uri with different "
+                        throw new IllegalArgumentException("Shared-issuer compatibility must not associate one "
+                                                                   + "Authorization Endpoint origin with different "
                                                                    + "token-endpoint-uri settings");
                     }
                     if (redirectionEndpointsMayOverlap(first, second)) {

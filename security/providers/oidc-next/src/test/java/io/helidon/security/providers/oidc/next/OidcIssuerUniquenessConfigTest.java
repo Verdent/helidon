@@ -77,7 +77,15 @@ class OidcIssuerUniquenessConfigTest {
                 .buildPrototype();
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                                                         () -> provider(false, honest, attacker));
-        assertThat(failure.getMessage(), containsString("same authorization-endpoint-uri"));
+        assertThat(failure.getMessage(), containsString("one Authorization Endpoint origin"));
+
+        OidcTenantConfig queryVariant = OidcTenantConfig.builder()
+                .from(attacker)
+                .endpoints(it -> it.authorizationEndpointUri(URI.create("https://idcs-a.example/authorize?different=true"))
+                        .tokenEndpointUri(URI.create("https://idcs-b.example/token"))
+                        .jwksUri(URI.create("https://idcs-b.example/jwks")))
+                .buildPrototype();
+        assertThrows(IllegalArgumentException.class, () -> provider(false, honest, queryVariant));
     }
 
     @Test

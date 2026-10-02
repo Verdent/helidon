@@ -45,6 +45,15 @@ final class OidcTenantConfigDecorator
         if (!target.enabled()) {
             return;
         }
+        target.adapter().ifPresent(adapter -> adapter.configure(target));
+        target.adapter().flatMap(adapter -> adapter.principalIdentityNamespace())
+                .filter(namespace -> namespace.isBlank()
+                        || !namespace.equals(namespace.strip())
+                        || !StandardCharsets.UTF_8.newEncoder().canEncode(namespace))
+                .ifPresent(_ -> {
+                    throw new IllegalArgumentException("adapter principal identity namespace must be a valid "
+                                                               + "nonblank UTF-8 value");
+                });
         if (target.outboundMutualTls()) {
             OidcClientAuthenticationConfigValidator.validateMutualTlsCredentials(target.webClient(),
                                                                                  "outbound-mutual-tls");

@@ -251,7 +251,7 @@ final class OidcAuthenticationOrchestrator {
                     OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookies(cookieStateHandler)));
         }
         return LocalAuthenticationOutcome.response(OidcResponseFactory.localAuthenticationSucceeded(
-                OidcSubjectMapper.map(result, readyTenant.subjectMapping()),
+                OidcSubjectMapper.map(result, readyTenant),
                 authenticationCookie));
     }
 

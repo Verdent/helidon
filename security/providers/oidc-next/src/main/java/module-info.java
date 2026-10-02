@@ -47,6 +47,9 @@ module io.helidon.security.providers.oidc.next {
     requires static transitive io.helidon.webserver;
 
     exports io.helidon.security.providers.oidc.next;
+    exports io.helidon.security.providers.oidc.next.spi;
+
+    uses io.helidon.security.providers.oidc.next.spi.OidcTenantAdapterProvider;
 
     provides io.helidon.security.spi.SecurityProviderService
             with io.helidon.security.providers.oidc.next.OidcProviderService;

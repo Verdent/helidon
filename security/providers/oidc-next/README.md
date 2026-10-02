@@ -1205,9 +1205,13 @@ different Authorization/Token Endpoint pairs to publish the same issuer only whe
 both endpoint URIs and use distinct callback paths or absolute origins. This is an exceptional compatibility mode and
 **does not satisfy RFC 9207's requirement that independent authorization servers use unique issuers**. The `iss` value
 cannot distinguish the colliding servers; the distinct registered callback and protected transaction state must do so.
-The same Authorization Endpoint cannot be paired with different Token Endpoints, even in this mode.
+The same Authorization Endpoint origin cannot be paired with different Token Endpoints, even in this mode.
 The option does not relax per-token issuer checking, well-known metadata source binding, or callback validation. In
 particular it does not make a tenant-hosted discovery document claiming an unrelated issuer acceptable.
+
+For Oracle IDCS, the optional [OIDC Next IDCS adapter](../oidc-next-idcs/README.md) supplies the tenant's documented
+endpoint defaults from one HTTPS domain URL and supports an authenticated JWKS retry. It is selected per tenant;
+ordinary OIDC providers retain their standard initialization and validation behavior.
 
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure

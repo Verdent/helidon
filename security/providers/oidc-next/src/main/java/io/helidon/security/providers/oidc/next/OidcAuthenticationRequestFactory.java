@@ -34,6 +34,8 @@ import io.helidon.http.SetCookie;
 import io.helidon.security.SecurityEnvironment;
 
 final class OidcAuthenticationRequestFactory {
+    static final String PKCE_METHOD_S256 = "S256";
+
     private static final int RANDOM_VALUE_BYTES = 32;
     private static final String OFFLINE_ACCESS_SCOPE = "offline_access";
     private static final String PROMPT_CONSENT = "consent";
@@ -48,11 +50,8 @@ final class OidcAuthenticationRequestFactory {
         this.secureRandom = secureRandom;
     }
 
-    static String codeChallenge(String verifier, OidcPkceMethod method) {
-        return switch (method) {
-        case PLAIN -> verifier;
-        case S256 -> base64Url(sha256(verifier));
-        };
+    static String codeChallenge(String verifier) {
+        return base64Url(sha256(verifier));
     }
 
     OidcAuthenticationRequest create(OidcRequestContext context) {
@@ -181,13 +180,12 @@ final class OidcAuthenticationRequestFactory {
              * 2.0 Authorization Request."
              * RFC 7636 section 7.1 quote: "The client SHOULD create a `code_verifier` with a minimum of 256 bits of
              * entropy."
-             * RFC 7636 section 4.2 quotes: "code_challenge = code_verifier";
-             * "code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))";
+             * RFC 7636 section 4.2 quote: "code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))";
              * "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory To
              * Implement (MTI) on the server."
              */
-            parameters.add("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
-                    .add("code_challenge_method", authorizationCode.pkceMethod().wireName());
+            parameters.add("code_challenge", codeChallenge(pkceVerifier))
+                    .add("code_challenge_method", PKCE_METHOD_S256);
         }
 
         return parameters.build();

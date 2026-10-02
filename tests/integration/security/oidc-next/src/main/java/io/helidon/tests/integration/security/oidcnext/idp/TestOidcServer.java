@@ -580,7 +580,6 @@ public final class TestOidcServer implements AutoCloseable {
         }
         List<String> scopes = scopes(first(parameters, "scope"));
         String code = "code-" + ids.incrementAndGet();
-        // RFC 7636 defaults an omitted method to plain on the server; OIDC-next sends S256 when PKCE is enabled.
         authorizationCodes.put(code,
                                new AuthorizationCode(clientId,
                                                      username,

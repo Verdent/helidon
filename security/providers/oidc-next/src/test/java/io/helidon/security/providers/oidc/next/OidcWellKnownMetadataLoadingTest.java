@@ -1223,7 +1223,7 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantRejectsMetadataThatOnlySupportsPlainPkce() {
+    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredPkceMethod() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                                       .setStrings("code_challenge_methods_supported", List.of("plain"))
                                       .build()

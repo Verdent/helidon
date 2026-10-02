@@ -579,7 +579,8 @@ final class OidcTenantConfigDecorator
                 OidcClientAuthenticationConfigValidator.tokenEndpointAuthenticationMethod(
                         tenant.clientSecret(),
                         tenant.tokenEndpointAuthenticationMethod());
-        // PKCE uses S256 whenever enabled; public clients must also keep PKCE enabled.
+        // Authenticated clients may explicitly select legacy PLAIN. For this S256-capable RP that is a documented
+        // RFC 7636 section 4.2 compatibility exception, not a compliant alternative to S256.
         if (method != OidcClientAuthenticationMethod.NONE) {
             return;
         }
@@ -589,10 +590,19 @@ final class OidcTenantConfigDecorator
          * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1
          * Quote: "When using PKCE, clients SHOULD use PKCE code challenge methods that do not expose the PKCE verifier
          * in the authorization request."
+         *
+         * Spec: RFC 7636, 4.2 Client Creates the Code Challenge
+         * https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2
+         * Quote: "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory
+         * To Implement (MTI) on the server."
          */
         if (!authorizationCode.pkceRequired()) {
             throw new IllegalArgumentException(
                     "authorization-code.pkce-required cannot be false when Token Endpoint authentication is NONE");
+        }
+        if (authorizationCode.pkceMethod() == OidcPkceMethod.PLAIN) {
+            throw new IllegalArgumentException(
+                    "authorization-code.pkce-method must be S256 when Token Endpoint authentication is NONE");
         }
     }
 

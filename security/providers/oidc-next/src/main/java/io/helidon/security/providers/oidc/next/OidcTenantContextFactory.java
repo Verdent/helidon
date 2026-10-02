@@ -368,7 +368,7 @@ final class OidcTenantContextFactory {
         if (!authorizationCode.pkceRequired()) {
             return;
         }
-        String pkceMethod = OidcAuthenticationRequestFactory.PKCE_METHOD_S256;
+        String pkceMethod = authorizationCode.pkceMethod().wireName();
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
          * https://www.rfc-editor.org/rfc/rfc8414.html#section-2

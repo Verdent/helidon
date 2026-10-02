@@ -30,23 +30,48 @@ final class OidcMixUpProtection {
     private OidcMixUpProtection() {
     }
 
-    static void validateIssuerBindings(Map<String, OidcTenantConfig> configuredTenants) {
+    static void validateIssuerBindings(Map<String, OidcTenantConfig> configuredTenants,
+                                       boolean issuerUniquenessValidationEnabled) {
         List<AuthorizationCodeTenant> tenants = authorizationCodeTenants(configuredTenants);
         for (int firstIndex = 0; firstIndex < tenants.size(); firstIndex++) {
             AuthorizationCodeTenant first = tenants.get(firstIndex);
             for (int secondIndex = firstIndex + 1; secondIndex < tenants.size(); secondIndex++) {
                 AuthorizationCodeTenant second = tenants.get(secondIndex);
                 if (mayShareIssuer(first, second)
-                        && (!first.endpoints().authorizationEndpointUri()
-                                .equals(second.endpoints().authorizationEndpointUri())
-                        || !first.endpoints().tokenEndpointUri().equals(second.endpoints().tokenEndpointUri()))) {
+                        && differentEndpoints(first, second)) {
                     /*
                      * Spec: RFC 9207, 4 Security Considerations
                      * https://www.rfc-editor.org/rfc/rfc9207.html#section-4
                      * The same accepted issuer cannot identify independently configured authorization servers.
                      */
-                    throw new IllegalArgumentException("OIDC tenants that may share an issuer must use matching "
-                                                               + "authorization-endpoint-uri and token-endpoint-uri settings");
+                    if (issuerUniquenessValidationEnabled) {
+                        throw new IllegalArgumentException("OIDC tenants that may share an issuer must use matching "
+                                                                   + "authorization-endpoint-uri and token-endpoint-uri "
+                                                                   + "settings");
+                    }
+                    // With a colliding issuer, the response iss cannot distinguish these ASs. RFC 9700 section
+                    // 4.4.2.2 describes distinct redirect URIs as an alternative mix-up defense. Bind the expected
+                    // callback and each endpoint to the selected tenant before sending a code or its PKCE verifier.
+                    if (first.issuer().isEmpty() || !first.issuer().equals(second.issuer())
+                            || first.endpoints().authorizationEndpointUri().isEmpty()
+                            || second.endpoints().authorizationEndpointUri().isEmpty()
+                            || first.endpoints().tokenEndpointUri().isEmpty()
+                            || second.endpoints().tokenEndpointUri().isEmpty()) {
+                        throw new IllegalArgumentException("Shared-issuer compatibility requires explicit matching "
+                                                                   + "issuer and authorization/token endpoints for each tenant");
+                    }
+                    if (first.endpoints().authorizationEndpointUri()
+                            .equals(second.endpoints().authorizationEndpointUri())) {
+                        // A tenant claiming another AS's authorization endpoint but using a different Token Endpoint
+                        // can trick a client into revealing an honest code and its PKCE verifier before ID Token checks.
+                        throw new IllegalArgumentException("Shared-issuer compatibility must not associate the same "
+                                                                   + "authorization-endpoint-uri with different "
+                                                                   + "token-endpoint-uri settings");
+                    }
+                    if (redirectionEndpointsMayOverlap(first, second)) {
+                        throw new IllegalArgumentException("Shared-issuer compatibility requires distinct "
+                                                                   + "redirection-endpoint-uri paths or origins");
+                    }
                 }
             }
         }
@@ -121,7 +146,13 @@ final class OidcMixUpProtection {
     private static boolean differentAuthorizationServers(AuthorizationCodeTenant first, AuthorizationCodeTenant second) {
         Optional<String> firstIssuer = first.issuer();
         Optional<String> secondIssuer = second.issuer();
-        return firstIssuer.isEmpty() || secondIssuer.isEmpty() || !firstIssuer.equals(secondIssuer);
+        return firstIssuer.isEmpty() || secondIssuer.isEmpty() || !firstIssuer.equals(secondIssuer)
+                || differentEndpoints(first, second);
+    }
+
+    private static boolean differentEndpoints(AuthorizationCodeTenant first, AuthorizationCodeTenant second) {
+        return !first.endpoints().authorizationEndpointUri().equals(second.endpoints().authorizationEndpointUri())
+                || !first.endpoints().tokenEndpointUri().equals(second.endpoints().tokenEndpointUri());
     }
 
     private static boolean redirectionEndpointsMayOverlap(AuthorizationCodeTenant first,

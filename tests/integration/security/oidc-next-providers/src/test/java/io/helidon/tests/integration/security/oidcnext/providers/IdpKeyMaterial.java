@@ -17,7 +17,9 @@
 package io.helidon.tests.integration.security.oidcnext.providers;
 
 import java.math.BigInteger;
+import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 
@@ -35,6 +37,19 @@ final class IdpKeyMaterial {
 
     static String publicEncryptionPem() {
         return publicPem("client-encrypt-jwk.json");
+    }
+
+    static String generateSigningPem() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048);
+            byte[] encoded = generator.generateKeyPair().getPrivate().getEncoded();
+            return "-----BEGIN PRIVATE KEY-----\n"
+                    + Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(encoded)
+                    + "\n-----END PRIVATE KEY-----\n";
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Cannot generate an issuer signing key", e);
+        }
     }
 
     private static String publicPem(String resource) {

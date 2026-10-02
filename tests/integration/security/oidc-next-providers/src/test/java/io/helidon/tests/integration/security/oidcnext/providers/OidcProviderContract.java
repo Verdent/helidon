@@ -21,28 +21,37 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
+import io.helidon.http.Method;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
+import io.helidon.security.providers.oidc.next.OidcCookieConfig;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
 import io.helidon.security.providers.oidc.next.OidcLogoutConfig;
 import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationConfig;
+import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
+import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 
 import org.junit.jupiter.api.AfterAll;
@@ -56,7 +65,10 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.startsWith;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -159,21 +171,88 @@ abstract class OidcProviderContract {
     }
 
     @Test
-    void refreshRenewsTheCookieAndPreservesTheUserIdentity() throws Exception {
-        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, tenant -> {
-            tenant.authorizationCode(OidcAuthorizationCodeConfig.builder().from(tenant.authorizationCode().orElseThrow())
-                    .scopes(List.of("openid", "profile", "email", "groups", "resource.read", "offline_access"))
-                    .buildPrototype());
-            OidcTokenValidationConfig validation = tenant.protectedResource().orElseThrow().tokenValidation();
-            tenant.protectedResource(resource -> resource.tokenValidation(OidcTokenValidationConfig.builder().from(validation)
-                    .clockSkew(Duration.ofHours(2)).buildPrototype()));
-        }); TestBrowser browser = new TestBrowser(adapter.webClient())) {
+    void mappedRolesAllowReaderAccessAndRejectAdminAccess() throws Exception {
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
-            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/roles/reader"))) {
                 assertThat(response.status(), is(Status.OK_200));
                 assertThat(response.as(JsonObject.class).stringValue("name").orElseThrow(), is("alice"));
-                assertThat(response.headers().contains(HeaderNames.SET_COOKIE), is(true));
             }
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/roles/admin"))) {
+                assertThat(response.status(), is(Status.FORBIDDEN_403));
+            }
+        }
+    }
+
+    @Test
+    void grantedScopesAllowReadAccessAndRejectWriteAccess() throws Exception {
+        String accessToken = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false, _ -> { })) {
+            assertResource(rp, "/api", accessToken, Status.OK_200);
+            assertResource(rp, "/scopes/read", accessToken, Status.OK_200);
+            assertResource(rp, "/scopes/write", accessToken, Status.FORBIDDEN_403);
+        }
+    }
+
+    @Test
+    void refreshRenewsTheCookieAndPreservesTheUserIdentity() throws Exception {
+        URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
+        try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+                     tenant -> configureRefresh(tenant, recorder.uri()));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            authenticate(browser, rp);
+            assertThat(recorder.exchanges().stream().map(OidcEndpointRecorder.Exchange::grantType).toList(),
+                       contains("authorization_code"));
+            JsonObject initial = recorder.exchanges().getFirst().response();
+            String cookieName = OidcCookieConfig.create().localAuthenticationCookieName();
+            String originalCookie = browser.cookieValue(cookieName).orElseThrow();
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(response.status(), is(Status.OK_200));
+                JsonObject subject = response.as(JsonObject.class);
+                assertThat(subject.stringValue("name").orElseThrow(), is("alice"));
+                assertThat(recorder.exchanges().stream().map(OidcEndpointRecorder.Exchange::grantType).toList(),
+                           contains("authorization_code", "refresh_token"));
+                OidcEndpointRecorder.Exchange refreshed = recorder.exchanges().getLast();
+                assertThat(refreshed.status(), is(Status.OK_200));
+                String accessToken = refreshed.response().stringValue("access_token").orElseThrow();
+                assertThat(accessToken, not(initial.stringValue("access_token").orElseThrow()));
+                assertThat(subject.stringValue("access_token").orElseThrow(), is(accessToken));
+                assertThat(subject.arrayValue("scopes").orElseThrow().values().stream()
+                                   .map(value -> value.asString().value()).toList(),
+                           is(Arrays.stream(initial.stringValue("scope").orElseThrow().split(" ")).sorted().toList()));
+                refreshed.response().stringValue("id_token").ifPresent(idToken ->
+                        assertThat(SignedJwt.parseToken(idToken).getJwt().subject(),
+                                   is(SignedJwt.parseToken(initial.stringValue("id_token").orElseThrow()).getJwt().subject())));
+                assertThat(response.headers().first(HeaderNames.SET_COOKIE), not(Optional.empty()));
+                assertThat(browser.cookieValue(cookieName).orElseThrow(), not(originalCookie));
+            }
+        }
+    }
+
+    @Test
+    void revokedRefreshTokenCannotRenewTheLocalSession() throws Exception {
+        require(IdpAdapter.Capability.REFRESH_TOKEN_REVOCATION);
+        URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
+        try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+                     tenant -> configureRefresh(tenant, recorder.uri()));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            authenticate(browser, rp);
+            String refreshToken = recorder.exchanges().getFirst().response().stringValue("refresh_token").orElseThrow();
+            revokeToken(IdpAdapter.ClientMode.BASIC, refreshToken, "refresh_token");
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(recorder.diagnostics() + "; last error: "
+                                   + recorder.exchanges().getLast().response().stringValue("error"),
+                           response.status(), is(Status.SEE_OTHER_303));
+            }
+            assertThat(recorder.exchanges().stream().map(OidcEndpointRecorder.Exchange::grantType).toList(),
+                       contains("authorization_code", "refresh_token"));
+            OidcEndpointRecorder.Exchange rejected = recorder.exchanges().getLast();
+            assertThat(rejected.status(), is(Status.BAD_REQUEST_400));
+            assertThat(rejected.response().stringValue("error").orElseThrow(), is("invalid_grant"));
+            assertThat(browser.cookieValue(OidcCookieConfig.create().localAuthenticationCookieName()), is(Optional.empty()));
         }
     }
 
@@ -225,6 +304,36 @@ abstract class OidcProviderContract {
     }
 
     @Test
+    void callbackWithoutTheOriginalStateCookieDoesNotCreateASession() throws Exception {
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
+             TestBrowser original = new TestBrowser(adapter.webClient());
+             TestBrowser unrelated = new TestBrowser(adapter.webClient())) {
+            URI callback = adapter.login(original, authorization(original, rp), rp.baseUri().resolve("/oidc/callback"));
+            assertRejectedCallback(unrelated, rp, callback, Status.BAD_REQUEST_400);
+        }
+    }
+
+    @Test
+    void providerSignedIdTokenWithTheWrongNonceDoesNotCreateASession() throws Exception {
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            URI changed = withQueryParameter(authorization(browser, rp), "nonce", "different-request-nonce-value");
+            URI callback = adapter.login(browser, changed, rp.baseUri().resolve("/oidc/callback"));
+            assertRejectedCallback(browser, rp, callback, Status.BAD_GATEWAY_502);
+        }
+    }
+
+    @Test
+    void rejectedClientAuthenticationDoesNotCreateASession() throws Exception {
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+                tenant -> tenant.clientSecret("incorrect-client-secret-with-at-least-32-bytes"));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            URI callback = adapter.login(browser, authorization(browser, rp), rp.baseUri().resolve("/oidc/callback"));
+            assertRejectedCallback(browser, rp, callback, Status.BAD_GATEWAY_502);
+        }
+    }
+
+    @Test
     void apiRejectsMissingAndUnknownBearerCredentials() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false, _ -> { })) {
             assertApi(rp, null, Status.UNAUTHORIZED_401);
@@ -251,6 +360,17 @@ abstract class OidcProviderContract {
     }
 
     @Test
+    void introspectionRejectsAnAccessTokenAfterNativeRevocation() throws Exception {
+        require(IdpAdapter.Capability.ACCESS_TOKEN_REVOCATION);
+        String accessToken = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false, _ -> { })) {
+            assertApi(rp, accessToken, Status.OK_200);
+            revokeToken(IdpAdapter.ClientMode.BASIC, accessToken, "access_token");
+            assertApi(rp, accessToken, Status.UNAUTHORIZED_401);
+        }
+    }
+
+    @Test
     void clientCredentialsObtainsAnAccessTokenAndIntrospectionAcceptsIt() throws Exception {
         JsonObject tokenResponse = clientCredentials();
         assertThat(tokenResponse.stringValue("token_type").orElseThrow().toLowerCase(Locale.ROOT), is("bearer"));
@@ -265,6 +385,75 @@ abstract class OidcProviderContract {
         String token = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, _ -> { })) {
             assertThat(assertApi(rp, token, Status.OK_200).stringValue("name").orElseThrow(), is("alice"));
+        }
+    }
+
+    @Test
+    void jwtValidationRejectsAValidTokenForADifferentAudience() throws Exception {
+        require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
+        String accessToken = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false,
+                tenant -> changeAudience(tenant, "different-resource"))) {
+            assertApi(rp, accessToken, Status.UNAUTHORIZED_401);
+        }
+    }
+
+    @Test
+    void jwtAndIntrospectionProduceTheSameIdentityForTheSameNativeToken() throws Exception {
+        require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
+        String accessToken = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
+        try (RelyingParty jwt = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, _ -> { });
+             RelyingParty introspection = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, tenant -> {
+                 OidcTokenValidationConfig original = tenant.protectedResource().orElseThrow().tokenValidation();
+                 tenant.protectedResource(resource -> resource.tokenValidation(OidcTokenValidationConfig.builder().from(original)
+                         .method(OidcTokenValidationMethod.INTROSPECTION).jwt(OidcJwtAccessTokenConfig.create())
+                         .buildPrototype()));
+             })) {
+            assertThat(assertApi(jwt, accessToken, Status.OK_200).stringValue("id").orElseThrow(),
+                       is(assertApi(introspection, accessToken, Status.OK_200).stringValue("id").orElseThrow()));
+        }
+    }
+
+    @Test
+    void jwtValidationAcceptsANativeClientCredentialsToken() throws Exception {
+        require(IdpAdapter.Capability.JWT_CLIENT_CREDENTIALS);
+        String accessToken = tokenRequest(IdpAdapter.ClientMode.JWT_SERVICE,
+                Parameters.builder("token").add("grant_type", "client_credentials").add("scope", "resource.read").build())
+                .stringValue("access_token").orElseThrow();
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_SERVICE, false, _ -> { })) {
+            JsonObject subject = assertApi(rp, accessToken, Status.OK_200);
+            assertThat("Native token claims: " + SignedJwt.parseToken(accessToken).getJwt().payloadClaimsJson(),
+                       subject.arrayValue("scopes").orElseThrow().values().stream()
+                               .map(value -> value.asString().value()).toList(), hasItems("resource.read"));
+        }
+    }
+
+    @Test
+    void cachedJwksAcceptsTheRotatedSigningKeyAndRetainsThePreviousKey() throws Exception {
+        require(IdpAdapter.Capability.SIGNING_KEY_ROTATION);
+        require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
+        URI jwks = URI.create(metadata().stringValue("jwks_uri").orElseThrow());
+        AtomicInteger loads = new AtomicInteger();
+        String original = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
+        String previousKeyId = SignedJwt.parseToken(original).getJwt().keyId().orElseThrow();
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, tenant -> tenant
+                .jwkSet(keys -> keys.unknownKeyIdRefreshInterval(Duration.ZERO))
+                .webClient(WebClientConfig.builder().from(adapter.webClient()).addService((chain, request) -> {
+                    if (request.method().equals(Method.GET) && request.uri().toUri().equals(jwks)) {
+                        loads.incrementAndGet();
+                    }
+                    return chain.proceed(request);
+                }).buildPrototype()))) {
+            JsonObject originalSubject = assertApi(rp, original, Status.OK_200);
+            assertThat(loads.get(), is(1));
+            try (AutoCloseable _ = adapter.rotateSigningKey()) {
+                String rotated = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
+                assertThat(SignedJwt.parseToken(rotated).getJwt().keyId().orElseThrow(), not(previousKeyId));
+                assertThat(assertApi(rp, rotated, Status.OK_200).stringValue("id"), is(originalSubject.stringValue("id")));
+                assertThat(loads.get(), is(2));
+                assertApi(rp, original, Status.OK_200);
+                assertThat(loads.get(), is(2));
+            }
         }
     }
 
@@ -300,6 +489,14 @@ abstract class OidcProviderContract {
     void signedRequestObjectCompletesTheBrowserLogin() throws Exception {
         require(IdpAdapter.Capability.JAR);
         assertBrowserAuthentication(IdpAdapter.ClientMode.JAR);
+    }
+
+    @Test
+    void pushedAuthorizationAndSignedRequestObjectCompleteTheBrowserLoginTogether() throws Exception {
+        require(IdpAdapter.Capability.PAR);
+        require(IdpAdapter.Capability.JAR);
+        require(IdpAdapter.Capability.PAR_WITH_JAR);
+        assertBrowserAuthentication(IdpAdapter.ClientMode.PAR_JAR);
     }
 
     @Test
@@ -355,6 +552,81 @@ abstract class OidcProviderContract {
                 .buildPrototype(), false, false);
     }
 
+    void assertNonconformingSignedUserInfoIsRejected() throws Exception {
+        String accessToken = userTokens(IdpAdapter.ClientMode.SIGNED_USERINFO).stringValue("access_token").orElseThrow();
+        WebClient client = WebClient.builder().from(adapter.webClient()).build();
+        try (HttpClientResponse response = client.get()
+                .uri(URI.create(metadata().stringValue("userinfo_endpoint").orElseThrow()))
+                .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
+            assertThat(response.status(), is(Status.OK_200));
+            assertThat(response.headers().first(HeaderNames.CONTENT_TYPE).orElseThrow(), startsWith("application/jwt"));
+            var jwt = SignedJwt.parseToken(response.as(String.class)).getJwt();
+            assertThat(jwt.algorithm().orElseThrow(), is("RS256"));
+            assertThat(jwt.payloadClaimsJson(), not(hasKey("iss")));
+            assertThat(jwt.payloadClaimsJson(), not(hasKey("aud")));
+            assertThat(jwt.subject().orElseThrow(), not(""));
+        } finally {
+            client.closeResource();
+        }
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SIGNED_USERINFO, true, _ -> { });
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            URI callback = adapter.login(browser, authorization(browser, rp), rp.baseUri().resolve("/oidc/callback"));
+            try (HttpClientResponse response = browser.get(callback)) {
+                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
+                assertThat(response.as(String.class), is("UserInfo response is invalid"));
+            }
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+            }
+        }
+    }
+
+    void assertCompliantParWithJarIsRejectedByTheProvider() throws Exception {
+        URI nativePar = URI.create(metadata().stringValue("pushed_authorization_request_endpoint").orElseThrow());
+        try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, nativePar);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.PAR_JAR, true,
+                     tenant -> tenant.endpoints(endpoints -> endpoints.pushedAuthorizationRequestEndpointUri(recorder.uri())));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(recorder.diagnostics(), response.status(), is(Status.SERVICE_UNAVAILABLE_503));
+            }
+            assertThat(recorder.exchanges(), hasSize(1));
+            OidcEndpointRecorder.Exchange rejected = recorder.exchanges().getFirst();
+            assertThat(rejected.parameterNames(), is(Set.of("request")));
+            assertThat(rejected.status(), is(Status.BAD_REQUEST_400));
+            assertThat(rejected.response().stringValue("error").orElseThrow(), is("invalid_request_object"));
+            assertThat(rejected.response().toString(), containsString("response_type"));
+            assertThat(browser.cookieValue(OidcCookieConfig.create().localAuthenticationCookieName()), is(Optional.empty()));
+        }
+    }
+
+    void assertRefreshRevocationServerErrorDoesNotRenewTheSession() throws Exception {
+        URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
+        try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+                     tenant -> configureRefresh(tenant, recorder.uri()));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            authenticate(browser, rp);
+            JsonObject initial = recorder.exchanges().getFirst().response();
+            String cookieName = OidcCookieConfig.create().localAuthenticationCookieName();
+            String originalCookie = browser.cookieValue(cookieName).orElseThrow();
+            revokeToken(IdpAdapter.ClientMode.BASIC, initial.stringValue("refresh_token").orElseThrow(), "refresh_token");
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(recorder.diagnostics(), response.status(), is(Status.OK_200));
+                assertThat(response.as(JsonObject.class).stringValue("access_token"), is(initial.stringValue("access_token")));
+                assertThat(response.headers().first(HeaderNames.SET_COOKIE), is(Optional.empty()));
+            }
+            assertThat(recorder.exchanges().stream().map(OidcEndpointRecorder.Exchange::grantType).toList(),
+                       contains("authorization_code", "refresh_token"));
+            OidcEndpointRecorder.Exchange rejected = recorder.exchanges().getLast();
+            assertThat(rejected.status(), is(Status.INTERNAL_SERVER_ERROR_500));
+            assertThat(rejected.response().stringValue("error").orElseThrow(), is("server_error"));
+            assertThat(rejected.response().stringValue("error_description").orElseThrow(), containsString("no rows affected"));
+            assertThat(rejected.response().value("access_token"), is(Optional.empty()));
+            assertThat(browser.cookieValue(cookieName), is(Optional.of(originalCookie)));
+        }
+    }
+
     private void assertOutbound(OidcOutboundPolicyConfig policy, boolean propagation, boolean checkCache) throws Exception {
         String inbound = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
         AtomicReference<String> received = new AtomicReference<>();
@@ -398,35 +670,6 @@ abstract class OidcProviderContract {
     private void require(IdpAdapter.Capability capability) {
         if (!adapter.capabilities().contains(capability)) {
             assumeTrue(false, adapter.unavailableReason(capability));
-        }
-    }
-
-    void assertNonconformingSignedUserInfoIsRejected() throws Exception {
-        String accessToken = userTokens(IdpAdapter.ClientMode.SIGNED_USERINFO).stringValue("access_token").orElseThrow();
-        WebClient client = WebClient.builder().from(adapter.webClient()).build();
-        try (HttpClientResponse response = client.get()
-                .uri(URI.create(metadata().stringValue("userinfo_endpoint").orElseThrow()))
-                .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken).request()) {
-            assertThat(response.status(), is(Status.OK_200));
-            assertThat(response.headers().first(HeaderNames.CONTENT_TYPE).orElseThrow(), startsWith("application/jwt"));
-            var jwt = SignedJwt.parseToken(response.as(String.class)).getJwt();
-            assertThat(jwt.algorithm().orElseThrow(), is("RS256"));
-            assertThat(jwt.payloadClaimsJson(), not(hasKey("iss")));
-            assertThat(jwt.payloadClaimsJson(), not(hasKey("aud")));
-            assertThat(jwt.subject().orElseThrow(), not(""));
-        } finally {
-            client.closeResource();
-        }
-        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SIGNED_USERINFO, true, _ -> { });
-             TestBrowser browser = new TestBrowser(adapter.webClient())) {
-            URI callback = adapter.login(browser, authorization(browser, rp), rp.baseUri().resolve("/oidc/callback"));
-            try (HttpClientResponse response = browser.get(callback)) {
-                assertThat(response.status(), is(Status.BAD_GATEWAY_502));
-                assertThat(response.as(String.class), is("UserInfo response is invalid"));
-            }
-            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
-                assertThat(response.status(), is(Status.SEE_OTHER_303));
-            }
         }
     }
 
@@ -495,9 +738,13 @@ abstract class OidcProviderContract {
     }
 
     private JsonObject assertApi(RelyingParty rp, String token, Status expected) {
+        return assertResource(rp, "/api", token, expected);
+    }
+
+    private JsonObject assertResource(RelyingParty rp, String path, String token, Status expected) {
         WebClient client = WebClient.builder().from(adapter.webClient()).build();
         try {
-            var request = client.get().uri(rp.baseUri().resolve("/api"));
+            var request = client.get().uri(rp.baseUri().resolve(path));
             if (token != null) {
                 request.header(HeaderNames.AUTHORIZATION, "Bearer " + token);
             }
@@ -519,6 +766,48 @@ abstract class OidcProviderContract {
                 .audience(audience).buildPrototype()));
     }
 
+    private static void configureRefresh(OidcTenantConfig.Builder tenant, URI tokenEndpoint) {
+        tenant.authorizationCode(OidcAuthorizationCodeConfig.builder().from(tenant.authorizationCode().orElseThrow())
+                .scopes(List.of("openid", "profile", "email", "groups", "resource.read", "offline_access"))
+                .buildPrototype());
+        tenant.endpoints(endpoints -> endpoints.tokenEndpointUri(tokenEndpoint));
+        OidcTokenValidationConfig validation = tenant.protectedResource().orElseThrow().tokenValidation();
+        tenant.protectedResource(resource -> resource.tokenValidation(OidcTokenValidationConfig.builder().from(validation)
+                .clockSkew(Duration.ofHours(2)).buildPrototype()));
+    }
+
+    private static URI withQueryParameter(URI uri, String name, String value) {
+        UriQuery original = UriQuery.create(uri);
+        Map<String, String> parameters = new LinkedHashMap<>();
+        for (String parameter : original.names()) {
+            parameters.put(parameter, original.first(parameter).orElseThrow());
+        }
+        parameters.put(name, value);
+        return URI.create(uri.getScheme() + "://" + uri.getAuthority() + uri.getPath() + "?" + query(parameters));
+    }
+
+    private void revokeToken(IdpAdapter.ClientMode mode, String token, String hint) {
+        URI endpoint = URI.create(metadata().stringValue("revocation_endpoint").orElseThrow());
+        WebClient client = WebClient.builder().from(adapter.webClient()).build();
+        String basic = Base64.getEncoder().encodeToString((mode.id() + ":" + IdpAdapter.SECRET).getBytes(StandardCharsets.UTF_8));
+        try (HttpClientResponse response = client.post().uri(endpoint).header(HeaderNames.AUTHORIZATION, "Basic " + basic)
+                .submit(Parameters.builder("revocation").add("token", token).add("token_type_hint", hint).build())) {
+            assertThat(response.status(), is(Status.OK_200));
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    private void assertRejectedCallback(TestBrowser browser, RelyingParty rp, URI callback, Status expected) throws Exception {
+        try (HttpClientResponse response = browser.get(callback)) {
+            assertThat(response.status(), is(expected));
+        }
+        try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+            assertThat(response.status(), is(Status.SEE_OTHER_303));
+        }
+        assertThat(browser.cookieValue(OidcCookieConfig.create().localAuthenticationCookieName()), is(Optional.empty()));
+    }
+
     private static String query(Map<String, String> parameters) {
         return parameters.entrySet().stream()
                 .map(entry -> URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8) + "="
@@ -529,7 +818,8 @@ abstract class OidcProviderContract {
         try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
             String detail = response.status().equals(Status.SEE_OTHER_303)
                     ? "successful redirect" : response.entity().asOptional(String.class).orElse("empty response");
-            assertThat("Authorization response: " + detail, response.status(), is(Status.SEE_OTHER_303));
+            String diagnostics = response.status().equals(Status.SEE_OTHER_303) ? "" : "\n" + adapter.diagnostics();
+            assertThat("Authorization response: " + detail + diagnostics, response.status(), is(Status.SEE_OTHER_303));
             URI uri = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
             UriQuery query = UriQuery.create(uri);
             if (!query.contains("request") && !query.contains("request_uri")) {

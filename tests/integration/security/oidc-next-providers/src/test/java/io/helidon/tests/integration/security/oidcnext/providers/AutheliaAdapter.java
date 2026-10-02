@@ -52,6 +52,7 @@ final class AutheliaAdapter implements IdpAdapter {
     private WebClientConfig client;
     private String passwordHash;
     private String clientSecretHash;
+    private String rotatedSigningKey;
 
     @Override
     public void start() throws Exception {
@@ -94,7 +95,9 @@ final class AutheliaAdapter implements IdpAdapter {
 
     @Override
     public Set<Capability> capabilities() {
-        return EnumSet.complementOf(EnumSet.of(Capability.RP_LOGOUT, Capability.TOKEN_EXCHANGE, Capability.SIGNED_USERINFO));
+        return EnumSet.complementOf(EnumSet.of(Capability.RP_LOGOUT, Capability.TOKEN_EXCHANGE,
+                                               Capability.SIGNED_USERINFO, Capability.PAR_WITH_JAR,
+                                               Capability.REFRESH_TOKEN_REVOCATION));
     }
 
     @Override
@@ -102,6 +105,10 @@ final class AutheliaAdapter implements IdpAdapter {
         return switch (capability) {
         case SIGNED_USERINFO -> "Known Authelia 4.39.28 incompatibility: signed UserInfo omits mandatory iss and aud claims; "
                 + "the provider-specific regression verifies rejection";
+        case PAR_WITH_JAR -> "Known Authelia 4.39.28 incompatibility: PAR with JAR requires outer response_type, "
+                + "which RFC 9126 section 3 prohibits; the provider-specific regression verifies rejection";
+        case REFRESH_TOKEN_REVOCATION -> "Known Authelia 4.39.28 SQLite incompatibility: refresh after revocation returns "
+                + "server_error instead of invalid_grant; the provider-specific regression verifies no renewal";
         case RP_LOGOUT, TOKEN_EXCHANGE -> "Authelia 4.39.28 does not implement " + capability + "; see its OIDC support chart";
         default -> throw new IllegalArgumentException("Authelia fixture supports " + capability);
         };
@@ -122,12 +129,23 @@ final class AutheliaAdapter implements IdpAdapter {
     @Override
     public void registerCallback(ClientMode mode, URI callback) throws Exception {
         if (callbacks.computeIfAbsent(mode, _ -> new LinkedHashSet<>()).add(callback.toString())) {
-            container.execInContainer("sh", "-c", "kill \"$(cat /tmp/authelia.pid)\"");
-            Wait.forSuccessfulCommand("test ! -d /proc/$(cat /tmp/authelia.pid)")
-                    .withStartupTimeout(Duration.ofSeconds(20)).waitUntilReady(container);
-            writeConfiguration();
-            startProcess();
+            reloadConfiguration();
         }
+    }
+
+    @Override
+    public AutoCloseable rotateSigningKey() throws Exception {
+        rotatedSigningKey = IdpKeyMaterial.generateSigningPem();
+        try {
+            reloadConfiguration();
+        } catch (Exception e) {
+            rotatedSigningKey = null;
+            throw e;
+        }
+        return () -> {
+            rotatedSigningKey = null;
+            reloadConfiguration();
+        };
     }
 
     @Override
@@ -208,6 +226,14 @@ final class AutheliaAdapter implements IdpAdapter {
         }
     }
 
+    private void reloadConfiguration() throws Exception {
+        container.execInContainer("sh", "-c", "kill \"$(cat /tmp/authelia.pid)\"");
+        Wait.forSuccessfulCommand("test ! -d /proc/$(cat /tmp/authelia.pid)")
+                .withStartupTimeout(Duration.ofSeconds(20)).waitUntilReady(container);
+        writeConfiguration();
+        startProcess();
+    }
+
     private void writeConfiguration() throws Exception {
         JsonObject user = JsonObject.builder().set("password", passwordHash)
                 .set("displayname", "Alice Example").set("email", "alice@example.org")
@@ -217,7 +243,14 @@ final class AutheliaAdapter implements IdpAdapter {
                 .build().toString());
         container.copyFileToContainer(MountableFile.forHostPath(users), "/tmp/users.yml");
         List<JsonObject> clients = Arrays.stream(ClientMode.values()).map(this::clientConfiguration).toList();
+        JsonObject originalKey = JsonObject.builder().set("key_id", "provider-rsa")
+                .set("algorithm", "RS256").set("use", "sig").set("key", Resource.create("tls-key.pem").string()).build();
+        List<JsonObject> issuerKeys = rotatedSigningKey != null
+                ? List.of(JsonObject.builder().set("key_id", "provider-rsa-rotated").set("algorithm", "RS256")
+                                  .set("use", "sig").set("key", rotatedSigningKey).build(), originalKey)
+                : List.of(originalKey);
         JsonObject config = JsonObject.builder()
+                .set("ntp", JsonObject.builder().set("disable_startup_check", true).build())
                 .set("server", JsonObject.builder().set("address", "tcp://0.0.0.0:9091/")
                         .set("tls", JsonObject.builder().set("certificate", "/tmp/tls-cert.pem")
                                 .set("key", "/tmp/tls-key.pem").build()).build())
@@ -237,9 +270,7 @@ final class AutheliaAdapter implements IdpAdapter {
                 .set("identity_providers", JsonObject.builder().set("oidc", JsonObject.builder()
                         .set("enable_client_debug_messages", true)
                         .set("hmac_secret", "test-oidc-hmac-secret-at-least-sixty-four-characters-long-1234567890")
-                        .set("jwks", JsonArray.create(List.of(JsonObject.builder().set("key_id", "provider-rsa")
-                                .set("algorithm", "RS256").set("use", "sig")
-                                .set("key", Resource.create("tls-key.pem").string()).build())))
+                        .set("jwks", JsonArray.create(issuerKeys))
                         .set("scopes", JsonObject.builder().set("resource.read", JsonObject.builder()
                                 .setStrings("claims", List.of()).build()).build())
                         .set("claims_policies", JsonObject.builder().set("integration", JsonObject.builder()
@@ -253,7 +284,7 @@ final class AutheliaAdapter implements IdpAdapter {
     }
 
     private JsonObject clientConfiguration(ClientMode mode) {
-        boolean service = mode == ClientMode.SERVICE || mode == ClientMode.API;
+        boolean service = mode == ClientMode.SERVICE || mode == ClientMode.API || mode == ClientMode.JWT_SERVICE;
         JsonObject.Builder client = JsonObject.builder().set("client_id", mode.id())
                 .set("authorization_policy", "one_factor").set("consent_mode", "explicit")
                 .set("requested_audience_mode", "implicit").setStrings("audience", List.of(AUDIENCE))
@@ -286,10 +317,10 @@ final class AutheliaAdapter implements IdpAdapter {
                 client.set("token_endpoint_auth_signing_alg", "HS256");
             }
         }
-        if (mode == ClientMode.PAR) {
+        if (mode == ClientMode.PAR || mode == ClientMode.PAR_JAR) {
             client.set("require_pushed_authorization_requests", true);
         }
-        if (mode == ClientMode.JAR) {
+        if (mode == ClientMode.JAR || mode == ClientMode.PAR_JAR) {
             client.set("request_object_signing_alg", "RS256").set("jwks", JsonArray.create(List.of(JsonObject.builder()
                     .set("key_id", "sign-rsa").set("algorithm", "RS256").set("use", "sig")
                     .set("key", IdpKeyMaterial.publicSigningPem()).build())));
@@ -297,7 +328,7 @@ final class AutheliaAdapter implements IdpAdapter {
         if (mode == ClientMode.SIGNED_USERINFO) {
             client.set("userinfo_signed_response_alg", "RS256");
         }
-        if (mode == ClientMode.JWT_ACCESS) {
+        if (mode == ClientMode.JWT_ACCESS || mode == ClientMode.JWT_SERVICE) {
             client.set("access_token_signed_response_alg", "RS256").set("claims_policy", "integration");
         }
         if (mode == ClientMode.ENCRYPTED_ID_TOKEN) {

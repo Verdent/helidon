@@ -29,6 +29,9 @@ import io.helidon.security.Role;
 import io.helidon.security.Security;
 import io.helidon.security.SecurityContext;
 import io.helidon.security.Subject;
+import io.helidon.security.abac.role.RoleValidator;
+import io.helidon.security.abac.scope.ScopeValidator;
+import io.helidon.security.providers.abac.AbacProvider;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.common.TokenCredential;
 import io.helidon.security.providers.oidc.next.OidcClientAuthenticationMethod;
@@ -70,14 +73,16 @@ final class RelyingParty implements AutoCloseable {
                 .webClient(adapter.webClient())
                 .subjectMapping(mapping -> mapping.principalIdClaimPaths(List.of("sub", "client_id"))
                         .principalNameClaimPaths(List.of("preferred_username", "username", "client_id", "sub"))
+                        .scopeClaimPaths(List.of("scope", "scp"))
                         .roleClaimPaths(List.of("groups")))
                 .protectedResource(resource -> resource.tokenValidation(validation -> {
-                    validation.method(mode == IdpAdapter.ClientMode.JWT_ACCESS ? OidcTokenValidationMethod.JWT
+                    boolean jwt = mode == IdpAdapter.ClientMode.JWT_ACCESS || mode == IdpAdapter.ClientMode.JWT_SERVICE;
+                    validation.method(jwt ? OidcTokenValidationMethod.JWT
                                 : OidcTokenValidationMethod.INTROSPECTION)
                         .audience(IdpAdapter.AUDIENCE)
                         .introspection(introspection -> introspection.clientId(IdpAdapter.ClientMode.API.id())
                                 .clientSecret(IdpAdapter.SECRET));
-                    if (mode == IdpAdapter.ClientMode.JWT_ACCESS) {
+                    if (jwt) {
                         validation.jwt(adapter.jwtLayout());
                     }
                 }));
@@ -97,9 +102,9 @@ final class RelyingParty implements AutoCloseable {
         if (browser) {
             tenant.authorizationCode(code -> {
                 code.scopes(List.of("openid", "profile", "email", "groups", "resource.read"))
-                    .pushedAuthorizationRequests(mode == IdpAdapter.ClientMode.PAR
+                    .pushedAuthorizationRequests(mode == IdpAdapter.ClientMode.PAR || mode == IdpAdapter.ClientMode.PAR_JAR
                             ? OidcPushedAuthorizationRequestMode.REQUIRED : OidcPushedAuthorizationRequestMode.DISABLED);
-                if (mode == IdpAdapter.ClientMode.JAR) {
+                if (mode == IdpAdapter.ClientMode.JAR || mode == IdpAdapter.ClientMode.PAR_JAR) {
                     code.requestObject(request -> request.mode(OidcRequestObjectMode.REQUIRED).signingAlgorithm("RS256")
                             .signingKeyId("sign-rsa")
                             .signingJwk(ResourceConfig.builder().resourcePath("client-sign-jwk.json").buildPrototype()));
@@ -135,6 +140,16 @@ final class RelyingParty implements AutoCloseable {
                     (_, response) -> response.send(subject()));
         routing.get("/api", SecurityFeature.authenticate().customObject(bearerPolicy),
                     (_, response) -> response.send(subject()));
+        routing.get("/roles/reader", SecurityFeature.authenticate().customObject(cookiePolicy).rolesAllowed("reader"),
+                    (_, response) -> response.send(subject()));
+        routing.get("/roles/admin", SecurityFeature.authenticate().customObject(cookiePolicy).rolesAllowed("admin"),
+                    (_, response) -> response.send(subject()));
+        routing.get("/scopes/read", SecurityFeature.authenticate().customObject(bearerPolicy).authorize()
+                            .customObject(ScopeValidator.ScopesConfig.create("resource.read")),
+                    (_, response) -> response.send(subject()));
+        routing.get("/scopes/write", SecurityFeature.authenticate().customObject(bearerPolicy).authorize()
+                            .customObject(ScopeValidator.ScopesConfig.create("resource.write")),
+                    (_, response) -> response.send(subject()));
         outbound.ifPresent(target -> routing.get("/proxy", SecurityFeature.authenticate().customObject(bearerPolicy),
                 (_, response) -> {
                     WebClient outboundClient = WebClient.builder().from(adapter.webClient()).servicesDiscoverServices(false)
@@ -147,7 +162,9 @@ final class RelyingParty implements AutoCloseable {
                 }));
         server = WebServer.builder().host("127.0.0.1").port(0).tls(IdpResources.serverTls())
                 .addFeature(SecurityFeature.builder()
-                        .security(Security.builder().addProvider(provider, "oidc-next").build()).build())
+                        .security(Security.builder().addProvider(provider, "oidc-next")
+                                .addProvider(AbacProvider.builder().addValidator(RoleValidator.create())
+                                                     .addValidator(ScopeValidator.create()).build()).build()).build())
                 .addRouting(routing).build().start();
         if (browser) {
             try {

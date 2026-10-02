@@ -20,6 +20,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import io.helidon.common.parameters.Parameters;
@@ -72,6 +73,11 @@ final class TestBrowser implements AutoCloseable {
             }
             return result;
         }
+    }
+
+    Optional<String> cookieValue(String name) {
+        return cookies.entrySet().stream().filter(entry -> entry.getKey().name().equals(name))
+                .map(entry -> entry.getValue().value()).findFirst();
     }
 
     @Override

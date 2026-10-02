@@ -53,6 +53,21 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>io.helidon.security.providers</groupId>
+            <artifactId>helidon-security-providers-abac</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.security.abac</groupId>
+            <artifactId>helidon-security-abac-role</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.security.abac</groupId>
+            <artifactId>helidon-security-abac-scope</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.webclient</groupId>
             <artifactId>helidon-webclient</artifactId>
             <scope>test</scope>

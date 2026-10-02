@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
@@ -115,6 +116,8 @@ class IdcsProtectedJwkAuthenticationTest {
                                                         .issueTime(now)
                                                         .expirationTime(now.plus(1, ChronoUnit.HOURS))
                                                         .addAudience("client")
+                                                        .addAudience(ISSUER)
+                                                        .addPayloadClaim("azp", "client")
                                                         .nonce(CODE_FLOW_NONCE.get())
                                                         .build(),
                                                 signingKeys.forKeyId("sign-rsa").orElseThrow()).tokenContent();
@@ -193,6 +196,45 @@ class IdcsProtectedJwkAuthenticationTest {
             assertThat(TOKEN_FORM.get(), is("client_credentials:urn:opc:idm:__myscopes__"));
             assertThat(TOKEN_AUTHORIZATION.get(), is("Basic " + Base64.getEncoder()
                     .encodeToString("client:secret".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+        }
+    }
+
+    @Test
+    void defaultIdcsJwtLayoutVerifiesDocumentedUntypedAccessTokensWithProtectedSigningKeys() {
+        try (OidcProvider provider = providerWithIdcsJwtDefaults()) {
+            AuthenticationResponse untyped = provider.authenticate(request(signedIdcsAccessToken(_ -> { })));
+            AuthenticationResponse typed = provider.authenticate(request(signedIdcsAccessToken(jwt -> jwt.type("JWT"))));
+
+            assertThat(untyped.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(typed.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(JWKS_REQUESTS.get(), is(2));
+            assertThat(TOKEN_REQUESTS.get(), is(1));
+        }
+    }
+
+    @Test
+    void defaultIdcsJwtLayoutRejectsIdTokensAndTokensOutsideTheConfiguredResource() {
+        try (OidcProvider provider = providerWithIdcsJwtDefaults()) {
+            List<String> invalid = List.of(
+                    signedIdcsAccessToken(jwt -> jwt.addPayloadClaim("tok_type", "IT")),
+                    signedIdcsAccessToken(jwt -> jwt.removePayloadClaim("tok_type")),
+                    signedIdcsAccessToken(jwt -> jwt.addPayloadClaim("tok_type", List.of("AT"))),
+                    signedIdcsAccessToken(jwt -> jwt.type("id+jwt")),
+                    signedIdcsAccessToken(jwt -> jwt.audience(List.of("api://other"))),
+                    signedIdcsAccessToken(jwt -> jwt.issuer("https://other-issuer.example")),
+                    signedIdcsAccessToken(jwt -> jwt.expirationTime(Instant.now().minusSeconds(300))));
+
+            for (String token : invalid) {
+                AuthenticationResponse response = provider.authenticate(request(token));
+                assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(response.statusCode().orElse(-1), is(Status.UNAUTHORIZED_401.code()));
+            }
+
+            String signed = signedIdcsAccessToken(_ -> { });
+            int signatureStart = signed.lastIndexOf('.') + 1;
+            char replacement = signed.charAt(signatureStart) == 'A' ? 'B' : 'A';
+            String tampered = signed.substring(0, signatureStart) + replacement + signed.substring(signatureStart + 1);
+            assertThat(provider.authenticate(request(tampered)).status(), is(SecurityResponse.SecurityStatus.FAILURE));
         }
     }
 
@@ -302,6 +344,21 @@ class IdcsProtectedJwkAuthenticationTest {
         return provider(idcsAdapter, domainUri);
     }
 
+    private static OidcProvider providerWithIdcsJwtDefaults() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .adapter(IdcsTenantAdapter.builder().domainUri(domainUri).build())
+                .clientId("client")
+                .clientSecret("secret")
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)))
+                .webClient(WebClientConfig.builder().tls(tls -> tls.trust(trustedServer)).buildPrototype())
+                .buildPrototype();
+        return OidcProvider.create(OidcProviderConfig.builder()
+                                           .putTenant("default", tenant)
+                                           .buildPrototype());
+    }
+
     private static OidcProvider provider(boolean idcsAdapter, URI adapterDomain) {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
@@ -338,6 +395,21 @@ class IdcsProtectedJwkAuthenticationTest {
                                       .build(),
                               signingKeys.forKeyId("sign-rsa").orElseThrow())
                 .tokenContent();
+    }
+
+    private static String signedIdcsAccessToken(Consumer<Jwt.Builder> customizer) {
+        Instant now = Instant.now();
+        Jwt.Builder jwt = Jwt.builder()
+                .algorithm("RS256")
+                .keyId("verify-rsa")
+                .issuer(ISSUER)
+                .subject("alice")
+                .issueTime(now)
+                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .addAudience(AUDIENCE)
+                .addPayloadClaim("tok_type", "AT");
+        customizer.accept(jwt);
+        return SignedJwt.sign(jwt.build(), signingKeys.forKeyId("sign-rsa").orElseThrow()).tokenContent();
     }
 
     private static ProviderRequest request(String token) {

@@ -658,11 +658,13 @@ otherwise the provider loads well-known metadata and uses its `jwks_uri`. RFC 90
 
 ### Provider-specific JWT layouts
 
-`token-validation.jwt.profile` defaults to `RFC_9068`. It requires the `at+jwt` or `application/at+jwt` header type
-and the profile's `sub`, `iat`, `jti`, and `client_id` claims, in addition to issuer, expiration, and audience validation.
-Use `CUSTOM` for a provider's documented access-token layout. Configure its allowed header types, additional required
-claims, and exact string claim values. Custom layouts keep audience validation enabled by default and cannot disable
-signature, issuer, or expiration checks.
+When `token-validation.jwt` is omitted, the effective profile defaults to `RFC_9068` unless the selected tenant
+adapter supplies a provider-specific JWT layout. An explicitly configured `jwt` block replaces the entire adapter
+default, including any required access-token marker. The RFC 9068 profile requires the `at+jwt` or
+`application/at+jwt` header type and the profile's `sub`, `iat`, `jti`, and `client_id` claims, in addition to issuer,
+expiration, and audience validation. Use `CUSTOM` for a provider's documented access-token layout. Configure its
+allowed header types, additional required claims, and exact string claim values. Custom layouts keep audience
+validation enabled by default and cannot disable signature, issuer, or expiration checks.
 
 For Keycloak's default access tokens:
 
@@ -687,6 +689,11 @@ This layout accepts Keycloak's default `JWT` header and `azp` claim without requ
 claim `typ: Bearer` identifies an access token. Applications must choose a claim whose value distinguishes the
 provider's access tokens from its ID Tokens. For example, another provider can use `token_use: access`.
 Allowing non-RFC 9068 header types without any required string payload claim is rejected during configuration.
+For a provider that omits the JOSE header `typ`, a `CUSTOM` layout can explicitly set
+`typ-header-required: false` only with an exact required string payload claim identifying access tokens. Any
+present header must still match `allowed-types`; RFC 9068 never permits an absent `typ`. The optional
+[Oracle IDCS adapter](../oidc-next-idcs/README.md) supplies this layout automatically for its tenants when
+JWT Protected Resource validation is selected and the `jwt` block is omitted.
 
 The same layout can be built programmatically:
 
@@ -705,7 +712,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
 
 Claim requirements use exact top-level payload names. Required claims must be present and non-null; string values
 must also be nonblank. Required string claim values are compared exactly and case-sensitively after signature
-verification. Header type matching is case-insensitive, and the header type remains mandatory. Issue time and
+verification. Header type matching is case-insensitive, and the header type is mandatory by default. Issue time and
 not-before are validated whenever present. A custom layout can omit `iat`, `jti`, or `client_id`; include any claim
 in `required-claims` to make it mandatory. Principal, role, and scope mapping use the existing `subject-mapping`
 configuration. The selected layout also applies when validating refreshed access tokens.
@@ -1410,8 +1417,9 @@ authorization-code:
 
 ID Tokens must list this provider's `client-id` in the `aud` claim. If the ID Token contains additional `aud` values,
 OpenID Connect Core requires those additional audiences to be trusted by the client. The provider rejects additional
-audiences by default. Configure `id-token.trusted-additional-audiences` only for other audience values that this client
-registration is expected to receive and trust.
+audiences by default unless a selected tenant adapter supplies an exact trusted default. Configure
+`id-token.trusted-additional-audiences` only for other audience values that this client registration is expected to
+receive and trust. An explicitly configured list, including an empty list, overrides the adapter default.
 
 When `aud` contains more than one value, the provider also requires `azp` to equal `client-id`.
 
@@ -3122,7 +3130,7 @@ ID Token options:
 | `allowed-algorithms` | Allowed JWS algorithms for signed ID Tokens. Defaults to `[ "RS256" ]`. `none` and `HS*` algorithms are rejected. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
 | `allowed-encryption-algorithms` | Allowed JWE `alg` algorithms for encrypted ID Tokens. Defaults to `[ "RSA-OAEP-256", "RSA-OAEP" ]`, the supported values. Unsupported values, including `RSA1_5`, are rejected. |
 | `allowed-content-encryption-algorithms` | Allowed JWE `enc` algorithms for encrypted ID Tokens. Defaults to `[ "A256GCM", "A128CBC-HS256" ]`. |
-| `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list. |
+| `trusted-additional-audiences` | Additional ID Token `aud` values trusted by this client. The configured `client-id` is always required and should not be listed here. Defaults to an empty list unless a selected tenant adapter supplies a default; an explicitly configured list, including an empty list, takes precedence. |
 | `clock-skew` | Allowed ID Token time validation clock skew. Defaults to `PT1M`. |
 | `decryption-jwk` | Private JWK Set resource configuration for ID Token decryption. Supports path, classpath, and supplied content; URI sources are rejected before opening. RSA moduli must contain at least 2048 bits; a declared JWK `alg` must match the JWE header. |
 | `encryption-required` | Whether signed-only ID Tokens are rejected. Defaults to `false`. An enabled tenant must configure `decryption-jwk` when this is `true`; otherwise configuration fails. |

@@ -239,7 +239,7 @@ final class OidcIdTokenValidator {
                 .addValidator((jwt, collector) -> validateNonce(jwt, expectedNonce, collector), "nonce")
                 .addValidator((jwt, collector) -> validateAudience(jwt,
                                                                     clientId,
-                                                                    idToken.trustedAdditionalAudiences(),
+                                                                    idToken.trustedAdditionalAudiences().orElseGet(List::of),
                                                                     collector),
                               "aud", "azp")
                 .build();

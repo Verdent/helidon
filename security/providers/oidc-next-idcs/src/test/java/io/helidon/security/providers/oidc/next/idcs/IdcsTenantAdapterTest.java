@@ -17,13 +17,17 @@
 package io.helidon.security.providers.oidc.next.idcs;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenProfile;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
+import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.webclient.api.WebClient;
 
 import org.junit.jupiter.api.Test;
@@ -57,6 +61,135 @@ class IdcsTenantAdapterTest {
         assertThat(tenant.endpoints().userInfoEndpointUri().orElseThrow(),
                    is(URI.create("https://idcs-one.identity.oraclecloud.com/custom")));
         assertThat(tenant.adapter().orElseThrow(), is(adapter));
+        assertThat(tenant.idToken().trustedAdditionalAudiences().orElseThrow(),
+                   is(List.of("https://identity.oraclecloud.com/")));
+        assertThat(tenant.protectedResource().isEmpty(), is(true));
+    }
+
+    @Test
+    void idcsJwtDefaultsAreTenantScopedAndDoNotAffectStandardOidc() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("tenants.oracle.adapter.idcs.domain-uri", DOMAIN.toString()),
+                        Map.entry("tenants.oracle.protected-resource.token-validation.method", "JWT"),
+                        Map.entry("tenants.oracle.protected-resource.token-validation.audience", "api://oracle"),
+                        Map.entry("tenants.regular.issuer", "https://regular.example"),
+                        Map.entry("tenants.regular.endpoints.jwks-uri", "https://regular.example/jwks"),
+                        Map.entry("tenants.regular.protected-resource.token-validation.method", "JWT"),
+                        Map.entry("tenants.regular.protected-resource.token-validation.audience", "api://regular"))))
+                .build();
+
+        OidcProviderConfig provider = OidcProviderConfig.create(config);
+        OidcJwtAccessTokenConfig idcs = provider.tenants().get("oracle")
+                .protectedResource().orElseThrow().tokenValidation().jwt().orElseThrow();
+        OidcJwtAccessTokenConfig regular = provider.tenants().get("regular")
+                .protectedResource().orElseThrow().tokenValidation().jwt().orElseThrow();
+
+        assertThat(idcs.profile(), is(OidcJwtAccessTokenProfile.CUSTOM));
+        assertThat(idcs.typHeaderRequired(), is(false));
+        assertThat(idcs.requiredStringClaims(), is(Map.of("tok_type", "AT")));
+        assertThat(idcs.allowedTypes().contains("JWT"), is(true));
+        assertThat(regular.profile(), is(OidcJwtAccessTokenProfile.RFC_9068));
+        assertThat(regular.typHeaderRequired(), is(true));
+        assertThat(regular.requiredStringClaims(), is(Map.of()));
+        assertThat(provider.tenants().get("oracle").idToken().trustedAdditionalAudiences().isEmpty(), is(true));
+    }
+
+    @Test
+    void idcsTrustsOnlyTheConfiguredIssuerAsAdditionalIdTokenAudience() {
+        String customIssuer = "https://custom-idcs-issuer.example/";
+        OidcTenantConfig tenant = idcsBrowserTenant()
+                .issuer(customIssuer)
+                .buildPrototype();
+
+        assertThat(tenant.idToken().trustedAdditionalAudiences().orElseThrow(), is(List.of(customIssuer)));
+    }
+
+    @Test
+    void explicitAdditionalIdTokenAudiencesOverrideIdcsDefaultEvenWhenEmpty() {
+        OidcTenantConfig empty = idcsBrowserTenant()
+                .idToken(idToken -> idToken.trustedAdditionalAudiences(List.of()))
+                .buildPrototype();
+        assertThat(empty.idToken().trustedAdditionalAudiences().orElseThrow(), is(List.of()));
+
+        OidcTenantConfig custom = idcsBrowserTenant()
+                .idToken(idToken -> idToken.trustedAdditionalAudiences(List.of("https://another-issuer.example/")))
+                .buildPrototype();
+        assertThat(custom.idToken().trustedAdditionalAudiences().orElseThrow(),
+                   is(List.of("https://another-issuer.example/")));
+
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "adapter.idcs.domain-uri", DOMAIN.toString(),
+                        "client-id", "idcs-client",
+                        "client-secret", "idcs-secret",
+                        "authorization-code.redirection-endpoint-uri", "/oidc/idcs-callback",
+                        "id-token.trusted-additional-audiences.0", "https://another-issuer.example/",
+                        "cookies.protection.password", COOKIE_PASSWORD)))
+                .build();
+        OidcTenantConfig fromConfig = OidcProviderConfig.create(config)
+                .tenants().get("default");
+        assertThat(fromConfig.idToken().trustedAdditionalAudiences().orElseThrow(),
+                   is(List.of("https://another-issuer.example/")));
+    }
+
+    @Test
+    void explicitJwtLayoutReplacesIdcsDefaultsForBuilderAndConfiguration() {
+        IdcsTenantAdapter adapter = IdcsTenantAdapter.builder().domainUri(DOMAIN).build();
+        OidcTenantConfig explicitStandard = OidcTenantConfig.builder()
+                .adapter(adapter)
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://oracle")
+                        .jwt(jwt -> jwt.profile(OidcJwtAccessTokenProfile.RFC_9068))))
+                .buildPrototype();
+        OidcJwtAccessTokenConfig standardLayout = explicitStandard.protectedResource()
+                .orElseThrow().tokenValidation().jwt().orElseThrow();
+        assertThat(standardLayout.profile(), is(OidcJwtAccessTokenProfile.RFC_9068));
+        assertThat(standardLayout.typHeaderRequired(), is(true));
+        assertThat(standardLayout.requiredStringClaims(), is(Map.of()));
+
+        Config explicitStandardConfig = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "adapter.idcs.domain-uri", DOMAIN.toString(),
+                        "protected-resource.token-validation.method", "JWT",
+                        "protected-resource.token-validation.audience", "api://oracle",
+                        "protected-resource.token-validation.jwt.profile", "RFC_9068")))
+                .build();
+        OidcJwtAccessTokenConfig standardFromConfig = OidcProviderConfig.create(explicitStandardConfig)
+                .tenants().get("default")
+                .protectedResource().orElseThrow().tokenValidation().jwt().orElseThrow();
+        assertThat(standardFromConfig, is(standardLayout));
+
+        Config explicitCustom = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "adapter.idcs.domain-uri", DOMAIN.toString(),
+                        "protected-resource.token-validation.method", "JWT",
+                        "protected-resource.token-validation.audience", "api://oracle",
+                        "protected-resource.token-validation.jwt.profile", "CUSTOM",
+                        "protected-resource.token-validation.jwt.allowed-types.0", "JWT",
+                        "protected-resource.token-validation.jwt.required-string-claims.token_use", "access")))
+                .build();
+        OidcJwtAccessTokenConfig customLayout = OidcProviderConfig.create(explicitCustom)
+                .tenants().get("default")
+                .protectedResource().orElseThrow().tokenValidation().jwt().orElseThrow();
+        assertThat(customLayout.profile(), is(OidcJwtAccessTokenProfile.CUSTOM));
+        assertThat(customLayout.typHeaderRequired(), is(true));
+        assertThat(customLayout.requiredStringClaims(), is(Map.of("token_use", "access")));
+    }
+
+    @Test
+    void idcsJwtDefaultsAreNotAppliedToIntrospection() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .adapter(IdcsTenantAdapter.builder().domainUri(DOMAIN).build())
+                .clientId("idcs-client")
+                .clientSecret("idcs-secret")
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience("api://oracle")))
+                .buildPrototype();
+
+        assertThat(tenant.protectedResource().orElseThrow().tokenValidation().jwt().isEmpty(), is(true));
     }
 
     @Test
@@ -228,5 +361,14 @@ class IdcsTenantAdapterTest {
                                                                         URI.create("https://other.example/jwks")))
                                                                 .buildPrototype());
         assertThat(failure.getMessage(), containsString("primary or secure domain origin"));
+    }
+
+    private static OidcTenantConfig.Builder idcsBrowserTenant() {
+        return OidcTenantConfig.builder()
+                .adapter(IdcsTenantAdapter.builder().domainUri(DOMAIN).build())
+                .clientId("idcs-client")
+                .clientSecret("idcs-secret")
+                .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/idcs-callback")))
+                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
     }
 }

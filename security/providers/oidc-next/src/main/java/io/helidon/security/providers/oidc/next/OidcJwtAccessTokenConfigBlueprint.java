@@ -40,10 +40,11 @@ interface OidcJwtAccessTokenConfigBlueprint {
     /**
      * Accepted JOSE header {@code typ} values, compared without regard to case.
      * <p>
-     * The list must be nonempty and contain no blank or padded values. The header is required in both profiles.
-     * RFC 9068 permits only {@code at+jwt} and {@code application/at+jwt}. A custom profile accepting other types
-     * must configure {@link #requiredStringClaims()} with a signed claim that distinguishes access tokens from
-     * other JWTs issued by the provider, such as Keycloak's payload {@code typ: Bearer}.
+     * The list must be nonempty and contain no blank or padded values. A present header must match one of these
+     * values. RFC 9068 requires a {@code typ} header with value {@code at+jwt} or {@code application/at+jwt}.
+     * A custom profile accepting other types must configure {@link #requiredStringClaims()} with a signed claim that
+     * distinguishes access tokens from other JWTs issued by the provider, such as Keycloak's payload
+     * {@code typ: Bearer}.
      *
      * @return accepted access-token header types
      */
@@ -51,6 +52,20 @@ interface OidcJwtAccessTokenConfigBlueprint {
     @Option.Default({"at+jwt", "application/at+jwt"})
     @Option.Singular("allowedType")
     List<String> allowedTypes();
+
+    /**
+     * Whether the JOSE {@code typ} header is required.
+     * <p>
+     * Defaults to {@code true}. Only a {@link OidcJwtAccessTokenProfile#CUSTOM CUSTOM} layout with an exact,
+     * signed {@link #requiredStringClaims() access-token discriminator} can permit the header to be absent.
+     * When the header is present, it must still match {@link #allowedTypes()}. The RFC 9068 profile always
+     * requires its {@code typ} header.
+     *
+     * @return whether a JOSE {@code typ} header is required
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(true)
+    boolean typHeaderRequired();
 
     /**
      * Additional required top-level payload claims.

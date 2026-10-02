@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next.idcs;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -27,6 +28,9 @@ import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.providers.oidc.next.OidcEndpointConfig;
+import io.helidon.security.providers.oidc.next.OidcIdTokenConfig;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
+import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenProfile;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.HttpClientResponse;
@@ -49,6 +53,21 @@ public final class IdcsTenantAdapter implements OidcTenantAdapter {
     private static final String INTROSPECTION_PATH = "/oauth2/v1/introspect";
     private static final String END_SESSION_PATH = "/oauth2/v1/userlogout";
     private static final String DEFAULT_JWK_SET_SCOPE = "urn:opc:idm:__myscopes__";
+    /*
+     * Oracle's IDCS access-token documentation defines the signed payload tok_type=AT, whereas ID Tokens use
+     * tok_type=IT. Its published access-token example omits the JOSE typ header. Require the exact signed marker
+     * even when a header is present, so an ID Token cannot be accepted as a Bearer access token.
+     * https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/AccessToken.html
+     * https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/IdentityToken.html
+     * https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/op-oauth2-v1-token-post.html
+     */
+    private static final OidcJwtAccessTokenConfig JWT_ACCESS_TOKEN_DEFAULTS =
+            OidcJwtAccessTokenConfig.builder()
+                    .profile(OidcJwtAccessTokenProfile.CUSTOM)
+                    .typHeaderRequired(false)
+                    .allowedTypes(List.of("JWT", "at+jwt", "application/at+jwt"))
+                    .putRequiredStringClaim("tok_type", "AT")
+                    .buildPrototype();
 
     private final String name;
     private final URI domainUri;
@@ -101,6 +120,20 @@ public final class IdcsTenantAdapter implements OidcTenantAdapter {
         if (tenant.issuer().isEmpty()) {
             tenant.issuer(IDCS_ISSUER);
         }
+        if (tenant.authorizationCode().isPresent() && tenant.idToken().trustedAdditionalAudiences().isEmpty()) {
+            /*
+             * Oracle documents an ID Token audience containing both the client ID and the IDCS issuer.
+             * OIDC Core 3.1.3.7 requires the client to trust each additional audience. Keep the core
+             * validator strict and trust only this tenant's exact configured issuer unless the user
+             * explicitly supplied an audience policy, including an empty list.
+             * https://docs.oracle.com/en/cloud/paas/identity-cloud/idcsa/IdentityToken.html
+             * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+             */
+            tenant.idToken(OidcIdTokenConfig.builder()
+                                   .from(tenant.idToken())
+                                   .trustedAdditionalAudiences(List.of(tenant.issuer().orElseThrow()))
+                                   .buildPrototype());
+        }
         OidcEndpointConfig.Builder endpoints = OidcEndpointConfig.builder().from(tenant.endpoints());
         if (endpoints.authorizationEndpointUri().isEmpty()) {
             endpoints.authorizationEndpointUri(domainUri.resolve(AUTHORIZATION_PATH));
@@ -135,6 +168,11 @@ public final class IdcsTenantAdapter implements OidcTenantAdapter {
     @Override
     public Optional<String> principalIdentityNamespace() {
         return Optional.of(domainUri.toString());
+    }
+
+    @Override
+    public Optional<OidcJwtAccessTokenConfig> jwtAccessTokenDefaults() {
+        return Optional.of(JWT_ACCESS_TOKEN_DEFAULTS);
     }
 
     @Override

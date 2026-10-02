@@ -54,6 +54,8 @@ interface IdpAdapter extends AutoCloseable {
 
     OidcJwtAccessTokenConfig jwtLayout();
 
+    AutoCloseable rotateSigningKey() throws Exception;
+
     @Override
     void close();
 
@@ -83,6 +85,10 @@ interface IdpAdapter extends AutoCloseable {
          */
         JAR,
         /**
+         * RFC 9126 pushed authorization using a signed Request Object.
+         */
+        PAR_WITH_JAR,
+        /**
          * Standards compliant signed UserInfo responses.
          */
         SIGNED_USERINFO,
@@ -94,6 +100,22 @@ interface IdpAdapter extends AutoCloseable {
          * Locally verifiable JWT access tokens.
          */
         JWT_ACCESS_TOKEN,
+        /**
+         * JWT access tokens issued through client credentials.
+         */
+        JWT_CLIENT_CREDENTIALS,
+        /**
+         * Native access token revocation.
+         */
+        ACCESS_TOKEN_REVOCATION,
+        /**
+         * Native refresh token revocation with an invalid_grant response to subsequent refresh attempts.
+         */
+        REFRESH_TOKEN_REVOCATION,
+        /**
+         * Replacing the active issuer key while retaining the previous verification key.
+         */
+        SIGNING_KEY_ROTATION,
         /**
          * RP-initiated provider logout.
          */
@@ -134,6 +156,10 @@ interface IdpAdapter extends AutoCloseable {
          */
         JAR("it-jar"),
         /**
+         * Browser client requiring both PAR and a signed Request Object.
+         */
+        PAR_JAR("it-par-jar"),
+        /**
          * Browser client receiving signed UserInfo.
          */
         SIGNED_USERINFO("it-signed-userinfo"),
@@ -149,6 +175,10 @@ interface IdpAdapter extends AutoCloseable {
          * Service client for client credentials and token exchange.
          */
         SERVICE("it-service"),
+        /**
+         * Service client issuing JWT access tokens.
+         */
+        JWT_SERVICE("it-jwt-service"),
         /**
          * Protected resource client authorized to introspect tokens.
          */

@@ -102,12 +102,7 @@ final class KeycloakAdapter implements IdpAdapter {
     public void registerCallback(ClientMode mode, URI callback) {
         WebClient admin = WebClient.builder().from(client).build();
         try {
-            String token;
-            try (HttpClientResponse response = admin.post().uri(issuer.resolve("/realms/master/protocol/openid-connect/token"))
-                    .submit(Parameters.builder("admin").add("client_id", "admin-cli").add("grant_type", "password")
-                                    .add("username", "admin").add("password", "admin").build())) {
-                token = response.as(JsonObject.class).stringValue("access_token").orElseThrow();
-            }
+            String token = adminToken(admin);
             String id;
             try (HttpClientResponse response = admin.get().uri(issuer.resolve("/admin/realms/contract/clients"))
                     .queryParam("clientId", mode.id()).header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
@@ -123,6 +118,46 @@ final class KeycloakAdapter implements IdpAdapter {
         } finally {
             admin.closeResource();
         }
+    }
+
+    @Override
+    public AutoCloseable rotateSigningKey() {
+        WebClient admin = WebClient.builder().from(client).build();
+        URI component;
+        try {
+            String token = adminToken(admin);
+            String realmId;
+            try (HttpClientResponse response = admin.get().uri(issuer.resolve("/admin/realms/contract"))
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                realmId = response.as(JsonObject.class).stringValue("id").orElseThrow();
+            }
+            JsonObject configuration = JsonObject.builder().setStrings("priority", List.of("1000000"))
+                    .setStrings("algorithm", List.of("RS256")).setStrings("keySize", List.of("2048"))
+                    .setStrings("active", List.of("true")).setStrings("enabled", List.of("true")).build();
+            try (HttpClientResponse response = admin.post().uri(issuer.resolve("/admin/realms/contract/components"))
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token)
+                    .submit(JsonObject.builder().set("name", "rotated-signing-key").set("parentId", realmId)
+                                    .set("providerId", "rsa-generated").set("providerType", "org.keycloak.keys.KeyProvider")
+                                    .set("config", configuration).build())) {
+                if (response.status().code() != 201) {
+                    throw new IllegalStateException("Keycloak key rotation failed: " + response.status());
+                }
+                component = issuer.resolve(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+            }
+        } finally {
+            admin.closeResource();
+        }
+        return () -> {
+            WebClient restore = WebClient.builder().from(client).build();
+            try (HttpClientResponse response = restore.delete().uri(component)
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + adminToken(restore)).request()) {
+                if (response.status().code() != 204) {
+                    throw new IllegalStateException("Keycloak signing key restoration failed: " + response.status());
+                }
+            } finally {
+                restore.closeResource();
+            }
+        };
     }
 
     @Override
@@ -200,7 +235,7 @@ final class KeycloakAdapter implements IdpAdapter {
     }
 
     private static JsonObject client(ClientMode mode) {
-        boolean service = mode == ClientMode.SERVICE || mode == ClientMode.API;
+        boolean service = mode == ClientMode.SERVICE || mode == ClientMode.API || mode == ClientMode.JWT_SERVICE;
         JsonObject.Builder attributes = JsonObject.builder().set("pkce.code.challenge.method", "S256")
                 .set("post.logout.redirect.uris", "+").set("standard.token.exchange.enabled", "true")
                 .set("use.jwks.string", "true").set("jwks.string", IdpResources.publicClientKeys().toString());
@@ -211,8 +246,11 @@ final class KeycloakAdapter implements IdpAdapter {
             attributes.set("id.token.encrypted.response.alg", "RSA-OAEP-256")
                     .set("id.token.encrypted.response.enc", "A256GCM");
         }
-        if (mode == ClientMode.JAR) {
+        if (mode == ClientMode.JAR || mode == ClientMode.PAR_JAR) {
             attributes.set("request.object.required", "request or request_uri").set("request.object.signature.alg", "RS256");
+        }
+        if (mode == ClientMode.PAR || mode == ClientMode.PAR_JAR) {
+            attributes.set("require.pushed.authorization.requests", "true");
         }
         JsonObject audience = mapper("api-audience", "oidc-audience-mapper", JsonObject.builder()
                 .set("included.custom.audience", AUDIENCE).set("access.token.claim", "true")
@@ -247,5 +285,16 @@ final class KeycloakAdapter implements IdpAdapter {
     private static JsonObject mapper(String name, String type, JsonObject configuration) {
         return JsonObject.builder().set("name", name).set("protocol", "openid-connect")
                 .set("protocolMapper", type).set("config", configuration).build();
+    }
+
+    private String adminToken(WebClient admin) {
+        try (HttpClientResponse response = admin.post().uri(issuer.resolve("/realms/master/protocol/openid-connect/token"))
+                .submit(Parameters.builder("admin").add("client_id", "admin-cli").add("grant_type", "password")
+                                .add("username", "admin").add("password", "admin").build())) {
+            if (response.status().code() != 200) {
+                throw new IllegalStateException("Keycloak admin authentication failed: " + response.status());
+            }
+            return response.as(JsonObject.class).stringValue("access_token").orElseThrow();
+        }
     }
 }

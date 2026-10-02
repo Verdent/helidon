@@ -28,4 +28,14 @@ class AutheliaOidcIT extends OidcProviderContract {
     void signedUserInfoWithoutMandatoryIssuerAndAudienceDoesNotCreateASession() throws Exception {
         assertNonconformingSignedUserInfoIsRejected();
     }
+
+    @Test
+    void compliantParWithJarIsRejectedWithoutCreatingASession() throws Exception {
+        assertCompliantParWithJarIsRejectedByTheProvider();
+    }
+
+    @Test
+    void serverErrorAfterRefreshRevocationDoesNotRenewTheUnexpiredSession() throws Exception {
+        assertRefreshRevocationServerErrorDoesNotRenewTheSession();
+    }
 }

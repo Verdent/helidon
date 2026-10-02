@@ -1263,7 +1263,7 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataDefaultsTokenEndpointAuthToBasic() {
+    void publicAuthorizationCodeTenantAcceptsMissingTokenEndpointAuthenticationMethods() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("authorization_endpoint", authorizationEndpointUri.toString())
@@ -1277,9 +1277,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .toString());
         OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
 
-        assertThat(context.state(), is(OidcTenantState.FAILED));
-        assertThat(context.failureCause().orElseThrow().getMessage(),
-                   containsString("token_endpoint_auth_methods_supported"));
+        assertThat(context.ready(), is(true));
     }
 
     @Test
@@ -1310,12 +1308,28 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportTokenEndpointAuthMethod() {
+    void publicAuthorizationCodeTenantAcceptsMetadataThatOnlyAdvertisesConfidentialAuthentication() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
                                       .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
                                       .build()
                                       .toString());
         OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.ready(), is(true));
+    }
+
+    @Test
+    void confidentialAuthorizationCodeTenantRejectsAnUnadvertisedAuthenticationMethod() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("token_endpoint_auth_methods_supported", List.of("client_secret_basic"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder().from(authorizationCodeTenantConfig())
+                .clientSecret("0123456789abcdef0123456789abcdef")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_POST)
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(),

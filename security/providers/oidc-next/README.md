@@ -610,9 +610,10 @@ these optional provider capabilities do not constrain a signed-only client. Loca
 When Authorization Code Flow loads well-known metadata, the metadata must advertise `response_types_supported`
 containing `code`. If `grant_types_supported` is present, it must contain `authorization_code`; if it is omitted, the
 Discovery default includes `authorization_code`. When PKCE is enabled, `code_challenge_methods_supported` must be present
-and include the configured PKCE method. The provider also validates the configured Token Endpoint authentication method
-against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
-`client_secret_basic`. For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
+and include the configured PKCE method. The provider also validates configured confidential Token Endpoint authentication
+methods against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
+`client_secret_basic`. Public clients using `NONE` do not require `none` in this list and must use S256 PKCE.
+For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
 `token_endpoint_auth_signing_alg_values_supported` with the configured assertion signing algorithm.
 When Request Objects are enabled and well-known metadata is loaded, `request_parameter_supported` must be `true`
 unless the Authentication Request is pushed through PAR. If
@@ -1858,7 +1859,8 @@ For `CLIENT_SECRET_JWT`, `algorithm` defaults to `HS256`; configure `key-id` if 
 `kid` header on the assertion. For `PRIVATE_KEY_JWT`, `jwk` is required and `key-id` is required when the configured JWK
 Set contains more than one key. A configured `algorithm` must match a declared JWK `alg`; when the JWK omits optional
 `alg`, the configured algorithm selects a compatible use of that key.
-When well-known metadata is loaded, the configured method must be listed in `token_endpoint_auth_methods_supported`.
+When well-known metadata is loaded, a configured confidential authentication method must be listed in
+`token_endpoint_auth_methods_supported`. Public clients using `NONE` do not require `none` in this list.
 If the metadata omits that entry, the Discovery default is `client_secret_basic`. JWT client authentication additionally
 requires `token_endpoint_auth_signing_alg_values_supported` to include the assertion signing algorithm; no default
 assertion signing algorithms are assumed.

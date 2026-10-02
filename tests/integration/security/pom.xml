@@ -38,5 +38,6 @@
         <module>gh2455</module>
         <module>oidc-next</module>
         <module>oidc-next-keycloak</module>
+        <module>oidc-next-providers</module>
     </modules>
 </project>

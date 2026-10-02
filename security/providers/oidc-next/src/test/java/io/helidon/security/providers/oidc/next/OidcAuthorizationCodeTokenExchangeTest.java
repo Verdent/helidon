@@ -975,6 +975,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                      signKeys).isValid(),
                    is(true));
         assertThat(requestObjectHeader.stringValue("alg").orElse(""), is("RS512"));
+        assertThat(requestObjectHeader.stringValue("typ").orElse(""), is("JWT"));
         assertThat(requestObjectHeader.stringValue("kid").orElse(""), is("sign-rsa"));
         assertThat(requestObjectPayload.stringValue("iss").orElse(""), is(CLIENT_ID));
         assertThat(requestObjectPayload.stringValue("response_type").orElse(""), is("code"));
@@ -1626,6 +1627,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         byte[] signature = Base64.getUrlDecoder().decode(signedParts[2]);
         assertThat(signKeys.forKeyId("sign-rsa").orElseThrow().verifySignature(signedBytes, signature), is(true));
         assertThat(signedHeader.stringValue("alg").orElse(""), is("RS256"));
+        assertThat(signedHeader.stringValue("typ").orElse(""), is("JWT"));
         assertThat(signedHeader.stringValue("kid").orElse(""), is("sign-rsa"));
         assertThat(signedClaims.stringValue("iss").orElse(""), is(CLIENT_ID));
         assertThat(signedClaims.value("aud").orElseThrow()

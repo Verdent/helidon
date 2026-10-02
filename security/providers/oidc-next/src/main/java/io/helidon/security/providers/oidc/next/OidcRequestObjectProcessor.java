@@ -206,6 +206,7 @@ final class OidcRequestObjectProcessor {
          */
         Jwt.Builder jwt = Jwt.builder()
                 .algorithm(signingJwk.algorithm())
+                .type("JWT")
                 .issuer(clientId)
                 .addAudience(issuer)
                 .issueTime(now)

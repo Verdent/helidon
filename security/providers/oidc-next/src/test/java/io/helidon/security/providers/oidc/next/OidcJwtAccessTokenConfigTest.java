@@ -33,8 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class OidcJwtAccessTokenConfigTest {
     @Test
     void defaultTokenValidationRetainsRfc9068Profile() {
-        OidcJwtAccessTokenConfig config = OidcTokenValidationConfig.create().jwt();
+        OidcTokenValidationConfig validation = OidcTokenValidationConfig.create();
+        OidcJwtAccessTokenConfig config = validation.jwt();
 
+        assertThat(validation.audienceValidationEnabled(), is(true));
         assertThat(config.profile(), is(OidcJwtAccessTokenProfile.RFC_9068));
         assertThat(config.allowedTypes(), is(List.of("at+jwt", "application/at+jwt")));
         assertThat(config.requiredClaims(), is(List.of()));
@@ -131,16 +133,37 @@ class OidcJwtAccessTokenConfigTest {
     }
 
     @Test
-    void customProfileRequiresAudienceValidation() {
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> OidcTenantConfig.builder()
-                        .issuer("https://issuer.example")
-                        .protectedResource(resource -> resource.tokenValidation(validation -> validation
-                                .method(OidcTokenValidationMethod.JWT)
-                                .audienceValidationEnabled(false)
-                                .jwt(jwt -> jwt.profile(OidcJwtAccessTokenProfile.CUSTOM))))
-                        .buildPrototype());
+    void customProfileCanExplicitlyDisableAudienceValidation() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer("https://issuer.example")
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audienceValidationEnabled(false)
+                        .jwt(jwt -> jwt.profile(OidcJwtAccessTokenProfile.CUSTOM)
+                                .allowedTypes(List.of("JWT"))
+                                .putRequiredStringClaim("typ", "Bearer"))))
+                .buildPrototype();
 
-        assertThat(exception.getMessage(), containsString("CUSTOM requires audience validation"));
+        OidcTokenValidationConfig validation = tenant.protectedResource().orElseThrow().tokenValidation();
+        assertThat(validation.audienceValidationEnabled(), is(false));
+        assertThat(validation.audience().isEmpty(), is(true));
+    }
+
+    @Test
+    void customProfileAudienceOptOutLoadsFromConfig() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("issuer", "https://issuer.example"),
+                        Map.entry("protected-resource.token-validation.method", "JWT"),
+                        Map.entry("protected-resource.token-validation.audience-validation-enabled", "false"),
+                        Map.entry("protected-resource.token-validation.jwt.profile", "CUSTOM"),
+                        Map.entry("protected-resource.token-validation.jwt.allowed-types.0", "JWT"),
+                        Map.entry("protected-resource.token-validation.jwt.required-string-claims.typ", "Bearer"))))
+                .build();
+
+        OidcTokenValidationConfig validation = OidcProviderConfig.create(config)
+                .tenants().get("default").protectedResource().orElseThrow().tokenValidation();
+        assertThat(validation.audienceValidationEnabled(), is(false));
+        assertThat(validation.jwt().requiredStringClaims(), is(Map.of("typ", "Bearer")));
     }
 }

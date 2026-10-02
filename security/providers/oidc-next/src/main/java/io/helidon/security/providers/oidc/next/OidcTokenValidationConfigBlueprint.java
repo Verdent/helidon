@@ -43,7 +43,8 @@ interface OidcTokenValidationConfigBlueprint {
      * JWT access-token layout requirements.
      * <p>
      * Used with {@link OidcTokenValidationMethod#JWT}. Defaults to RFC 9068. A custom profile can validate
-     * provider-specific token types and claims while retaining signature, issuer, expiration, and audience checks.
+     * provider-specific token types and claims while retaining signature, issuer, and expiration checks. Audience
+     * validation remains enabled by default; see {@link #audienceValidationEnabled()} for the explicit opt-out.
      *
      * @return JWT access-token layout configuration
      */
@@ -66,9 +67,10 @@ interface OidcTokenValidationConfigBlueprint {
     /**
      * Whether access-token audience validation is enabled.
      * <p>
-     * Defaults to {@code true}. For JWT access-token validation, disabling this option relaxes RFC 9068 validation and
-     * should be used only for testing, local development, or legacy non-RFC9068 access tokens. For introspection,
-     * disabling this option can be useful when the Authorization Server omits {@code aud} from introspection responses.
+     * Defaults to {@code true}. Disabling this option bypasses the local resource audience check for both RFC 9068 and
+     * CUSTOM JWT layouts; for the former it is not RFC 9068-conformant. Tokens intended for another resource server
+     * could be accepted. Use only for testing, local development, or explicitly risk-accepted legacy deployments.
+     * For introspection, disabling this option can be useful when the Authorization Server omits {@code aud}.
      *
      * @return whether access-token audience validation is enabled
      */

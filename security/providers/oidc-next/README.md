@@ -661,8 +661,8 @@ otherwise the provider loads well-known metadata and uses its `jwks_uri`. RFC 90
 `token-validation.jwt.profile` defaults to `RFC_9068`. It requires the `at+jwt` or `application/at+jwt` header type
 and the profile's `sub`, `iat`, `jti`, and `client_id` claims, in addition to issuer, expiration, and audience validation.
 Use `CUSTOM` for a provider's documented access-token layout. Configure its allowed header types, additional required
-claims, and exact string claim values. Custom layouts require audience validation and cannot disable signature,
-issuer, or expiration checks.
+claims, and exact string claim values. Custom layouts keep audience validation enabled by default and cannot disable
+signature, issuer, or expiration checks.
 
 For Keycloak's default access tokens:
 
@@ -746,10 +746,13 @@ Tenant `jwk-set` refresh, unknown-key throttling, and failure policies also appl
 successfully loaded empty key set replaces the old keys; it is not a fetch failure that retains stale keys. Configurations
 that previously placed HMAC secrets in `endpoints.jwks-uri` must move those keys to `verification-jwk`.
 
-Audience validation is enabled by default. For JWT access tokens, disabling it relaxes RFC 9068 validation, logs a warning
-during configuration, and should be used only for testing, local development, or legacy non-RFC9068 tokens. Without a
-local audience check, this resource server can accept tokens meant for a different resource server. This compatibility
-option is unavailable with `jwt.profile: CUSTOM`, which always requires audience validation.
+Audience validation is enabled by default for both JWT profiles. Explicitly disabling it logs a warning and can allow
+tokens intended for another resource server to authenticate here. For `RFC_9068` it also departs from RFC 9068's
+mandatory audience check. For `CUSTOM`, the opt-out can accommodate a provider-specific token layout lacking a usable
+audience, but signature, issuer, expiration, token type, and configured access-token marker checks still apply. Use this
+only for testing, local development, or an explicitly risk-accepted legacy deployment; when an issuer issues JWTs for
+multiple recipients, [RFC 8725 section 3.9](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.9) requires audience
+validation.
 
 ```yaml
 protected-resource:
@@ -3249,12 +3252,12 @@ Token validation options:
 | Key | Description |
 | --- | --- |
 | `method` | `JWT` or `INTROSPECTION`. |
-| `jwt.profile` | JWT layout: `RFC_9068` (default) or `CUSTOM`. Custom layouts require `method: JWT` and audience validation. |
+| `jwt.profile` | JWT layout: `RFC_9068` (default) or `CUSTOM`. Custom layouts require `method: JWT`; audience validation remains enabled by default. |
 | `jwt.allowed-types` | Accepted JOSE header `typ` values, compared case-insensitively. Defaults to `[at+jwt, application/at+jwt]`. Nonstandard types require `CUSTOM` and a required string payload claim identifying access tokens. |
 | `jwt.required-claims` | Additional required top-level payload claims. Values must be non-null and nonblank when strings. RFC 9068's required claims remain mandatory in that profile. |
 | `jwt.required-string-claims` | Map of top-level payload claim names to exact, case-sensitive string values, such as `typ: Bearer` or `token_use: access`. Checked after signature verification. |
 | `audience` | Expected access-token audience when audience validation is enabled. For JWT access tokens, this should identify the current resource server. |
-| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. Disabling it relaxes RFC 9068 validation and logs a warning. `jwt.profile: CUSTOM` requires it to remain enabled. |
+| `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. Disabling it for either JWT profile logs a warning and allows tokens for other resources; `RFC_9068` then does not conform to RFC 9068. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
 | `verification-jwk` | Optional local JWK Set resource configuration used exclusively for JWT access-token verification. Required for HMAC algorithms. URI sources are rejected; tenant JWK refresh policies apply. No fallback to provider JWKS. |

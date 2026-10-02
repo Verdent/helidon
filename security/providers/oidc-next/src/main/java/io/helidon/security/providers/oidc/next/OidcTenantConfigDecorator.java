@@ -216,9 +216,6 @@ final class OidcTenantConfigDecorator
             if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
                 throw new IllegalArgumentException("token-validation.jwt.profile CUSTOM requires token-validation.method JWT");
             }
-            if (!tokenValidation.audienceValidationEnabled()) {
-                throw new IllegalArgumentException("token-validation.jwt.profile CUSTOM requires audience validation");
-            }
         }
         tokenValidation.verificationJwk().ifPresent(resource -> {
             if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
@@ -809,9 +806,13 @@ final class OidcTenantConfigDecorator
                                     + "is enabled"));
         } else {
             if (LOGGER.isLoggable(System.Logger.Level.WARNING)) {
+                String profileWarning = tokenValidation.jwt().profile() == OidcJwtAccessTokenProfile.RFC_9068
+                        ? " This relaxes RFC 9068 validation."
+                        : "";
                 LOGGER.log(System.Logger.Level.WARNING,
-                           "JWT access-token audience validation is disabled. This relaxes RFC 9068 validation and "
-                                   + "should be used only for testing, local development, or legacy non-RFC9068 tokens.");
+                           "JWT access-token audience validation is disabled." + profileWarning
+                                   + " Tokens intended for another resource server may be accepted; use only for "
+                                   + "testing, local development, or an explicitly risk-accepted legacy deployment.");
             }
         }
     }

@@ -29,7 +29,8 @@ public enum OidcJwtAccessTokenProfile {
 
     /**
      * Explicit provider-specific token types, required claims, and required string claim values.
-     * Signature, issuer, expiration, and audience validation remain required.
+     * Signature, issuer, and expiration validation remain required. Audience validation is enabled by default and
+     * can be disabled explicitly for this profile.
      */
     CUSTOM
 }

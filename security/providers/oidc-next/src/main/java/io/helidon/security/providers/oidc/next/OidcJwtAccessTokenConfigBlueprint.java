@@ -57,8 +57,9 @@ interface OidcJwtAccessTokenConfigBlueprint {
      * <p>
      * Required values must be present, non-null, and nonblank when strings. Claim names are case-sensitive and must
      * not be blank or padded. RFC 9068's required claims remain mandatory in that profile. A custom profile always
-     * requires issuer, expiration, and the configured resource audience. Issue time and not-before are validated
-     * whenever present; include {@code iat} here to require issue time in a custom profile.
+     * requires issuer and expiration. Audience validation is enabled by default; it can be explicitly disabled using
+     * {@code token-validation.audience-validation-enabled}. Issue time and not-before are validated whenever present;
+     * include {@code iat} here to require issue time in a custom profile.
      *
      * @return additional required payload claims
      */

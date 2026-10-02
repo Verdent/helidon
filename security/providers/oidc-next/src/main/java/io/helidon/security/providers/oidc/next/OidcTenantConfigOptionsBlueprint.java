@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.util.Optional;
 
 import io.helidon.builder.api.Option;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapterProvider;
 import io.helidon.webclient.api.WebClientConfig;
 
 /**
@@ -27,6 +29,19 @@ import io.helidon.webclient.api.WebClientConfig;
  * tenant in multi-tenant configuration.
  */
 interface OidcTenantConfigOptionsBlueprint {
+    /**
+     * Explicitly selected tenant adapter supplied by an optional module.
+     * <p>
+     * Absent by default; normal tenants never invoke an adapter. Configuration and programmatic builders select the
+     * adapter for this tenant only. An adapter may provide endpoint defaults or authorize a protected OP JWK Set GET,
+     * but cannot replace normal token, issuer, callback or endpoint validation.
+     *
+     * @return selected adapter
+     */
+    @Option.Configured
+    @Option.Provider(value = OidcTenantAdapterProvider.class, discoverServices = false)
+    Optional<OidcTenantAdapter> adapter();
+
     /**
      * Whether this tenant is enabled.
      *

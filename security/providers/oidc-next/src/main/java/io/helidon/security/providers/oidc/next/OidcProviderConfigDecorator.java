@@ -52,7 +52,8 @@ final class OidcProviderConfigDecorator
                                                                         "user-info",
                                                                         "token-transport",
                                                                         "subject-mapping",
-                                                                        "cookies");
+                                                                        "cookies",
+                                                                        "adapter");
     private static final Duration DEFAULT_INITIALIZATION_RETRY_INTERVAL =
             OidcTenantConfig.builder().initializationRetryInterval();
     private static final int DEFAULT_INITIALIZATION_MAX_QUEUED = OidcTenantConfig.builder().initializationMaxQueued();
@@ -161,6 +162,7 @@ final class OidcProviderConfigDecorator
                 || target.clientSecret().isPresent()
                 || target.tokenEndpointAuthenticationMethod().isPresent()
                 || target.outboundMutualTls()
+                || target.adapter().isPresent()
                 || !DEFAULT_ID_TOKEN.equals(target.idToken())
                 || !DEFAULT_CLIENT_ASSERTION.equals(target.clientAssertion())
                 || target.webClient() != DEFAULT_WEBCLIENT
@@ -188,6 +190,7 @@ final class OidcProviderConfigDecorator
                 .initializationRetryInterval(target.initializationRetryInterval())
                 .initializationMaxQueued(target.initializationMaxQueued())
                 .outboundMutualTls(target.outboundMutualTls())
+                .adapter(target.adapter())
                 .idToken(target.idToken())
                 .clientAssertion(target.clientAssertion())
                 .webClient(target.webClient())

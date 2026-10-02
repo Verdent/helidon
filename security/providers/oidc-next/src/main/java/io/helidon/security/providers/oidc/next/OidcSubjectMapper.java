@@ -35,11 +35,13 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.JwtUtil;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 
 final class OidcSubjectMapper {
     private static final String ISSUER_SUBJECT_PRINCIPAL_ID_PREFIX = "oidc-sub:";
     private static final String ISSUER_CLAIM_PRINCIPAL_ID_PREFIX = "oidc-claim:";
     private static final String NAMESPACE_PRINCIPAL_ID_PREFIX = "oidc-namespace:";
+    private static final String ADAPTER_PRINCIPAL_ID_PREFIX = "oidc-adapter:";
     private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder()
             .withoutPadding();
     private static final Set<String> ID_TOKEN_CLAIMS_PRESERVED_WHEN_MERGING_USER_INFO = Set.of("iss",
@@ -63,15 +65,16 @@ final class OidcSubjectMapper {
 
     static Subject map(OidcValidatedAccessToken validatedToken, OidcTenantContext tenantContext) {
         return switch (validatedToken) {
-        case OidcValidatedJwt validatedJwt -> mapJwt(validatedJwt, tenantContext.subjectMapping());
+        case OidcValidatedJwt validatedJwt -> mapJwt(validatedJwt, tenantContext);
         case OidcValidatedIntrospection validatedIntrospection -> mapIntrospection(validatedIntrospection,
                                                                                     tenantContext);
         };
     }
 
-    static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcSubjectMappingConfig subjectMapping) {
+    static Subject map(OidcLocalAuthenticationResult authenticationResult, OidcTenantContext tenantContext) {
+        OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
         Jwt idToken = authenticationResult.idToken().jwt();
-        PrincipalIdentity identity = localIdentity(idToken).orElseThrow();
+        PrincipalIdentity identity = adaptedIdentity(localIdentity(idToken), tenantContext).orElseThrow();
         Optional<JsonObject> userInfo = authenticationResult.userInfo();
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -123,10 +126,11 @@ final class OidcSubjectMapper {
         return builder.build();
     }
 
-    private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcSubjectMappingConfig subjectMapping) {
+    private static Subject mapJwt(OidcValidatedJwt validatedToken, OidcTenantContext tenantContext) {
+        OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
         Jwt jwt = validatedToken.jwt();
         SignedJwt signedJwt = validatedToken.signedJwt();
-        PrincipalIdentity identity = jwtIdentity(jwt, subjectMapping).orElseThrow();
+        PrincipalIdentity identity = adaptedIdentity(jwtIdentity(jwt, subjectMapping), tenantContext).orElseThrow();
         Principal principal = principal(jwt, identity, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -151,7 +155,8 @@ final class OidcSubjectMapper {
     private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken,
                                             OidcTenantContext tenantContext) {
         OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
-        PrincipalIdentity identity = introspectionIdentity(validatedToken.claims(), tenantContext).orElseThrow();
+        PrincipalIdentity identity = adaptedIdentity(introspectionIdentity(validatedToken.claims(), tenantContext),
+                                                     tenantContext).orElseThrow();
         Principal.Builder principalBuilder = principalBuilder(validatedToken.claims(), identity, subjectMapping);
 
         TokenCredential.Builder credentialBuilder = TokenCredential.builder()
@@ -243,6 +248,20 @@ final class OidcSubjectMapper {
         return idToken.issuer()
                 .flatMap(issuer -> idToken.subject()
                         .flatMap(subject -> qualifiedIdentity(issuer, new SelectedClaim("sub", subject), true)));
+    }
+
+    private static Optional<PrincipalIdentity> adaptedIdentity(Optional<PrincipalIdentity> identity,
+                                                               OidcTenantContext tenantContext) {
+        Optional<String> namespace = tenantContext.tenantConfig()
+                .adapter()
+                .flatMap(OidcTenantAdapter::principalIdentityNamespace);
+        if (namespace.isEmpty()) {
+            return identity;
+        }
+        return encodedIdentityComponent(namespace.orElseThrow())
+                .flatMap(encoded -> identity.map(value -> new PrincipalIdentity(ADAPTER_PRINCIPAL_ID_PREFIX
+                                                                                        + encoded + "." + value.id(),
+                                                                                value.value())));
     }
 
     private static Optional<PrincipalIdentity> introspectionIdentity(JsonObject claims, OidcTenantContext tenantContext) {

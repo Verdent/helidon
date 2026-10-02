@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import io.helidon.common.configurable.ResourceConfig;
@@ -73,7 +74,16 @@ final class OidcJwkSetManager {
                                     WebClient webClient,
                                     Clock clock,
                                     OidcJwkSetConfig config) {
-        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient);
+        return create(tenantId, metadata, webClient, clock, config, _ -> Optional.empty());
+    }
+
+    static OidcJwkSetManager create(String tenantId,
+                                    OidcProviderMetadata metadata,
+                                    WebClient webClient,
+                                    Clock clock,
+                                    OidcJwkSetConfig config,
+                                    Function<URI, Optional<String>> unauthorizedJwkSetAccessToken) {
+        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient, unauthorizedJwkSetAccessToken);
         Optional<URI> uri = metadata.jwkSetUri();
         return new OidcJwkSetManager(tenantId, uri, config,
                                     () -> loader.load(uri.orElseThrow(() -> new IllegalStateException(

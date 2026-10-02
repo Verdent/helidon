@@ -65,12 +65,15 @@ class OidcJwkSetRedirectTest {
     private static final Instant START = Instant.parse("2026-09-17T12:00:00Z");
     private static final AtomicInteger SOURCE_REQUESTS = new AtomicInteger();
     private static final AtomicInteger TARGET_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger PROTECTED_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger UNAUTHENTICATED_REQUESTS = new AtomicInteger();
 
     private static String originalKeys;
     private static String redirectedKeys;
     private static volatile String sourceKeys;
     private static volatile String redirectLocation;
     private static volatile int redirectStatus;
+    private static volatile boolean rejectAuthenticatedJwks;
 
     private static WebServer httpsServer;
     private static WebServer otherHttpsServer;
@@ -177,6 +180,65 @@ class OidcJwkSetRedirectTest {
     }
 
     @Test
+    void protectedJwkSetRetriesOnceWithBearerOnlyAfterUnauthorizedResponse() {
+        WebClient client = WebClient.create();
+        AtomicInteger tokenAcquisitions = new AtomicInteger();
+        try {
+            OidcJwkSetLoader loader = new OidcJwkSetLoader(client, uri -> {
+                assertThat(uri, is(httpUri.resolve("protected-jwks")));
+                tokenAcquisitions.incrementAndGet();
+                return Optional.of("key-reader");
+            });
+            assertThat(loader.load(httpUri.resolve("protected-jwks")).forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(PROTECTED_REQUESTS.get(), is(2));
+            assertThat(UNAUTHENTICATED_REQUESTS.get(), is(1));
+            assertThat(tokenAcquisitions.get(), is(1));
+            assertThat(TARGET_REQUESTS.get(), is(0));
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    @Test
+    void unauthorizedRetryDoesNotReacquireTokenOrLoop() {
+        rejectAuthenticatedJwks = true;
+        WebClient client = WebClient.create();
+        AtomicInteger tokenAcquisitions = new AtomicInteger();
+        try {
+            OidcJwkSetLoader loader = new OidcJwkSetLoader(client, _ -> {
+                tokenAcquisitions.incrementAndGet();
+                return Optional.of("key-reader");
+            });
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                                                         () -> loader.load(httpUri.resolve("protected-jwks")));
+            assertThat(failure.getMessage(), containsString("status: 401"));
+            assertThat(PROTECTED_REQUESTS.get(), is(2));
+            assertThat(tokenAcquisitions.get(), is(1));
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    @Test
+    void redirectNeverTriggersProtectedJwkSetTokenAcquisition() {
+        redirectLocation = httpUri.resolve("target").toString();
+        WebClient client = WebClient.create();
+        AtomicInteger tokenAcquisitions = new AtomicInteger();
+        try {
+            OidcJwkSetLoader loader = new OidcJwkSetLoader(client, _ -> {
+                tokenAcquisitions.incrementAndGet();
+                return Optional.of("key-reader");
+            });
+            assertThrows(IllegalStateException.class, () -> loader.load(httpUri.resolve("jwks")));
+            assertThat(SOURCE_REQUESTS.get(), is(1));
+            assertThat(TARGET_REQUESTS.get(), is(0));
+            assertThat(tokenAcquisitions.get(), is(0));
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    @Test
     void developmentHttpStillRejectsRedirects() {
         redirectLocation = httpUri.resolve("target").toString();
         OidcTenantConfig tenant = tenant(httpUri.resolve("jwks"), false, false);
@@ -233,6 +295,17 @@ class OidcJwkSetRedirectTest {
             TARGET_REQUESTS.incrementAndGet();
             response.header(HeaderValues.CONTENT_TYPE_JSON).send(redirectedKeys);
         });
+        routing.get("/protected-jwks", (request, response) -> {
+            PROTECTED_REQUESTS.incrementAndGet();
+            if (request.headers().first(HeaderNames.AUTHORIZATION).filter("Bearer key-reader"::equals).isEmpty()) {
+                UNAUTHENTICATED_REQUESTS.incrementAndGet();
+                response.status(Status.UNAUTHORIZED_401).send();
+            } else if (rejectAuthenticatedJwks) {
+                response.status(Status.UNAUTHORIZED_401).send();
+            } else {
+                response.header(HeaderValues.CONTENT_TYPE_JSON).send(sourceKeys);
+            }
+        });
         return WebServer.builder().port(0).tls(tls).addRouting(routing).build().start();
     }
 
@@ -270,6 +343,9 @@ class OidcJwkSetRedirectTest {
         sourceKeys = originalKeys;
         SOURCE_REQUESTS.set(0);
         TARGET_REQUESTS.set(0);
+        PROTECTED_REQUESTS.set(0);
+        UNAUTHENTICATED_REQUESTS.set(0);
+        rejectAuthenticatedJwks = false;
     }
 
     private Stream<DynamicTest> refreshTests(boolean periodic) {

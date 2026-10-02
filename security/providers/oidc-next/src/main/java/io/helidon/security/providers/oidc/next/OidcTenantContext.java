@@ -16,7 +16,9 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.time.Clock;
+import java.util.List;
 import java.util.Optional;
 
 import io.helidon.webclient.api.WebClient;
@@ -269,17 +271,23 @@ final class OidcTenantContext {
                                                OidcProviderMetadata metadata,
                                                WebClient webClient) {
             OidcIdTokenDecryptor idTokenDecryptor = OidcIdTokenDecryptor.create(tenantConfig);
+            OidcEndpointClient endpointClient = new OidcEndpointClient(tenantConfig, metadata, webClient);
             OidcJwkSetManager jwkSetManager = OidcJwkSetManager.create(tenantId,
                                                                       metadata,
                                                                       webClient,
-                                                                      tenantConfig.jwkSet());
+                                                                      Clock.systemUTC(),
+                                                                      tenantConfig.jwkSet(),
+                                                                      uri -> jwkSetAccessToken(tenantConfig,
+                                                                                               uri,
+                                                                                               webClient,
+                                                                                               endpointClient));
             Optional<OidcJwkSetManager> accessTokenJwkSetManager = tenantConfig.protectedResource()
                     .map(OidcProtectedResourceConfig::tokenValidation)
                     .flatMap(OidcTokenValidationConfig::verificationJwk)
                     .map(resource -> OidcJwkSetManager.createLocal(tenantId, resource, Clock.systemUTC(), tenantConfig.jwkSet()));
             return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
-                                        new OidcEndpointClient(tenantConfig, metadata, webClient),
+                                        endpointClient,
                                         OidcRequestObjectProcessor.create(tenantConfig, jwkSetManager),
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         jwkSetManager,
@@ -291,6 +299,22 @@ final class OidcTenantContext {
                                                 .filter(OidcAuthorizationCodeConfig::enabled)
                                                 .map(OidcRefreshCoordinator::new),
                                         webClient);
+        }
+
+        private static Optional<String> jwkSetAccessToken(OidcTenantConfig tenant,
+                                                           URI jwkSetUri,
+                                                           WebClient webClient,
+                                                           OidcEndpointClient endpointClient) {
+            if (tenant.adapter().isEmpty()) {
+                return Optional.empty();
+            }
+            return tenant.adapter().orElseThrow().jwkSetAccessToken(tenant, jwkSetUri, webClient, scope -> {
+                OidcTokenEndpointResult result = endpointClient.clientCredentialsToken(Optional.of(scope), List.of());
+                if (!result.succeeded()) {
+                    throw new IllegalStateException("JWK Set Client Credentials Grant failed");
+                }
+                return result.tokenResponse().orElseThrow().accessToken();
+            });
         }
     }
 

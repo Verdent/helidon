@@ -21,10 +21,13 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
+import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
@@ -40,9 +43,15 @@ final class OidcJwkSetLoader {
             Set.of("k", "d", "p", "q", "dp", "dq", "qi", "oth");
 
     private final WebClient webClient;
+    private final Function<URI, Optional<String>> unauthorizedJwkSetAccessToken;
 
     OidcJwkSetLoader(WebClient webClient) {
+        this(webClient, _ -> Optional.empty());
+    }
+
+    OidcJwkSetLoader(WebClient webClient, Function<URI, Optional<String>> unauthorizedJwkSetAccessToken) {
         this.webClient = webClient;
+        this.unauthorizedJwkSetAccessToken = unauthorizedJwkSetAccessToken;
     }
 
     static JwkKeys loadLocal(ResourceConfig config) {
@@ -124,15 +133,41 @@ final class OidcJwkSetLoader {
          * Refuse redirects so the approved key endpoint cannot silently change or downgrade its transport.
          * Deployments using redirects must configure the final JWKS URI instead.
          */
-        try (HttpClientResponse response = webClient.get()
+        Status status;
+        try (HttpClientResponse response = request(uri, Optional.empty())) {
+            status = response.status();
+            if (status.code() != Status.UNAUTHORIZED_401_CODE && status.code() != Status.FORBIDDEN_403_CODE) {
+                return successfulResponse(response);
+            }
+        }
+        // Close the first response before acquiring a token through the same tenant WebClient. In particular, a
+        // single-connection pool must not wait on a still-open unauthorized JWK response.
+        Optional<String> bearerToken = unauthorizedJwkSetAccessToken.apply(uri);
+        if (bearerToken.isEmpty()) {
+            throw new IllegalStateException("JWK Set endpoint returned status: " + status);
+        }
+        String token = bearerToken.orElseThrow();
+        if (token.isBlank() || token.indexOf('\r') >= 0 || token.indexOf('\n') >= 0) {
+            throw new IllegalStateException("JWK Set access token is invalid");
+        }
+        try (HttpClientResponse response = request(uri, bearerToken)) {
+            return successfulResponse(response);
+        }
+    }
+
+    private HttpClientResponse request(URI uri, Optional<String> bearerToken) {
+        var request = webClient.get()
                 .uri(uri)
                 .followRedirects(false)
-                .header(HeaderValues.ACCEPT_JSON)
-                .request()) {
-            if (response.status().family() != Status.Family.SUCCESSFUL) {
-                throw new IllegalStateException("JWK Set endpoint returned status: " + response.status());
-            }
-            return response.as(JsonObject.class);
+                .header(HeaderValues.ACCEPT_JSON);
+        bearerToken.ifPresent(token -> request.header(HeaderNames.AUTHORIZATION, "Bearer " + token));
+        return request.request();
+    }
+
+    private static JsonObject successfulResponse(HttpClientResponse response) {
+        if (response.status().family() != Status.Family.SUCCESSFUL) {
+            throw new IllegalStateException("JWK Set endpoint returned status: " + response.status());
         }
+        return response.as(JsonObject.class);
     }
 }

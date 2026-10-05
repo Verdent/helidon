@@ -49,6 +49,8 @@ final class OidcCookieStateHandler {
     static final int MAX_SESSION_COOKIES = 16;
 
     private static final String PROTECTED_COOKIE_VERSION = "v1";
+    private static final String ROUTED_AUTHENTICATION_REQUEST_VERSION = "r1.";
+    private static final int MAX_ROUTED_TENANT_HINT_LENGTH = 1024;
     private static final int AES_GCM_TAG_BITS = 128;
     private static final int AES_GCM_TAG_BYTES = AES_GCM_TAG_BITS / Byte.SIZE;
     private static final int AES_GCM_IV_BYTES = 12;
@@ -94,10 +96,49 @@ final class OidcCookieStateHandler {
     }
 
     SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
-        return cookieBuilder(cookieConfig.authenticationRequestCookieName(),
-                             protect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, toJson(state).toString()))
+        return createAuthenticationRequestCookie(state, false);
+    }
+
+    SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state, boolean customState) {
+        String value = protect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, toJson(state).toString());
+        if (customState) {
+            // The hint is untrusted. The callback uses it only to select the tenant's protected cookie key;
+            // the decrypted tenant and the complete returned state must still match.
+            String tenantHint = encode(state.tenantId().getBytes(StandardCharsets.UTF_8));
+            if (tenantHint.length() > MAX_ROUTED_TENANT_HINT_LENGTH) {
+                throw new IllegalStateException("OIDC adapter tenant routing hint is too large");
+            }
+            value = ROUTED_AUTHENTICATION_REQUEST_VERSION + tenantHint + "." + value;
+        }
+        SetCookie cookie = cookieBuilder(cookieConfig.authenticationRequestCookieName(),
+                             value)
                 .maxAge(cookieConfig.authenticationRequestLifetime())
                 .build();
+        if (customState && cookie.toString().length() > cookieConfig.maxCookieSize()) {
+            throw new IllegalStateException("OIDC adapter authentication request cookie exceeds cookies.max-cookie-size");
+        }
+        return cookie;
+    }
+
+    static Optional<String> authenticationRequestTenantHint(String cookieValue) {
+        if (cookieValue == null || !cookieValue.startsWith(ROUTED_AUTHENTICATION_REQUEST_VERSION)) {
+            return Optional.empty();
+        }
+        int end = cookieValue.indexOf('.', ROUTED_AUTHENTICATION_REQUEST_VERSION.length());
+        if (end <= ROUTED_AUTHENTICATION_REQUEST_VERSION.length()
+                || end - ROUTED_AUTHENTICATION_REQUEST_VERSION.length() > MAX_ROUTED_TENANT_HINT_LENGTH) {
+            return Optional.empty();
+        }
+        String encoded = cookieValue.substring(ROUTED_AUTHENTICATION_REQUEST_VERSION.length(), end);
+        try {
+            byte[] bytes = decode(encoded);
+            String tenantId = new String(bytes, StandardCharsets.UTF_8);
+            return !tenantId.isEmpty() && encode(tenantId.getBytes(StandardCharsets.UTF_8)).equals(encoded)
+                    ? Optional.of(tenantId)
+                    : Optional.empty();
+        } catch (RuntimeException _) {
+            return Optional.empty();
+        }
     }
 
     List<SetCookie> createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult result,
@@ -310,9 +351,20 @@ final class OidcCookieStateHandler {
 
     Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
-            JsonObject json = JsonParser.create(unprotect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, cookieValue))
+            Optional<String> tenantHint = authenticationRequestTenantHint(cookieValue);
+            if (cookieValue.startsWith(ROUTED_AUTHENTICATION_REQUEST_VERSION) && tenantHint.isEmpty()) {
+                return Optional.empty();
+            }
+            String protectedValue = tenantHint
+                    .map(_ -> cookieValue.substring(cookieValue.indexOf('.', ROUTED_AUTHENTICATION_REQUEST_VERSION.length()) + 1))
+                    .orElse(cookieValue);
+            JsonObject json = JsonParser.create(unprotect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, protectedValue))
                     .readJsonObject();
-            return Optional.of(authenticationRequestStateFromJson(json));
+            OidcAuthenticationRequestState state = authenticationRequestStateFromJson(json);
+            if (tenantHint.isPresent() && !tenantHint.orElseThrow().equals(state.tenantId())) {
+                return Optional.empty();
+            }
+            return Optional.of(state);
         } catch (RuntimeException _) {
             return Optional.empty();
         }
@@ -405,12 +457,14 @@ final class OidcCookieStateHandler {
         JsonObject.Builder builder = JsonObject.builder()
                 .set("tenant_id", state.tenantId())
                 .set("state", state.state())
-                .set("nonce", state.nonce())
                 .set("expected_issuer", state.expectedIssuer())
                 .set("original_uri", state.originalUri().toString())
                 .set("redirection_endpoint_uri", state.redirectionEndpointUri().toString())
                 .set("created_at", state.createdAt().toString())
                 .set("expires_at", state.expiresAt().toString());
+        if (state.nonce() != null) {
+            builder.set("nonce", state.nonce());
+        }
         state.pkceVerifier().ifPresent(pkceVerifier -> builder.set("pkce_verifier", pkceVerifier));
         state.browserSessionGeneration()
                 .ifPresent(generation -> builder.set("browser_session_generation", generation));
@@ -440,7 +494,7 @@ final class OidcCookieStateHandler {
         return new OidcAuthenticationRequestState(
                 json.stringValue("tenant_id").orElseThrow(),
                 json.stringValue("state").orElseThrow(),
-                json.stringValue("nonce").orElseThrow(),
+                json.stringValue("nonce").orElse(null),
                 json.stringValue("pkce_verifier").orElse(null),
                 json.stringValue("browser_session_generation").orElse(null),
                 json.stringValue("expected_issuer").orElseThrow(),

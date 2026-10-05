@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,6 +58,7 @@ import io.helidon.common.tls.TlsClientAuth;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.AuthenticationResponse;
@@ -68,6 +70,7 @@ import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.WebServerConfig;
@@ -344,6 +347,68 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code_challenge", List.of("challenge-value"),
                                                        "code_challenge_method", List.of("S256"))));
         assertThat(request.formParameters().containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void tenantAdapterCanCustomizeEachTokenGrantAndNormalizeItsResponse() {
+        AtomicReference<OidcTenantAdapter.TokenGrant> grantSeen = new AtomicReference<>();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "token-test";
+            }
+
+            @Override
+            public String type() {
+                return "token-test";
+            }
+
+            @Override
+            public Parameters tokenRequest(OidcTenantConfig tenant, TokenGrant grant, Parameters parameters) {
+                grantSeen.set(grant);
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("vendor_parameter", List.of("specific-value"));
+                return Parameters.create("adapted-token-form", values);
+            }
+
+            @Override
+            public JsonObject tokenResponse(OidcTenantConfig tenant, TokenGrant grant, JsonObject response) {
+                assertThat(grant, is(grantSeen.get()));
+                return JsonObject.builder().from(response).set("access_token", "adapted-access-token").build();
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder().from(confidentialTenant()).adapter(adapter).buildPrototype();
+
+        OidcTokenEndpointResult codeResult = exchange(tenant, PKCE_VERIFIER);
+        assertThat(codeResult.succeeded(), is(true));
+        assertThat(codeResult.tokenResponse().orElseThrow().accessToken(), is("adapted-access-token"));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("vendor_parameter"), is(List.of("specific-value")));
+        assertThat(grantSeen.get(), is(OidcTenantAdapter.TokenGrant.AUTHORIZATION_CODE));
+
+        responseBody = validRefreshResponse().toString();
+        OidcTokenEndpointResult refreshResult = refresh(tenant, REFRESH_TOKEN);
+        assertThat(refreshResult.succeeded(), is(true));
+        assertThat(refreshResult.tokenResponse().orElseThrow().accessToken(), is("adapted-access-token"));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("vendor_parameter"), is(List.of("specific-value")));
+        assertThat(grantSeen.get(), is(OidcTenantAdapter.TokenGrant.REFRESH_TOKEN));
+
+        OidcEndpointClient client = OidcTenantContext.ready("default", tenant).endpointClient();
+        responseBody = JsonObject.builder().set("access_token", "original-client-token")
+                .set("token_type", "Bearer").set("expires_in", 60).build().toString();
+        OidcTokenEndpointResult clientCredentials = client.clientCredentialsToken(Optional.empty(), List.of());
+        assertThat(clientCredentials.succeeded(), is(true));
+        assertThat(clientCredentials.tokenResponse().orElseThrow().accessToken(), is("adapted-access-token"));
+        assertThat(grantSeen.get(), is(OidcTenantAdapter.TokenGrant.CLIENT_CREDENTIALS));
+
+        responseBody = JsonObject.builder().set("access_token", "original-exchanged-token")
+                .set("issued_token_type", OidcTokenExchangeResponse.ACCESS_TOKEN_TYPE)
+                .set("token_type", "Bearer").set("expires_in", 60).build().toString();
+        OidcTokenExchangeResult tokenExchange = client.tokenExchange("subject-token", Optional.empty(),
+                                                                      Optional.empty(), Optional.empty());
+        assertThat(tokenExchange.succeeded(), is(true));
+        assertThat(tokenExchange.tokenResponse().orElseThrow().accessToken(), is("adapted-access-token"));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("vendor_parameter"), is(List.of("specific-value")));
+        assertThat(grantSeen.get(), is(OidcTenantAdapter.TokenGrant.TOKEN_EXCHANGE));
     }
 
     @Test
@@ -1003,6 +1068,74 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(List.of("https://api.example.com", "urn:example:contacts")));
         assertThat(requestObjectPayload.containsKey("request"), is(false));
         assertThat(requestObjectPayload.containsKey("request_uri"), is(false));
+    }
+
+    @Test
+    void tenantAdapterValuesAreStoredAndSignedInsideThePushedRequestObject(URI serverUri) {
+        responseStatus = 201;
+        responseBody = validPushedAuthorizationResponse().toString();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "jar-par-test";
+            }
+
+            @Override
+            public String type() {
+                return "jar-par-test";
+            }
+
+            @Override
+            public Parameters authorizationRequest(OidcTenantConfig tenant,
+                                                   String tenantId,
+                                                   SecurityEnvironment environment,
+                                                   Parameters parameters) {
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("state", List.of("vendor-" + parameters.get("state")));
+                values.put("nonce", List.of("vendor-" + parameters.get("nonce")));
+                values.put("login_hint", List.of("alice@example.org"));
+                return Parameters.create("jar-par-adapter", values);
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
+                .endpoints(it -> it.authorizationEndpointUri(serverUri.resolve("authorize"))
+                        .tokenEndpointUri(tokenEndpointUri)
+                        .jwksUri(serverUri.resolve("jwks"))
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
+                        .tlsRequired(false))
+                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
+                        .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
+                                .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
+                                .signingKeyId("sign-rsa")))
+                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .adapter(adapter)
+                .buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", tenant).buildPrototype())) {
+            AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null,
+                    SecurityEnvironment.builder().targetUri(URI.create("https://rp.example/resource"))
+                            .path("/resource").transport("https").build()));
+            assertThat(response.statusCode().orElse(-1), is(303));
+            UriQuery redirect = UriQuery.create(URI.create(response.responseHeaders().get("Location").getFirst()));
+            assertThat(redirect.get("request_uri"), is(PUSHED_AUTHORIZATION_REQUEST_URI));
+            assertThat(redirect.contains("login_hint"), is(false));
+
+            RecordedRequest request = RECORDED_REQUEST.get();
+            assertThat(request.formParameters().keySet(), is(Set.of("request")));
+            SignedJwt signed = SignedJwt.parseToken(request.formParameters().get("request").getFirst());
+            assertThat(OidcJoseKeyPolicy.verifySignature(signed, signed.getJwt(), signKeys).isValid(), is(true));
+            JsonObject claims = JsonObject.create(signed.getJwt().payloadClaimsJson());
+            assertThat(claims.stringValue("login_hint").orElse(""), is("alice@example.org"));
+            SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
+            OidcAuthenticationRequestState state = OidcCookieStateHandler.create("default", tenant)
+                    .readAuthenticationRequestState(cookie.value(), Instant.now()).orElseThrow();
+            assertThat(claims.stringValue("state").orElse(""), is(state.state()));
+            assertThat(claims.stringValue("nonce").orElse(""), is(state.nonce()));
+        }
     }
 
     @Test

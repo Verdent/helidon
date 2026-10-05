@@ -84,6 +84,15 @@ final class OidcUserInfoSupport {
         if (!subjectMatches(userInfoClaims, idToken)) {
             return Result.failure("UserInfo response is invalid");
         }
+        if (tenantContext.tenantConfig().adapter().isPresent()) {
+            try {
+                // Run provider-specific checks on verified, unfiltered claims before the storage policy removes any.
+                tenantContext.tenantConfig().adapter().orElseThrow()
+                        .validateUserInfo(tenantContext.tenantConfig(), userInfoClaims);
+            } catch (RuntimeException e) {
+                return Result.failure("UserInfo response is invalid", "UserInfo response rejected by OIDC adapter", e);
+            }
+        }
         return Result.success(storedUserInfo(tenantContext.tenantConfig(), userInfoClaims));
     }
 

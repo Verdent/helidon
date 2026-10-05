@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
@@ -74,14 +75,70 @@ final class OidcAuthenticationRequestFactory {
                             + redirectionEndpointUri);
         }
 
-        String state = OidcAuthorizationState.create(tenantContext.tenantId(), randomValue()).value();
-        String nonce = randomValue();
+        String defaultState = OidcAuthorizationState.create(tenantContext.tenantId(), randomValue()).value();
+        String defaultNonce = randomValue();
         String pkceVerifier = authorizationCode.pkceRequired() ? randomValue() : null;
         OidcCookieStateHandler cookieStateHandler = tenantContext.cookieStateHandler();
         OidcCookieStateHandler.BrowserSessionGeneration browserSessionGeneration =
                 cookieStateHandler.createBrowserSessionGeneration();
         SecurityEnvironment environment = context.environment();
         Instant createdAt = environment.time().toInstant();
+
+        String clientId = tenantConfig.clientId().orElseThrow();
+        Parameters authorizationParameters = authorizationParameters(clientId,
+                                                                    redirectionEndpointUri,
+                                                                    authorizationCode,
+                                                                    defaultState,
+                                                                    defaultNonce,
+                                                                    pkceVerifier);
+        String state = defaultState;
+        String nonce = defaultNonce;
+        if (tenantConfig.adapter().isPresent()) {
+            authorizationParameters = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
+                                                                     .authorizationRequest(tenantConfig,
+                                                                                           tenantContext.tenantId(),
+                                                                                           environment,
+                                                                                           authorizationParameters),
+                                                               "OIDC adapter must return Authorization Request parameters");
+            if (!"code".equals(requiredParameter(authorizationParameters, "response_type"))
+                    || !clientId.equals(requiredParameter(authorizationParameters, "client_id"))
+                    || !redirectionEndpointUri.toString().equals(requiredParameter(authorizationParameters, "redirect_uri"))) {
+                throw new IllegalStateException("OIDC adapter cannot change the configured Authorization Code flow binding");
+            }
+            // Provider-specific parameters are allowed, but the core must still send a valid OIDC Code request and
+            // redeem the same PKCE challenge it sent. Request Object and PAR transport are owned by the core.
+            List<String> scopes = OidcScopeSupport.parseScopeString(requiredParameter(authorizationParameters, "scope"),
+                                                                     "Authorization Request scope");
+            if (!scopes.contains("openid")
+                    || authorizationParameters.contains("request")
+                    || authorizationParameters.contains("request_uri")
+                    || (authorizationParameters.contains("response_mode")
+                    && !"query".equals(requiredParameter(authorizationParameters, "response_mode")))) {
+                throw new IllegalStateException("OIDC adapter supplied unsupported Authorization Request parameters");
+            }
+            if (scopes.contains(OFFLINE_ACCESS_SCOPE)
+                    && (!authorizationParameters.contains("prompt")
+                    || !List.of(requiredParameter(authorizationParameters, "prompt").split(" ")).contains(PROMPT_CONSENT))) {
+                throw new IllegalStateException("OIDC adapter must request consent for offline access");
+            }
+            if (pkceVerifier != null) {
+                if (!codeChallenge(pkceVerifier, authorizationCode.pkceMethod())
+                        .equals(requiredParameter(authorizationParameters, "code_challenge"))
+                        || !authorizationCode.pkceMethod().wireName()
+                                .equals(requiredParameter(authorizationParameters, "code_challenge_method"))) {
+                    throw new IllegalStateException("OIDC adapter cannot change the configured PKCE binding");
+                }
+            } else if (authorizationParameters.contains("code_challenge")
+                    || authorizationParameters.contains("code_challenge_method")) {
+                throw new IllegalStateException("OIDC adapter cannot add PKCE without a matching code verifier");
+            }
+            state = requiredParameter(authorizationParameters, "state");
+            nonce = authorizationParameters.contains("nonce")
+                    ? requiredParameter(authorizationParameters, "nonce") : null;
+            if (state.isBlank() || nonce != null && nonce.isBlank()) {
+                throw new IllegalStateException("OIDC adapter supplied a blank state or nonce");
+            }
+        }
 
         OidcAuthenticationRequestState requestState = new OidcAuthenticationRequestState(
                 tenantContext.tenantId(),
@@ -94,14 +151,8 @@ final class OidcAuthenticationRequestFactory {
                 redirectionEndpointUri,
                 createdAt,
                 createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()));
-        SetCookie stateCookie = cookieStateHandler.createAuthenticationRequestCookie(requestState);
-        String clientId = tenantConfig.clientId().orElseThrow();
-        Parameters authorizationParameters = authorizationParameters(clientId,
-                                                                    redirectionEndpointUri,
-                                                                    authorizationCode,
-                                                                    state,
-                                                                    nonce,
-                                                                    pkceVerifier);
+        SetCookie stateCookie = cookieStateHandler.createAuthenticationRequestCookie(requestState,
+                                                                                     !defaultState.equals(state));
         Parameters requestParameters = requestObjectParameters(tenantContext,
                                                                authorizationCode,
                                                                clientId,

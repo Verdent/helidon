@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.http.SetCookie;
@@ -92,6 +93,28 @@ class OidcCookieStateHandlerTest {
         assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant(CLIENT_ID, "a-different-password-long-enough"))
                            .readAuthenticationRequestState(cookie.value(), NOW)
                            .isEmpty(),
+                   is(true));
+    }
+
+    @Test
+    void customStateCookieRoutingHintIsUntrustedAndOmittedNonceRoundTrips() {
+        OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
+        OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
+                TENANT_ID, "custom-state", null, "pkce-verifier", null, "https://issuer.example",
+                URI.create("https://rp.example/original"), URI.create("https://rp.example/oidc/callback"),
+                NOW.minusSeconds(1), NOW.plusSeconds(60));
+        SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
+                .createAuthenticationRequestCookie(withNoNonce, true);
+        assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(cookie.value()), is(Optional.of(TENANT_ID)));
+        assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
+                           .readAuthenticationRequestState(cookie.value(), NOW).orElseThrow(),
+                   is(withNoNonce));
+
+        String forgedHint = cookie.value().replaceFirst("^r1\\.[^.]+\\.", "r1.dGVuYW50LWI.");
+        assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(forgedHint),
+                   is(Optional.of("tenant-b")));
+        assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
+                           .readAuthenticationRequestState(forgedHint, NOW).isEmpty(),
                    is(true));
     }
 

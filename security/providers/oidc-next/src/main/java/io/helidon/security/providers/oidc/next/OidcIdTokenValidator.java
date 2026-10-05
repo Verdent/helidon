@@ -42,17 +42,22 @@ final class OidcIdTokenValidator {
                                                         OidcTenantContext tenantContext,
                                                         OidcAuthenticationRequestState authenticationRequestState,
                                                         Instant validationTime) {
-        return validate(token, tenantContext, Optional.of(authenticationRequestState.nonce()), validationTime);
+        return validateAdapter(validateCore(token,
+                                            tenantContext,
+                                            Optional.ofNullable(authenticationRequestState.nonce()),
+                                            validationTime),
+                               tenantContext,
+                               Optional.empty());
     }
 
     OidcValidationResult<OidcValidatedIdToken> validateRefresh(String token,
                                                                OidcTenantContext tenantContext,
                                                                OidcValidatedIdToken currentIdToken,
                                                                Instant validationTime) {
-        OidcValidationResult<OidcValidatedIdToken> validationResult = validate(token,
-                                                                               tenantContext,
-                                                                               Optional.empty(),
-                                                                               validationTime);
+        OidcValidationResult<OidcValidatedIdToken> validationResult = validateCore(token,
+                                                                                   tenantContext,
+                                                                                   Optional.empty(),
+                                                                                   validationTime);
         if (!validationResult.succeeded()) {
             return validationResult;
         }
@@ -110,13 +115,14 @@ final class OidcIdTokenValidator {
                     "Refreshed ID Token authentication time does not match the existing local authentication result");
         }
 
-        return validationResult;
+        // Refresh-specific continuity checks are part of core validation and must precede provider-specific checks.
+        return validateAdapter(validationResult, tenantContext, Optional.of(current));
     }
 
-    private OidcValidationResult<OidcValidatedIdToken> validate(String token,
-                                                               OidcTenantContext tenantContext,
-                                                               Optional<String> expectedNonce,
-                                                               Instant validationTime) {
+    private OidcValidationResult<OidcValidatedIdToken> validateCore(String token,
+                                                                   OidcTenantContext tenantContext,
+                                                                   Optional<String> expectedNonce,
+                                                                   Instant validationTime) {
         Objects.requireNonNull(validationTime);
         OidcIdTokenDecryptor.OidcResolvedIdToken resolvedIdToken;
         try {
@@ -182,6 +188,24 @@ final class OidcIdTokenValidator {
                                                                      resolvedIdToken.encrypted(),
                                                                      signedJwt,
                                                                      jwt));
+    }
+
+    private OidcValidationResult<OidcValidatedIdToken> validateAdapter(
+            OidcValidationResult<OidcValidatedIdToken> validationResult,
+            OidcTenantContext tenantContext,
+            Optional<Jwt> previousIdToken) {
+        if (!validationResult.succeeded() || tenantContext.tenantConfig().adapter().isEmpty()) {
+            return validationResult;
+        }
+        try {
+            tenantContext.tenantConfig().adapter().orElseThrow()
+                    .validateIdToken(tenantContext.tenantConfig(),
+                                     validationResult.validatedToken().orElseThrow().jwt(),
+                                     previousIdToken);
+            return validationResult;
+        } catch (RuntimeException e) {
+            return OidcValidationResult.failure("ID Token is rejected by OIDC adapter", e);
+        }
     }
 
     private JwtValidator headerValidator(List<String> allowedAlgorithms) {

@@ -31,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -64,6 +65,7 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
@@ -1148,6 +1150,58 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void tenantAdapterValidatesUserInfoBeforeAWebSessionIsIssued(URI serverUri) {
+        AtomicInteger checks = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "userinfo-test";
+            }
+
+            @Override
+            public String type() {
+                return "userinfo-test";
+            }
+
+            @Override
+            public void validateUserInfo(OidcTenantConfig tenant, JsonObject claims) {
+                checks.incrementAndGet();
+                if (!claims.booleanValue("vendor_verified").orElse(false)) {
+                    throw new IllegalArgumentException("UserInfo is not verified by the provider");
+                }
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfigWithUserInfo(serverUri))
+                .adapter(adapter)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            for (boolean verified : List.of(true, false)) {
+                userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
+                        .set("vendor_verified", verified).build().toString();
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .get("/oidc/callback")
+                        .followRedirects(false)
+                        .queryParam("code", "authorization-code")
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat(response.status(), is(verified ? Status.SEE_OTHER_303 : Status.BAD_GATEWAY_502));
+                    if (!verified) {
+                        assertNoLocalAuthenticationCookie(response, tenant);
+                    }
+                }
+            }
+            assertThat(checks.get(), is(2));
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteMergesEncryptedUserInfoClaims(URI serverUri) {
         userInfoEndpointContentType = "application/jwt";
         userInfoEndpointResponseBody = encryptedUserInfo(SUBJECT,
@@ -2087,6 +2141,67 @@ class OidcFeatureRouteTest {
                 assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
                 assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
                 assertBrowserSessionGenerationCookie(cookies, tenant, "default");
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void tenantAdapterCanCustomizeEndSessionQueryButNotItsValidatedRedirect() {
+        AtomicBoolean invalidRedirect = new AtomicBoolean();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "end-session-test";
+            }
+
+            @Override
+            public String type() {
+                return "end-session-test";
+            }
+
+            @Override
+            public Parameters endSessionRequest(OidcTenantConfig tenant, Parameters parameters) {
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("logout_hint", List.of("provider-session"));
+                values.put("client_id", List.of(CLIENT_ID));
+                if (invalidRedirect.get()) {
+                    values.put("post_logout_redirect_uri", List.of("https://attacker.example/logout"));
+                }
+                return Parameters.create("adapted-end-session", values);
+            }
+        };
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(
+                endSession -> endSession.postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI),
+                builder -> builder.adapter(adapter));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie cookie = localAuthenticationCookie(tenant, "default", signedIdToken(NONCE));
+            for (boolean invalid : List.of(false, true)) {
+                invalidRedirect.set(invalid);
+                try (HttpClientResponse response = WebClient.builder()
+                        .baseUri(rpBaseUri(rpServer))
+                        .build()
+                        .post("/oidc/logout")
+                        .followRedirects(false)
+                        .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                        .header(HeaderNames.COOKIE, cookie.name() + "=" + cookie.value())
+                        .request()) {
+                    assertThat(response.status(), is(invalid ? Status.BAD_GATEWAY_502 : Status.SEE_OTHER_303));
+                    if (invalid) {
+                        assertThat(response.headers().first(HeaderNames.LOCATION).isEmpty(), is(true));
+                    } else {
+                        UriQuery query = UriQuery.create(URI.create(response.headers()
+                                                                            .first(HeaderNames.LOCATION).orElseThrow()));
+                        assertThat(query.first("logout_hint").orElse(""), is("provider-session"));
+                        assertThat(query.first("client_id").orElse(""), is(CLIENT_ID));
+                        assertThat(query.first("post_logout_redirect_uri").orElse(""),
+                                   is(POST_LOGOUT_REDIRECT_URI.toString()));
+                    }
+                    assertRemovalCookie(response.headers().get(HeaderNames.SET_COOKIE).allValues(),
+                                        tenant.cookies().localAuthenticationCookieName());
+                }
             }
         } finally {
             rpServer.stop();

@@ -428,7 +428,8 @@ class IdcsProtectedJwkAuthenticationTest {
         if (cookieHeader != null) {
             environmentBuilder.header("Cookie", cookieHeader);
         }
-        return ProviderRequest.create(Security.builder().build()
+        // This fixture tests the IDCS provider, not the global tracing service registry.
+        return ProviderRequest.create(Security.builder().disableTracing().build()
                                               .contextBuilder("idcs-test")
                                               .env(environmentBuilder.build())
                                               .build(),

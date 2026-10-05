@@ -1193,12 +1193,13 @@ cookies:
     iterations: 700000
 ```
 
-Authorization Request `state` uses the versioned form
+By default, Authorization Request `state` uses the versioned form
 `s1.<base64url-encoded-tenant-id>.<256-bit-random-request-id>`. This lets an Authorization Response select one tenant
-from local configuration before any tenant runtime is initialized. The tenant segment is an untrusted routing hint: the
-provider still requires the protected Authentication Request cookie to contain the same tenant id and complete `state`
-value before initializing that tenant or exchanging the authorization code. Base64URL encoding is not encryption, so
-tenant ids used with Authorization Code Flow must not contain confidential information.
+from local configuration before any tenant runtime is initialized. An explicitly selected tenant adapter can replace
+`state` with another unpredictable per-request value. In that case the protected Authentication Request cookie carries
+a separate, untrusted tenant-routing hint. In both cases, the core requires the decrypted cookie's tenant id and full
+`state` value to match the callback before initializing a tenant or exchanging an authorization code. Base64URL
+encoding is not encryption, so tenant ids used with Authorization Code Flow must not contain confidential information.
 
 Authorization Response `iss` validation is automatic. If the callback contains `iss`, the provider requires an exact
 string match with the issuer stored in the protected Authentication Request state. If well-known metadata advertises
@@ -1224,6 +1225,37 @@ particular it does not make a tenant-hosted discovery document claiming an unrel
 For Oracle IDCS, the optional [OIDC Next IDCS adapter](../oidc-next-idcs/README.md) supplies the tenant's documented
 endpoint defaults from one HTTPS domain URL and supports an authenticated JWKS retry. It is selected per tenant;
 ordinary OIDC providers retain their standard initialization and validation behavior.
+
+### Provider-specific tenant extensions
+
+The public [`OidcTenantAdapter`](src/main/java/io/helidon/security/providers/oidc/next/spi/OidcTenantAdapter.java)
+SPI is explicitly selected through a tenant's `adapter` setting or builder; simply installing an adapter module does
+not change other tenants. Each hook is optional, so an extension implements only the behavior its provider needs:
+
+| Extension hook | Point in the core flow |
+| --- | --- |
+| `configure` | Supply tenant defaults before configuration validation; explicit settings should take precedence. |
+| `authorizationRequest` | Add or replace Authentication Request parameters before protected state storage and before JAR signing or PAR submission. |
+| `validateAuthorizationResponse` | Reject extra callback parameters after core correlation and issuer checks, before code redemption. |
+| `endSessionRequest` | Add provider-specific RP-Initiated Logout parameters while preserving the validated redirect and local session binding. |
+| `tokenRequest`, `tokenResponse` | Customize each of authorization-code, refresh, client-credentials, and token-exchange grants around Token Endpoint authentication, response parsing, and subsequent token checks. |
+| `introspectionRequest`, `introspectionResponse` | Customize an introspection form before client authentication or normalize a successful JSON response before core token validation. |
+| `validateIdToken`, `validateAccessToken`, `validateUserInfo` | Require provider-specific claims after the applicable core checks; includes refreshed ID Tokens and signed UserInfo. |
+| `mapSubject` | Enrich or replace the subject after credentials and claims have been checked, for browser and Bearer authentication. |
+| `jwtAccessTokenDefaults`, `principalIdentityNamespace`, `jwkSetAccessToken` | Supply a provider-specific JWT profile, trusted local identity namespace, or same-URI authenticated JWKS retry. |
+
+The adapter may replace `state` and `nonce`; its final values, not the generated defaults, are persisted and compared
+against the callback and ID Token. Generate unpredictable per-transaction values or derive them from the core's random
+defaults. A Code Flow `nonce` may be omitted by an extension, but keeping it is recommended. The core still requires
+`response_type=code`, the configured client and redirect URI, the `openid` scope, a consistent PKCE challenge/verifier
+when PKCE is enabled, and an allow-listed post-logout redirect; unsupported response modes and direct injection of
+`request`/`request_uri` are rejected. The extension must not log token, code, state, or cookie contents.
+
+Adapters are trusted security-sensitive code: response normalization and subject replacement may change what identity
+the application accepts. Baseline validation still runs on the resulting protocol values; an adapter cannot make an
+invalid ID Token signature valid, suppress a mismatch between the callback and protected transaction, or send the
+presented Bearer token to a different introspection request. Normal tenants use the unchanged defaults. Extensions
+should return promptly and be thread-safe: the same instance may serve concurrent requests, including virtual threads.
 
 The default local callback path is resolved from the incoming request origin before it is sent as the OIDC
 `redirect_uri`. When `endpoints.tls-required` is enabled, the resolved URI must use `https`. Configure

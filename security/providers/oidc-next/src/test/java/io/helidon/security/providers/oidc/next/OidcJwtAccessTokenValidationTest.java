@@ -63,6 +63,7 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.http.HttpRouting;
@@ -200,6 +201,72 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(credential.getExpTime().isPresent(), is(true));
         assertThat(credential.getTokenInstance(Jwt.class).isPresent(), is(true));
         assertThat(credential.getTokenInstance(SignedJwt.class).isPresent(), is(true));
+    }
+
+    @Test
+    void tenantAdapterValidatesJwtAccessTokenAndEnrichesItsSubject() {
+        AtomicInteger checks = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "jwt-access-token-test";
+            }
+
+            @Override
+            public String type() {
+                return "jwt-access-token-test";
+            }
+
+            @Override
+            public void validateAccessToken(OidcTenantConfig tenant, JsonObject claims) {
+                checks.incrementAndGet();
+                if (!"approved".equals(claims.stringValue("vendor_status").orElse(null))) {
+                    throw new IllegalArgumentException("Unexpected vendor status");
+                }
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                return Subject.builder().update(subject).addGrant(Role.create("adapted")).build();
+            }
+        };
+        String approved = signedToken(it -> it.addPayloadClaim("vendor_status", "approved"));
+        String missing = signedToken(_ -> { });
+        try (OidcProvider adapted = provider(true, true, jwksUri, tenant -> tenant.adapter(adapter));
+                OidcProvider ordinary = provider()) {
+            AuthenticationResponse accepted = authenticate(adapted, approved);
+            assertThat(accepted.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(accepted.user().orElseThrow().grants(Role.class).stream().map(Role::getName).toList(),
+                       is(List.of("adapted")));
+            assertInvalidToken(authenticate(adapted, missing), "adapter rejected the token");
+            assertThat(checks.get(), is(2));
+
+            assertThat(authenticate(ordinary, missing).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(checks.get(), is(2));
+        }
+    }
+
+    @Test
+    void tenantAdapterSubjectMappingFailureRejectsBearerToken() {
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "failing-subject-mapping";
+            }
+
+            @Override
+            public String type() {
+                return "failing-subject-mapping";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                throw new IllegalArgumentException("Provider-specific subject rejected");
+            }
+        };
+        try (OidcProvider provider = provider(true, true, jwksUri, tenant -> tenant.adapter(adapter))) {
+            assertInvalidToken(authenticate(provider, signedToken(_ -> { })), "adapter rejected the subject");
+        }
     }
 
     @Test

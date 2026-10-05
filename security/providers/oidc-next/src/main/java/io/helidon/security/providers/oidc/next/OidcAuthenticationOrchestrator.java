@@ -264,9 +264,22 @@ final class OidcAuthenticationOrchestrator {
             return LocalAuthenticationOutcome.response(
                     OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookies(cookieStateHandler)));
         }
-        return LocalAuthenticationOutcome.response(OidcResponseFactory.localAuthenticationSucceeded(
-                OidcSubjectMapper.map(result, readyTenant),
-                authenticationCookie));
+        try {
+            return LocalAuthenticationOutcome.response(OidcResponseFactory.localAuthenticationSucceeded(
+                    OidcSubjectMapper.map(result, readyTenant),
+                    authenticationCookie));
+        } catch (RuntimeException e) {
+            // A tenant adapter can reject or fail to map an otherwise valid identity. Never issue the refreshed
+            // session cookie or authenticate that identity when the mapping hook fails.
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC subject mapping failed: tenant="
+                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            }
+            return LocalAuthenticationOutcome.response(
+                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookie));
+        }
     }
 
     private Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(OidcRequestContext context,
@@ -326,9 +339,19 @@ final class OidcAuthenticationOrchestrator {
         OidcTenantContext tenantContext = request.tenantContext();
         OidcValidationResult<OidcValidatedAccessToken> validationResult = validator.validate(request);
         if (validationResult.succeeded()) {
-            return AuthenticationResponse.success(
-                    OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),
-                                          tenantContext));
+            try {
+                return AuthenticationResponse.success(
+                        OidcSubjectMapper.map(validationResult.validatedToken().orElseThrow(),
+                                              tenantContext));
+            } catch (RuntimeException e) {
+                if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                               "OIDC subject mapping failed: tenant="
+                                       + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                       + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+                }
+                return OidcResponseFactory.invalidBearerToken(tenantContext.bearerChallengeRealm());
+            }
         }
         debugBearerTokenValidationFailure(tenantContext, validationResult);
         if (validationResult.unavailable()) {

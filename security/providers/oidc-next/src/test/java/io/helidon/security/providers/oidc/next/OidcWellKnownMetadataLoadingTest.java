@@ -53,7 +53,10 @@ import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.AuthenticationResponse;
+import io.helidon.security.EndpointConfig;
+import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.SecurityResponse;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webclient.api.HttpClientResponse;
@@ -222,6 +225,31 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.metadata().userInfoEndpointUri(), is(Optional.of(userInfoEndpointUri)));
         assertThat(context.metadata().endSessionEndpointUri(), is(Optional.of(endSessionEndpointUri)));
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
+    }
+
+    @Test
+    void requestsWithoutOidcPolicyAbstainBeforeDiscovery() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(issuer.toString())
+                .endpoints(endpoints -> endpoints.tlsRequired(false))
+                .protectedResource(resource -> resource.enabled(false)
+                        .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                                .audience("api://default")))
+                .buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", tenant).buildPrototype())) {
+            AuthenticationResponse inbound = provider.authenticate(
+                    OidcProviderTest.request(null, SecurityEnvironment.create()));
+            OutboundSecurityResponse outbound = provider.outboundSecurity(
+                    OidcProviderTest.request(null, SecurityEnvironment.create()),
+                    SecurityEnvironment.builder().targetUri(URI.create("https://api.example.com/orders")).build(),
+                    EndpointConfig.create());
+
+            assertThat(inbound.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+            assertThat(outbound.status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
+            assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+            assertThat(provider.tenantRuntimeRegistry().cachedTenantCount(), is(0));
+        }
     }
 
     @Test
@@ -476,7 +504,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype();
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 providerConfig,
-                OidcTenantContextFactory.create(false, false),
+                OidcTenantContextFactory.create(),
                 clock);
         wellKnownStatus = Status.SERVICE_UNAVAILABLE_503;
 
@@ -517,7 +545,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype();
         OidcTenantRuntimeRegistry registry = OidcTenantRuntimeRegistry.create(
                 providerConfig,
-                OidcTenantContextFactory.create(false, false),
+                OidcTenantContextFactory.create(),
                 clock);
 
         OidcTenantContext failed = registry.tenantContext("tenant").orElseThrow();
@@ -1183,6 +1211,34 @@ class OidcWellKnownMetadataLoadingTest {
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("grant_types_supported"));
+    }
+
+    @Test
+    void outboundTargetGrantDoesNotInvalidateUnrelatedLoginTenants() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("grant_types_supported", List.of("authorization_code"))
+                                      .build()
+                                      .toString());
+        OidcTenantConfig browserTenant = authorizationCodeTenantConfig();
+        OidcTenantConfig serviceTenant = OidcTenantConfig.builder(browserTenant)
+                .clientSecret("0123456789abcdef0123456789abcdef")
+                .buildPrototype();
+        OutboundTarget target = OutboundTarget.builder("api")
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true).buildPrototype())
+                .build();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("browser", browserTenant)
+                .putTenant("service", serviceTenant)
+                .defaultTenant("browser")
+                .outboundTargets(List.of(target))
+                .buildPrototype();
+
+        // Unsupported outbound grant metadata must fail the selected grant, not either tenant's browser login.
+        try (OidcProvider provider = OidcProvider.create(config)) {
+            assertThat(provider.tenantRuntimeRegistry().tenantContext("browser").orElseThrow().ready(), is(true));
+            assertThat(provider.tenantRuntimeRegistry().tenantContext("service").orElseThrow().ready(), is(true));
+        }
     }
 
     @Test
@@ -2081,6 +2137,24 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void discoveredOidcKeysCannotImplicitlyVerifyAnotherAccessTokenIssuer() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .endpoints(endpoints -> endpoints.wellKnownUri(issuer.resolve("/.well-known/openid-configuration"))
+                        .tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .issuer("https://access-issuer.example")
+                        .audience("api://default")))
+                .buildPrototype();
+
+        OidcTenantContext context = tenantContext(tenant);
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token-validation.jwks-uri or verification-jwk is required"));
+    }
+
+    @Test
     void introspectionWithStaticEndpointDiscoversIssuerForIdentityMapping() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .clientId("client-id")
@@ -2360,7 +2434,7 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void targetClientCredentialsGrantTenantLoadsTokenEndpointFromWellKnownMetadata() {
+    void targetClientCredentialsGrantResolvesTokenEndpointOnDemand() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
                 .issuer(issuer.toString())
                 .clientId("client-id")
@@ -2377,11 +2451,14 @@ class OidcWellKnownMetadataLoadingTest {
                 .orElseThrow();
 
         assertThat(context.ready(), is(true));
-        assertThat(context.metadata().tokenEndpointUri(), is(Optional.of(tokenEndpointUri)));
+        assertThat(context.metadata().tokenEndpointUri().isEmpty(), is(true));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
+        new OidcOutboundMetadataResolver().clientCredentialsEndpointClient(context);
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
     @Test
-    void targetClientCredentialsGrantTenantFailsWhenWellKnownMetadataGrantTypesAreMissing() {
+    void targetClientCredentialsGrantFailsOnDemandWhenMetadataGrantTypesAreMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .set("token_endpoint", tokenEndpointUri.toString())
@@ -2403,12 +2480,15 @@ class OidcWellKnownMetadataLoadingTest {
                 .tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
                 .orElseThrow();
 
-        assertThat(context.state(), is(OidcTenantState.FAILED));
-        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("grant_types_supported"));
+        assertThat(context.ready(), is(true));
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> new OidcOutboundMetadataResolver().clientCredentialsEndpointClient(context));
+        assertThat(failure.getMessage(), containsString("grant_types_supported"));
+        assertThat(context.ready(), is(true));
     }
 
     @Test
-    void targetClientCredentialsGrantTenantFailsWhenWellKnownMetadataTokenEndpointIsMissing() {
+    void targetClientCredentialsGrantFailsOnDemandWhenMetadataTokenEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
                 .set("issuer", issuer.toString())
                 .build()
@@ -2428,7 +2508,11 @@ class OidcWellKnownMetadataLoadingTest {
                 .tenantContext(OidcProviderTest.request(null, SecurityEnvironment.create()))
                 .orElseThrow();
 
-        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.ready(), is(true));
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> new OidcOutboundMetadataResolver().clientCredentialsEndpointClient(context));
+        assertThat(failure.getMessage(), containsString("token_endpoint must be present"));
+        assertThat(context.ready(), is(true));
     }
 
     @Test

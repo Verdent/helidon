@@ -32,11 +32,13 @@ final class OidcTenantResolver {
     private final OidcProviderConfig config;
     private final OidcTenantResolutionConfig tenantResolution;
     private final Optional<OidcHostTemplate> hostTemplate;
+    private final Optional<List<String>> pathTemplateSegments;
 
     OidcTenantResolver(OidcProviderConfig config) {
         this.config = config;
         this.tenantResolution = config.tenantResolution();
         this.hostTemplate = tenantResolution.hostTemplate().map(OidcHostTemplate::create);
+        this.pathTemplateSegments = tenantResolution.pathTemplate().map(OidcTenantResolver::pathSegments);
     }
 
     Optional<String> tenantId(ProviderRequest request) {
@@ -95,9 +97,8 @@ final class OidcTenantResolver {
         return Optional.of(authority.strip());
     }
 
-    private static Optional<String> tenantFromPathTemplate(String path, String template) {
+    private static Optional<String> tenantFromPathTemplate(String path, List<String> templateSegments) {
         List<String> pathSegments = pathSegments(path);
-        List<String> templateSegments = pathSegments(template);
         if (pathSegments.size() != templateSegments.size()) {
             return Optional.empty();
         }
@@ -162,7 +163,7 @@ final class OidcTenantResolver {
     }
 
     private Optional<String> pathTemplateTenantId(SecurityEnvironment environment) {
-        return tenantResolution.pathTemplate()
+        return pathTemplateSegments
                 .flatMap(template -> environment.path()
                         .flatMap(path -> tenantFromPathTemplate(path, template)));
     }

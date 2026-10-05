@@ -271,7 +271,7 @@ final class OidcSubjectMapper {
          * The validator checks a returned iss against the configured/discovered issuer before mapping the response.
          */
         OidcSubjectMappingConfig subjectMapping = tenantContext.subjectMapping();
-        Optional<String> issuer = tenantContext.metadata().issuer();
+        Optional<String> issuer = tenantContext.tokenValidation().issuer().or(tenantContext.metadata()::issuer);
         return firstClaim(claims::value, subjectMapping.principalIdClaimPaths())
                 .flatMap(claim -> issuer.isPresent()
                         ? qualifiedIdentity(issuer.orElseThrow(), claim, true)

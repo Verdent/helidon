@@ -45,11 +45,11 @@ final class OidcClientCredentialsTokenManager {
                                   Supplier<OidcEndpointClient> endpointClientSupplier) {
         List<String> resourceList = List.copyOf(resources);
         CacheKey cacheKey = new CacheKey(tenantContext.tenantId(), scope.orElse(""), resourceList);
-        Duration clockSkew = tenantContext.tokenValidation().clockSkew();
+        Duration renewalMargin = OidcTokenLifetime.DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN;
         return tokens.resolve(cacheKey,
-                              cachedToken -> cachedToken.activeAt(now, clockSkew),
+                              cachedToken -> cachedToken.activeAt(now, renewalMargin),
                               cachedToken -> OidcTokenEndpointResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(endpointClientSupplier, scope, resourceList, now, clockSkew),
+                              () -> loadToken(endpointClientSupplier, scope, resourceList, now, renewalMargin),
                               remoteWorkLimiter,
                               () -> OidcTokenEndpointResult.failure(Thread.currentThread().isInterrupted()
                                           ? "Interrupted while waiting for Client Credentials Grant"
@@ -61,7 +61,7 @@ final class OidcClientCredentialsTokenManager {
             Optional<String> scope,
             List<String> resources,
             Instant now,
-            Duration clockSkew) {
+            Duration renewalMargin) {
         OidcEndpointClient endpointClient = Objects.requireNonNull(endpointClientSupplier.get());
         OidcTokenEndpointResult result = endpointClient.clientCredentialsToken(scope, resources);
         if (!result.succeeded()) {
@@ -77,7 +77,7 @@ final class OidcClientCredentialsTokenManager {
         }
 
         CachedToken cachedToken = new CachedToken(tokenResponse, OidcTokenLifetime.expiresAt(now, expiresIn.orElseThrow()));
-        return cachedToken.activeAt(now, clockSkew)
+        return cachedToken.activeAt(now, renewalMargin)
                 ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
                 : OidcSingleFlightCache.Resolution.doNotCache(result);
     }
@@ -86,8 +86,8 @@ final class OidcClientCredentialsTokenManager {
     }
 
     private record CachedToken(OidcTokenResponse tokenResponse, Instant expiresAt) {
-        private boolean activeAt(Instant now, Duration clockSkew) {
-            return OidcTokenLifetime.activeAt(expiresAt, now, clockSkew);
+        private boolean activeAt(Instant now, Duration renewalMargin) {
+            return OidcTokenLifetime.activeAt(expiresAt, now, renewalMargin);
         }
     }
 }

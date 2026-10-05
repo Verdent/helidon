@@ -76,62 +76,57 @@ final class OidcOutboundOrchestrator {
     OutboundSecurityResponse secure(ProviderRequest providerRequest,
                                     SecurityEnvironment outboundEnv,
                                     EndpointConfig endpointConfig) {
-        Optional<OidcTenantContext> tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
-        if (tenantContext.isEmpty()) {
+        Optional<OidcTenantRuntimeRegistry.TenantSelection> selection = tenantRuntimeRegistry.select(providerRequest);
+        if (selection.isEmpty()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG, "OIDC outbound abstained: reason=no-tenant");
             }
-        }
-        if (tenantContext.filter(it -> !it.ready()).isPresent()) {
-            OidcTenantContext unavailableTenant = tenantContext.orElseThrow();
-            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-                LOGGER.log(System.Logger.Level.DEBUG,
-                           "OIDC outbound failed: tenant="
-                                   + OidcDiagnostics.sanitizeLogValue(unavailableTenant.tenantId())
-                                   + ", reason=tenant-" + unavailableTenant.state().name().toLowerCase(Locale.ROOT));
-            }
-            return OidcResponseFactory.tenantUnavailableForOutbound();
+            return OutboundSecurityResponse.abstain();
         }
 
-        Optional<OidcTenantContext> tlsBlockedTenant = tenantContext.filter(OidcTenantContext::ready)
-                .filter(readyTenant -> !outboundTargetTlsAllowed(readyTenant.tenantConfig(), outboundEnv));
-        if (tlsBlockedTenant.isPresent()) {
-            OidcTenantContext readyTenant = tlsBlockedTenant.orElseThrow();
+        OidcTenantRuntimeRegistry.TenantSelection selectedTenant = selection.orElseThrow();
+        OidcTenantConfig tenantConfig = selectedTenant.config();
+        if (tenantConfig.enabled() && !outboundTargetTlsAllowed(tenantConfig, outboundEnv)) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
                            "OIDC outbound abstained: tenant="
-                                   + OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId())
+                                   + OidcDiagnostics.sanitizeLogValue(selectedTenant.tenantId())
                                    + ", reason=tls-required"
                                    + ", target=" + safeTargetUri(outboundEnv));
             }
             return OutboundSecurityResponse.abstain();
         }
-        Optional<OidcOutboundPolicy> outboundPolicy = tenantContext
-                .filter(OidcTenantContext::ready)
-                .flatMap(readyTenant -> outboundPolicy(readyTenant.tenantConfig(), outboundEnv, endpointConfig));
-        if (outboundPolicy.isEmpty()) {
+        Optional<OidcOutboundPolicy> outboundPolicy = tenantConfig.enabled()
+                ? outboundPolicy(tenantConfig, outboundEnv, endpointConfig)
+                : Optional.empty();
+        if (tenantConfig.enabled() && outboundPolicy.isEmpty()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
-                tenantContext.filter(OidcTenantContext::ready)
-                        .ifPresent(readyTenant -> {
-                            String tenantId = OidcDiagnostics.sanitizeLogValue(readyTenant.tenantId());
-                            LOGGER.log(System.Logger.Level.DEBUG,
-                                       "OIDC outbound abstained: tenant="
-                                               + tenantId
-                                               + ", reason=no-outbound-policy"
-                                               + ", target=" + safeTargetUri(outboundEnv));
-                        });
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC outbound abstained: tenant=" + OidcDiagnostics.sanitizeLogValue(selectedTenant.tenantId())
+                                   + ", reason=no-outbound-policy"
+                                   + ", target=" + safeTargetUri(outboundEnv));
             }
             return OutboundSecurityResponse.abstain();
+        }
+
+        OidcTenantContext tenantContext = tenantRuntimeRegistry.tenantContext(selectedTenant.tenantId()).orElseThrow();
+        if (!tenantContext.ready()) {
+            if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                           "OIDC outbound failed: tenant=" + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                                   + ", reason=tenant-" + tenantContext.state().name().toLowerCase(Locale.ROOT));
+            }
+            return OidcResponseFactory.tenantUnavailableForOutbound();
         }
         OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
         if (policy.tokenPropagationEnabled()) {
             return propagateToken(providerRequest, outboundEnv, policy);
         }
         if (policy.clientCredentialsGrantEnabled()) {
-            return secureWithClientCredentials(tenantContext.orElseThrow(), outboundEnv, policy);
+            return secureWithClientCredentials(tenantContext, outboundEnv, policy);
         }
         if (policy.tokenExchangeEnabled()) {
-            return secureWithTokenExchange(providerRequest, tenantContext.orElseThrow(), outboundEnv, policy);
+            return secureWithTokenExchange(providerRequest, tenantContext, outboundEnv, policy);
         }
         return OutboundSecurityResponse.abstain();
     }

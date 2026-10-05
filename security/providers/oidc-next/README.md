@@ -27,7 +27,7 @@ The current implementation supports:
 - Local OIDC logout endpoint that removes OIDC cookies.
 - RP-Initiated Logout redirect to the OpenID Provider End Session Endpoint.
 - Refresh-token based local authentication renewal.
-- Validation of refreshed access tokens when token validation is configured.
+- Refreshed access tokens remain opaque to the browser client, even when the tenant also protects an API.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
 - Optional UserInfo requests for Authorization Code Flow with exact `sub` matching and configurable claim storage.
 - Configurable subject mapping for principal id, principal name, roles, and scope grants.
@@ -717,7 +717,7 @@ must also be nonblank. Required string claim values are compared exactly and cas
 verification. Header type matching is case-insensitive, and the header type is mandatory by default. Issue time and
 not-before are validated whenever present. A custom layout can omit `iat`, `jti`, or `client_id`; include any claim
 in `required-claims` to make it mandatory. Principal, role, and scope mapping use the existing `subject-mapping`
-configuration. The selected layout also applies when validating refreshed access tokens.
+configuration. The selected layout applies only to inbound Protected Resource Bearer Token requests.
 
 ### JWT verification keys
 
@@ -733,6 +733,25 @@ This option is required for HMAC access-token algorithms. Its complete key set i
 there is no fallback to, or merging with, provider JWKS keys. It does not supply keys for ID Tokens, UserInfo, or Request
 Objects, and it does not enable HMAC ID Token or UserInfo signatures. Provision these keys securely from the trusted
 authorization server; the option does not derive verification keys from `client-secret`.
+
+When access tokens have a different issuer or public signing keys from ID Tokens, pin the access-token issuer and JWK
+Set independently:
+
+```yaml
+issuer: "https://login-issuer.example"
+protected-resource:
+  token-validation:
+    method: JWT
+    issuer: "https://api-issuer.example"
+    jwks-uri: "https://api-issuer.example/jwks"
+    audience: "api://orders"
+```
+
+The OIDC issuer and its JWK Set remain authoritative for ID Tokens. The access-token issuer is checked exactly and
+requires separately pinned keys when it differs from the OIDC issuer. Access-token keys use the tenant WebClient and
+normal JWK refresh policy, without redirects or OP adapter credentials. This URI must use HTTP(S) without a fragment;
+HTTPS is required unless `endpoints.tls-required` is disabled. It is mutually exclusive with `verification-jwk`.
+Without either independent source, access tokens use provider keys only when the trusted issuers match.
 
 ```yaml
 issuer: "https://issuer.example"
@@ -974,9 +993,9 @@ Unavailable validation fails closed with the controlled description `Bearer Toke
 values are not forwarded. Safe HTTP status and exception-type diagnostics remain available internally. No automatic
 retry or token acceptance fallback is introduced; once introspection recovers, the same still-valid token can succeed.
 
-These responses describe Protected Resource Bearer Token authentication. Browser refresh retains its existing failure
-policy; this change does not add recovery of partially completed refreshes or persistence of rotated refresh tokens
-when subsequent validation cannot complete.
+These responses describe Protected Resource Bearer Token authentication. Browser refresh does not introspect its access
+token; ID Token and optional UserInfo validation retain their separate failure policy. There is no recovery of partially
+completed refreshes or persistence of rotated refresh tokens when subsequent validation cannot complete.
 
 ### Limiting Introspection Remote Work
 
@@ -1091,9 +1110,8 @@ When well-known metadata is loaded, `REQUIRED` mode requires
 also accepts unbound tokens; any token containing `cnf.x5t#S256` still requires matching certificate proof. RFC 8705
 defines this issuer capability metadata member as optional, with a default of `false` when omitted.
 
-This option applies to Protected Resource Bearer Token validation. Refreshed Authorization Code Flow access-token
-validation continues to reject sender-constrained access tokens because the inbound browser TLS certificate is not the
-OAuth client certificate used at the Token Endpoint.
+This option applies only to Protected Resource Bearer Token validation. The browser client does not attempt to validate
+refreshed access tokens as a resource server or use the browser TLS certificate as resource-server proof.
 
 ## Bearer Token Transport
 
@@ -2241,20 +2259,19 @@ session. Automatic renewal needs an access-token deadline, and a refresh respons
 existing failure handling: keep the current authentication only while its access token remains valid; otherwise clear it
 and start authentication again.
 
-A short positive lifetime is not rejected just because it falls within the clock-skew margin. Such an outbound token is
-used for the current request without being cached. Very large positive lifetimes are converted without arithmetic
-overflow: an absolute expiry beyond Java's `Instant.MAX` is conservatively capped at that representable bound. This does
+A short positive lifetime is not rejected just because it falls within the one-minute early-renewal margin. Such an
+outbound token is used for the current request without being cached. Very large positive lifetimes are converted without
+arithmetic overflow: an absolute expiry beyond Java's `Instant.MAX` is conservatively capped at that representable bound. This does
 not extend the advertised token lifetime or the browser's configured/ID-Token-bounded session lifetime.
 
-### Endpoint-Level Grant Discovery
+### Outbound Grant Discovery
 
-Provider-level `outbound` targets are known while each tenant is initialized, so required Token Endpoint metadata and
-capabilities can be loaded and validated at that point. An endpoint-level `OidcOutboundPolicy` is visible only when an
-outbound request is made. When such a policy needs Client Credentials Grant or Token Exchange and the tenant has no static
-`endpoints.token-endpoint-uri`, discovery is deferred until the first token-cache miss.
+Neither provider-level `outbound` targets nor endpoint-level policies force grant validation during tenant initialization.
+Their requirements are checked for the selected tenant and grant when an outbound request uses them. If the tenant has no
+static `endpoints.token-endpoint-uri`, discovery is deferred until the first token-cache miss.
 
 Deferred discovery is coordinated once per configured tenant. Concurrent cache misses share one metadata request, and a
-successful result is reused by both endpoint-level grant types. A token-cache hit does not perform discovery at all, so a
+successful result is reused by both outbound grant types. A token-cache hit does not perform discovery at all, so a
 later metadata-endpoint outage does not prevent reuse of an otherwise valid cached token. Waiting metadata followers are
 interruptible and do not cancel the shared request.
 
@@ -2268,7 +2285,7 @@ retries after that interval. Successfully loaded metadata is retained for the li
 periodically refreshed. Recreate the provider to adopt a later metadata capability or endpoint change. Static Token
 Endpoint configuration also remains static for the provider lifetime.
 
-Before any Token Endpoint request, deferred metadata is validated with the same rules as provider-level targets.
+Before any Token Endpoint request, loaded metadata is validated for the selected grant.
 The discovered `grant_types_supported` list must include `client_credentials` for Client Credentials Grant or
 `urn:ietf:params:oauth:grant-type:token-exchange` for Token Exchange. If omitted, the RFC 8414 default
 `["authorization_code", "implicit"]` applies and does not advertise either grant.
@@ -2637,32 +2654,12 @@ cookie change. An expired session receives `503 Service Unavailable` without coo
 
 ## Validating Refreshed Tokens
 
-If `protected-resource.token-validation.method` is configured, the same validation policy is used for refreshed access
-tokens before a refreshed token is stored in the local authentication cookie.
-Set `protected-resource.enabled: false` when the tenant should use the validation policy only for refreshed access tokens
-and should not accept Bearer Token Protected Resource requests.
-
-```yaml
-security:
-  providers:
-    - oidc-next:
-        issuer: "https://issuer.example"
-        client-id: "${OIDC_CLIENT_ID}"
-        client-secret: "${OIDC_CLIENT_SECRET}"
-        endpoints:
-          jwks-uri: "https://issuer.example/jwks"
-        authorization-code:
-          redirection-endpoint-uri: "https://app.example/oidc/callback"
-          scopes: [ "openid", "profile" ]
-        protected-resource:
-          enabled: false
-          token-validation:
-            method: JWT
-            audience: "api://orders"
-        cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
-```
+The browser client treats refreshed access tokens as opaque: they may be issued for a different resource server with
+its own issuer, audience, keys, or format. `protected-resource.token-validation` applies only to inbound API Bearer Token
+requests. The protected cookie preserves the access token for its intended resource; browser identity still comes from
+the validated ID Token. Optional UserInfo responses are checked against the ID Token subject when enabled.
+Browser refresh and outbound token caches use their own one-minute early-renewal margin, independent of
+`protected-resource.token-validation.clock-skew` used to validate inbound token timestamps.
 
 Refreshed ID Tokens are validated before storage. The provider rejects refreshed ID Tokens that unexpectedly change
 issuer, subject, audience, authorized party, nonce, or authentication time.
@@ -2714,8 +2711,8 @@ require an application-specific uniqueness and stability contract with the autho
 make a mutable or reused claim stable. These settings do not replace the ID Token identity during browser authentication.
 
 [RFC 7662, section 2.2](https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2) permits introspection responses without `iss`
-or `sub`. When `iss` is absent, the configured/discovered issuer still qualifies the identity; a returned `iss` must match
-that issuer. When neither a configured nor a discovered issuer exists, configure a stable local namespace for the trusted
+or `sub`. When `iss` is absent, `token-validation.issuer` (or the tenant issuer by default) qualifies the identity; a
+returned `iss` must match that trusted authority. When no trusted issuer exists, configure a stable local namespace for the
 introspection endpoint's identities. Choose different namespaces for independent identity authorities in the application:
 
 ```yaml
@@ -2728,9 +2725,8 @@ This example explicitly identifies the requesting client; it does not infer a cl
 resource owner of a delegated token. A response without `sub` can instead use a suitable explicitly configured custom claim.
 A response that cannot satisfy the chosen principal mapping is rejected as unusable for this application, not because
 RFC 7662 mandates `sub`. An unknown identity authority is reported as a configuration error.
-Principal mapping is required only when the access token authenticates a Protected Resource request. Browser refresh
-retains the ID Token identity and does not require a principal claim in the refreshed access token or its introspection
-response; the configured token-validity checks still run.
+Principal mapping is required when the access token authenticates a Protected Resource request. Browser refresh retains
+the ID Token identity and does not apply resource-server JWT or introspection validation to the refreshed access token.
 
 The local namespace is separate from issuer-qualified identities, never fabricates an `iss` claim, and is not selected or
 changed by response claims. It is a fallback only: configured/discovered issuers take precedence. These local identities
@@ -3082,7 +3078,7 @@ Common checks:
 | Logout failures | Check local logout path configuration, same-origin `Origin` or `Referer`, post-logout redirect allowlist, and End Session Endpoint metadata. |
 | Outbound Token Propagation abstains | Check outbound target matching, HTTPS target URI, current subject `TokenCredential`, and downstream audience validation. |
 | Propagation succeeds but downstream rejects a certificate-bound token | Check the actual downstream HTTP client's TLS certificate against `cnf.x5t#S256`. Tenant `webclient.tls` and the incoming caller's TLS identity do not configure outgoing proof. Without the matching private-key proof, use an explicitly authorized alternative such as Token Exchange rather than copying the token alone. |
-| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, advertised grant and client-authentication capabilities, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. Endpoint-level policies retain successfully loaded metadata for the provider lifetime; recreate the provider after a deterministic metadata capability change. For transient discovery failures, check `initialization-retry-interval`. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
+| Client Credentials or Token Exchange fails | Check Token Endpoint URI or metadata, advertised grant and client-authentication capabilities, confidential client authentication, client credentials or assertion key material, enabled Keycloak/client permissions, resource/audience values, and outbound target configuration. Outbound grant requirements are checked for the selected tenant and operation; unrelated login tenants remain available. Successfully loaded outbound metadata is retained for the provider lifetime; recreate the provider after a deterministic metadata capability change. For transient discovery failures, check `initialization-retry-interval`. For Token Exchange bursts, also check `token-exchange-remote-work` capacity and Token Endpoint latency. |
 | mTLS or certificate-bound token failures | Check WebServer client certificate configuration, tenant `webclient.tls`, mTLS endpoint aliases, HTTPS endpoint requirements, and the token/introspection `cnf.x5t#S256` thumbprint. |
 
 ## Configuration Reference
@@ -3296,6 +3292,8 @@ Token validation options:
 | `audience-validation-enabled` | Whether audience validation is enabled. Defaults to `true`. Disabling it for either JWT profile logs a warning and allows tokens for other resources; `RFC_9068` then does not conform to RFC 9068. |
 | `introspection` | RFC 7662 Token Introspection request configuration. Used only with `method: INTROSPECTION`. |
 | `certificate-bound-access-tokens` | RFC 8705 certificate-bound access-token validation configuration. Applies to Protected Resource Bearer Token requests. |
+| `issuer` | Optional trusted access-token issuer, separate from the OIDC issuer used to validate ID Tokens. Defaults to the tenant issuer. Independent keys are required when the issuers differ. |
+| `jwks-uri` | Optional HTTP(S) JWK Set URI used exclusively for JWT access-token verification. Requires `method: JWT`, is mutually exclusive with `verification-jwk`, and does not send OP adapter credentials. |
 | `verification-jwk` | Optional local JWK Set resource configuration used exclusively for JWT access-token verification. Required for HMAC algorithms. URI sources are rejected; tenant JWK refresh policies apply. No fallback to provider JWKS. |
 | `allowed-algorithms` | Allowed JWS algorithms for JWT access tokens. Defaults to `[ "RS256" ]`. The `none` algorithm is rejected; HMAC algorithms require `verification-jwk`. Selected RSA keys require at least 2048-bit moduli. An omitted JWK `alg` remains unconstrained; a declared value must match. |
 | `clock-skew` | Allowed token time validation clock skew. Defaults to `PT1M`. |

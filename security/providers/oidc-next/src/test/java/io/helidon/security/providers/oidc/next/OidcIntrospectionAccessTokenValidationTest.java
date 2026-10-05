@@ -196,6 +196,31 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void introspectionUsesItsOwnTrustedAccessTokenIssuer() {
+        String accessIssuer = "https://access-issuer.example";
+        try (OidcProvider provider = provider(tenant -> tenant.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                        .audience(AUDIENCE)
+                        .issuer(accessIssuer))))) {
+            responseBody = validResponse(json -> json.set("iss", accessIssuer)).toString();
+            AuthenticationResponse accepted = authenticate(provider, OPAQUE_TOKEN);
+            assertThat(accepted.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(accepted.user().orElseThrow().principal().id(),
+                       is(OidcTestIdentities.issuerSubject(accessIssuer, SUBJECT)));
+
+            responseBody = validResponse(_ -> { }).toString();
+            assertInvalidToken(authenticate(provider, OPAQUE_TOKEN), "wrong access-token issuer");
+
+            // RFC 7662 permits a missing iss; retain the pinned authority as the identity namespace.
+            responseBody = JsonObject.builder().from(validResponse(_ -> { })).unset("iss").build().toString();
+            AuthenticationResponse withoutIssuer = authenticate(provider, OPAQUE_TOKEN);
+            assertThat(withoutIssuer.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(withoutIssuer.user().orElseThrow().principal().id(),
+                       is(OidcTestIdentities.issuerSubject(accessIssuer, SUBJECT)));
+        }
+    }
+
+    @Test
     void introspectionCanUseSeparateClientSecretPostAuthentication() {
         AuthenticationResponse response = authenticate(provider(tenant -> tenant
                 .clientId("token-client")
@@ -1048,13 +1073,13 @@ class OidcIntrospectionAccessTokenValidationTest {
                 .protectedResource(resource -> resource.tokenValidation(validation -> validation
                         .method(OidcTokenValidationMethod.INTROSPECTION).audience(AUDIENCE)))
                 .buildPrototype();
-        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+        OidcTenantContext context = OidcTenantContextFactory.create().create("default", tenant);
         try {
             assertThat(context.ready(), is(true));
             responseBody = "{not-json";
             OidcIntrospectionAccessTokenValidator validator = new OidcIntrospectionAccessTokenValidator();
-            OidcAccessTokenValidationRequest request = OidcAccessTokenValidationRequest
-                    .refreshedAuthorizationCodeAccessToken(OPAQUE_TOKEN, context, Instant.now());
+            OidcAccessTokenValidationRequest request = new OidcAccessTokenValidationRequest(
+                    OPAQUE_TOKEN, context, Optional.empty(), Instant.now());
             OidcValidationResult<OidcValidatedAccessToken> malformed = validator.validate(request);
 
             assertThat(malformed.unavailable(), is(true));

@@ -250,6 +250,19 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void separateApiIssuerNeverChangesIdTokenIssuerTrust() {
+        String apiIssuer = "https://api-issuer.example";
+        OidcTenantConfig tenant = tenantConfig(builder -> builder.protectedResource(resource -> resource
+                .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
+                        .audience("api://orders")
+                        .issuer(apiIssuer)
+                        .jwksUri(URI.create(apiIssuer + "/jwks")))));
+
+        assertThat(validate(signedIdToken(_ -> { }), tenant).succeeded(), is(true));
+        assertFailure(validate(signedIdToken(jwt -> jwt.issuer(apiIssuer)), tenant), "ID Token claims are invalid");
+    }
+
+    @Test
     void wrongAudienceIsRejected() {
         String idToken = signedIdToken(it -> it.audience(List.of("other-client")));
 

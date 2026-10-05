@@ -125,7 +125,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                                                                           OidcAccessTokenValidationRequest request) {
         OidcTenantContext tenantContext = request.tenantContext();
         OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
-        Optional<String> expectedIssuer = tenantContext.metadata().issuer();
+        Optional<String> expectedIssuer = tokenValidation.issuer().or(tenantContext.metadata()::issuer);
         Optional<String> expectedAudience = tokenValidation.audience();
         Instant validationTime = request.validationTime();
         if (tokenValidation.audienceValidationEnabled() && expectedAudience.isEmpty()) {
@@ -153,8 +153,8 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
                                                 confirmationValidation.cause().orElse(null));
         }
 
-        // RFC 7662 does not require identity claims; browser refresh uses the validated ID Token identity instead.
-        if (request.protectedResource() && OidcSubjectMapper.principalId(validated.claims(), tenantContext).isEmpty()) {
+        // RFC 7662 leaves identity claims optional, but an API principal must satisfy this tenant's mapping.
+        if (OidcSubjectMapper.principalId(validated.claims(), tenantContext).isEmpty()) {
             return OidcValidationResult.failure("Bearer Token introspection response cannot satisfy the configured "
                                                        + "principal mapping");
         }

@@ -54,12 +54,26 @@ final class OidcAuthenticationOrchestrator {
         return new OidcAuthenticationOrchestrator(config,
                                                   tenantRuntimeRegistry,
                                                   new OidcAuthenticationRequestFactory(),
-                                                  new OidcRefreshTokenManager(accessTokenValidators),
+                                                  new OidcRefreshTokenManager(),
                                                   accessTokenValidators);
     }
 
     AuthenticationResponse authenticate(ProviderRequest providerRequest) {
-        OidcRequestContext context = new OidcRequestContext(providerRequest, tenantRuntimeRegistry);
+        Optional<OidcTenantRuntimeRegistry.TenantSelection> selection = tenantRuntimeRegistry.select(providerRequest);
+        if (selection.isEmpty()) {
+            return AuthenticationResponse.abstain();
+        }
+        OidcTenantRuntimeRegistry.TenantSelection tenant = selection.orElseThrow();
+        Optional<OidcEndpointPolicy> preflightPolicy = tenant.config().enabled()
+                ? OidcRequestContext.resolveEndpointPolicy(providerRequest, tenant.config())
+                : Optional.empty();
+        if (tenant.config().enabled() && preflightPolicy.isEmpty()) {
+            // No inbound OIDC policy applies: don't load metadata or keys just to abstain.
+            return AuthenticationResponse.abstain();
+        }
+        OidcRequestContext context = new OidcRequestContext(providerRequest,
+                                                              tenantRuntimeRegistry.tenantContext(tenant.tenantId()),
+                                                              preflightPolicy);
         if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
             return OidcResponseFactory.tenantUnavailable();
         }

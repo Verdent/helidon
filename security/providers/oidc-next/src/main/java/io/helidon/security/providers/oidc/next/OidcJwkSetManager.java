@@ -99,6 +99,17 @@ final class OidcJwkSetManager {
                                     () -> OidcJwkSetLoader.loadLocal(verificationJwk), clock);
     }
 
+    static OidcJwkSetManager createRemote(String tenantId,
+                                          URI jwkSetUri,
+                                          WebClient webClient,
+                                          Clock clock,
+                                          OidcJwkSetConfig config) {
+        // Independent access-token keys must not inherit the OP adapter's credentials for its own JWK Set URI.
+        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient);
+        return new OidcJwkSetManager(tenantId, Optional.of(jwkSetUri), config,
+                                    () -> loader.load(jwkSetUri), clock);
+    }
+
     Optional<URI> jwkSetUri() {
         return jwkSetUri;
     }

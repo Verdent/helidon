@@ -55,7 +55,7 @@ final class OidcCertificateBoundAccessTokenSupport {
                 .tokenValidation()
                 .certificateBoundAccessTokens()
                 .mode();
-        if (!request.protectedResource() || mode == OidcCertificateBoundAccessTokenMode.DISABLED) {
+        if (mode == OidcCertificateBoundAccessTokenMode.DISABLED) {
             return thumbprintValue.isPresent()
                     ? OidcValidationResult.failure("Bearer Token confirmation claim is invalid")
                     : OidcValidationResult.success(Boolean.TRUE);

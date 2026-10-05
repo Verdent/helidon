@@ -37,20 +37,6 @@ final class OidcOutboundPolicy {
         this.tokenExchangeScope = scope(config.tokenExchangeScopes());
     }
 
-    static boolean targetClientCredentialsGrantEnabled(List<OutboundTarget> outboundTargets) {
-        return outboundTargets.stream()
-                .map(OidcOutboundPolicy::fromTarget)
-                .flatMap(Optional::stream)
-                .anyMatch(OidcOutboundPolicy::clientCredentialsGrantEnabled);
-    }
-
-    static boolean targetTokenExchangeEnabled(List<OutboundTarget> outboundTargets) {
-        return outboundTargets.stream()
-                .map(OidcOutboundPolicy::fromTarget)
-                .flatMap(Optional::stream)
-                .anyMatch(OidcOutboundPolicy::tokenExchangeEnabled);
-    }
-
     static Optional<OidcOutboundPolicy> fromTarget(OutboundTarget target) {
         return target.customObject(OidcOutboundPolicyConfig.class)
                 .flatMap(OidcOutboundPolicy::fromConfig)

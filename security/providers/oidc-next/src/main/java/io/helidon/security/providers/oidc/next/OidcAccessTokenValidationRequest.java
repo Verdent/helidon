@@ -23,14 +23,12 @@ import java.util.Optional;
 
 record OidcAccessTokenValidationRequest(String token,
                                         OidcTenantContext tenantContext,
-                                        Use use,
                                         Optional<Certificate> peerCertificate,
                                         Instant validationTime) {
 
     OidcAccessTokenValidationRequest {
         Objects.requireNonNull(token);
         Objects.requireNonNull(tenantContext);
-        Objects.requireNonNull(use);
         peerCertificate = Objects.requireNonNull(peerCertificate);
         Objects.requireNonNull(validationTime);
     }
@@ -38,27 +36,7 @@ record OidcAccessTokenValidationRequest(String token,
     static OidcAccessTokenValidationRequest protectedResource(String token, OidcRequestContext context) {
         return new OidcAccessTokenValidationRequest(token,
                                                     context.tenantContext().orElseThrow(),
-                                                    Use.PROTECTED_RESOURCE,
                                                     context.peerCertificate(),
                                                     context.environment().time().toInstant());
-    }
-
-    static OidcAccessTokenValidationRequest refreshedAuthorizationCodeAccessToken(String token,
-                                                                                  OidcTenantContext tenantContext,
-                                                                                  Instant validationTime) {
-        return new OidcAccessTokenValidationRequest(token,
-                                                    tenantContext,
-                                                    Use.REFRESHED_AUTHORIZATION_CODE_ACCESS_TOKEN,
-                                                    Optional.empty(),
-                                                    validationTime);
-    }
-
-    boolean protectedResource() {
-        return use == Use.PROTECTED_RESOURCE;
-    }
-
-    enum Use {
-        PROTECTED_RESOURCE,
-        REFRESHED_AUTHORIZATION_CODE_ACCESS_TOKEN
     }
 }

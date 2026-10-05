@@ -24,6 +24,9 @@ import java.util.Optional;
 import io.helidon.json.JsonObject;
 
 final class OidcTokenLifetime {
+    // Token renewal is client-side scheduling, not the resource server's JWT timestamp-validation clock skew.
+    static final Duration DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN = Duration.ofMinutes(1);
+
     private OidcTokenLifetime() {
     }
 
@@ -52,8 +55,8 @@ final class OidcTokenLifetime {
         return expiresIn > maximumSeconds ? Instant.MAX : referenceTime.plusSeconds(expiresIn);
     }
 
-    static boolean activeAt(Instant expiresAt, Instant now, Duration clockSkew) {
-        // Compare remaining time instead of adding/subtracting a potentially overflowing clock-skew duration.
-        return Duration.between(now, expiresAt).compareTo(clockSkew) > 0;
+    static boolean activeAt(Instant expiresAt, Instant now, Duration renewalMargin) {
+        // Compare remaining time instead of adding/subtracting a potentially overflowing renewal margin.
+        return Duration.between(now, expiresAt).compareTo(renewalMargin) > 0;
     }
 }

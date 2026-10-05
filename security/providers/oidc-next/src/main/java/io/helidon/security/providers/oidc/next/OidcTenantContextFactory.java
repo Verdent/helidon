@@ -41,17 +41,12 @@ final class OidcTenantContextFactory {
         this.initializer = initializer;
     }
 
-    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
-                                           boolean outboundTargetTokenExchange) {
-        return create(outboundTargetClientCredentialsGrant, outboundTargetTokenExchange, Set.of());
+    static OidcTenantContextFactory create() {
+        return create(Set.of());
     }
 
-    static OidcTenantContextFactory create(boolean outboundTargetClientCredentialsGrant,
-                                           boolean outboundTargetTokenExchange,
-                                           Set<String> issuerParameterRequiredTenants) {
-        return create(defaultInitializer(outboundTargetClientCredentialsGrant,
-                                         outboundTargetTokenExchange,
-                                         Set.copyOf(issuerParameterRequiredTenants)));
+    static OidcTenantContextFactory create(Set<String> issuerParameterRequiredTenants) {
+        return create(defaultInitializer(Set.copyOf(issuerParameterRequiredTenants)));
     }
 
     static OidcTenantContextFactory create(TenantInitializer initializer) {
@@ -63,8 +58,7 @@ final class OidcTenantContextFactory {
         validateIssuerMetadata(tenantConfig, metadata);
         validateClientCredentialsGrantMetadata(tenantConfig,
                                                metadata,
-                                               metadata.wellKnownMetadataLoaded(),
-                                               true);
+                                               metadata.wellKnownMetadataLoaded());
         validateMutualTlsMetadata(tenantConfig, metadata);
     }
 
@@ -73,8 +67,7 @@ final class OidcTenantContextFactory {
         validateIssuerMetadata(tenantConfig, metadata);
         validateTokenExchangeMetadata(tenantConfig,
                                       metadata,
-                                      metadata.wellKnownMetadataLoaded(),
-                                      true);
+                                      metadata.wellKnownMetadataLoaded());
         validateMutualTlsMetadata(tenantConfig, metadata);
     }
 
@@ -111,9 +104,7 @@ final class OidcTenantContextFactory {
                                       "Tenant initializer must return a context");
     }
 
-    private static TenantInitializer defaultInitializer(boolean outboundTargetClientCredentialsGrant,
-                                                       boolean outboundTargetTokenExchange,
-                                                       Set<String> issuerParameterRequiredTenants) {
+    private static TenantInitializer defaultInitializer(Set<String> issuerParameterRequiredTenants) {
         return (tenantId, tenantConfig) -> {
             WebClient webClient;
             try {
@@ -123,10 +114,7 @@ final class OidcTenantContextFactory {
             }
             try {
                 OidcProviderMetadata staticMetadata = OidcProviderMetadata.fromStaticConfig(tenantConfig);
-                boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig,
-                                                                         staticMetadata,
-                                                                         outboundTargetClientCredentialsGrant
-                                                                                 || outboundTargetTokenExchange);
+                boolean wellKnownMetadataLoaded = needsWellKnownMetadata(tenantConfig, staticMetadata);
                 OidcProviderMetadata metadata;
                 if (wellKnownMetadataLoaded) {
                     try {
@@ -145,14 +133,7 @@ final class OidcTenantContextFactory {
                                                   metadata,
                                                   wellKnownMetadataLoaded,
                                                   issuerParameterRequiredTenants.contains(tenantId));
-                validateClientCredentialsGrantMetadata(tenantConfig,
-                                                       metadata,
-                                                       wellKnownMetadataLoaded,
-                                                       outboundTargetClientCredentialsGrant);
-                validateTokenExchangeMetadata(tenantConfig,
-                                              metadata,
-                                              wellKnownMetadataLoaded,
-                                              outboundTargetTokenExchange);
+                // Outbound grant capabilities belong to the selected outbound operation, not every tenant's startup.
                 validateJwtMetadata(tenantConfig, metadata);
                 validateIntrospectionMetadata(tenantConfig, metadata, wellKnownMetadataLoaded);
                 validateUserInfoMetadata(tenantConfig, metadata);
@@ -191,8 +172,7 @@ final class OidcTenantContextFactory {
     }
 
     private static boolean needsWellKnownMetadata(OidcTenantConfig tenantConfig,
-                                                 OidcProviderMetadata staticMetadata,
-                                                 boolean outboundTargetClientCredentialsGrant) {
+                                                 OidcProviderMetadata staticMetadata) {
         if (staticMetadata.wellKnownUri().isEmpty()) {
             return false;
         }
@@ -200,13 +180,14 @@ final class OidcTenantContextFactory {
                 .map(OidcProtectedResourceConfig::tokenValidation)
                 .orElseGet(OidcTokenValidationConfig::create);
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent()
-                && (staticMetadata.issuer().isEmpty()
-                || (staticMetadata.jwkSetUri().isEmpty() && tokenValidation.verificationJwk().isEmpty()))) {
+                && ((staticMetadata.issuer().isEmpty() && tokenValidation.issuer().isEmpty())
+                || (staticMetadata.jwkSetUri().isEmpty() && tokenValidation.jwksUri().isEmpty()
+                && tokenValidation.verificationJwk().isEmpty()))) {
             return true;
         }
         if (tokenValidation.method().filter(OidcTokenValidationMethod.INTROSPECTION::equals).isPresent()
                 && (staticMetadata.introspectionEndpointUri().isEmpty()
-                || staticMetadata.issuer().isEmpty())) {
+                || (staticMetadata.issuer().isEmpty() && tokenValidation.issuer().isEmpty()))) {
             return true;
         }
         Optional<OidcAuthorizationCodeConfig> authorizationCode = tenantConfig.authorizationCode();
@@ -239,7 +220,7 @@ final class OidcTenantContextFactory {
         if (endSession.isPresent() && staticMetadata.endSessionEndpointUri().isEmpty()) {
             return true;
         }
-        return outboundTargetClientCredentialsGrant && staticMetadata.tokenEndpointUri().isEmpty();
+        return false;
     }
 
     private static boolean needsPushedAuthorizationRequestMetadata(OidcAuthorizationCodeConfig authorizationCode,
@@ -624,11 +605,7 @@ final class OidcTenantContextFactory {
 
     private static void validateClientCredentialsGrantMetadata(OidcTenantConfig tenantConfig,
                                                                OidcProviderMetadata metadata,
-                                                               boolean wellKnownMetadataLoaded,
-                                                               boolean outboundTargetClientCredentialsGrant) {
-        if (!outboundTargetClientCredentialsGrant) {
-            return;
-        }
+                                                               boolean wellKnownMetadataLoaded) {
 
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
@@ -669,11 +646,7 @@ final class OidcTenantContextFactory {
 
     private static void validateTokenExchangeMetadata(OidcTenantConfig tenantConfig,
                                                       OidcProviderMetadata metadata,
-                                                      boolean wellKnownMetadataLoaded,
-                                                      boolean outboundTargetTokenExchange) {
-        if (!outboundTargetTokenExchange) {
-            return;
-        }
+                                                      boolean wellKnownMetadataLoaded) {
 
         /*
          * Spec: RFC 8414, 2 Authorization Server Metadata
@@ -788,9 +761,20 @@ final class OidcTenantContextFactory {
         if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
             return;
         }
-        if (tokenValidation.verificationJwk().isPresent() && !metadata.wellKnownMetadataLoaded()) {
+        if (tokenValidation.issuer().or(metadata::issuer).isEmpty()) {
+            throw new IllegalStateException("token-validation.issuer or well-known metadata issuer is required for "
+                                                    + "JWT access-token validation");
+        }
+        boolean independentKeys = tokenValidation.verificationJwk().isPresent() || tokenValidation.jwksUri().isPresent();
+        if (!independentKeys && tokenValidation.issuer().isPresent() && metadata.issuer().isPresent()
+                && !tokenValidation.issuer().equals(metadata.issuer())) {
+            throw new IllegalStateException("token-validation.jwks-uri or verification-jwk is required when "
+                                                    + "the access-token issuer differs from well-known metadata issuer");
+        }
+        if (independentKeys && !metadata.wellKnownMetadataLoaded()) {
             return;
         }
+        // An independently pinned API key source does not waive the required jwks_uri in loaded OP discovery metadata.
 
         /*
          * Spec: OpenID Connect Discovery 1.0, 3 OpenID Provider Metadata
@@ -816,7 +800,8 @@ final class OidcTenantContextFactory {
             return;
         }
 
-        if (metadata.issuer().isEmpty() && tenantConfig.subjectMapping().principalIdNamespace().isEmpty()) {
+        if (tokenValidation.issuer().or(metadata::issuer).isEmpty()
+                && tenantConfig.subjectMapping().principalIdNamespace().isEmpty()) {
             throw new IllegalStateException("Introspection principal mapping requires an issuer or "
                                                     + "subject-mapping.principal-id-namespace");
         }

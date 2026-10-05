@@ -373,10 +373,22 @@ final class OidcTenantContextFactory {
          * Spec: RFC 8414, 2 Authorization Server Metadata
          * https://www.rfc-editor.org/rfc/rfc8414.html#section-2
          * Quote: "If omitted, the authorization server does not support PKCE."
+         *
+         * Spec: RFC 9700, 2.1.1 Authorization Code Grant
+         * https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1
+         * An Authorization Server may establish PKCE support by deployment-specific means instead of advertising it.
+         * Require explicit per-tenant assurance rather than guessing from an absent list: a server that ignores PKCE
+         * could otherwise accept the code without checking the verifier. An advertised list remains authoritative.
          */
-        List<String> codeChallengeMethods = metadata.codeChallengeMethodsSupported()
+        Optional<List<String>> advertisedMethods = metadata.codeChallengeMethodsSupported();
+        if (advertisedMethods.isEmpty() && authorizationCode.pkceS256SupportAssured()
+                && authorizationCode.pkceMethod() == OidcPkceMethod.S256) {
+            return;
+        }
+        List<String> codeChallengeMethods = advertisedMethods
                 .orElseThrow(() -> new IllegalStateException(
-                        "well-known metadata code_challenge_methods_supported must be present when PKCE is enabled"));
+                        "well-known metadata code_challenge_methods_supported must be present when PKCE is enabled "
+                                + "unless S256 support is assured outside metadata"));
         if (!codeChallengeMethods.contains(pkceMethod)) {
             throw new IllegalStateException(
                     "well-known metadata code_challenge_methods_supported must include " + pkceMethod);

@@ -1204,22 +1204,47 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
-    void authorizationCodeTenantFailsWhenWellKnownMetadataPkceMethodsAreMissing() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                .set("issuer", issuer.toString())
-                .set("authorization_endpoint", authorizationEndpointUri.toString())
-                .set("token_endpoint", tokenEndpointUri.toString())
-                .set("jwks_uri", jwksUri.toString())
-                .setStrings("response_types_supported", List.of("code"))
-                .setStrings("grant_types_supported", List.of("authorization_code"))
-                .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
-                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
-                .build()
-                .toString());
+    void authorizationCodeTenantFailsWhenWellKnownMetadataPkceMethodsAreMissingWithoutAssurance() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataWithoutPkceMethods().build().toString());
         OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("code_challenge_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantAcceptsAssuredS256WhenWellKnownMetadataPkceMethodsAreMissing() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataWithoutPkceMethods().build().toString());
+        OidcTenantConfig publicTenant = authorizationCodeTenantConfig(it -> it.pkceS256SupportAssured(true));
+
+        OidcTenantContext publicContext = tenantContext(publicTenant);
+        OidcTenantContext confidentialContext = tenantContext(OidcTenantConfig.builder(publicTenant)
+                                                                      .clientSecret("0123456789abcdef0123456789abcdef")
+                                                                      .buildPrototype());
+
+        assertThat(publicContext.failureCause().map(Throwable::getMessage).orElse("ready"),
+                   publicContext.ready(), is(true));
+        assertThat(confidentialContext.failureCause().map(Throwable::getMessage).orElse("ready"),
+                   confidentialContext.ready(), is(true));
+        assertThat(publicContext.metadata().codeChallengeMethodsSupported().isEmpty(), is(true));
+        assertThat(publicTenant.authorizationCode().orElseThrow().pkceRequired(), is(true));
+
+        // Allowing a missing advertisement must not remove the S256 challenge, especially for a public client.
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                                                                 .putTenant("default", publicTenant)
+                                                                 .buildPrototype())) {
+            AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null,
+                    SecurityEnvironment.builder()
+                            .targetUri(URI.create("https://rp.example/resource"))
+                            .path("/resource")
+                            .transport("https")
+                            .build()));
+
+            assertThat(response.statusCode().orElse(-1), is(303));
+            String authorizationQuery = URI.create(response.responseHeaders().get("Location").getFirst()).getRawQuery();
+            assertThat(authorizationQuery, containsString("code_challenge_method=S256"));
+            assertThat(authorizationQuery, containsString("code_challenge="));
+        }
     }
 
     @Test
@@ -1232,6 +1257,19 @@ class OidcWellKnownMetadataLoadingTest {
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("code_challenge_methods_supported"));
+    }
+
+    @Test
+    void authorizationCodeTenantRejectsAdvertisedMethodsWithoutS256DespiteAssurance() {
+        PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
+                                      .setStrings("code_challenge_methods_supported", List.of("plain"))
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig(it -> it.pkceS256SupportAssured(true)));
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("must include S256"));
     }
 
     @Test
@@ -2660,6 +2698,18 @@ class OidcWellKnownMetadataLoadingTest {
                 .setStrings("id_token_signing_alg_values_supported", List.of("RS256"));
     }
 
+    private JsonObject.Builder authorizationCodeMetadataWithoutPkceMethods() {
+        return JsonObject.builder()
+                .set("issuer", issuer.toString())
+                .set("authorization_endpoint", authorizationEndpointUri.toString())
+                .set("token_endpoint", tokenEndpointUri.toString())
+                .set("jwks_uri", jwksUri.toString())
+                .setStrings("response_types_supported", List.of("code"))
+                .setStrings("grant_types_supported", List.of("authorization_code"))
+                .setStrings("token_endpoint_auth_methods_supported", List.of("none", "client_secret_basic"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"));
+    }
+
     private JsonObject.Builder authorizationCodeCapabilityMetadataBuilder() {
         return JsonObject.builder()
                 .set("issuer", issuer.toString())
@@ -2673,11 +2723,18 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     private OidcTenantConfig authorizationCodeTenantConfig() {
+        return authorizationCodeTenantConfig(_ -> { });
+    }
+
+    private OidcTenantConfig authorizationCodeTenantConfig(Consumer<OidcAuthorizationCodeConfig.Builder> customizer) {
         return OidcTenantConfig.builder()
                 .issuer(issuer.toString())
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
-                .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .authorizationCode(it -> {
+                    it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI);
+                    customizer.accept(it);
+                })
                 .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
     }

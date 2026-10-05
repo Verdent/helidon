@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
@@ -176,14 +177,21 @@ final class OidcLogoutHandler {
             return;
         }
 
+        URI location;
+        try {
+            location = endSessionLocation(endSessionEndpointUri.orElseThrow(),
+                                          selectedEndSessionTenant.tenantConfig(),
+                                          idTokenHint,
+                                          encryptedIdTokenHint,
+                                          postLogoutRedirectUri,
+                                          request);
+        } catch (RuntimeException _) {
+            // Local logout has already cleared cookies; never redirect to a provider using an invalid extension query.
+            response.status(Status.BAD_GATEWAY_502).send("End Session request is invalid");
+            return;
+        }
         response.status(Status.SEE_OTHER_303);
-        response.headers().add(HeaderNames.LOCATION, endSessionLocation(endSessionEndpointUri.orElseThrow(),
-                                                                        idTokenHint,
-                                                                        encryptedIdTokenHint,
-                                                                        selectedEndSessionTenant.tenantConfig()
-                                                                                .clientId(),
-                                                                        postLogoutRedirectUri,
-                                                                        request).toString());
+        response.headers().add(HeaderNames.LOCATION, location.toString());
         response.send();
     }
 
@@ -230,9 +238,9 @@ final class OidcLogoutHandler {
     }
 
     private URI endSessionLocation(URI endSessionEndpointUri,
+                                   OidcTenantConfig tenantConfig,
                                    Optional<String> idTokenHint,
                                    boolean encryptedIdTokenHint,
-                                   Optional<String> clientId,
                                    Optional<URI> postLogoutRedirectUri,
                                    ServerRequest request) {
         /*
@@ -250,17 +258,39 @@ final class OidcLogoutHandler {
          * Quote: "`state` OPTIONAL. Opaque value used by the RP to maintain state between the logout request and the
          * callback to the endpoint specified by the `post_logout_redirect_uri` parameter."
          */
-        UriQueryWriteable query = UriQueryWriteable.create();
-        idTokenHint.ifPresent(value -> query.set("id_token_hint", value));
+        Parameters.Builder parameters = Parameters.builder("oidc-end-session-request");
+        idTokenHint.ifPresent(value -> parameters.add("id_token_hint", value));
         if (idTokenHint.isEmpty() || encryptedIdTokenHint) {
-            clientId.ifPresent(value -> query.set("client_id", value));
+            tenantConfig.clientId().ifPresent(value -> parameters.add("client_id", value));
         }
-        postLogoutRedirectUri.ifPresent(uri -> query.set("post_logout_redirect_uri", uri.toString()));
+        postLogoutRedirectUri.ifPresent(uri -> parameters.add("post_logout_redirect_uri", uri.toString()));
         if (postLogoutRedirectUri.isPresent()) {
             request.query()
                     .first("state")
                     .filter(state -> !state.isBlank())
-                    .ifPresent(state -> query.set("state", state));
+                    .ifPresent(state -> parameters.add("state", state));
+        }
+
+        Parameters finalParameters = parameters.build();
+        if (tenantConfig.adapter().isPresent()) {
+            finalParameters = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
+                                                             .endSessionRequest(tenantConfig, finalParameters),
+                                                     "OIDC adapter must return End Session parameters");
+            // Preserve the local session identity and the redirect that passed the tenant allow-list. A provider
+            // may require client_id alongside an unencrypted ID Token, but it must be the configured client id.
+            if (!matches(finalParameters, "id_token_hint", idTokenHint)
+                    || !matches(finalParameters, "post_logout_redirect_uri", postLogoutRedirectUri.map(URI::toString))
+                    || (finalParameters.contains("client_id")
+                    && !matches(finalParameters, "client_id", tenantConfig.clientId()))
+                    || (!finalParameters.contains("client_id")
+                    && (idTokenHint.isEmpty() || encryptedIdTokenHint) && tenantConfig.clientId().isPresent())) {
+                throw new IllegalStateException("OIDC adapter changed a bound End Session parameter");
+            }
+        }
+
+        UriQueryWriteable query = UriQueryWriteable.create();
+        for (String name : finalParameters.names()) {
+            query.set(name, finalParameters.all(name).toArray(String[]::new));
         }
 
         String queryValue = query.rawValue();
@@ -270,6 +300,10 @@ final class OidcLogoutHandler {
         return URI.create(endSessionEndpointUri
                                   + (endSessionEndpointUri.getRawQuery() == null ? "?" : "&")
                                   + queryValue);
+    }
+
+    private static boolean matches(Parameters actual, String name, Optional<String> expected) {
+        return actual.all(name, List::of).equals(expected.map(List::of).orElseGet(List::of));
     }
 
     private boolean sameOrigin(ServerRequest request) {

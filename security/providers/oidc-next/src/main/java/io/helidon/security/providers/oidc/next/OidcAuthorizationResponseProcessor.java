@@ -176,6 +176,10 @@ final class OidcAuthorizationResponseProcessor {
         if (code.filter(ParameterValue::valid).isEmpty()) {
             return OidcAuthorizationResponseResult.invalid("Authorization Response code is missing", stateRemovalCookie);
         }
+        if (!adapterAcceptsAuthorizationResponse(readyTenant, parameters)) {
+            return OidcAuthorizationResponseResult.invalid(
+                    "OIDC adapter rejected Authorization Response", stateRemovalCookie);
+        }
         /*
          * Spec: RFC 6749, 4.1.2 Authorization Response
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2
@@ -189,13 +193,62 @@ final class OidcAuthorizationResponseProcessor {
                                                          stateRemovalCookie);
     }
 
+    private boolean adapterAcceptsAuthorizationResponse(OidcTenantContext tenantContext, UriQuery parameters) {
+        OidcTenantConfig tenant = tenantContext.tenantConfig();
+        if (tenant.adapter().isEmpty()) {
+            return true;
+        }
+        try {
+            // UriQuery is a Parameters view; preserve provider-specific and repeated values without copying.
+            tenant.adapter().orElseThrow().validateAuthorizationResponse(tenant, parameters);
+            return true;
+        } catch (RuntimeException _) {
+            return false;
+        }
+    }
+
     private Optional<ResolvedAuthenticationRequest> resolveAuthenticationRequest(String returnedState,
                                                                                   Map<String, List<String>> cookies) {
         Optional<OidcAuthorizationState> authorizationState = OidcAuthorizationState.parse(returnedState);
-        if (authorizationState.isEmpty()) {
-            return Optional.empty();
+        Optional<ResolvedAuthenticationRequest> standard = authorizationState
+                .flatMap(parsed -> resolveTenantAuthenticationRequest(parsed.routedTenantId(), cookies));
+        if (standard.filter(request -> returnedState.equals(request.state().state())).isPresent()) {
+            return standard;
         }
-        String tenantId = authorizationState.orElseThrow().routedTenantId();
+
+        // Even a custom wire state can look like a standard state for a different tenant. Prefer an exact
+        // protected-cookie match; the untrusted tenant hint alone must never select the identity.
+        Optional<ResolvedAuthenticationRequest> exact = Optional.empty();
+        for (Map.Entry<String, List<String>> cookie : cookies.entrySet()) {
+            if (cookie.getValue().size() != 1) {
+                continue;
+            }
+            Optional<String> tenantHint = OidcCookieStateHandler.authenticationRequestTenantHint(cookie.getValue().getFirst());
+            if (tenantHint.isEmpty()) {
+                continue;
+            }
+            String tenantId = tenantHint.orElseThrow();
+            OidcTenantConfig candidate = config.tenants().get(tenantId);
+            if (candidate == null || !cookie.getKey().equals(candidate.cookies().authenticationRequestCookieName())) {
+                continue;
+            }
+            Optional<ResolvedAuthenticationRequest> resolved = resolveTenantAuthenticationRequest(tenantId, cookies);
+            if (resolved.isEmpty()) {
+                continue;
+            }
+            if (!returnedState.equals(resolved.orElseThrow().state().state())) {
+                continue;
+            }
+            if (exact.isPresent()) {
+                return Optional.empty();
+            }
+            exact = resolved;
+        }
+        return exact.isPresent() ? exact : standard;
+    }
+
+    private Optional<ResolvedAuthenticationRequest> resolveTenantAuthenticationRequest(String tenantId,
+                                                                                        Map<String, List<String>> cookies) {
         OidcTenantConfig tenantConfig = config.tenants().get(tenantId);
         if (tenantConfig == null
                 || !tenantConfig.enabled()

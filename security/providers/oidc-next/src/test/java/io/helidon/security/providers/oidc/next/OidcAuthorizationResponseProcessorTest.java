@@ -25,9 +25,11 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
+import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -79,6 +81,135 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(removalCookie.name(), is("__Host-helidon-oidc-state"));
         assertThat(removalCookie.value(), is(""));
         assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));
+    }
+
+    @Test
+    void customStateRoutesFromProtectedRequestCookieAndRunsAdapterValidation() {
+        AtomicInteger validations = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "custom-state";
+            }
+
+            @Override
+            public String type() {
+                return "custom-state";
+            }
+
+            @Override
+            public void validateAuthorizationResponse(OidcTenantConfig tenant, Parameters response) {
+                validations.incrementAndGet();
+                if (!"expected-session".equals(response.first("session_state").orElse(null))) {
+                    throw new IllegalArgumentException("invalid session_state");
+                }
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .from(authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .adapter(adapter)
+                .buildPrototype();
+        OidcProviderConfig config = providerConfig("default", tenant);
+        String customState = "vendor-state-without-the-core-tenant-encoding";
+        OidcAuthenticationRequestState state = authenticationRequestState("default", customState,
+                                                                          REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
+        SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
+                .createAuthenticationRequestCookie(state, true);
+        Map<String, List<String>> cookies = Map.of(cookie.name(), List.of(cookie.value()));
+
+        OidcAuthorizationResponseResult accepted = process(config,
+                UriQuery.create("code=authorization-code&state=" + customState + "&session_state=expected-session"),
+                cookies, REDIRECTION_ENDPOINT_URI, NOW);
+        assertThat(accepted.stateValidated(), is(true));
+        assertThat(accepted.tenantContext().orElseThrow().tenantId(), is("default"));
+        assertThat(validations.get(), is(1));
+
+        OidcAuthorizationResponseResult rejected = process(config,
+                UriQuery.create("code=authorization-code&state=" + customState + "&session_state=wrong"),
+                cookies, REDIRECTION_ENDPOINT_URI, NOW);
+        assertThat(rejected.stateValidated(), is(false));
+        assertThat(rejected.stateCookies().getFirst().value(), is(""));
+        assertThat(validations.get(), is(2));
+    }
+
+    @Test
+    void customStateRoutingHintCannotChooseAnotherTenant() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcAuthenticationRequestState state = authenticationRequestState("default", "custom-state",
+                                                                          REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
+        SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
+                .createAuthenticationRequestCookie(state, true);
+        String altered = cookie.value().replaceFirst("^r1\\.[^.]+\\.", "r1.dW5rbm93bg.");
+
+        OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                UriQuery.create("code=authorization-code&state=custom-state"),
+                Map.of(cookie.name(), List.of(altered)), REDIRECTION_ENDPOINT_URI, NOW);
+        assertThat(result.stateValidated(), is(false));
+    }
+
+    @Test
+    void unrelatedCallbackStateDoesNotClearAValidCustomStateCookie() {
+        OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcAuthenticationRequestState state = authenticationRequestState("default", "custom-state",
+                                                                          REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
+        SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
+                .createAuthenticationRequestCookie(state, true);
+        AtomicInteger initializations = new AtomicInteger();
+
+        OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                UriQuery.create("code=authorization-code&state=unrelated-state"),
+                Map.of(cookie.name(), List.of(cookie.value())), REDIRECTION_ENDPOINT_URI, NOW,
+                OidcTenantContextFactory.create((tenantId, tenantConfig) -> {
+                    initializations.incrementAndGet();
+                    return OidcTenantContext.ready(tenantId, tenantConfig);
+                }));
+        assertThat(result.invalid(), is(true));
+        assertThat(result.stateCookies().isEmpty(), is(true));
+        assertThat(initializations.get(), is(0));
+    }
+
+    @Test
+    void customStateThatLooksLikeAnotherTenantsStateUsesTheMatchingProtectedCookie() {
+        OidcTenantConfig defaultTenant = OidcTenantConfig.builder()
+                .from(authorizationCodeTenant("first-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.authenticationRequestCookieName("__Host-oidc-state-first")
+                        .protection(protection -> protection.password("first-cookie-password")))
+                .buildPrototype();
+        OidcTenantConfig secondTenant = OidcTenantConfig.builder()
+                .from(authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.authenticationRequestCookieName("__Host-oidc-state-second")
+                        .protection(protection -> protection.password("second-cookie-password")))
+                .buildPrototype();
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("default", defaultTenant)
+                .putTenant("second", secondTenant)
+                .buildPrototype();
+        SetCookie firstCookie = stateCookie(defaultTenant, authenticationRequestState(
+                "default", OTHER_STATE, REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60)));
+        SetCookie secondCookie = OidcCookieStateHandler.create("second", secondTenant)
+                .createAuthenticationRequestCookie(authenticationRequestState(
+                        "second", STATE, REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60)), true);
+        AtomicInteger defaultInitializations = new AtomicInteger();
+        AtomicInteger secondInitializations = new AtomicInteger();
+
+        OidcAuthorizationResponseResult result = process(config,
+                UriQuery.create("code=authorization-code&state=" + STATE),
+                Map.of(firstCookie.name(), List.of(firstCookie.value()),
+                       secondCookie.name(), List.of(secondCookie.value())),
+                REDIRECTION_ENDPOINT_URI, NOW,
+                OidcTenantContextFactory.create((tenantId, tenantConfig) -> {
+                    if ("default".equals(tenantId)) {
+                        defaultInitializations.incrementAndGet();
+                    } else {
+                        secondInitializations.incrementAndGet();
+                    }
+                    return OidcTenantContext.ready(tenantId, tenantConfig, providerMetadata(false));
+                }));
+
+        assertThat(result.stateValidated(), is(true));
+        assertThat(result.tenantContext().orElseThrow().tenantId(), is("second"));
+        assertThat(defaultInitializations.get(), is(0));
+        assertThat(secondInitializations.get(), is(1));
     }
 
     @Test

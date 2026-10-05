@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -26,6 +27,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
@@ -33,6 +35,7 @@ import io.helidon.webclient.api.WebClient;
 final class OidcEndpointClient {
     private static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 
+    private final OidcTenantConfig tenantConfig;
     private final OidcProviderMetadata metadata;
     private final WebClient webClient;
     private final OidcClientAuthenticationSupport clientAuthentication;
@@ -43,6 +46,7 @@ final class OidcEndpointClient {
     OidcEndpointClient(OidcTenantConfig tenantConfig,
                        OidcProviderMetadata metadata,
                        WebClient webClient) {
+        this.tenantConfig = tenantConfig;
         this.metadata = metadata;
         this.webClient = webClient;
         this.clientAuthentication = OidcClientAuthenticationSupport.tokenEndpoint(tenantConfig);
@@ -97,7 +101,8 @@ final class OidcEndpointClient {
             form.add("code_verifier", verifier);
         });
 
-        return submit(form, OidcTokenResponse::fromAuthorizationCodeJson);
+        return submit(form, OidcTenantAdapter.TokenGrant.AUTHORIZATION_CODE,
+                      OidcTokenResponse::fromAuthorizationCodeJson);
     }
 
     OidcTokenEndpointResult refreshAccessToken(String refreshToken) {
@@ -126,7 +131,7 @@ final class OidcEndpointClient {
             authorizationCodeResources.forEach(resource -> form.add("resource", resource));
         }
 
-        return submit(form, OidcTokenResponse::fromRefreshJson);
+        return submit(form, OidcTenantAdapter.TokenGrant.REFRESH_TOKEN, OidcTokenResponse::fromRefreshJson);
     }
 
     OidcTokenEndpointResult clientCredentialsToken(Optional<String> scope, List<String> resources) {
@@ -149,7 +154,8 @@ final class OidcEndpointClient {
         scope.ifPresent(value -> form.add("scope", value));
         resources.forEach(resource -> form.add("resource", resource));
 
-        return submit(form, OidcTokenResponse::fromClientCredentialsJson);
+        return submit(form, OidcTenantAdapter.TokenGrant.CLIENT_CREDENTIALS,
+                      OidcTokenResponse::fromClientCredentialsJson);
     }
 
     OidcTokenExchangeResult tokenExchange(String subjectToken,
@@ -192,6 +198,7 @@ final class OidcEndpointClient {
         });
 
         return submit(form,
+                      OidcTenantAdapter.TokenGrant.TOKEN_EXCHANGE,
                       json -> OidcTokenExchangeResult.success(OidcTokenExchangeResponse.fromJson(json)),
                       OidcTokenExchangeResult::error,
                       OidcTokenExchangeResult::failure);
@@ -347,14 +354,17 @@ final class OidcEndpointClient {
     }
 
     private OidcTokenEndpointResult submit(Parameters.Builder form,
+                                           OidcTenantAdapter.TokenGrant grant,
                                            Function<JsonObject, OidcTokenResponse> responseParser) {
         return submit(form,
+                      grant,
                       json -> OidcTokenEndpointResult.success(responseParser.apply(json)),
                       OidcTokenEndpointResult::error,
                       OidcTokenEndpointResult::failure);
     }
 
     private <R> R submit(Parameters.Builder form,
+                         OidcTenantAdapter.TokenGrant grant,
                          Function<JsonObject, R> successResult,
                          Function<OidcTokenErrorResponse, R> errorResult,
                          FailureFactory<R> failureResult) {
@@ -371,6 +381,17 @@ final class OidcEndpointClient {
             return failureResult.create("Token Endpoint is not configured", null);
         }
         URI uri = endpointUri.orElseThrow();
+        if (tenantConfig.adapter().isPresent()) {
+            try {
+                Parameters customized = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
+                                                                        .tokenRequest(tenantConfig, grant, form.build()),
+                                                               "OIDC adapter must return Token Endpoint request parameters");
+                form = Parameters.builder("oidc-adapted-token-endpoint-form");
+                copyParameters(customized, form);
+            } catch (RuntimeException e) {
+                return failureResult.create("OIDC adapter Token Endpoint request failed", e);
+            }
+        }
         try {
             HttpClientRequest request = webClient.post()
                     .uri(uri)
@@ -388,7 +409,13 @@ final class OidcEndpointClient {
                         return failureResult.create("Token Endpoint response is invalid", null);
                     }
                     try {
-                        return successResult.apply(response.as(JsonObject.class));
+                        JsonObject body = response.as(JsonObject.class);
+                        if (tenantConfig.adapter().isPresent()) {
+                            body = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
+                                                                 .tokenResponse(tenantConfig, grant, body),
+                                                          "OIDC adapter must return a Token Endpoint response");
+                        }
+                        return successResult.apply(body);
                     } catch (RuntimeException e) {
                         return failureResult.create("Token Endpoint response is invalid", e);
                     }

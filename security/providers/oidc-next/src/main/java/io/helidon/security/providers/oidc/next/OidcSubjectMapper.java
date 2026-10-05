@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -101,7 +102,7 @@ final class OidcSubjectMapper {
                     .distinct()
                     .forEach(scope -> addScope(subjectBuilder, scope));
         }
-        return subjectBuilder.build();
+        return adaptedSubject(subjectBuilder.build(), tenantContext);
     }
 
     static Optional<String> principalId(JsonObject claims, OidcTenantContext tenantContext) {
@@ -149,7 +150,7 @@ final class OidcSubjectMapper {
         if (subjectMapping.scopeGrantsEnabled()) {
             scopeClaimValues(jwt.payloadClaimsJson(), subjectMapping).forEach(scope -> addScope(subjectBuilder, scope));
         }
-        return subjectBuilder.build();
+        return adaptedSubject(subjectBuilder.build(), tenantContext);
     }
 
     private static Subject mapIntrospection(OidcValidatedIntrospection validatedToken,
@@ -174,7 +175,14 @@ final class OidcSubjectMapper {
         if (subjectMapping.scopeGrantsEnabled()) {
             scopeClaimValues(validatedToken.claims(), subjectMapping).forEach(scope -> addScope(subjectBuilder, scope));
         }
-        return subjectBuilder.build();
+        return adaptedSubject(subjectBuilder.build(), tenantContext);
+    }
+
+    private static Subject adaptedSubject(Subject subject, OidcTenantContext tenantContext) {
+        return tenantContext.tenantConfig().adapter()
+                .map(adapter -> Objects.requireNonNull(adapter.mapSubject(tenantContext.tenantConfig(), subject),
+                                                       "OIDC adapter must return a subject"))
+                .orElse(subject);
     }
 
     private static Principal principal(Jwt jwt, PrincipalIdentity identity, OidcSubjectMappingConfig subjectMapping) {

@@ -61,6 +61,7 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkRSA;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.WebClientConfig;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpRouting;
@@ -193,6 +194,122 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(request.formParameters(), is(Map.of("token", List.of(OPAQUE_TOKEN),
                                                        "token_type_hint", List.of("access_token"))));
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
+    }
+
+    @Test
+    void tenantAdapterChecksValidatedIntrospectionAndEnrichesSubject() {
+        AtomicInteger checks = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "introspection-test";
+            }
+
+            @Override
+            public String type() {
+                return "introspection-test";
+            }
+
+            @Override
+            public void validateAccessToken(OidcTenantConfig tenant, JsonObject claims) {
+                checks.incrementAndGet();
+                if (!"approved".equals(claims.stringValue("vendor_status").orElse(null))) {
+                    throw new IllegalArgumentException("Unexpected vendor status");
+                }
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                return Subject.builder().update(subject).addGrant(Role.create("adapted")).build();
+            }
+        };
+        try (OidcProvider adapted = provider(tenant -> tenant.adapter(adapter));
+                OidcProvider ordinary = provider()) {
+            responseBody = validResponse(builder -> builder.set("vendor_status", "approved")).toString();
+            AuthenticationResponse accepted = authenticate(adapted, OPAQUE_TOKEN);
+            assertThat(accepted.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(accepted.user().orElseThrow().grants(Role.class).stream().map(Role::getName).toList(),
+                       is(List.of("admin", "auditor", "adapted")));
+
+            responseBody = validResponse(_ -> { }).toString();
+            assertInvalidToken(authenticate(adapted, OPAQUE_TOKEN), "adapter rejected introspection response");
+            assertThat(checks.get(), is(2));
+            assertThat(authenticate(ordinary, OPAQUE_TOKEN).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(checks.get(), is(2));
+        }
+    }
+
+    @Test
+    void tenantAdapterCanAddIntrospectionParametersAndNormalizeProviderResponse() {
+        AtomicInteger responseHooks = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "introspection-form-test";
+            }
+
+            @Override
+            public String type() {
+                return "introspection-form-test";
+            }
+
+            @Override
+            public Parameters introspectionRequest(OidcTenantConfig tenant, Parameters parameters) {
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("vendor_resource", List.of("api://resource"));
+                return Parameters.create("adapted-introspection-form", values);
+            }
+
+            @Override
+            public JsonObject introspectionResponse(OidcTenantConfig tenant, JsonObject response) {
+                responseHooks.incrementAndGet();
+                return JsonObject.builder().from(response)
+                        .set("active", response.booleanValue("vendor_active").orElse(false))
+                        .unset("vendor_active")
+                        .build();
+            }
+        };
+        try (OidcProvider provider = provider(tenant -> tenant.adapter(adapter))) {
+            responseBody = JsonObject.builder().from(validResponse(_ -> { }))
+                    .unset("active").set("vendor_active", true).build().toString();
+            assertThat(authenticate(provider, OPAQUE_TOKEN).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(RECORDED_REQUEST.get().formParameters().get("vendor_resource"),
+                       is(List.of("api://resource")));
+            assertThat(RECORDED_REQUEST.get().formParameters().get("token"), is(List.of(OPAQUE_TOKEN)));
+            assertThat(responseHooks.get(), is(1));
+
+            responseBody = JsonObject.builder().from(validResponse(_ -> { }))
+                    .set("active", false).set("vendor_active", true).build().toString();
+            assertInvalidToken(authenticate(provider, OPAQUE_TOKEN), "explicitly inactive token");
+            assertThat(responseHooks.get(), is(1));
+        }
+    }
+
+    @Test
+    void tenantAdapterCannotIntrospectAnotherPresentedToken() {
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "wrong-introspection-token";
+            }
+
+            @Override
+            public String type() {
+                return "wrong-introspection-token";
+            }
+
+            @Override
+            public Parameters introspectionRequest(OidcTenantConfig tenant, Parameters parameters) {
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("token", List.of("other-token"));
+                return Parameters.create("wrong-introspection-token", values);
+            }
+        };
+        try (OidcProvider provider = provider(tenant -> tenant.adapter(adapter))) {
+            AuthenticationResponse response = authenticate(provider, OPAQUE_TOKEN);
+            assertThat(response.statusCode().orElse(-1), is(503));
+            assertThat(REQUEST_COUNT.get(), is(0));
+        }
     }
 
     @Test

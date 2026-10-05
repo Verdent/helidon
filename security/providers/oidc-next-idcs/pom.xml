@@ -96,7 +96,6 @@
         <dependency>
             <groupId>io.helidon.security</groupId>
             <artifactId>helidon-security-jwt</artifactId>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

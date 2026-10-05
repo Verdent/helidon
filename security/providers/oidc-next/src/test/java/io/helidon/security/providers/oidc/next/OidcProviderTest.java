@@ -27,12 +27,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
+import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
@@ -55,6 +57,7 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.SecurityProviderService;
 
@@ -455,6 +458,99 @@ class OidcProviderTest {
         assertThat(query.get("code_challenge"),
                    is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
                                                                      OidcPkceMethod.S256)));
+    }
+
+    @Test
+    void tenantAdapterCanReplaceStateNonceAndOtherAuthorizationParametersBeforeStorage() {
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "correlation-test";
+            }
+
+            @Override
+            public String type() {
+                return "correlation-test";
+            }
+
+            @Override
+            public Parameters authorizationRequest(OidcTenantConfig tenant,
+                                                   String tenantId,
+                                                   SecurityEnvironment environment,
+                                                   Parameters parameters) {
+                assertThat(tenantId, is("default"));
+                Map<String, List<String>> values = parameters.toMap();
+                values.put("state", List.of("provider-" + parameters.get("state")));
+                values.put("nonce", List.of("provider-" + parameters.get("nonce")));
+                values.put("login_hint", List.of("alice@example.org"));
+                return Parameters.create("adapter-authorization-request", values);
+            }
+        };
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, config -> config.adapter(adapter));
+        try (OidcProvider provider = provider(tenant)) {
+            SecurityEnvironment environment = SecurityEnvironment.builder()
+                    .targetUri(ORIGINAL_URI)
+                    .path("/resource")
+                    .transport("https")
+                    .build();
+            AuthenticationResponse response = provider.authenticate(request(null, environment));
+            assertThat(response.statusCode().orElse(-1), is(303));
+            UriQuery query = UriQuery.create(URI.create(response.responseHeaders().get("Location").getFirst()));
+            assertThat(query.get("state").startsWith("provider-s1."), is(true));
+            assertThat(query.get("nonce").startsWith("provider-"), is(true));
+            assertThat(query.get("login_hint"), is("alice@example.org"));
+            SetCookie stateCookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
+            assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(stateCookie.value()),
+                       is(Optional.of("default")));
+            OidcAuthenticationRequestState requestState = authenticationRequestState(response, tenant);
+            assertThat(requestState.state(), is(query.get("state")));
+            assertThat(requestState.nonce(), is(query.get("nonce")));
+            assertThat(OidcAuthorizationState.parse(requestState.state()).isEmpty(), is(true));
+        }
+    }
+
+    @Test
+    void tenantAdapterCannotRemoveCoreOidcCodeAndPkceRequirements() {
+        for (Map.Entry<String, String> change : List.of(
+                Map.entry("scope", "profile"),
+                Map.entry("scope", "openid offline_access"),
+                Map.entry("code_challenge", "unbound-challenge"),
+                Map.entry("code_challenge_method", "plain"),
+                Map.entry("response_type", "token"),
+                Map.entry("redirect_uri", "https://other.example/callback"),
+                Map.entry("response_mode", "form_post"),
+                Map.entry("request_uri", "urn:example:untrusted-request"),
+                Map.entry("request", "unsigned-request"))) {
+            OidcTenantAdapter adapter = new OidcTenantAdapter() {
+                @Override
+                public String name() {
+                    return "invalid-authorization-request";
+                }
+
+                @Override
+                public String type() {
+                    return "invalid-authorization-request";
+                }
+
+                @Override
+                public Parameters authorizationRequest(OidcTenantConfig tenant,
+                                                       String tenantId,
+                                                       SecurityEnvironment environment,
+                                                       Parameters parameters) {
+                    Map<String, List<String>> values = parameters.toMap();
+                    values.put(change.getKey(), List.of(change.getValue()));
+                    return Parameters.create("invalid-authorization-request", values);
+                }
+            };
+            try (OidcProvider provider = provider(authorizationCodeTenant(_ -> { }, tenant -> tenant.adapter(adapter)))) {
+                AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI)
+                        .path("/resource")
+                        .transport("https")
+                        .build()));
+                assertAuthorizationCodeFlowUnavailable(response);
+            }
+        }
     }
 
     @Test
@@ -1000,6 +1096,46 @@ class OidcProviderTest {
         assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
+    }
+
+    @Test
+    void tenantAdapterMapsBrowserSubjectAndFailsClosedWhenMappingRejectsIt() {
+        AtomicBoolean reject = new AtomicBoolean();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "browser-subject-test";
+            }
+
+            @Override
+            public String type() {
+                return "browser-subject-test";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                if (reject.get()) {
+                    throw new IllegalArgumentException("Provider-specific subject rejected");
+                }
+                return Subject.builder().update(subject).addGrant(Role.create("adapted")).build();
+            }
+        };
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.adapter(adapter));
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse accepted = provider.authenticate(request(null, environmentWithCookie(
+                    cookie.name() + "=" + cookie.value())));
+            assertThat(accepted.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(accepted.user().orElseThrow().grants(Role.class).stream().map(Role::getName).toList(),
+                       is(List.of("adapted")));
+
+            reject.set(true);
+            AuthenticationResponse rejected = provider.authenticate(request(null, environmentWithCookie(
+                    cookie.name() + "=" + cookie.value())));
+            assertAuthorizationCodeFlowUnavailable(rejected);
+            assertThat(rejected.responseHeaders().containsKey("Set-Cookie"), is(false));
+        }
     }
 
     @Test

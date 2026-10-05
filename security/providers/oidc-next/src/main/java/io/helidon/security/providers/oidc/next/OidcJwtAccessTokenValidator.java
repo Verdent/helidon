@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
+import io.helidon.json.JsonObject;
 import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.JwtScope;
@@ -104,6 +105,14 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         }
         if (OidcSubjectMapper.principalId(jwt, tenantContext.subjectMapping()).isEmpty()) {
             return OidcValidationResult.failure("Bearer Token JWT cannot satisfy the configured principal mapping");
+        }
+        if (tenantContext.tenantConfig().adapter().isPresent()) {
+            try {
+                tenantContext.tenantConfig().adapter().orElseThrow()
+                        .validateAccessToken(tenantContext.tenantConfig(), JsonObject.create(jwt.payloadClaimsJson()));
+            } catch (RuntimeException e) {
+                return OidcValidationResult.failure("Bearer Token JWT is rejected by OIDC adapter", e);
+            }
         }
 
         return OidcValidationResult.success(new OidcValidatedJwt(token, signedJwt, jwt));

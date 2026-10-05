@@ -18,6 +18,8 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.common.Errors;
@@ -29,7 +31,6 @@ import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.HttpClientResponse;
-import io.helidon.webclient.api.WebClient;
 
 final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenValidator {
 
@@ -64,10 +65,7 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         }
 
         try (OidcRemoteWorkLimiter.Permit _ = admission.orElseThrow();
-                HttpClientResponse response = request(tenantContext.webClient(),
-                                                      uri,
-                                                      token,
-                                                      clientAuthentication)) {
+                HttpClientResponse response = request(tenantContext, uri, token, clientAuthentication)) {
             if (response.status().family() != Status.Family.SUCCESSFUL) {
                 /*
                  * RFC 7662 sections 2.2 and 2.3 distinguish active:false from errors of the introspection call,
@@ -102,6 +100,16 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         }
 
         try {
+            if (request.tenantContext().tenantConfig().adapter().isPresent()) {
+                // A definite inactive response from the Authorization Server must not be changed by an adapter.
+                if (jsonObject.booleanValue("active").filter(active -> !active).isPresent()) {
+                    return OidcValidationResult.failure("Bearer Token introspection response is inactive");
+                }
+                jsonObject = Objects.requireNonNull(request.tenantContext().tenantConfig().adapter().orElseThrow()
+                                                            .introspectionResponse(request.tenantContext().tenantConfig(),
+                                                                                   jsonObject),
+                                                    "OIDC adapter must return an introspection response");
+            }
             Optional<Boolean> active = jsonObject.booleanValue("active");
             if (active.isEmpty()) {
                 return OidcValidationResult.unavailable("Bearer Token introspection response is invalid");
@@ -114,6 +122,14 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
             OidcValidationResult<OidcValidatedAccessToken> claimValidation = validateClaims(validated, request);
             if (!claimValidation.succeeded()) {
                 return claimValidation;
+            }
+            if (request.tenantContext().tenantConfig().adapter().isPresent()) {
+                try {
+                    request.tenantContext().tenantConfig().adapter().orElseThrow()
+                            .validateAccessToken(request.tenantContext().tenantConfig(), jsonObject);
+                } catch (RuntimeException e) {
+                    return OidcValidationResult.failure("Bearer Token introspection is rejected by OIDC adapter", e);
+                }
             }
             return OidcValidationResult.success(validated);
         } catch (RuntimeException e) {
@@ -173,14 +189,27 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         return OidcValidationResult.success(validated);
     }
 
-    private HttpClientResponse request(WebClient webClient,
+    private HttpClientResponse request(OidcTenantContext tenantContext,
                                        URI endpointUri,
                                        String token,
                                        OidcClientAuthenticationSupport clientAuthentication) {
         Parameters.Builder form = Parameters.builder("oidc-introspection-form")
                 .add("token", token)
                 .add("token_type_hint", "access_token");
-        HttpClientRequest request = webClient.post()
+        if (tenantContext.tenantConfig().adapter().isPresent()) {
+            Parameters customized = Objects.requireNonNull(tenantContext.tenantConfig().adapter().orElseThrow()
+                                                                    .introspectionRequest(tenantContext.tenantConfig(),
+                                                                                          form.build()),
+                                                            "OIDC adapter must return an introspection form");
+            if (!List.of(token).equals(customized.all("token", List::of))) {
+                throw new IllegalStateException("OIDC adapter cannot change the presented introspection token");
+            }
+            form = Parameters.builder("oidc-adapted-introspection-form");
+            for (String name : customized.names()) {
+                form.add(name, customized.all(name).toArray(String[]::new));
+            }
+        }
+        HttpClientRequest request = tenantContext.webClient().post()
                 .uri(endpointUri)
                 .followRedirects(false)
                 .header(HeaderValues.ACCEPT_JSON)

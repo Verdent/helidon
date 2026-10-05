@@ -32,7 +32,7 @@ module io.helidon.security.providers.oidc.next {
     requires transitive io.helidon.builder.api;
     requires io.helidon.common;
     requires transitive io.helidon.common.configurable;
-    requires io.helidon.common.parameters;
+    requires transitive io.helidon.common.parameters;
     requires io.helidon.common.socket;
     requires io.helidon.common.tls;
     requires io.helidon.common.uri;
@@ -40,8 +40,8 @@ module io.helidon.security.providers.oidc.next {
     requires io.helidon.http;
     requires io.helidon.http.media.json;
     requires transitive io.helidon.security;
-    requires io.helidon.json;
-    requires io.helidon.security.jwt;
+    requires transitive io.helidon.json;
+    requires transitive io.helidon.security.jwt;
     requires transitive io.helidon.security.providers.common;
     requires transitive io.helidon.webclient;
     requires static transitive io.helidon.webserver;

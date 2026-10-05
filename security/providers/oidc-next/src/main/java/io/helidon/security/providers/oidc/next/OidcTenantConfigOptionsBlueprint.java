@@ -33,8 +33,9 @@ interface OidcTenantConfigOptionsBlueprint {
      * Explicitly selected tenant adapter supplied by an optional module.
      * <p>
      * Absent by default; normal tenants never invoke an adapter. Configuration and programmatic builders select the
-     * adapter for this tenant only. An adapter may provide endpoint defaults or authorize a protected OP JWK Set GET,
-     * but cannot replace normal token, issuer, callback or endpoint validation.
+     * adapter for this tenant only. A trusted adapter may provide endpoint defaults, customize requests and responses,
+     * require additional validation, or authorize a protected OP JWK Set GET. Core flow and baseline validation still
+     * apply to the resulting protocol values.
      *
      * @return selected adapter
      */

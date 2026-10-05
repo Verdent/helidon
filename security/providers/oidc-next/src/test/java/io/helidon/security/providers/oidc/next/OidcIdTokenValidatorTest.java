@@ -23,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
@@ -35,6 +36,7 @@ import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkOctet;
 import io.helidon.security.jwt.jwk.JwkRSA;
+import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -87,6 +89,76 @@ class OidcIdTokenValidatorTest {
         OidcValidatedIdToken validated = result.validatedToken().orElseThrow();
         assertThat(validated.rawToken(), is(idToken));
         assertThat(validated.jwt().subject().orElse(""), is(SUBJECT));
+    }
+
+    @Test
+    void tenantAdapterAddsIdTokenValidationAfterCoreAndRefreshContinuityChecks() {
+        AtomicInteger checks = new AtomicInteger();
+        AtomicInteger refreshChecks = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "id-token-test";
+            }
+
+            @Override
+            public String type() {
+                return "id-token-test";
+            }
+
+            @Override
+            public void validateIdToken(OidcTenantConfig tenant, Jwt jwt, Optional<Jwt> previousIdToken) {
+                checks.incrementAndGet();
+                if (previousIdToken.isPresent()) {
+                    assertThat(previousIdToken.orElseThrow().subject(), is(Optional.of(SUBJECT)));
+                    refreshChecks.incrementAndGet();
+                }
+                if (!"approved".equals(jwt.payloadClaimValue("vendor_status")
+                                               .map(value -> value.asString().value()).orElse(null))) {
+                    throw new IllegalArgumentException("Unexpected vendor status");
+                }
+            }
+        };
+        OidcTenantConfig tenant = tenantConfig(it -> it.adapter(adapter));
+        String accepted = signedIdToken(it -> it.addPayloadClaim("vendor_status", "approved"));
+        OidcValidatedIdToken current = validate(accepted, tenant).validatedToken().orElseThrow();
+        assertThat(checks.get(), is(1));
+
+        assertFailure(validate(signedIdToken(_ -> { }), tenant), "ID Token is rejected by OIDC adapter");
+        assertThat(checks.get(), is(2));
+
+        int signatureStart = accepted.lastIndexOf('.') + 1;
+        String tampered = accepted.substring(0, signatureStart)
+                + (accepted.charAt(signatureStart) == 'A' ? 'B' : 'A')
+                + accepted.substring(signatureStart + 1);
+        assertFailure(validate(tampered, tenant), "ID Token signature is invalid");
+        assertThat(checks.get(), is(2));
+
+        String wrongSubject = signedIdToken(it -> it.subject("other-subject")
+                .addPayloadClaim("vendor_status", "approved"));
+        assertFailure(validator.validateRefresh(wrongSubject,
+                                                OidcTenantContext.ready("default", tenant), current, VALIDATION_TIME),
+                      "Refreshed ID Token subject does not match the existing local authentication result");
+        assertThat(checks.get(), is(2));
+
+        String refreshed = signedIdToken(it -> it.nonce(null).addPayloadClaim("vendor_status", "approved"));
+        assertThat(validator.validateRefresh(refreshed,
+                                             OidcTenantContext.ready("default", tenant), current, VALIDATION_TIME)
+                           .succeeded(), is(true));
+        assertThat(checks.get(), is(3));
+        assertThat(refreshChecks.get(), is(1));
+    }
+
+    @Test
+    void omittedAuthenticationRequestNonceIsValidForCodeFlow() {
+        OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
+                "default", "state-value", null, "pkce-verifier", null, ISSUER.toString(),
+                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, VALIDATION_TIME.minusSeconds(1),
+                VALIDATION_TIME.plusSeconds(300));
+        OidcValidationResult<OidcValidatedIdToken> result = validator.validate(
+                signedIdToken(it -> it.nonce(null)), tenantContext(), withNoNonce, VALIDATION_TIME);
+
+        assertThat(result.succeeded(), is(true));
     }
 
     @Test

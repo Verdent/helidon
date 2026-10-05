@@ -38,10 +38,12 @@ import io.helidon.webclient.api.WebClientConfig;
 interface OidcProviderConfigBlueprint extends OidcTenantConfigOptionsBlueprint, Prototype.Factory<OidcProvider> {
 
     /**
-     * {@inheritDoc}
+     * WebClient configuration used for outbound requests from the provider-root tenant.
      * <p>
      * The provider-root shortcut uses a stable default to distinguish an explicitly supplied client configuration
      * without enumerating WebClient options. Named tenants retain the regular WebClient default.
+     *
+     * @return WebClient configuration
      */
     @Override
     @Option.Configured("webclient")

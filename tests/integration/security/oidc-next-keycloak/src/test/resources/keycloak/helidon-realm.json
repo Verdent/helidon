@@ -125,6 +125,24 @@
       ]
     },
     {
+      "clientId": "helidon-web-refresh",
+      "name": "Helidon Short-Lived Refresh Test Client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "web-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:*",
+        "http://localhost:*/*"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "45"
+      }
+    },
+    {
       "clientId": "helidon-jar-web",
       "name": "Helidon Signed JAR Test Client",
       "enabled": true,

@@ -127,7 +127,7 @@ class KeycloakJwtAccessTokenIT {
         String idToken = KeycloakOidcIntegrationSupport.passwordTokenResponse().stringValue("id_token").orElseThrow();
         OidcTokenValidationConfig validation = OidcTokenValidationConfig.builder().from(CUSTOM_VALIDATION)
                 .audience(KeycloakOidcIntegrationSupport.WEB_CLIENT_ID)
-                .jwt(OidcJwtAccessTokenConfig.builder().from(CUSTOM_VALIDATION.jwt())
+                .jwt(OidcJwtAccessTokenConfig.builder().from(CUSTOM_VALIDATION.jwt().orElseThrow())
                              .requiredClaims(List.of()).buildPrototype())
                 .buildPrototype();
 

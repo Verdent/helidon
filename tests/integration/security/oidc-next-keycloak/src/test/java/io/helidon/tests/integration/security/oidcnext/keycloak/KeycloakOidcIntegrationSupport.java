@@ -73,6 +73,8 @@ final class KeycloakOidcIntegrationSupport {
     static final String API_CLIENT_SECRET = "api-secret";
     static final String WEB_CLIENT_ID = "helidon-web";
     static final String WEB_CLIENT_SECRET = "web-secret";
+    // This client's native 45-second access-token lifetime triggers the RP's one-minute renewal margin.
+    static final String REFRESH_CLIENT_ID = "helidon-web-refresh";
     static final String SERVICE_CLIENT_ID = "helidon-service";
     static final String SERVICE_CLIENT_SECRET = "service-secret";
     static final String USERNAME = "alice";
@@ -184,17 +186,7 @@ final class KeycloakOidcIntegrationSupport {
         return authorizationCodeProviderConfig(
                 _ -> {
                 },
-                tenant -> tenant
-                        .protectedResource(resource -> resource
-                                .enabled(false)
-                                .tokenValidation(validation -> validation
-                                        .method(OidcTokenValidationMethod.INTROSPECTION)
-                                        .audience(API_AUDIENCE)
-                                        .introspection(introspection -> introspection
-                                                .clientId(API_AUDIENCE)
-                                                .clientSecret(API_CLIENT_SECRET))
-                                        .audienceValidationEnabled(false)
-                                        .clockSkew(Duration.ofHours(1)))));
+                tenant -> tenant.clientId(REFRESH_CLIENT_ID));
     }
 
     static OidcProviderConfig outboundClientCredentialsProviderConfig(OutboundTarget outboundTarget) {

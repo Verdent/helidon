@@ -43,7 +43,6 @@ import io.helidon.security.providers.oidc.next.OidcCookieConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
-import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
 import io.helidon.tests.integration.security.oidcnext.keycloak.KeycloakOidcIntegrationSupport.BrowserSession;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
@@ -169,16 +168,7 @@ class KeycloakLogoutIT {
                 _ -> {
                 },
                 tenant -> tenant
-                        .protectedResource(resource -> resource
-                                .enabled(false)
-                                .tokenValidation(validation -> validation
-                                        .method(OidcTokenValidationMethod.INTROSPECTION)
-                                        .audience(KeycloakOidcIntegrationSupport.API_AUDIENCE)
-                                        .introspection(introspection -> introspection
-                                                .clientId(KeycloakOidcIntegrationSupport.API_AUDIENCE)
-                                                .clientSecret(KeycloakOidcIntegrationSupport.API_CLIENT_SECRET))
-                                        .audienceValidationEnabled(false)
-                                        .clockSkew(Duration.ofHours(1))))
+                        .clientId(KeycloakOidcIntegrationSupport.REFRESH_CLIENT_ID)
                         .cookies(OidcCookieConfig.builder(tenant.cookies()).maxCookieSize(1200).maxChunks(16).buildPrototype())
                         .userInfo(userInfo -> userInfo.enabled(false))
                         .logout(logout -> logout.endSession(endSession -> endSession.enabled(false)))

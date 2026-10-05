@@ -57,9 +57,7 @@ class KeycloakRefreshTokenIT {
         OidcTokenValidationConfig custom = OidcTokenValidationConfig.create(Config.create(
                 ConfigSources.classpath("keycloak-jwt-custom.yaml")).get("protected-resource.token-validation"));
         OidcTenantConfig customized = OidcTenantConfig.builder().from(tenant)
-                .protectedResource(resource -> resource.enabled(false).tokenValidation(validation -> validation
-                        .from(custom)
-                        .clockSkew(tenant.protectedResource().orElseThrow().tokenValidation().clockSkew())))
+                .protectedResource(resource -> resource.enabled(false).tokenValidation(custom))
                 .buildPrototype();
         OidcProviderConfig providerConfig = OidcProviderConfig.builder().from(original)
                 .putTenant("default", customized).buildPrototype();

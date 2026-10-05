@@ -276,7 +276,7 @@ class OidcLocalVerificationKeysTest {
 
     private static OidcValidationResult<OidcValidatedAccessToken> validateAccessToken(OidcTenantContext context, String token) {
         return new OidcJwtAccessTokenValidator().validate(new OidcAccessTokenValidationRequest(token, context,
-                OidcAccessTokenValidationRequest.Use.PROTECTED_RESOURCE, Optional.empty(), NOW));
+                Optional.empty(), NOW));
     }
 
     private static void withTenant(OidcTenantConfig tenant, Consumer<OidcTenantContext> assertions) {

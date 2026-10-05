@@ -53,10 +53,7 @@ final class OidcTenantRuntimeRegistry {
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config) {
         return create(config,
-                      OidcTenantContextFactory.create(
-                              OidcOutboundPolicy.targetClientCredentialsGrantEnabled(config.outboundTargets()),
-                              OidcOutboundPolicy.targetTokenExchangeEnabled(config.outboundTargets()),
-                              OidcMixUpProtection.issuerParameterRequiredTenants(config)));
+                      OidcTenantContextFactory.create(OidcMixUpProtection.issuerParameterRequiredTenants(config)));
     }
 
     static OidcTenantRuntimeRegistry create(OidcProviderConfig config,
@@ -77,15 +74,18 @@ final class OidcTenantRuntimeRegistry {
     }
 
     Optional<OidcTenantContext> tenantContext(ProviderRequest request) {
-        requireOpen();
-        return tenantResolver.tenantId(request)
-                .flatMap(this::tenantContext);
+        return select(request).flatMap(selection -> tenantContext(selection.tenantId()));
     }
 
     Optional<OidcTenantConfig> tenantConfig(ProviderRequest request) {
+        return select(request).map(TenantSelection::config);
+    }
+
+    Optional<TenantSelection> select(ProviderRequest request) {
         requireOpen();
         return tenantResolver.tenantId(request)
-                .flatMap(this::tenantConfig);
+                .flatMap(tenantId -> tenantConfig(tenantId)
+                        .map(tenantConfig -> new TenantSelection(tenantId, tenantConfig)));
     }
 
     Optional<OidcTenantContext> tenantContext(String tenantId) {
@@ -214,6 +214,9 @@ final class OidcTenantRuntimeRegistry {
          */
         return cookieStateHandlers.computeIfAbsent(tenantId,
                                                    _ -> OidcCookieStateHandler.create(tenantId, tenantConfig));
+    }
+
+    record TenantSelection(String tenantId, OidcTenantConfig config) {
     }
 
     static final class UnavailableException extends IllegalStateException {

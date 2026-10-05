@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -28,18 +27,7 @@ import io.helidon.json.JsonObject;
 final class OidcRefreshTokenManager {
     private static final System.Logger LOGGER = System.getLogger(OidcRefreshTokenManager.class.getName());
 
-    private final OidcIdTokenValidator idTokenValidator;
-    private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
-
-    OidcRefreshTokenManager(Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
-        this(new OidcIdTokenValidator(), accessTokenValidators);
-    }
-
-    private OidcRefreshTokenManager(OidcIdTokenValidator idTokenValidator,
-                                    Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators) {
-        this.idTokenValidator = idTokenValidator;
-        this.accessTokenValidators = accessTokenValidators;
-    }
+    private final OidcIdTokenValidator idTokenValidator = new OidcIdTokenValidator();
 
     RefreshResult refreshIfNeeded(OidcLocalAuthenticationResult authenticationResult,
                                   OidcTenantContext tenantContext,
@@ -51,7 +39,7 @@ final class OidcRefreshTokenManager {
         }
 
         Instant expiresAt = accessTokenExpiresAt.orElseThrow();
-        if (!refreshNeeded(expiresAt, tenantContext.tokenValidation().clockSkew(), now)) {
+        if (OidcTokenLifetime.activeAt(expiresAt, now, OidcTokenLifetime.DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN)) {
             return RefreshResult.authenticated(authenticationResult);
         }
 
@@ -90,33 +78,9 @@ final class OidcRefreshTokenManager {
                                       "Token Endpoint refresh response did not include expires_in",
                                       Optional.empty());
             }
-            Optional<OidcTokenValidationMethod> validationMethod = tenantContext.tokenValidation().method();
-            if (validationMethod.isPresent()) {
-                OidcAccessTokenValidator accessTokenValidator = accessTokenValidators.get(
-                        validationMethod.orElseThrow());
-                if (accessTokenValidator == null) {
-                    return refreshFailure(authenticationResult,
-                                          expiresAt,
-                                          now,
-                                          "Refreshed access token validation is not implemented for method: "
-                                                  + validationMethod.orElseThrow(),
-                                          Optional.empty());
-                }
-                OidcValidationResult<OidcValidatedAccessToken> accessTokenValidationResult =
-                        accessTokenValidator.validate(OidcAccessTokenValidationRequest
-                                                              .refreshedAuthorizationCodeAccessToken(
-                                                                      tokenResponse.accessToken(),
-                                                                      tenantContext,
-                                                                      now));
-                if (!accessTokenValidationResult.succeeded()) {
-                    return refreshFailure(authenticationResult,
-                                          expiresAt,
-                                          now,
-                                          accessTokenValidationResult.errorDescription()
-                                                  .orElse("Refreshed access token validation failed"),
-                                          accessTokenValidationResult.cause());
-                }
-            }
+            // This RP is not the resource server for an arbitrary refreshed access token. Its issuer, keys, and
+            // audience can differ from those configured for inbound API Bearer tokens. Keep it opaque; the validated
+            // ID Token (and, when enabled, UserInfo subject binding) remains the source of browser identity.
 
             OidcValidatedIdToken idToken = authenticationResult.idToken();
             Optional<String> refreshedIdToken = tokenResponse.idToken();
@@ -239,10 +203,6 @@ final class OidcRefreshTokenManager {
                 .accessTokenExpiresAt(accessTokenExpiresAt)
                 .buildPrototype();
         return OidcLocalAuthenticationResult.fromStoredValues(state);
-    }
-
-    private boolean refreshNeeded(Instant expiresAt, Duration skew, Instant now) {
-        return !OidcTokenLifetime.activeAt(expiresAt, now, skew);
     }
 
     private boolean accessTokenExpired(Instant expiresAt, Instant now) {

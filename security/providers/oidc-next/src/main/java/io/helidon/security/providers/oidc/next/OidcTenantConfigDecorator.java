@@ -88,6 +88,9 @@ final class OidcTenantConfigDecorator
                 .ifPresent(OidcTenantConfigDecorator::validateTokenValidation);
         target.issuer().ifPresent(issuer -> OidcEndpointUris.validateIssuerUri(
                 issuer, target.endpoints().tlsRequired() || target.outboundMutualTls()));
+        target.protectedResource().map(OidcProtectedResourceConfig::tokenValidation)
+                .flatMap(OidcTokenValidationConfig::issuer)
+                .ifPresent(issuer -> OidcEndpointUris.validateIssuerUri(issuer, target.endpoints().tlsRequired()));
         validateAuthorizationCode(target, target.authorizationCode(), target.endpoints());
         validateUserInfo(target, target.userInfo(), target.authorizationCode(), target.endpoints());
         validateLogout(target, target.logout(), target.authorizationCode(), target.endpoints());
@@ -246,6 +249,18 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateTokenValidation(OidcTokenValidationConfig tokenValidation) {
+        if (tokenValidation.issuer().isPresent() && tokenValidation.method().isEmpty()) {
+            throw new IllegalArgumentException("token-validation.issuer requires token-validation.method");
+        }
+        if (tokenValidation.jwksUri().isPresent()) {
+            if (tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+                throw new IllegalArgumentException("token-validation.jwks-uri requires token-validation.method JWT");
+            }
+            if (tokenValidation.verificationJwk().isPresent()) {
+                throw new IllegalArgumentException(
+                        "token-validation.jwks-uri and verification-jwk cannot both be configured");
+            }
+        }
         if (tokenValidation.jwt()
                 .map(OidcJwtAccessTokenConfig::profile)
                 .filter(OidcJwtAccessTokenProfile.CUSTOM::equals)
@@ -815,23 +830,38 @@ final class OidcTenantConfigDecorator
     private static void validateJwtAccessTokenValidation(OidcTenantConfig.BuilderBase<?, ?> tenant,
                                                          OidcTokenValidationConfig tokenValidation,
                                                          OidcEndpointConfig endpoints) {
-        if (tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
+        if (tokenValidation.issuer().isEmpty() && tenant.issuer().isEmpty() && endpoints.wellKnownUri().isEmpty()) {
             throw new IllegalArgumentException(
-                    "issuer or well-known-uri must be configured when JWT access-token validation is enabled");
+                    "issuer or well-known-uri (or token-validation.issuer) must be configured when JWT access-token "
+                            + "validation is enabled");
         }
+        if (tokenValidation.issuer().isPresent() && tenant.issuer().isPresent()
+                && !tokenValidation.issuer().equals(tenant.issuer())
+                && tokenValidation.jwksUri().isEmpty() && tokenValidation.verificationJwk().isEmpty()) {
+            throw new IllegalArgumentException("token-validation.jwks-uri or verification-jwk is required when "
+                                                       + "the access-token issuer differs from the OIDC issuer");
+        }
+        tokenValidation.jwksUri().ifPresent(uri -> {
+            OidcEndpointUris.validateJwksUri(uri, endpoints.tlsRequired());
+            if ("file".equalsIgnoreCase(uri.getScheme()) || uri.getRawFragment() != null) {
+                throw new IllegalArgumentException("token-validation.jwks-uri must be an HTTP(S) URI without a fragment");
+            }
+        });
         if (tokenValidation.verificationJwk().isEmpty()) {
             if (tokenValidation.allowedAlgorithms().stream()
                     .anyMatch(algorithm -> algorithm.toUpperCase(Locale.ROOT).startsWith("HS"))) {
                 throw new IllegalArgumentException(
                         "token-validation.verification-jwk must be configured for HMAC access-token algorithms");
             }
-            Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
-            OidcEndpointUris.requireEndpointOrWellKnown(endpoints.jwksUri(),
-                                                        wellKnownUri,
-                                                        "jwks-uri",
-                                                        "JWT access-token validation",
-                                                        endpoints.tlsRequired(),
-                                                        OidcEndpointUris::validateJwksUri);
+            if (tokenValidation.jwksUri().isEmpty()) {
+                Optional<URI> wellKnownUri = OidcProviderMetadata.wellKnownUri(tenant.issuer(), endpoints);
+                OidcEndpointUris.requireEndpointOrWellKnown(endpoints.jwksUri(),
+                                                            wellKnownUri,
+                                                            "jwks-uri",
+                                                            "JWT access-token validation",
+                                                            endpoints.tlsRequired(),
+                                                            OidcEndpointUris::validateJwksUri);
+            }
         }
         if (tokenValidation.audienceValidationEnabled()) {
             /*
@@ -886,6 +916,7 @@ final class OidcTenantConfigDecorator
                             "token-validation.audience must be configured when introspection is enabled"));
         }
         if (tenant.issuer().isEmpty()
+                && tokenValidation.issuer().isEmpty()
                 && wellKnownUri.isEmpty()
                 && tenant.subjectMapping().principalIdNamespace().isEmpty()) {
             throw new IllegalArgumentException("subject-mapping.principal-id-namespace must be configured for "

@@ -646,10 +646,14 @@ class OidcTokenExchangeGrantTest {
 
     @Test
     void tokenExchangeRequiresConfidentialClient() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> provider(publicClientTenant(), tokenExchangeTarget()));
+        try (OidcProvider provider = provider(publicClientTenant(), tokenExchangeTarget())) {
+            OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                          outboundEnvironment(), EndpointConfig.create());
 
-        assertThat(thrown.getMessage(), containsString("Token Endpoint authentication cannot be NONE"));
+            assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(response.description().orElseThrow(), is("Token Exchange failed"));
+            assertThat(REQUEST_COUNT.get(), is(0));
+        }
     }
 
     @Test
@@ -692,12 +696,11 @@ class OidcTokenExchangeGrantTest {
                             } else {
                                 assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()),
                                            is(false));
-                                assertThat(response.description().orElseThrow(), is(endpointPolicy
-                                        ? "Token Exchange failed" : "OIDC tenant is unavailable"));
+                                assertThat(response.description().orElseThrow(), is("Token Exchange failed"));
                             }
                         }
                         assertThat(provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow().ready(),
-                                   is(endpointPolicy || supported));
+                                   is(true));
                     }
                 });
             }

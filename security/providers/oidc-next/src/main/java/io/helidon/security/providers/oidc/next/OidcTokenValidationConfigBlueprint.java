@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -25,8 +26,7 @@ import io.helidon.builder.api.Prototype;
 import io.helidon.common.configurable.ResourceConfig;
 
 /**
- * Access-token validation configuration for Protected Resource Bearer Token requests and refreshed Authorization Code
- * Flow access tokens.
+ * Access-token validation configuration for Protected Resource Bearer Token requests.
  */
 @Prototype.Blueprint
 @Prototype.Configured
@@ -38,6 +38,19 @@ interface OidcTokenValidationConfigBlueprint {
      */
     @Option.Configured
     Optional<OidcTokenValidationMethod> method();
+
+    /**
+     * Expected access-token issuer, independent of the OpenID Connect issuer used for ID Tokens.
+     * <p>
+     * Defaults to the configured or discovered tenant issuer. Set this when the resource server trusts access tokens
+     * from a different, explicitly identified authority. JWT verification then also needs a separately configured
+     * {@link #jwksUri() JWK Set URI} or {@link #verificationJwk() local keys}; it never silently reuses keys discovered
+     * for another issuer. A returned introspection {@code iss} must match this value when present.
+     *
+     * @return trusted access-token issuer
+     */
+    @Option.Configured
+    Optional<String> issuer();
 
     /**
      * JWT access-token layout requirements.
@@ -95,9 +108,7 @@ interface OidcTokenValidationConfigBlueprint {
     /**
      * RFC 8705 certificate-bound access-token validation configuration.
      * <p>
-     * Applies to Protected Resource Bearer Token requests. Refreshed Authorization Code Flow access-token validation
-     * continues to reject sender-constrained access tokens because the inbound request client certificate is not the
-     * OAuth client certificate used at the Token Endpoint.
+     * Applies to Protected Resource Bearer Token requests.
      *
      * @return certificate-bound access-token validation configuration
      */
@@ -114,7 +125,8 @@ interface OidcTokenValidationConfigBlueprint {
      * The keys must be provisioned by the trusted authorization server. Filesystem, classpath, and inline content
      * sources are supported; URI sources are rejected before opening. The tenant JWK refresh settings apply.
      * <p>
-     * When absent, access tokens use the provider's public JWK Set. This option requires {@link #method()} to be
+     * When absent, access tokens use {@link #jwksUri()} if configured, otherwise the provider's public JWK Set if its
+     * issuer matches the trusted access-token issuer. This option requires {@link #method()} to be
      * {@link OidcTokenValidationMethod#JWT}. A trusted issuer is required with either source.
      *
      * @return local access-token verification JWK Set resource configuration
@@ -122,6 +134,20 @@ interface OidcTokenValidationConfigBlueprint {
     @Option.Configured
     @Option.Confidential
     Optional<ResourceConfig> verificationJwk();
+
+    /**
+     * Public JWK Set URI for independently validated JWT access tokens.
+     * <p>
+     * Configure this when the access-token issuer differs from the OIDC issuer or uses different signing keys. The
+     * tenant WebClient fetches these public keys with the normal JWK refresh policy, without redirects or automatic
+     * OP-adapter bearer credentials. Explicitly configured WebClient headers and TLS settings still apply.
+     * HTTPS is required unless {@code endpoints.tls-required} is disabled for development. Mutually exclusive with
+     * {@link #verificationJwk()}; HMAC keys must instead be provisioned locally.
+     *
+     * @return access-token JWK Set URI
+     */
+    @Option.Configured
+    Optional<URI> jwksUri();
 
     /**
      * Allowed JWS algorithms for JWT access tokens.

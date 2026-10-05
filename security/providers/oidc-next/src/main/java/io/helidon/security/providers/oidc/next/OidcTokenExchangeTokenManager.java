@@ -49,11 +49,11 @@ final class OidcTokenExchangeTokenManager {
                                          policy.tokenExchangeScope().orElse(""),
                                          policy.tokenExchangeResource().orElse(""),
                                          policy.tokenExchangeAudience().orElse(""));
-        Duration clockSkew = tenantContext.tokenValidation().clockSkew();
+        Duration renewalMargin = OidcTokenLifetime.DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN;
         return tokens.resolve(cacheKey,
-                              cachedToken -> cachedToken.activeAt(now, clockSkew),
+                              cachedToken -> cachedToken.activeAt(now, renewalMargin),
                               cachedToken -> OidcTokenExchangeResult.success(cachedToken.tokenResponse()),
-                              () -> loadToken(endpointClientSupplier, policy, subjectToken, now, clockSkew),
+                              () -> loadToken(endpointClientSupplier, policy, subjectToken, now, renewalMargin),
                               remoteWorkLimiter,
                               () -> OidcTokenExchangeResult.failure("Token Exchange capacity is exhausted"));
     }
@@ -63,7 +63,7 @@ final class OidcTokenExchangeTokenManager {
             OidcOutboundPolicy policy,
             String subjectToken,
             Instant now,
-            Duration clockSkew) {
+            Duration renewalMargin) {
         OidcEndpointClient endpointClient = Objects.requireNonNull(endpointClientSupplier.get());
         OidcTokenExchangeResult result = endpointClient.tokenExchange(subjectToken,
                                                                       policy.tokenExchangeScope(),
@@ -82,7 +82,7 @@ final class OidcTokenExchangeTokenManager {
         }
 
         CachedToken cachedToken = new CachedToken(tokenResponse, OidcTokenLifetime.expiresAt(now, expiresIn.orElseThrow()));
-        return cachedToken.activeAt(now, clockSkew)
+        return cachedToken.activeAt(now, renewalMargin)
                 ? OidcSingleFlightCache.Resolution.cache(cachedToken, result)
                 : OidcSingleFlightCache.Resolution.doNotCache(result);
     }
@@ -95,8 +95,8 @@ final class OidcTokenExchangeTokenManager {
     }
 
     private record CachedToken(OidcTokenExchangeResponse tokenResponse, Instant expiresAt) {
-        private boolean activeAt(Instant now, Duration clockSkew) {
-            return OidcTokenLifetime.activeAt(expiresAt, now, clockSkew);
+        private boolean activeAt(Instant now, Duration renewalMargin) {
+            return OidcTokenLifetime.activeAt(expiresAt, now, renewalMargin);
         }
     }
 }

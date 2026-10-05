@@ -283,8 +283,18 @@ final class OidcTenantContext {
                                                                                                endpointClient));
             Optional<OidcJwkSetManager> accessTokenJwkSetManager = tenantConfig.protectedResource()
                     .map(OidcProtectedResourceConfig::tokenValidation)
-                    .flatMap(OidcTokenValidationConfig::verificationJwk)
-                    .map(resource -> OidcJwkSetManager.createLocal(tenantId, resource, Clock.systemUTC(), tenantConfig.jwkSet()));
+                    .filter(validation -> validation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent())
+                    .flatMap(validation -> validation.verificationJwk()
+                            .map(resource -> OidcJwkSetManager.createLocal(tenantId,
+                                                                            resource,
+                                                                            Clock.systemUTC(),
+                                                                            tenantConfig.jwkSet()))
+                            .or(() -> validation.jwksUri()
+                                    .map(uri -> OidcJwkSetManager.createRemote(tenantId,
+                                                                               uri,
+                                                                               webClient,
+                                                                               Clock.systemUTC(),
+                                                                               tenantConfig.jwkSet()))));
             return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
                                         endpointClient,

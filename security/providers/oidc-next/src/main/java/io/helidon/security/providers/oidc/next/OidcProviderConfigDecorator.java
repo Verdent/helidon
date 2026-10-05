@@ -119,24 +119,8 @@ final class OidcProviderConfigDecorator
             }
         }
 
-        if (OidcOutboundPolicy.targetClientCredentialsGrantEnabled(target.outboundTargets())) {
-            target.tenants()
-                    .values()
-                    .stream()
-                    .filter(OidcTenantConfig::enabled)
-                    .forEach(tenant -> OidcClientAuthenticationConfigValidator.validateClientCredentialsGrant(
-                            tenant,
-                            tenant.endpoints(),
-                            "Client Credentials Grant"));
-        }
-        if (OidcOutboundPolicy.targetTokenExchangeEnabled(target.outboundTargets())) {
-            target.tenants()
-                    .values()
-                    .stream()
-                    .filter(OidcTenantConfig::enabled)
-                    .forEach(tenant -> OidcClientAuthenticationConfigValidator.validateTokenExchange(tenant,
-                                                                                                      tenant.endpoints()));
-        }
+        // Target policies are selected per request. Their grant requirements must not invalidate unrelated tenants;
+        // the outbound orchestrator validates the selected tenant before it sends a token request.
     }
 
     private static boolean singleTenantConfigured(OidcProviderConfig.BuilderBase<?, ?> target) {

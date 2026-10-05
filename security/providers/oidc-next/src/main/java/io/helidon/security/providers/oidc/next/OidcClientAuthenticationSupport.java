@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -57,7 +58,7 @@ final class OidcClientAuthenticationSupport {
     private final Optional<String> clientSecret;
     private final OidcClientAssertionConfig assertion;
     private final String endpointName;
-    private final Jwk privateKeyJwk;
+    private final Jwk assertionJwk;
 
     private OidcClientAuthenticationSupport(OidcClientAuthenticationMethod method,
                                             Optional<String> clientId,
@@ -69,9 +70,12 @@ final class OidcClientAuthenticationSupport {
         this.clientSecret = clientSecret;
         this.assertion = assertion;
         this.endpointName = endpointName;
-        this.privateKeyJwk = method == OidcClientAuthenticationMethod.PRIVATE_KEY_JWT
-                ? privateKeyJwk(assertion, endpointName)
-                : null;
+        // The tenant's assertion key is stable; only the signed JWT and its jti/timestamps are per request.
+        this.assertionJwk = switch (method) {
+        case CLIENT_SECRET_JWT -> clientSecretJwk();
+        case PRIVATE_KEY_JWT -> privateKeyJwk(assertion, endpointName);
+        default -> null;
+        };
     }
 
     static OidcClientAuthenticationSupport tokenEndpoint(OidcTenantConfig tenantConfig) {
@@ -211,7 +215,7 @@ final class OidcClientAuthenticationSupport {
     Optional<String> clientAssertionAlgorithm() {
         return switch (method) {
         case CLIENT_SECRET_JWT -> Optional.of(clientSecretJwtAlgorithm(assertion));
-        case PRIVATE_KEY_JWT -> Optional.of(privateKeyJwk.algorithm());
+        case PRIVATE_KEY_JWT -> Optional.of(assertionJwk.algorithm());
         default -> Optional.empty();
         };
     }
@@ -343,11 +347,7 @@ final class OidcClientAuthenticationSupport {
 
     private String clientAssertion(URI endpointUri) {
         String clientId = this.clientId.orElseThrow();
-        Jwk jwk = switch (method) {
-        case CLIENT_SECRET_JWT -> clientSecretJwk();
-        case PRIVATE_KEY_JWT -> privateKeyJwk;
-        default -> throw new IllegalStateException("Unexpected client assertion authentication method: " + method);
-        };
+        Jwk jwk = Objects.requireNonNull(assertionJwk, "Client assertion key is not configured for " + method);
         String algorithm = method == OidcClientAuthenticationMethod.CLIENT_SECRET_JWT
                 ? clientSecretJwtAlgorithm(assertion)
                 : jwk.algorithm();

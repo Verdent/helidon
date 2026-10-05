@@ -249,6 +249,55 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void accessTokenIssuerAndJwkSetAreIndependentFromOidcIssuer() {
+        String apiIssuer = "https://access-issuer.example";
+        try (OidcProvider provider = provider(true, true, MISSING_JWKS_URI, tenant -> tenant
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .issuer(apiIssuer)
+                        .jwksUri(remoteJwksUri))))) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+
+            assertThat(context.ready(), is(true));
+            assertThat(context.metadata().issuer(), is(Optional.of(ISSUER.toString())));
+            assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(MISSING_JWKS_URI)));
+            assertThat(context.accessTokenJwkSetManager().jwkSetUri(), is(Optional.of(remoteJwksUri)));
+
+            AuthenticationResponse accepted = authenticate(provider, signedToken(it -> it.issuer(apiIssuer)));
+            AuthenticationResponse rejected = authenticate(provider, signedToken(it -> it.issuer(ISSUER.toString())));
+
+            assertThat(accepted.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(accepted.user().orElseThrow().principal().id(),
+                       is(OidcTestIdentities.issuerSubject(apiIssuer, SUBJECT)));
+            assertInvalidToken(rejected, "Bearer Token JWT claims are invalid");
+            assertThat(remoteJwkSetRequests.get(), is(1));
+        }
+    }
+
+    @Test
+    void apiOnlyTenantNeedsNoOidcIssuerWhenAccessTokenAuthorityIsPinned() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .endpoints(endpoints -> endpoints.tlsRequired(false))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .issuer(ISSUER.toString())
+                        .jwksUri(remoteJwksUri)
+                        .audience(AUDIENCE)))
+                .buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
+                .putTenant("default", tenant).buildPrototype())) {
+            OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+
+            assertThat(context.ready(), is(true));
+            assertThat(context.metadata().issuer().isEmpty(), is(true));
+            assertThat(authenticate(provider, signedToken(_ -> { })).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(remoteJwkSetRequests.get(), is(1));
+            assertThat(wellKnownRequests.get(), is(0));
+        }
+    }
+
+    @Test
     void jwtPrincipalRetainsRawSubjectAndIssuerForApplications() {
         String token = signedToken(it -> it.preferredUsername(null));
 

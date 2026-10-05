@@ -183,10 +183,11 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     }
 
     private void processAuthorizationResponse(ServerRequest request, ServerResponse response) {
+        Map<String, List<String>> cookies = request.headers().cookies().toMap();
         OidcAuthorizationResponseResult result;
         try {
             result = authorizationResponseProcessor.process(request.query(),
-                                                            request.headers().cookies().toMap(),
+                                                            cookies,
                                                             request.requestedUri().toUri(),
                                                             Instant.now());
         } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
@@ -196,7 +197,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         }
         result.stateCookies().forEach(response.headers()::addCookie);
         if (result.stateValidated()) {
-            processTokenEndpointExchange(result, request.headers().cookies().toMap(), response);
+            processTokenEndpointExchange(result, cookies, response);
             return;
         }
         if (result.authorizationError()) {

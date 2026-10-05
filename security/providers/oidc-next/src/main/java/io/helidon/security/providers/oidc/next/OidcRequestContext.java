@@ -33,28 +33,45 @@ import io.helidon.security.SecurityEnvironment;
 final class OidcRequestContext {
     private final ProviderRequest providerRequest;
     private final Optional<OidcTenantContext> tenantContext;
+    private final Optional<OidcEndpointPolicy> endpointPolicy;
     private OidcBearerTokenExtractionResult bearerTokenExtractionResult;
     private Map<String, List<String>> cookies;
 
     OidcRequestContext(ProviderRequest providerRequest,
                        OidcTenantRuntimeRegistry tenantRuntimeRegistry) {
+        this(providerRequest, tenantRuntimeRegistry.tenantContext(providerRequest));
+    }
+
+    private OidcRequestContext(ProviderRequest providerRequest,
+                               Optional<OidcTenantContext> tenantContext) {
+        this(providerRequest,
+             tenantContext,
+             tenantContext.filter(OidcTenantContext::ready)
+                     .flatMap(tenant -> resolveEndpointPolicy(providerRequest, tenant.tenantConfig())));
+    }
+
+    OidcRequestContext(ProviderRequest providerRequest,
+                       Optional<OidcTenantContext> tenantContext,
+                       Optional<OidcEndpointPolicy> endpointPolicy) {
         this.providerRequest = providerRequest;
-        this.tenantContext = tenantRuntimeRegistry.tenantContext(providerRequest);
+        this.tenantContext = tenantContext;
+        this.endpointPolicy = endpointPolicy;
     }
 
     Optional<OidcEndpointPolicy> endpointPolicy() {
-        if (tenantContext.filter(OidcTenantContext::ready).isEmpty()) {
-            return Optional.empty();
-        }
+        return tenantContext.filter(OidcTenantContext::ready).flatMap(_ -> endpointPolicy);
+    }
 
+    static Optional<OidcEndpointPolicy> resolveEndpointPolicy(ProviderRequest providerRequest,
+                                                              OidcTenantConfig tenantConfig) {
         EndpointConfig endpointConfig = providerRequest.endpointConfig();
         if (endpointConfig == null) {
-            return tenantContext.flatMap(OidcTenantContext::endpointPolicy);
+            return OidcEndpointPolicyResolver.resolve(tenantConfig);
         }
         return endpointConfigInstance(endpointConfig, OidcEndpointPolicy.class)
                 .or(() -> endpointConfigInstance(endpointConfig, OidcEndpointPolicyConfig.class)
-                        .flatMap(this::endpointPolicy))
-                .or(() -> tenantContext.flatMap(OidcTenantContext::endpointPolicy));
+                        .flatMap(config -> OidcEndpointPolicyResolver.resolve(tenantConfig, config)))
+                .or(() -> OidcEndpointPolicyResolver.resolve(tenantConfig));
     }
 
     Optional<OidcTenantContext> tenantContext() {
@@ -139,12 +156,6 @@ final class OidcRequestContext {
                 .flatMap(Optional::stream)
                 .map(clazz::cast)
                 .findFirst();
-    }
-
-    private Optional<OidcEndpointPolicy> endpointPolicy(OidcEndpointPolicyConfig endpointPolicyConfig) {
-        return tenantContext
-                .filter(OidcTenantContext::ready)
-                .flatMap(tenant -> OidcEndpointPolicyResolver.resolve(tenant.tenantConfig(), endpointPolicyConfig));
     }
 
     private void parseCookieHeader(String headerValue, Map<String, List<String>> result) {

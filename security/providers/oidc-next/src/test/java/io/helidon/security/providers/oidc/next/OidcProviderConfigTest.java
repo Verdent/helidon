@@ -1496,6 +1496,70 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void jwtAccessTokenTrustCanBeConfiguredIndependentlyOfOidcIssuer() {
+        URI accessJwksUri = URI.create("https://access-issuer.example/keys");
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of(
+                        "tenants.default.issuer", ISSUER.toString(),
+                        "tenants.default.protected-resource.token-validation.method", "JWT",
+                        "tenants.default.protected-resource.token-validation.audience", AUDIENCE,
+                        "tenants.default.protected-resource.token-validation.issuer", "https://access-issuer.example",
+                        "tenants.default.protected-resource.token-validation.jwks-uri", accessJwksUri.toString())))
+                .build();
+
+        OidcTenantConfig tenant = OidcProviderConfig.create(config).tenants().get("default");
+
+        assertThat(tenant.issuer().orElseThrow(), is(ISSUER.toString()));
+        assertThat(tenant.protectedResource().orElseThrow().tokenValidation().issuer().orElseThrow(),
+                   is("https://access-issuer.example"));
+        assertThat(tenant.protectedResource().orElseThrow().tokenValidation().jwksUri().orElseThrow(), is(accessJwksUri));
+    }
+
+    @Test
+    void differentAccessTokenIssuerRequiresIndependentVerificationKeys() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .endpoints(endpoints -> endpoints.jwksUri(JWKS_URI))
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience(AUDIENCE)
+                        .issuer("https://access-issuer.example")))
+                .buildPrototype());
+
+        assertThat(thrown.getMessage(), containsString("token-validation.jwks-uri or verification-jwk is required"));
+    }
+
+    @Test
+    void accessTokenJwkSetRejectsConflictingOrInsecureSources() {
+        IllegalArgumentException conflicting = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantConfig.builder()
+                        .issuer(ISSUER.toString())
+                        .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                                .method(OidcTokenValidationMethod.JWT)
+                                .audience(AUDIENCE)
+                                .jwksUri(JWKS_URI)
+                                .verificationJwk(ResourceConfig.builder()
+                                                         .resourcePath("oidc-next-verify-public-jwk.json")
+                                                         .buildPrototype())))
+                        .buildPrototype());
+        assertThat(conflicting.getMessage(), containsString("cannot both be configured"));
+
+        for (URI uri : List.of(URI.create("http://issuer.example/jwks"),
+                               URI.create("file:/tmp/keys.json"),
+                               URI.create("https://issuer.example/jwks#fragment"))) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                    () -> OidcTenantConfig.builder()
+                            .issuer(ISSUER.toString())
+                            .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                                    .method(OidcTokenValidationMethod.JWT)
+                                    .audience(AUDIENCE)
+                                    .jwksUri(uri)))
+                            .buildPrototype());
+            assertThat(thrown.getMessage(), containsString("jwks-uri"));
+        }
+    }
+
+    @Test
     void principalIdNamespaceRejectsBlankPaddedAndMalformedUnicodeValues() {
         for (String namespace : List.of("", " ", " padded", "padded ", "\uD800", "namespace\uDC00")) {
             IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -2629,10 +2693,7 @@ class OidcProviderConfigTest {
                         .tlsRequired(false))
                 .buildPrototype();
         IllegalArgumentException outbound = assertThrows(IllegalArgumentException.class,
-                () -> OidcProviderConfig.builder()
-                        .putTenant("default", clientCredentials)
-                        .outboundTargets(List.of(clientCredentialsTarget()))
-                        .buildPrototype());
+                                                        () -> validateClientCredentialsGrant(clientCredentials));
         assertThat(outbound.getMessage(), containsString("token-endpoint-uri must use https"));
 
         IllegalArgumentException issuer = assertThrows(IllegalArgumentException.class,
@@ -2722,22 +2783,20 @@ class OidcProviderConfigTest {
                         Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
+        OidcProviderConfig missingTls = OidcProviderConfig.create(missingMutualTlsWebClientConfig);
         thrown = assertThrows(IllegalArgumentException.class,
-                              () -> OidcProviderConfig.create(missingMutualTlsWebClientConfig));
+                              () -> validateClientCredentialsGrant(missingTls.tenants().get("default")));
 
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default",
-                           OidcTenantConfig.builder()
-                                   .clientId("client-id")
-                                   .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
-                                   .webClient(mutualTlsWebClient())
-                                   .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
-                                           .tlsRequired(false))
-                                   .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+        OidcTenantConfig insecureEndpoint = OidcTenantConfig.builder()
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
+                        .tlsRequired(false))
+                .buildPrototype();
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(insecureEndpoint));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
     }
@@ -3107,77 +3166,61 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void clientCredentialsGrantRequiresClientAuthenticationAndTokenEndpoint() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.create())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+    void selectedClientCredentialsGrantRequiresClientAuthenticationAndTokenEndpoint() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> validateClientCredentialsGrant(OidcTenantConfig.create()));
 
         assertThat(thrown.getMessage(), containsString("client-id"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
-                        .clientId("client-id")
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder().clientId("client-id").buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("Token Endpoint authentication"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder()
                         .clientId("client-id")
                         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+                        .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder()
                         .clientId("client-id")
                         .clientSecret("client-secret-value")
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+                        .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder()
                         .clientId("client-id")
                         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                         .endpoints(it -> it.tokenEndpointUri(TOKEN_ENDPOINT_URI))
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+                        .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder()
                         .clientId("client-id")
                         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                         .webClient(mutualTlsWebClient())
                         .endpoints(it -> it.tokenEndpointUri(URI.create("http://issuer.example/token"))
                                 .tlsRequired(false))
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+                        .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
 
-        thrown = assertThrows(IllegalArgumentException.class, () -> OidcProviderConfig.builder()
-                .putTenant("default", OidcTenantConfig.builder()
+        thrown = assertThrows(IllegalArgumentException.class, () -> validateClientCredentialsGrant(
+                OidcTenantConfig.builder()
                         .issuer("http://issuer.example")
                         .clientId("client-id")
                         .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
                         .webClient(mutualTlsWebClient())
                         .endpoints(it -> it.tlsRequired(false))
-                        .buildPrototype())
-                .outboundTargets(List.of(clientCredentialsTarget()))
-                .buildPrototype());
+                        .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("well-known-uri must use https"));
 
@@ -3192,13 +3235,14 @@ class OidcProviderConfigTest {
                 .putTenant("default", mutualTlsClientCredentials)
                 .outboundTargets(List.of(clientCredentialsTarget()))
                 .buildPrototype();
+        validateClientCredentialsGrant(mutualTlsClientCredentials);
 
         assertThat(mutualTlsClientCredentials.tokenEndpointAuthenticationMethod().orElseThrow(),
                    is(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
     }
 
     @Test
-    void targetClientCredentialsGrantRequiresClientAuthenticationAndTlsTokenEndpoint() {
+    void configuredTargetDefersClientCredentialsValidationUntilSelected() {
         Config noneAuthenticationConfig = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
                         Map.entry("tenants.default.client-id", "client-id"),
@@ -3208,8 +3252,9 @@ class OidcProviderConfigTest {
                         Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
+        OidcProviderConfig noAuthentication = OidcProviderConfig.create(noneAuthenticationConfig);
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                                                       () -> OidcProviderConfig.create(noneAuthenticationConfig));
+                () -> validateClientCredentialsGrant(noAuthentication.tenants().get("default")));
 
         assertThat(thrown.getMessage(), containsString("Token Endpoint authentication cannot be NONE"));
 
@@ -3222,8 +3267,9 @@ class OidcProviderConfigTest {
                         Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
                 .build();
 
+        OidcProviderConfig insecureEndpoint = OidcProviderConfig.create(insecureTokenEndpointConfig);
         thrown = assertThrows(IllegalArgumentException.class,
-                              () -> OidcProviderConfig.create(insecureTokenEndpointConfig));
+                              () -> validateClientCredentialsGrant(insecureEndpoint.tenants().get("default")));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
     }
@@ -3416,6 +3462,12 @@ class OidcProviderConfigTest {
                                       .clientCredentialsGrantEnabled(true)
                                       .buildPrototype())
                 .build();
+    }
+
+    private static void validateClientCredentialsGrant(OidcTenantConfig tenant) {
+        OidcClientAuthenticationConfigValidator.validateClientCredentialsGrant(tenant,
+                                                                               tenant.endpoints(),
+                                                                               "Client Credentials Grant");
     }
 
     private static OidcTenantConfig.Builder userInfoTenantBuilder() {

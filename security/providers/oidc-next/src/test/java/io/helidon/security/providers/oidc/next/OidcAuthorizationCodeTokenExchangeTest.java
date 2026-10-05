@@ -714,7 +714,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                             .toString());
         OidcTenantConfig tenant = discoveredMutualTlsTenant(true, Optional.empty());
 
-        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+        OidcTenantContext context = OidcTenantContextFactory.create().create("default", tenant);
 
         assertThat(context.failureCause().map(Throwable::toString).orElse("ready"), context.ready(), is(true));
         assertThat(context.metadata().userInfoEndpointUri().isEmpty(), is(true));
@@ -743,7 +743,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                 .toString());
             OidcTenantConfig tenant = discoveredMutualTlsTenant(true, Optional.empty());
 
-            OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+            OidcTenantContext context = OidcTenantContextFactory.create().create("default", tenant);
 
             assertThat(alias, context.state(), is(OidcTenantState.FAILED));
             assertThat(context.failureCause().orElseThrow().getMessage(), containsString("user-info-endpoint-uri"));
@@ -759,7 +759,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         URI httpWellKnown = serverUri.resolve(".well-known/openid-configuration");
         OidcTenantConfig tenant = discoveredMutualTlsTenant(false, Optional.of(httpWellKnown));
 
-        OidcTenantContext context = OidcTenantContextFactory.create(false, false).create("default", tenant);
+        OidcTenantContext context = OidcTenantContextFactory.create().create("default", tenant);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("well-known-uri must use https"));

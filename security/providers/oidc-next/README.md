@@ -85,35 +85,20 @@ The supported standards surface is intentionally scoped:
   tokens, but DPoP proof validation, DPoP Token Endpoint behavior, nonce handling, replay protection, and outbound DPoP
   proof generation are not supported.
 
-## Provider Coverage Matrix
+## Provider Interoperability Coverage
 
-The matrix below describes current interoperability coverage. It is a test coverage map, not a conformance claim.
-Keycloak is the always-runnable Testcontainers baseline. The synthetic local IDP is still required for deterministic
-negative cases, strict protocol variants, and features that real providers do not expose predictably.
+The Docker-backed [provider contract tests](../../../tests/integration/security/oidc-next-providers/README.md) exercise
+the same 38 scenarios against real Keycloak and Authelia instances. They cover browser login, refresh, UserInfo,
+introspection, JWT access tokens, client authentication, signing-key rotation, PAR, signed Request Objects, encrypted
+ID Tokens, and outbound OAuth behavior where the provider supports it. Keycloak exercises signed Request Objects both
+alone and with PAR, as well as signed UserInfo and RP-Initiated Logout. Authelia issues opaque access tokens by default;
+its tests cover their introspection and use after refresh, with dedicated clients for RFC 9068 JWT access tokens.
+Provider-specific limitations and skipped scenarios are documented alongside the contract tests.
 
-| Capability | Keycloak CI coverage | Synthetic and unit coverage | Remaining provider gap |
-| --- | --- | --- | --- |
-| Discovery and OAuth metadata | Yes: discovery metadata and endpoint loading. | Metadata parsing, endpoint override, and startup validation. | Cloud metadata quirks. |
-| Authorization Code Flow | Yes: browser login, callback, mixed browser/API use. | Callback state, issuer, nonce, PKCE, cookie, and error boundaries. | Cloud redirect and cookie policies. |
-| Pushed Authorization Requests | Yes: PAR endpoint discovered from Keycloak. | PAR request/response and metadata enforcement. | Providers that require PAR. |
-| Secured Request Objects | No Keycloak CI path. | Signed and nested encrypted by-value/PAR JAR construction, metadata checks, and Nimbus interoperability. | FAPI-style providers requiring JAR. |
-| Refresh-token renewal | Yes: Keycloak refresh flow. | Refresh response parsing, token validation, rotation, and resource parameters. | Provider-specific refresh policies. |
-| JSON and JWT UserInfo | Yes: Keycloak JSON UserInfo. | Subject matching, signed JWS, direct JWE, nested JWS-in-JWE, and claim storage. | Real provider emitting signed or encrypted JWT UserInfo. |
-| RP-Initiated Logout | Yes: Keycloak end-session redirect. | Local logout, cookie clearing, redirect validation, and endpoint discovery. | Provider-specific logout parameters. |
-| Bearer introspection | Yes: valid, inactive, wrong-audience, and unknown tokens. | Response parsing, errors, issuer/audience/time validation, and endpoint failures. | Opaque-token cloud providers. |
-| JWT access tokens | Default Keycloak user and client-credentials tokens succeed with the YAML custom layout; RFC 9068 rejects the default layout. ID Token substitution and wrong audience are rejected. | RFC 9068 and custom layouts, required claims, token markers, and signature/issuer/time/audience validation. | Additional provider layouts and real providers issuing RFC 9068-style tokens. |
-| mTLS and certificate-bound tokens | No Keycloak CI path. | Token Endpoint mTLS config and certificate-bound access-token validation. | Real mTLS provider setup. |
-| Token Propagation | Yes: validated Keycloak token propagated through WebClient. | Audience validation, abstain/failure paths, and target matching. | Downstream audience policy variations. |
-| Client Credentials Grant | Yes: Keycloak token endpoint and outbound WebClient use. | Request shape, caching, auth methods, resources, and metadata checks. | Non-basic client authentication with real providers. |
-| Token Exchange | Yes: Keycloak standard token exchange. | RFC 8693 request shape, response validation, caching, and failures. | Provider-specific OBO/token-exchange variants. |
-| Multi-tenant routing | No dedicated Keycloak multi-issuer CI path. | Tenant resolution, tenant lifecycle, and route behavior. | Multi-provider deployments. |
-| Security-negative boundaries | Real providers are not used for most negative cases. | Bearer ambiguity, DPoP-bound rejection, state replay, malformed tokens, and endpoint errors. | Keep synthetic by design. |
-| Unsupported specs | No CI path. | Rejection or config guardrails where security-sensitive. | DPoP, JARM, RAR, revocation, and back-channel logout remain queued. |
-
-Manual or credentialed smoke tests should be added only when they prove a behavior Keycloak cannot cover. Good candidates
-are OCI IAM, Auth0, Okta, Microsoft Entra ID, or another provider required by Helidon users. Each smoke test should record
-metadata quirks, token endpoint authentication methods, token formats, UserInfo format, PAR/JAR/DPoP/JARM/RAR support,
-logout behavior, and mTLS or certificate-bound token support.
+Unit and synthetic integration tests cover malformed responses, security boundaries, concurrency, time-sensitive
+behavior, and variants not reliably produced by these providers. This is interoperability coverage, not an OpenID
+conformance or cloud-provider compatibility claim. In particular, live IDCS integration and end-to-end mTLS client
+authentication against an external provider still require separate validation.
 
 ## Configuration Shape
 

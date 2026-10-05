@@ -10,6 +10,7 @@ Helidon provides the following security providers for endpoint protection:
 | Provider                                      | Type           | Outbound supported | Description                                                       |
 |-----------------------------------------------|----------------|--------------------|-------------------------------------------------------------------|
 | [OIDC Provider][oidc-provider]                | Authentication | ✅                 | Open ID Connect supporting JWT, Scopes, Groups and OIDC code flow |
+| [OIDC Next Provider][oidc-next-provider]      | Authentication | ✅                 | OIDC code flow and API Bearer authentication with tenant-aware outbound OAuth |
 | [HTTP Basic Authentication][http-basic-authe] | Authentication | ✅                 | HTTP Basic authentication for local testing and demos             |
 | [Header Assertion][header-assertion]          | Authentication | ✅                 | Asserting a user based on a header value                          |
 | [HTTP Signatures][http-signatures]            | Authentication | ✅                 | Protecting service to service communication through signatures    |
@@ -20,6 +21,52 @@ The following providers are no longer evolved:
 | Provider                     | Type           | Outbound supported | Description                     |
 |------------------------------|----------------|--------------------|---------------------------------|
 | [JWT Provider][jwt-provider] | Authentication | ✅                 | JWT tokens passed from frontend |
+
+## OIDC Next Provider
+
+`oidc-next` is a separate OIDC Relying Party and OAuth protected-resource provider; the existing `oidc` provider
+remains available. Enable browser login with an `authorization-code` block, API Bearer authentication with a
+`protected-resource` block, or both. An `issuer` by itself does not enable either mode.
+
+### Maven Coordinates
+
+```xml [pom.xml]
+<dependency>
+  <groupId>io.helidon.security.providers</groupId>
+  <artifactId>helidon-security-providers-oidc-next</artifactId>
+</dependency>
+```
+
+### Browser Login
+
+Register the callback URI with the identity provider, and supply a strong cookie-protection secret. For Authorization
+Code Flow and logout, add `io.helidon.security.providers.oidc.next.OidcFeature` to the `WebServer` using the **same**
+`OidcProvider` instance that is registered with `SecurityFeature`; this shares tenant initialization and local session
+state with the callback routes.
+
+```yaml [application.yaml]
+security:
+  providers:
+  - oidc-next:
+      issuer: "https://issuer.example"
+      client-id: "${OIDC_CLIENT_ID}"
+      client-secret: "${OIDC_CLIENT_SECRET}"
+      authorization-code:
+        redirection-endpoint-uri: "https://app.example/oidc/callback"
+      cookies:
+        protection:
+          password: "${OIDC_COOKIE_PASSWORD}"
+```
+
+For API Bearer authentication, configure `protected-resource.token-validation` with an expected audience. Use JWT
+validation for RFC 9068 JWT access tokens (or an explicitly configured custom JWT layout), and introspection for opaque
+access tokens. Each tenant can configure its own issuer, endpoints, WebClient, and accepted credentials.
+
+### Configuration options
+
+<!--@include ../../config/io.helidon.security.providers.oidc.next.OidcProvider.md#configuration-options delim=--- offset=2 collapseTables=10 -->
+See [Configuration options][io-helidon-oidc-next-config].
+<!--/include-->
 
 ## OIDC Provider
 
@@ -861,6 +908,7 @@ configuration of this provider.
 
 - [Helidon Security Examples][helidon-security]
 - [Helidon OIDC Javadoc][helidon-oidc-jav]
+- [Helidon OIDC Next Javadoc][helidon-oidc-next-jav]
 - [Helidon HTTP Authentication Javadoc][helidon-http-aut]
 - [Helidon Header Authentication Javadoc][helidon-header-a]
 - [Helidon HTTP Signature Javadoc][helidon-http-sig]
@@ -868,6 +916,7 @@ configuration of this provider.
 - [Helidon JWT Javadoc][helidon-jwt-java]
 
 [oidc-provider]: #oidc-provider
+[oidc-next-provider]: #oidc-next-provider
 [http-basic-authe]: #http-basic-authentication-provider
 [header-assertion]: #header-authentication-provider
 [http-signatures]: #http-signatures-provider
@@ -878,11 +927,13 @@ configuration of this provider.
 [el-policy]: #expression-language-policy-validator
 [helidon-security]: https://github.com/helidon-io/helidon-examples/tree/helidon-27.x/examples/security
 [helidon-oidc-jav]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.oidc/module-summary.html
+[helidon-oidc-next-jav]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.oidc.next/module-summary.html
 [helidon-http-aut]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.httpauth/module-summary.html
 [helidon-header-a]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.header/module-summary.html
 [helidon-http-sig]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.httpsign/module-summary.html
 [helidon-abac-jav]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.abac/module-summary.html
 [helidon-jwt-java]: https://helidon.io/docs/v27/apidocs/io.helidon.security.providers.jwt/module-summary.html
+[io-helidon-oidc-next-config]: ../../config/io.helidon.security.providers.oidc.next.OidcProvider.md#configuration-options
 [io-helidon-secur]: ../../config/io.helidon.security.providers.oidc.OidcProvider.md#configuration-options
 [io-helidon-secur-2]: ../../config/io.helidon.security.providers.oidc.common.TenantConfig.md#configuration-options
 [io-helidon-secur-3]: ../../config/io.helidon.security.providers.httpauth.HttpBasicAuthProvider.md#configuration-options

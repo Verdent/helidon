@@ -199,7 +199,7 @@ abstract class OidcProviderContract {
     void refreshRenewsTheCookieAndPreservesTheUserIdentity() throws Exception {
         URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
         try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
-             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SHORT_LIVED, true,
                      tenant -> configureRefresh(tenant, recorder.uri()));
              TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
@@ -236,12 +236,12 @@ abstract class OidcProviderContract {
         require(IdpAdapter.Capability.REFRESH_TOKEN_REVOCATION);
         URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
         try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
-             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SHORT_LIVED, true,
                      tenant -> configureRefresh(tenant, recorder.uri()));
              TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
             String refreshToken = recorder.exchanges().getFirst().response().stringValue("refresh_token").orElseThrow();
-            revokeToken(IdpAdapter.ClientMode.BASIC, refreshToken, "refresh_token");
+            revokeToken(IdpAdapter.ClientMode.SHORT_LIVED, refreshToken, "refresh_token");
             try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
                 assertThat(recorder.diagnostics() + "; last error: "
                                    + recorder.exchanges().getLast().response().stringValue("error"),
@@ -603,14 +603,15 @@ abstract class OidcProviderContract {
     void assertRefreshRevocationServerErrorDoesNotRenewTheSession() throws Exception {
         URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
         try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
-             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SHORT_LIVED, true,
                      tenant -> configureRefresh(tenant, recorder.uri()));
              TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
             JsonObject initial = recorder.exchanges().getFirst().response();
             String cookieName = OidcCookieConfig.create().localAuthenticationCookieName();
             String originalCookie = browser.cookieValue(cookieName).orElseThrow();
-            revokeToken(IdpAdapter.ClientMode.BASIC, initial.stringValue("refresh_token").orElseThrow(), "refresh_token");
+            revokeToken(IdpAdapter.ClientMode.SHORT_LIVED, initial.stringValue("refresh_token").orElseThrow(),
+                        "refresh_token");
             try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
                 assertThat(recorder.diagnostics(), response.status(), is(Status.OK_200));
                 assertThat(response.as(JsonObject.class).stringValue("access_token"), is(initial.stringValue("access_token")));
@@ -684,7 +685,7 @@ abstract class OidcProviderContract {
         }
     }
 
-    private JsonObject userTokens(IdpAdapter.ClientMode mode) throws Exception {
+    JsonObject userTokens(IdpAdapter.ClientMode mode) throws Exception {
         String verifier = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
         String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
@@ -771,9 +772,6 @@ abstract class OidcProviderContract {
                 .scopes(List.of("openid", "profile", "email", "groups", "resource.read", "offline_access"))
                 .buildPrototype());
         tenant.endpoints(endpoints -> endpoints.tokenEndpointUri(tokenEndpoint));
-        OidcTokenValidationConfig validation = tenant.protectedResource().orElseThrow().tokenValidation();
-        tenant.protectedResource(resource -> resource.tokenValidation(OidcTokenValidationConfig.builder().from(validation)
-                .clockSkew(Duration.ofHours(2)).buildPrototype()));
     }
 
     private static URI withQueryParameter(URI uri, String name, String value) {

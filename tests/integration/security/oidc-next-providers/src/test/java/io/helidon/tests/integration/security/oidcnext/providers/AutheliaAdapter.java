@@ -271,6 +271,9 @@ final class AutheliaAdapter implements IdpAdapter {
                         .set("enable_client_debug_messages", true)
                         .set("hmac_secret", "test-oidc-hmac-secret-at-least-sixty-four-characters-long-1234567890")
                         .set("jwks", JsonArray.create(issuerKeys))
+                        .set("lifespans", JsonObject.builder().set("custom", JsonObject.builder()
+                                .set("short_lived", JsonObject.builder().set("access_token", "45s").build())
+                                .build()).build())
                         .set("scopes", JsonObject.builder().set("resource.read", JsonObject.builder()
                                 .setStrings("claims", List.of()).build()).build())
                         .set("claims_policies", JsonObject.builder().set("integration", JsonObject.builder()
@@ -295,6 +298,9 @@ final class AutheliaAdapter implements IdpAdapter {
                 .setStrings("response_types", service ? List.of() : List.of("code"))
                 .setStrings("scopes", service ? List.of("resource.read")
                         : List.of("openid", "profile", "email", "groups", "offline_access", "resource.read"));
+        if (mode == ClientMode.SHORT_LIVED) {
+            client.set("lifespan", "short_lived");
+        }
         if (mode == ClientMode.PUBLIC) {
             client.set("public", true).set("token_endpoint_auth_method", "none");
         } else if (mode == ClientMode.PRIVATE_JWT) {

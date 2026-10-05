@@ -44,6 +44,7 @@ be induced in a real provider.
 Authelia's unimplemented features are listed in its
 [OIDC support chart](https://www.authelia.com/integration/openid-connect/introduction/).
 Its regular access tokens are opaque, so common bearer scenarios use introspection.
+An Authelia-specific test verifies that the native access token is not a compact JOSE token.
 The fixture configures scope claim paths `scope` and `scp`: Authelia's JWT client
 credentials tokens encode their scopes in `scp`. This uses existing tenant claim mapping.
 
@@ -107,6 +108,9 @@ endpoint, retaining Content-Type, cache control, and authentication response hea
 records grant types and parameter names without substituting token responses. Refresh
 tests prove that the RP uses the access token returned by a real refresh request and that
 native `invalid_grant` after refresh-token revocation removes the authentication cookie.
+Each provider uses a dedicated refresh-test client whose native access tokens expire in
+45 seconds, within the RP's one-minute renewal margin; protected-resource validation
+clock skew does not control browser refresh.
 The separate Authelia regression verifies its nonstandard server-error response.
 Access-token revocation is tested through live introspection, not local JWT verification.
 

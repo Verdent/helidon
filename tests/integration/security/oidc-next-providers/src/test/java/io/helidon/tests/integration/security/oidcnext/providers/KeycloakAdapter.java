@@ -239,6 +239,9 @@ final class KeycloakAdapter implements IdpAdapter {
         JsonObject.Builder attributes = JsonObject.builder().set("pkce.code.challenge.method", "S256")
                 .set("post.logout.redirect.uris", "+").set("standard.token.exchange.enabled", "true")
                 .set("use.jwks.string", "true").set("jwks.string", IdpResources.publicClientKeys().toString());
+        if (mode == ClientMode.SHORT_LIVED) {
+            attributes.set("access.token.lifespan", "45");
+        }
         if (mode == ClientMode.SIGNED_USERINFO) {
             attributes.set("user.info.response.signature.alg", "RS256");
         }

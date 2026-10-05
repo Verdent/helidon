@@ -219,6 +219,10 @@ abstract class OidcProviderContract {
                 String accessToken = refreshed.response().stringValue("access_token").orElseThrow();
                 assertThat(accessToken, not(initial.stringValue("access_token").orElseThrow()));
                 assertThat(subject.stringValue("access_token").orElseThrow(), is(accessToken));
+                // A separate client sends only the new Bearer token; the browser cookie cannot authenticate this request.
+                JsonObject apiSubject = assertApi(rp, accessToken, Status.OK_200);
+                assertThat(apiSubject.stringValue("id"), is(subject.stringValue("id")));
+                assertThat(apiSubject.stringValue("name"), is(subject.stringValue("name")));
                 assertThat(subject.arrayValue("scopes").orElseThrow().values().stream()
                                    .map(value -> value.asString().value()).toList(),
                            is(Arrays.stream(initial.stringValue("scope").orElseThrow().split(" ")).sorted().toList()));

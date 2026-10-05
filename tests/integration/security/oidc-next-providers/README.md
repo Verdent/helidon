@@ -106,7 +106,8 @@ provider incompatibilities. All other shared scenarios run for both providers.
 The Helidon `OidcEndpointRecorder` forwards requests and JSON replies to the actual native
 endpoint, retaining Content-Type, cache control, and authentication response headers. It
 records grant types and parameter names without substituting token responses. Refresh
-tests prove that the RP uses the access token returned by a real refresh request and that
+tests prove that the RP uses the access token returned by a real refresh request, that the
+refreshed token authenticates an API Bearer request (via introspection for Authelia), and that
 native `invalid_grant` after refresh-token revocation removes the authentication cookie.
 Each provider uses a dedicated refresh-test client whose native access tokens expire in
 45 seconds, within the RP's one-minute renewal margin; protected-resource validation

@@ -610,7 +610,9 @@ these optional provider capabilities do not constrain a signed-only client. Loca
 When Authorization Code Flow loads well-known metadata, the metadata must advertise `response_types_supported`
 containing `code`. If `grant_types_supported` is present, it must contain `authorization_code`; if it is omitted, the
 Discovery default includes `authorization_code`. When PKCE is enabled, `code_challenge_methods_supported` must be present
-and include the configured PKCE method. The provider also validates configured confidential Token Endpoint authentication
+and include the configured PKCE method, unless S256 support was independently established for this tenant and
+`authorization-code.pkce-s256-support-assured` is `true`. An advertised list that excludes the configured method is
+always rejected. The provider also validates configured confidential Token Endpoint authentication
 methods against `token_endpoint_auth_methods_supported`; if that metadata is omitted, the Discovery default is
 `client_secret_basic`. Public clients using `NONE` do not require `none` in this list and must use S256 PKCE.
 For `client_secret_jwt` and `private_key_jwt`, well-known metadata must include
@@ -1331,7 +1333,18 @@ unsupported.
 
 PKCE is enabled by default and uses `S256`.
 When Authorization Code Flow loads well-known metadata, `code_challenge_methods_supported` must include the configured
-method. RFC 8414 says that when this metadata is omitted, the authorization server does not support PKCE.
+method. RFC 8414 treats omission of this field as no PKCE support, while RFC 9700 also permits the Authorization Server
+to establish support by deployment-specific means. When trusted server documentation or another deployment-specific
+guarantee establishes S256 support despite the omitted field, explicitly assert this for that tenant:
+
+```yaml
+authorization-code:
+  pkce-s256-support-assured: true
+```
+
+This assertion does not disable PKCE or allow a server that explicitly advertises a list without S256. Check that the
+server actually enforces the challenge and verifier, especially for public clients; merely sending both parameters does
+not prove the server uses them. Without this assertion, missing PKCE metadata still fails tenant initialization.
 
 ```yaml
 authorization-code:
@@ -3172,6 +3185,7 @@ Authorization Code Flow options:
 | `refresh-result-cache-capacity` | Strict maximum number of completed source-session outcomes retained during the grace interval. Defaults to `1024` and must be positive. Active operations are tracked separately. |
 | `pkce-required` | Whether PKCE parameters are sent. Defaults to `true`. Public clients using `token-endpoint-auth-method: NONE` cannot disable PKCE. |
 | `pkce-method` | PKCE code challenge method: `S256` or `plain`. Defaults to `S256`. Public clients using `token-endpoint-auth-method: NONE` must use `S256`. Explicit `plain` is a confidential-client compatibility escape hatch, not RFC 7636-compliant for this S256-capable RP; it exposes the verifier in the authorization request. |
+| `pkce-s256-support-assured` | Allow omitted `code_challenge_methods_supported` only when this tenant's S256 support is established outside metadata. Defaults to `false`; requires PKCE with S256 and never overrides an advertised list that excludes S256. |
 
 Request Object options:
 

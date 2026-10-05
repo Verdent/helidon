@@ -153,6 +153,22 @@ interface OidcAuthorizationCodeConfigBlueprint {
     boolean pkceRequired();
 
     /**
+     * Whether this tenant has independently established that its Authorization Server supports S256 PKCE even when
+     * {@code code_challenge_methods_supported} is absent from well-known metadata.
+     * <p>
+     * RFC 8414 treats an omitted field as no PKCE support, but RFC 9700 also allows support to be established by
+     * deployment-specific means. Some servers document S256 without advertising it. Defaults to {@code false} so an
+     * unverified server cannot silently downgrade PKCE. Enable only with trusted assurance, such as Authorization
+     * Server documentation. This does not disable PKCE or override metadata that explicitly excludes S256. Requires
+     * PKCE to be enabled with the S256 method.
+     *
+     * @return whether S256 PKCE support is assured outside well-known metadata
+     */
+    @Option.Configured
+    @Option.DefaultBoolean(false)
+    boolean pkceS256SupportAssured();
+
+    /**
      * PKCE code challenge method.
      * <p>
      * Defaults to {@link OidcPkceMethod#S256}. {@link OidcPkceMethod#PLAIN} is an explicit compatibility exception

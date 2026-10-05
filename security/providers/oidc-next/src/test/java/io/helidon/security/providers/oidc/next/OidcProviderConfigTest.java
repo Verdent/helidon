@@ -153,6 +153,7 @@ class OidcProviderConfigTest {
         assertThat(requestObject.encryptionKeyId().isEmpty(), is(true));
         assertThat(requestObject.lifetime(), is(Duration.ofMinutes(1)));
         assertThat(authorizationCode.pkceRequired(), is(true));
+        assertThat(authorizationCode.pkceS256SupportAssured(), is(false));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
         assertThat(tokenTransport.authorizationHeaderEnabled(), is(true));
         assertThat(tokenTransport.queryParameterEnabled(), is(false));
@@ -2283,6 +2284,38 @@ class OidcProviderConfigTest {
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
         assertThat(authorizationCode.pkceRequired(), is(false));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.S256));
+    }
+
+    @Test
+    void authorizationCodeS256AssuranceCanBeConfigured() {
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("pkce-s256-support-assured", "true")))
+                .build();
+
+        assertThat(OidcAuthorizationCodeConfig.create(config).pkceS256SupportAssured(), is(true));
+    }
+
+    @Test
+    void authorizationCodeS256AssuranceRequiresEnabledS256Pkce() {
+        List<Consumer<OidcAuthorizationCodeConfig.Builder>> incompatibleSettings = List.of(
+                code -> code.pkceRequired(false),
+                code -> code.pkceMethod(OidcPkceMethod.PLAIN));
+        for (Consumer<OidcAuthorizationCodeConfig.Builder> incompatibleSetting : incompatibleSettings) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                    .issuer(ISSUER.toString())
+                    .clientId("client-id")
+                    .clientSecret("client-secret")
+                    .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                            .tokenEndpointUri(TOKEN_ENDPOINT_URI))
+                    .authorizationCode(it -> {
+                        it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI).pkceS256SupportAssured(true);
+                        incompatibleSetting.accept(it);
+                    })
+                    .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                    .buildPrototype());
+
+            assertThat(thrown.getMessage(), containsString("pkce-s256-support-assured"));
+        }
     }
 
     @Test

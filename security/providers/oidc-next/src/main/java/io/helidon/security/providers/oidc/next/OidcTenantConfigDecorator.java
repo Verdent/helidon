@@ -609,6 +609,12 @@ final class OidcTenantConfigDecorator
 
     private static void validatePkce(OidcTenantConfig.BuilderBase<?, ?> tenant,
                                      OidcAuthorizationCodeConfig authorizationCode) {
+        // This assertion is evidence for S256 support, not permission to omit PKCE or use a different method.
+        if (authorizationCode.pkceS256SupportAssured()
+                && (!authorizationCode.pkceRequired() || authorizationCode.pkceMethod() != OidcPkceMethod.S256)) {
+            throw new IllegalArgumentException(
+                    "authorization-code.pkce-s256-support-assured requires PKCE enabled with S256");
+        }
         OidcClientAuthenticationMethod method =
                 OidcClientAuthenticationConfigValidator.tokenEndpointAuthenticationMethod(
                         tenant.clientSecret(),

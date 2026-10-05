@@ -18,10 +18,21 @@ package io.helidon.tests.integration.security.oidcnext.providers;
 
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
+
 class AutheliaOidcIT extends OidcProviderContract {
     @Override
     IdpAdapter createAdapter() {
         return new AutheliaAdapter();
+    }
+
+    @Test
+    void nativeAccessTokenIsOpaque() throws Exception {
+        String token = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
+        int segments = token.split("\\.", -1).length;
+        // A compact JWS has three segments, and a compact JWE has five.
+        assertThat("Authelia must issue an opaque access token", segments == 3 || segments == 5, is(false));
     }
 
     @Test

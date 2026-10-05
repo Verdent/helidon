@@ -132,6 +132,10 @@ interface IdpAdapter extends AutoCloseable {
          */
         BASIC("it-basic"),
         /**
+         * Confidential browser client whose native access tokens expire within the RP's renewal margin.
+         */
+        SHORT_LIVED("it-short-lived"),
+        /**
          * Public browser client with no client secret.
          */
         PUBLIC("it-public"),

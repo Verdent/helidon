@@ -269,8 +269,8 @@ final class OidcAuthenticationOrchestrator {
                     OidcSubjectMapper.map(result, readyTenant),
                     authenticationCookie));
         } catch (RuntimeException e) {
-            // A tenant adapter can reject or fail to map an otherwise valid identity. Never issue the refreshed
-            // session cookie or authenticate that identity when the mapping hook fails.
+            // A tenant adapter can reject or fail to map an otherwise valid identity. Remove the session cookies
+            // and reject authentication when the mapping hook fails.
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
                            "OIDC subject mapping failed: tenant="
@@ -278,7 +278,7 @@ final class OidcAuthenticationOrchestrator {
                                    + ", cause=" + OidcDiagnostics.safeExceptionType(e));
             }
             return LocalAuthenticationOutcome.response(
-                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookie));
+                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookies(cookieStateHandler)));
         }
     }
 

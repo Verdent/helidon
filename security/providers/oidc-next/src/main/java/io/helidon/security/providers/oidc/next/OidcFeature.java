@@ -274,6 +274,16 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                 .withBrowserSessionGeneration(state.browserSessionGeneration());
         OidcCookieStateHandler cookieHandler = tenantContext.cookieStateHandler();
         try {
+            OidcSubjectMapper.map(localAuthenticationResult, tenantContext);
+        } catch (RuntimeException e) {
+            LOGGER.log(System.Logger.Level.DEBUG,
+                       "OIDC subject mapping failed: tenant=" + OidcDiagnostics.sanitizeLogValue(tenantContext.tenantId())
+                               + ", cause=" + OidcDiagnostics.safeExceptionType(e));
+            cookieHandler.removeLocalAuthenticationResultCookies().forEach(response.headers()::addCookie);
+            response.status(Status.SERVICE_UNAVAILABLE_503).send("OIDC subject mapping failed");
+            return;
+        }
+        try {
             cookieHandler.createLocalAuthenticationResultCookies(
                             localAuthenticationResult,
                             requestCookies,

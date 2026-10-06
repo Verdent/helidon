@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 import io.helidon.common.configurable.AllowList;
 import io.helidon.common.configurable.Resource;
@@ -83,6 +84,10 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ServerTest
@@ -795,6 +800,289 @@ class OidcFeatureRouteTest {
     @Test
     void redirectionEndpointPrefersTokenResponseScopeOverAdapterRequestScopes(URI serverUri) {
         assertCallbackScopes(serverUri, Optional.of("openid email"), Optional.of("openid"), List.of("openid"));
+    }
+
+    @Test
+    void callbackSubjectMappingFailureRejectsSessionAndClearsPreviousChunks(URI serverUri) {
+        AtomicInteger mappings = new AtomicInteger();
+        AtomicReference<UnaryOperator<Subject>> mapping = new AtomicReference<>();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public String type() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                mappings.incrementAndGet();
+                return mapping.get().apply(subject);
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri))
+                .adapter(adapter)
+                .cookies(cookies -> cookies.compression(OidcCookieCompression.NONE)
+                        .protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .buildPrototype();
+        OidcCookieStateHandler cookieHandler = OidcCookieStateHandler.create("default", tenant);
+        String sessionCookieName = tenant.cookies().localAuthenticationCookieName();
+        Instant now = Instant.now();
+        SignedJwt idToken = SignedJwt.parseToken(signedIdToken(NONCE));
+        OidcLocalAuthenticationResult previousSession = OidcLocalAuthenticationResult.fromStoredValues(
+                OidcLocalAuthenticationState.builder()
+                        .tenantId("default")
+                        .idToken(new OidcValidatedIdToken(idToken.tokenContent(), false, idToken, idToken.getJwt()))
+                        .accessToken("a".repeat(2500))
+                        .tokenType("Bearer")
+                        .scope("openid profile")
+                        .createdAt(now)
+                        .expiresAt(now.plusSeconds(600))
+                        .accessTokenExpiresAt(now.plusSeconds(600))
+                        .buildPrototype());
+        List<SetCookie> previousCookies = cookieHandler.createLocalAuthenticationResultCookies(previousSession, Map.of(), now);
+        assertThat(previousCookies, hasSize(greaterThan(1)));
+        List<Map.Entry<String, UnaryOperator<Subject>>> failures = List.of(
+                Map.entry("rejected", _ -> {
+                    throw new IllegalArgumentException("Disabled user: private mapping details");
+                }),
+                Map.entry("unavailable", _ -> {
+                    throw new IllegalStateException("Private mapping backend failure");
+                }),
+                Map.entry("null-subject", _ -> null));
+
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            WebClient client = WebClient.create();
+            try {
+                WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                        .addFeature(OidcFeature.create(provider)).build().start();
+                try {
+                    for (boolean existingSession : List.of(false, true)) {
+                        for (Map.Entry<String, UnaryOperator<Subject>> failure : failures) {
+                            mapping.set(failure.getValue());
+                            int mappingsBefore = mappings.get();
+                            SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                            List<SetCookie> incoming = new ArrayList<>(existingSession ? previousCookies : List.of());
+                            incoming.add(state);
+                            String cookieHeader = String.join("; ", incoming.stream()
+                                    .map(cookie -> cookie.name() + "=" + cookie.value()).toList());
+                            try (HttpClientResponse callback = client.get().uri(callbackUri(rp)).followRedirects(false)
+                                    .queryParam("code", failure.getKey() + "-code-" + existingSession)
+                                    .queryParam("state", STATE)
+                                    .header(HeaderNames.COOKIE, cookieHeader).request()) {
+                                List<String> cookies = callback.headers().get(HeaderNames.SET_COOKIE).allValues();
+                                List<String> liveSessionNames = cookies.stream().map(SetCookie::parse)
+                                        .filter(cookie -> (cookie.name().equals(sessionCookieName)
+                                                || cookie.name().startsWith(sessionCookieName + "."))
+                                                && !cookie.value().isEmpty())
+                                        .map(SetCookie::name).toList();
+                                assertAll(failure.getKey() + ", existing session=" + existingSession,
+                                          () -> assertThat(callback.status(), is(Status.SERVICE_UNAVAILABLE_503)),
+                                          () -> assertThat(mappings.get(), is(mappingsBefore + 1)),
+                                          () -> assertThat(liveSessionNames, empty()),
+                                          () -> assertThat(callback.as(String.class), is("OIDC subject mapping failed")),
+                                          () -> {
+                                              assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                                              assertRemovalCookie(cookies, sessionCookieName);
+                                              if (existingSession) {
+                                                  previousCookies.forEach(cookie -> assertRemovalCookie(cookies, cookie.name()));
+                                              }
+                                          });
+                            }
+                        }
+                    }
+                } finally {
+                    rp.stop();
+                }
+            } finally {
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void callbackMapsValidatedSubjectBeforeStorageAndMapsStoredSessionAgain(URI serverUri) {
+        AtomicInteger mappings = new AtomicInteger();
+        AtomicReference<Subject> mapped = new AtomicReference<>();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public String type() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                mappings.incrementAndGet();
+                mapped.set(subject);
+                return Subject.builder().update(subject).addGrant(Role.create("mapped")).build();
+            }
+        };
+        userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
+                .set("preferred_username", "userinfo-user").setStrings("groups", List.of("admin")).build().toString();
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfigWithUserInfo(serverUri))
+                .adapter(adapter).buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            WebClient client = WebClient.create();
+            try {
+                WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                        .addFeature(OidcFeature.create(provider)).build().start();
+                try {
+                    SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                    try (HttpClientResponse callback = client.get().uri(callbackUri(rp)).followRedirects(false)
+                            .queryParam("code", "authorization-code").queryParam("state", STATE)
+                            .header(HeaderNames.COOKIE, state.name() + "=" + state.value()).request()) {
+                        assertThat(callback.status(), is(Status.SEE_OTHER_303));
+                        assertThat(mappings.get(), is(1));
+                        Subject callbackSubject = mapped.get();
+                        assertThat(callbackSubject.principal().id(), is(issuerSubjectPrincipalId()));
+                        assertThat(callbackSubject.principal().getName(), is("userinfo-user"));
+                        assertThat(callbackSubject.publicCredential(TokenCredential.class).orElseThrow().token(),
+                                   is("access-token"));
+                        assertThat(callbackSubject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                                   containsInAnyOrder("openid", "profile"));
+                        assertThat(callbackSubject.grants(Role.class).stream().map(Role::getName).toList(),
+                                   containsInAnyOrder("admin"));
+                        SetCookie session = localAuthenticationCookie(callback, tenant);
+                        AuthenticationResponse authentication = provider.authenticate(OidcProviderTest.request(null,
+                                SecurityEnvironment.builder().targetUri(rpBaseUri(rp).resolve("/resource"))
+                                        .header(HeaderNames.COOKIE.defaultCase(), session.name() + "=" + session.value())
+                                        .build()));
+                        assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                        assertThat(mappings.get(), is(2));
+                        assertThat(authentication.user().orElseThrow().grants(Role.class).stream().map(Role::getName).toList(),
+                                   containsInAnyOrder("admin", "mapped"));
+                    }
+                } finally {
+                    rp.stop();
+                }
+            } finally {
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void callbackDoesNotMapUnvalidatedIdTokenOrUserInfo(URI serverUri) {
+        AtomicInteger mappings = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public String type() {
+                return "callback-subject-test";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                mappings.incrementAndGet();
+                return subject;
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfigWithUserInfo(serverUri))
+                .adapter(adapter).buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            WebClient client = WebClient.create();
+            try {
+                WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                        .addFeature(OidcFeature.create(provider)).build().start();
+                try {
+                    for (boolean invalidIdToken : List.of(true, false)) {
+                        tokenEndpointResponseBody = tokenEndpointResponse(invalidIdToken
+                                ? tamperedSignature(signedIdToken(NONCE)) : signedIdToken(NONCE)).toString();
+                        userInfoEndpointResponseBody = userInfoEndpointResponse(invalidIdToken ? SUBJECT : "other-user")
+                                .build().toString();
+                        SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                        try (HttpClientResponse callback = client.get().uri(callbackUri(rp)).followRedirects(false)
+                                .queryParam("code", "invalid-claims-code-" + invalidIdToken).queryParam("state", STATE)
+                                .header(HeaderNames.COOKIE, state.name() + "=" + state.value()).request()) {
+                            assertThat(callback.status(), is(Status.BAD_GATEWAY_502));
+                            assertThat(mappings.get(), is(0));
+                            assertNoLocalAuthenticationCookie(callback, tenant);
+                        }
+                    }
+                } finally {
+                    rp.stop();
+                }
+            } finally {
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void storedSessionMappingRejectionAfterRefreshRemovesCookies(URI serverUri) {
+        AtomicInteger mappings = new AtomicInteger();
+        AtomicReference<Subject> mapped = new AtomicReference<>();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "refreshed-subject-test";
+            }
+
+            @Override
+            public String type() {
+                return "refreshed-subject-test";
+            }
+
+            @Override
+            public Subject mapSubject(OidcTenantConfig tenant, Subject subject) {
+                mappings.incrementAndGet();
+                mapped.set(subject);
+                throw new IllegalArgumentException("User disabled after refresh");
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri))
+                .adapter(adapter).buildPrototype();
+        tokenEndpointResponseBody = JsonObject.builder().set("access_token", "refreshed-access-token")
+                .set("token_type", "Bearer").set("expires_in", 600).set("scope", "openid").build().toString();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        SignedJwt idToken = SignedJwt.sign(Jwt.builder().type("JWT").algorithm("RS256").keyId("verify-rsa")
+                .issuer(ISSUER.toString()).subject(SUBJECT).addAudience(CLIENT_ID).nonce(NONCE)
+                .issueTime(now.minusSeconds(600)).expirationTime(now.plusSeconds(3000)).build(),
+                                          signKeys.forKeyId("sign-rsa").orElseThrow());
+        OidcLocalAuthenticationResult session = OidcLocalAuthenticationResult.fromStoredValues(
+                OidcLocalAuthenticationState.builder()
+                        .tenantId("default")
+                        .idToken(new OidcValidatedIdToken(idToken.tokenContent(), false, idToken, idToken.getJwt()))
+                        .accessToken("expired-access-token")
+                        .refreshToken("refresh-token")
+                        .tokenType("Bearer")
+                        .scope("openid profile")
+                        .createdAt(now.minusSeconds(600))
+                        .expiresAt(now.plusSeconds(3000))
+                        .accessTokenExpiresAt(now.minusSeconds(1))
+                        .buildPrototype());
+        List<SetCookie> currentCookies = OidcCookieStateHandler.create("default", tenant)
+                .createLocalAuthenticationResultCookies(session, Map.of(), now);
+        String cookieHeader = String.join("; ", currentCookies.stream()
+                .map(cookie -> cookie.name() + "=" + cookie.value()).toList());
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            AuthenticationResponse rejected = provider.authenticate(OidcProviderTest.request(null,
+                    SecurityEnvironment.builder().targetUri(URI.create("https://rp.example/resource"))
+                            .header(HeaderNames.COOKIE.defaultCase(), cookieHeader).build()));
+            assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(rejected.statusCode().orElseThrow(), is(503));
+            assertThat(TOKEN_REQUESTS.get(), is(1));
+            assertThat(mappings.get(), is(1));
+            assertThat(mapped.get().publicCredential(TokenCredential.class).orElseThrow().token(),
+                       is("refreshed-access-token"));
+            assertThat(mapped.get().grantsByType("scope").stream().map(Grant::getName).toList(),
+                       containsInAnyOrder("openid"));
+            List<String> removed = rejected.responseHeaders().getOrDefault(HeaderNames.SET_COOKIE.defaultCase(), List.of());
+            currentCookies.forEach(cookie -> assertRemovalCookie(removed, cookie.name()));
+            removed.stream().map(SetCookie::parse).forEach(cookie -> assertThat(cookie.value(), is("")));
+        }
     }
 
     @Test

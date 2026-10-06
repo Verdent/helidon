@@ -267,7 +267,7 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                         tenantContext.tenantId(),
                         tokenResponse,
                         validatedIdToken,
-                        tenantContext.tenantConfig().authorizationCode().orElseThrow().scopes(),
+                        state.requestedScopes(),
                         userInfoResult.userInfo(),
                         Instant.now(),
                         tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime())

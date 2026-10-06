@@ -93,6 +93,7 @@ final class OidcAuthenticationRequestFactory {
                                                                     pkceVerifier);
         String state = defaultState;
         String nonce = defaultNonce;
+        List<String> requestedScopes = authorizationCode.scopes();
         if (tenantConfig.adapter().isPresent()) {
             authorizationParameters = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
                                                                      .authorizationRequest(tenantConfig,
@@ -107,16 +108,16 @@ final class OidcAuthenticationRequestFactory {
             }
             // Provider-specific parameters are allowed, but the core must still send a valid OIDC Code request and
             // redeem the same PKCE challenge it sent. Request Object and PAR transport are owned by the core.
-            List<String> scopes = OidcScopeSupport.parseScopeString(requiredParameter(authorizationParameters, "scope"),
-                                                                     "Authorization Request scope");
-            if (!scopes.contains("openid")
+            requestedScopes = OidcScopeSupport.parseScopeString(requiredParameter(authorizationParameters, "scope"),
+                                                               "Authorization Request scope");
+            if (!requestedScopes.contains("openid")
                     || authorizationParameters.contains("request")
                     || authorizationParameters.contains("request_uri")
                     || (authorizationParameters.contains("response_mode")
                     && !"query".equals(requiredParameter(authorizationParameters, "response_mode")))) {
                 throw new IllegalStateException("OIDC adapter supplied unsupported Authorization Request parameters");
             }
-            if (scopes.contains(OFFLINE_ACCESS_SCOPE)
+            if (requestedScopes.contains(OFFLINE_ACCESS_SCOPE)
                     && (!authorizationParameters.contains("prompt")
                     || !List.of(requiredParameter(authorizationParameters, "prompt").split(" ")).contains(PROMPT_CONSENT))) {
                 throw new IllegalStateException("OIDC adapter must request consent for offline access");
@@ -149,6 +150,7 @@ final class OidcAuthenticationRequestFactory {
                 expectedIssuer,
                 originalUri(environment),
                 redirectionEndpointUri,
+                requestedScopes,
                 createdAt,
                 createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()));
         SetCookie stateCookie = cookieStateHandler.createAuthenticationRequestCookie(requestState,

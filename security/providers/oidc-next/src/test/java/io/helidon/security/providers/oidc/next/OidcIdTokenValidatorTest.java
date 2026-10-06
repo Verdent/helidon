@@ -153,7 +153,7 @@ class OidcIdTokenValidatorTest {
     void omittedAuthenticationRequestNonceIsValidForCodeFlow() {
         OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
                 "default", "state-value", null, "pkce-verifier", null, ISSUER.toString(),
-                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, VALIDATION_TIME.minusSeconds(1),
+                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, List.of("openid"), VALIDATION_TIME.minusSeconds(1),
                 VALIDATION_TIME.plusSeconds(300));
         OidcValidationResult<OidcValidatedIdToken> result = validator.validate(
                 signedIdToken(it -> it.nonce(null)), tenantContext(), withNoNonce, VALIDATION_TIME);
@@ -632,6 +632,7 @@ class OidcIdTokenValidatorTest {
                                                      ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      REDIRECTION_ENDPOINT_URI,
+                                                     List.of("openid"),
                                                      VALIDATION_TIME.minusSeconds(1),
                                                      VALIDATION_TIME.plusSeconds(300));
     }

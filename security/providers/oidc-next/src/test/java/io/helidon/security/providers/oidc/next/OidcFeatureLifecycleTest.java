@@ -301,6 +301,7 @@ class OidcFeatureLifecycleTest {
         SetCookie cookie = OidcCookieStateHandler.create("tenant", config.tenants().get("tenant"))
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state, "nonce", "verifier",
                         null, config.tenants().get("tenant").issuer().orElseThrow(), URI.create("/resource"), callback,
+                        config.tenants().get("tenant").authorizationCode().orElseThrow().scopes(),
                         now, now.plusSeconds(300)));
         WebClient client = WebClient.create();
         try (HttpClientResponse response = client.get().uri(callback)

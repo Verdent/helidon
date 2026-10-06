@@ -1144,6 +1144,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                      ISSUER.toString(),
                                                      ORIGINAL_URI,
                                                      redirectionEndpointUri,
+                                                     List.of("openid"),
                                                      NOW.minusSeconds(1),
                                                      expiresAt);
     }

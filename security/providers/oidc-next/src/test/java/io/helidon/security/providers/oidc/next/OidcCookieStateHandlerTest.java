@@ -17,14 +17,23 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+
 import io.helidon.common.configurable.Resource;
 import io.helidon.http.SetCookie;
+import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
@@ -97,12 +106,44 @@ class OidcCookieStateHandlerTest {
     }
 
     @Test
+    void authenticationRequestCookieRequiresRequestedScope() throws GeneralSecurityException {
+        OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT_ID, tenant);
+        OidcAuthenticationRequestState state = state();
+        String[] parts = handler.createAuthenticationRequestCookie(state).value().split("\\.");
+        OidcCookieKeys.KeyMaterial key = OidcCookieKeys.create(TENANT_ID, tenant).orElseThrow()
+                .keyMaterial(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST);
+        byte[] iv = Base64.getUrlDecoder().decode(parts[1]);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, key.key(), new GCMParameterSpec(128, iv));
+        cipher.updateAAD(key.additionalAuthenticatedData());
+        JsonObject json = JsonParser.create(new String(cipher.doFinal(Base64.getUrlDecoder().decode(parts[2])),
+                                                      StandardCharsets.UTF_8)).readJsonObject();
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        SecureRandom random = new SecureRandom();
+
+        for (boolean scopePresent : List.of(false, true)) {
+            JsonObject.Builder payload = JsonObject.builder().from(json).unset("requested_scope");
+            if (scopePresent) {
+                payload.set("requested_scope", "openid profile");
+            }
+            random.nextBytes(iv);
+            cipher.init(Cipher.ENCRYPT_MODE, key.key(), new GCMParameterSpec(128, iv));
+            cipher.updateAAD(key.additionalAuthenticatedData());
+            String cookie = parts[0] + "." + encoder.encodeToString(iv) + "."
+                    + encoder.encodeToString(cipher.doFinal(payload.build().toString().getBytes(StandardCharsets.UTF_8)));
+            assertThat("requested_scope present=" + scopePresent, handler.decodeAuthenticationRequestState(cookie),
+                       is(scopePresent ? Optional.of(state) : Optional.empty()));
+        }
+    }
+
+    @Test
     void customStateCookieRoutingHintIsUntrustedAndOmittedNonceRoundTrips() {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
         OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
                 TENANT_ID, "custom-state", null, "pkce-verifier", null, "https://issuer.example",
                 URI.create("https://rp.example/original"), URI.create("https://rp.example/oidc/callback"),
-                NOW.minusSeconds(1), NOW.plusSeconds(60));
+                List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(60));
         SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
                 .createAuthenticationRequestCookie(withNoNonce, true);
         assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(cookie.value()), is(Optional.of(TENANT_ID)));
@@ -229,6 +270,7 @@ class OidcCookieStateHandlerTest {
                                                   "https://issuer.example",
                                                   URI.create("https://rp.example/original"),
                                                   URI.create("https://rp.example/oidc/callback"),
+                                                  List.of("openid", "profile"),
                                                   NOW.minusSeconds(1),
                                                   NOW.plusSeconds(60));
     }

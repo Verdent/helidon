@@ -18,6 +18,7 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 record OidcAuthenticationRequestState(String tenantId,
@@ -28,8 +29,13 @@ record OidcAuthenticationRequestState(String tenantId,
                                       String expectedIssuer,
                                       URI originalUri,
                                       URI redirectionEndpointUri,
+                                      List<String> requestedScopes,
                                       Instant createdAt,
                                       Instant expiresAt) {
+
+    OidcAuthenticationRequestState {
+        requestedScopes = List.copyOf(requestedScopes);
+    }
 
     Optional<String> pkceVerifier() {
         return Optional.ofNullable(pkceVerifierValue);

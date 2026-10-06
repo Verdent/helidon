@@ -350,6 +350,27 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     @Test
+    void oversizedReturnUriIsRejectedBeforePushedAuthorizationRequest(URI serverUri) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString()).clientId(CLIENT_ID).clientSecret(CLIENT_SECRET)
+                .webClient(conventionalTlsWebClient())
+                .endpoints(endpoints -> endpoints.authorizationEndpointUri(serverUri.resolve("authorize"))
+                        .tokenEndpointUri(tokenEndpointUri).jwksUri(serverUri.resolve("jwks"))
+                        .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri).tlsRequired(false))
+                .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder().putTenant("default", tenant)
+                                                                .buildPrototype())) {
+            AuthenticationResponse response = provider.authenticate(OidcProviderTest.request(null,
+                    SecurityEnvironment.builder().targetUri(URI.create("https://rp.example/resource?filter=" + "a".repeat(3000)))
+                            .path("/resource").transport("https").build()));
+            assertThat(response.statusCode().orElseThrow(), is(414));
+            assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
+        }
+    }
+
+    @Test
     void tenantAdapterCanCustomizeEachTokenGrantAndNormalizeItsResponse() {
         AtomicReference<OidcTenantAdapter.TokenGrant> grantSeen = new AtomicReference<>();
         OidcTenantAdapter adapter = new OidcTenantAdapter() {

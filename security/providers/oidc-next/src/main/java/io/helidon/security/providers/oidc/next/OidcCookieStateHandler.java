@@ -114,8 +114,8 @@ final class OidcCookieStateHandler {
                              value)
                 .maxAge(cookieConfig.authenticationRequestLifetime())
                 .build();
-        if (customState && cookie.toString().length() > cookieConfig.maxCookieSize()) {
-            throw new IllegalStateException("OIDC adapter authentication request cookie exceeds cookies.max-cookie-size");
+        if (cookie.toString().length() > cookieConfig.maxCookieSize()) {
+            throw new AuthenticationRequestCookieException("OIDC authentication request cookie exceeds cookies.max-cookie-size");
         }
         return cookie;
     }
@@ -600,6 +600,12 @@ final class OidcCookieStateHandler {
         @Override
         public String toString() {
             return "PreparedSession[parts=" + values.size() + ", expiresAt=" + expiresAt + "]";
+        }
+    }
+
+    static final class AuthenticationRequestCookieException extends IllegalStateException {
+        AuthenticationRequestCookieException(String message) {
+            super(message);
         }
     }
 

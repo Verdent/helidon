@@ -111,6 +111,17 @@ final class OidcResponseFactory {
                 .build();
     }
 
+    static AuthenticationResponse authorizationCodeFlowTooLarge(List<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(Status.REQUEST_URI_TOO_LONG_414.code())
+                .description("The requested URL exceeds the OIDC login cookie limit");
+        if (!localAuthenticationRemovalCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), localAuthenticationRemovalCookie);
+        }
+        return builder.build();
+    }
+
     static AuthenticationResponse authorizationCodeFlowUnavailable(List<String> localAuthenticationRemovalCookie) {
         AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)

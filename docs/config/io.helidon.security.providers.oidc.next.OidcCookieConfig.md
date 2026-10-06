@@ -39,7 +39,7 @@ Cookie configuration used by stateful OIDC flows
 <td>
 <code>3800</code>
 </td>
-<td>Maximum encoded size in bytes of one local-authentication Set-Cookie field value, including name and attributes</td>
+<td>Maximum encoded size in bytes of one Authentication Request or local-authentication Set-Cookie field value, including name and attributes</td>
 </tr>
 <tr>
 <td>

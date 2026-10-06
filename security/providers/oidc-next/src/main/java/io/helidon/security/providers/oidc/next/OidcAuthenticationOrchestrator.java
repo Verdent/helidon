@@ -159,6 +159,8 @@ final class OidcAuthenticationOrchestrator {
         try {
             return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
                                                                       localAuthenticationRemovalCookie);
+        } catch (OidcCookieStateHandler.AuthenticationRequestCookieException _) {
+            return OidcResponseFactory.authorizationCodeFlowTooLarge(localAuthenticationRemovalCookie);
         } catch (RuntimeException e) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 String tenantId = context.tenantContext()

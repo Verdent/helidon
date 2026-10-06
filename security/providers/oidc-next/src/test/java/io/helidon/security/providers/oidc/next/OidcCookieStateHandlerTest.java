@@ -44,6 +44,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcCookieStateHandlerTest {
     private static final String TENANT_ID = "tenant-a";
@@ -157,6 +158,30 @@ class OidcCookieStateHandlerTest {
         assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
                            .readAuthenticationRequestState(forgedHint, NOW).isEmpty(),
                    is(true));
+    }
+
+    @Test
+    void authenticationRequestCookieHonorsExactByteBudgetForStandardAndCustomState() {
+        OidcAuthenticationRequestState state = state();
+        OidcTenantConfig base = tenant(CLIENT_ID, PASSWORD);
+        for (boolean customState : List.of(false, true)) {
+            int size = OidcCookieStateHandler.create(TENANT_ID, base)
+                    .createAuthenticationRequestCookie(state, customState).toString()
+                    .getBytes(StandardCharsets.US_ASCII).length;
+            OidcTenantConfig exact = OidcTenantConfig.builder(base)
+                    .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(size).buildPrototype()).buildPrototype();
+            SetCookie accepted = OidcCookieStateHandler.create(TENANT_ID, exact)
+                    .createAuthenticationRequestCookie(state, customState);
+            assertThat(accepted.toString().getBytes(StandardCharsets.US_ASCII).length, is(size));
+            assertThat(OidcCookieStateHandler.create(TENANT_ID, exact)
+                               .readAuthenticationRequestState(accepted.value(), NOW),
+                       is(Optional.of(state)));
+
+            OidcTenantConfig tooSmall = OidcTenantConfig.builder(base)
+                    .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(size - 1).buildPrototype()).buildPrototype();
+            assertThrows(IllegalStateException.class, () -> OidcCookieStateHandler.create(TENANT_ID, tooSmall)
+                    .createAuthenticationRequestCookie(state, customState));
+        }
     }
 
     @Test

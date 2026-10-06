@@ -71,7 +71,10 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
@@ -459,6 +462,66 @@ class OidcProviderTest {
         assertThat(query.get("code_challenge"),
                    is(OidcAuthenticationRequestFactory.codeChallenge(state.pkceVerifier().orElseThrow(),
                                                                      OidcPkceMethod.S256)));
+    }
+
+    @Test
+    void oversizedReturnUriRejectsLoginBeforeRedirect() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        try (OidcProvider provider = provider(tenant)) {
+            for (String query : List.of("a".repeat(3000), "%E2%82%AC".repeat(350))) {
+                AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource?filter=" + query))
+                        .path("/resource").transport("https").build()));
+
+                assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(response.statusCode().orElseThrow(), is(414));
+                assertThat(response.description().orElseThrow(),
+                           is("The requested URL exceeds the OIDC login cookie limit"));
+                assertThat(response.responseHeaders(), not(hasKey("Location")));
+                assertThat(response.responseHeaders().getOrDefault("Set-Cookie", List.of()), empty());
+            }
+        }
+    }
+
+    @Test
+    void oversizedReturnUriPreservesInvalidSessionCleanup() {
+        OidcTenantConfig tenant = authorizationCodeTenant();
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                    .targetUri(URI.create("https://rp.example/resource?filter=" + "a".repeat(3000)))
+                    .path("/resource").transport("https")
+                    .header("Cookie", tenant.cookies().localAuthenticationCookieName() + "=invalid-cookie").build()));
+
+            assertThat(response.statusCode().orElseThrow(), is(414));
+            assertThat(response.responseHeaders(), not(hasKey("Location")));
+            List<SetCookie> removed = response.responseHeaders().getOrDefault("Set-Cookie", List.of()).stream()
+                    .map(SetCookie::parse).toList();
+            assertThat(removed.stream().map(SetCookie::name).toList(), hasItem(tenant.cookies().localAuthenticationCookieName()));
+            removed.forEach(cookie -> {
+                assertThat(cookie.value(), is(""));
+                assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+            });
+        }
+    }
+
+    @Test
+    void supportedCookieBudgetsPreserveCompleteReturnUri() {
+        String query = "q=%E2%82%AC&filter=a%2Fb%3Fc%2Bd";
+        for (int limit : List.of(1024, 3800, 4096)) {
+            OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
+                    .cookies(cookies -> cookies.maxCookieSize(limit)
+                            .protection(protection -> protection.password("test-cookie-password"))));
+            try (OidcProvider provider = provider(tenant)) {
+                AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                        .targetUri(URI.create("https://rp.example/resource?" + query))
+                        .path("/resource").transport("https").build()));
+
+                assertThat("cookie limit=" + limit, response.statusCode().orElseThrow(), is(303));
+                assertThat(authenticationRequestState(response, tenant).originalUri(), is(URI.create("/resource?" + query)));
+                response.responseHeaders().get("Set-Cookie").forEach(cookie ->
+                        assertThat(cookie.getBytes(StandardCharsets.US_ASCII).length, lessThanOrEqualTo(limit)));
+            }
+        }
     }
 
     @Test

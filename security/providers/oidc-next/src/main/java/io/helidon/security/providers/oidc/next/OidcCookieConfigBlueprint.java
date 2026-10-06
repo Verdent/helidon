@@ -74,8 +74,10 @@ interface OidcCookieConfigBlueprint {
     Duration localAuthenticationLifetime();
 
     /**
-     * Maximum encoded size in bytes of one local-authentication Set-Cookie field value, including name and attributes.
+     * Maximum encoded size in bytes of one Authentication Request or local-authentication Set-Cookie field value,
+     * including name and attributes.
      * Must leave room for the cookie framing and payload and must not exceed 4096.
+     * Authentication Requests exceeding this limit are rejected before redirecting to the OpenID Provider.
      *
      * @return maximum serialized cookie size
      */

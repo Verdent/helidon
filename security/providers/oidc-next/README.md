@@ -2597,13 +2597,17 @@ The additional settings are directly on `OidcCookieConfig`, with equivalent prog
 
 | Setting | Meaning |
 | --- | --- |
-| `max-cookie-size` | Maximum serialized bytes of each session Set-Cookie field value, including its name and attributes. At most 4096; must leave room for framing and payload. |
+| `max-cookie-size` | Maximum serialized bytes of each Authentication Request or session Set-Cookie field value, including its name and attributes. At most 4096; must leave room for framing and payload. |
 | `max-chunks` | Maximum physical cookies in one session, including the base, between 1 and 16. One disables multi-cookie sessions. Applies to reads and writes. |
 | `max-total-size` | Encoded session-cookie request-header budget, including names and separators. Also bounds outgoing session Set-Cookie headers, including required deletions. At most 65536; must accommodate clearing the fixed namespace. |
 | `compression` | `NONE` or `GZIP`, which is used only when smaller. NONE affects new writes; authenticated GZIP sessions remain readable. No provider-specific defaults or detection. |
 | `max-session-size` | Maximum UTF-8 session JSON bytes before compression and after authenticated decompression, between 1 and 1048576. Applies even without compression. |
 
 Leave header capacity for other application cookies, authentication-request state, browser generation, and other headers.
+Authentication Request state uses one protected cookie and preserves the complete original return path and query.
+The provider returns HTTP 414 before redirecting to the OpenID Provider if that cookie cannot fit `max-cookie-size`.
+It emits no new state or browser-generation cookie for the rejected request. Shorten the return URL or increase a
+smaller configured limit within the 4096-byte maximum. Session chunking and compression do not apply to request state.
 The default 12-KiB budget is below Helidon's default 16-KiB HTTP/1 received-header limit, but smaller proxy limits must
 also be respected. Chunking does not reduce aggregate traffic or permit unlimited token sizes. Final serialized sizes,
 not raw token lengths, determine whether a session fits. Reducing configured limits can require reauthentication.

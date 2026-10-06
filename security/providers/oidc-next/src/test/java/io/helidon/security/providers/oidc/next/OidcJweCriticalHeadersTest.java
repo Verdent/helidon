@@ -58,6 +58,7 @@ class OidcJweCriticalHeadersTest {
             ISSUER,
             URI.create("https://rp.example/resource"),
             URI.create("https://rp.example/oidc/callback"),
+            List.of("openid"),
             VALIDATION_TIME.minusSeconds(1),
             VALIDATION_TIME.plusSeconds(300));
 

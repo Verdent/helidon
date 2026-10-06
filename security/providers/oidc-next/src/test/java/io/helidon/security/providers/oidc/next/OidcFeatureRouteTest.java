@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +81,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -465,6 +467,7 @@ class OidcFeatureRouteTest {
                                                                                          ISSUER.toString(),
                                                                                          serverUri.resolve("resource"),
                                                                                          callbackUri,
+                                                                                         List.of("openid", "profile"),
                                                                                          now.minusSeconds(1),
                                                                                          now.plusSeconds(60)));
 
@@ -772,6 +775,26 @@ class OidcFeatureRouteTest {
             client.closeResource();
             rp.stop();
         }
+    }
+
+    @Test
+    void redirectionEndpointUsesConfiguredRequestScopesWhenScopeOmitted(URI serverUri) {
+        assertCallbackScopes(serverUri, Optional.empty(), Optional.empty(), List.of("openid", "accounts.write"));
+    }
+
+    @Test
+    void redirectionEndpointUsesAdapterNarrowedRequestScopesWhenScopeOmitted(URI serverUri) {
+        assertCallbackScopes(serverUri, Optional.of("openid"), Optional.empty(), List.of("openid"));
+    }
+
+    @Test
+    void redirectionEndpointUsesAdapterAddedRequestScopesWhenScopeOmitted(URI serverUri) {
+        assertCallbackScopes(serverUri, Optional.of("openid email"), Optional.empty(), List.of("openid", "email"));
+    }
+
+    @Test
+    void redirectionEndpointPrefersTokenResponseScopeOverAdapterRequestScopes(URI serverUri) {
+        assertCallbackScopes(serverUri, Optional.of("openid email"), Optional.of("openid"), List.of("openid"));
     }
 
     @Test
@@ -2927,6 +2950,92 @@ class OidcFeatureRouteTest {
         return server;
     }
 
+    private static void assertCallbackScopes(URI serverUri,
+                                             Optional<String> adapterScope,
+                                             Optional<String> responseScope,
+                                             List<String> expectedScopes) {
+        OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder(tenantConfig(serverUri,
+                code -> code.redirectionEndpointUri(URI.create("/oidc/callback"))
+                        .scopes(List.of("openid", "accounts.write"))));
+        adapterScope.ifPresent(scope -> tenantBuilder.adapter(new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "scope-test-adapter";
+            }
+
+            @Override
+            public String type() {
+                return "scope-test-adapter";
+            }
+
+            @Override
+            public Parameters authorizationRequest(OidcTenantConfig tenant,
+                                                     String tenantId,
+                                                     SecurityEnvironment environment,
+                                                     Parameters parameters) {
+                Map<String, List<String>> values = new LinkedHashMap<>(parameters.toMap());
+                values.put("scope", List.of(scope));
+                return Parameters.create("scope-test-authorization-request", values);
+            }
+        }));
+        OidcTenantConfig tenant = tenantBuilder.buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            WebClient client = WebClient.create();
+            try {
+                WebServer rp = WebServer.builder()
+                        .host("127.0.0.1")
+                        .port(0)
+                        .addFeature(OidcFeature.create(provider))
+                        .build()
+                        .start();
+                try {
+                    URI resourceUri = rpBaseUri(rp).resolve("/resource");
+                    AuthenticationResponse login = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder().targetUri(resourceUri).transport("http").build()));
+                    assertThat(login.statusCode().orElseThrow(), is(303));
+                    UriQuery authorization = UriQuery.create(URI.create(login.responseHeaders().get("Location").getFirst()));
+                    assertThat(authorization.first("scope").orElseThrow(), is(adapterScope.orElse("openid accounts.write")));
+                    JsonObject.Builder tokenResponse = JsonObject.builder()
+                            .from(tokenEndpointResponse(signedIdToken(authorization.first("nonce").orElseThrow())));
+                    responseScope.ifPresent(scope -> tokenResponse.set("scope", scope));
+                    tokenEndpointResponseBody = tokenResponse.build().toString();
+                    String initialCookies = String.join("; ", login.responseHeaders().get("Set-Cookie").stream()
+                            .map(SetCookie::parse)
+                            .map(cookie -> cookie.name() + "=" + cookie.value())
+                            .toList());
+
+                    try (HttpClientResponse callback = client.get().uri(callbackUri(rp))
+                            .followRedirects(false)
+                            .queryParam("code", "authorization-code")
+                            .queryParam("state", authorization.first("state").orElseThrow())
+                            .header(HeaderNames.COOKIE, initialCookies)
+                            .request()) {
+                        assertThat(callback.status(), is(Status.SEE_OTHER_303));
+                        SetCookie sessionCookie = localAuthenticationCookie(callback, tenant);
+                        AuthenticationResponse authentication = provider.authenticate(OidcProviderTest.request(null,
+                                SecurityEnvironment.builder()
+                                        .targetUri(resourceUri)
+                                        .header(HeaderNames.COOKIE.defaultCase(), initialCookies + "; "
+                                                + sessionCookie.name() + "=" + sessionCookie.value())
+                                        .build()));
+                        assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                        assertThat(authentication.user().orElseThrow().grantsByType("scope").stream()
+                                           .map(Grant::getName).toList(),
+                                   containsInAnyOrder(expectedScopes.toArray(String[]::new)));
+                        OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create("default", tenant)
+                                .decodeLocalAuthenticationResult(sessionCookie.value(), OidcIdTokenDecryptor.create(tenant))
+                                .orElseThrow();
+                        assertThat(stored.scope(), is(Optional.of(String.join(" ", expectedScopes))));
+                    }
+                } finally {
+                    rp.stop();
+                }
+            } finally {
+                client.closeResource();
+            }
+        }
+    }
+
     private static SetCookie authenticationRequestCookie(URI callbackUri, OidcTenantConfig tenant) {
         return authenticationRequestCookie(callbackUri, tenant, URI.create("https://rp.example/resource"));
     }
@@ -2957,6 +3066,7 @@ class OidcFeatureRouteTest {
                                                          OidcTenantConfig tenant,
                                                          URI originalUri) {
         Instant now = Instant.now();
+        List<String> requestedScopes = tenant.authorizationCode().orElseThrow().scopes();
         return OidcCookieStateHandler.create(tenantId, tenant)
                 .createAuthenticationRequestCookie(new OidcAuthenticationRequestState(tenantId,
                                                                                          state,
@@ -2966,6 +3076,7 @@ class OidcFeatureRouteTest {
                                                                                          expectedIssuer,
                                                                                          originalUri,
                                                                                          callbackUri,
+                                                                                         requestedScopes,
                                                                                          now.minusSeconds(1),
                                                                                          now.plusSeconds(60)));
     }

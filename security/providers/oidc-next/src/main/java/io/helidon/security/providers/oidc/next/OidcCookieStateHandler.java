@@ -460,6 +460,7 @@ final class OidcCookieStateHandler {
                 .set("expected_issuer", state.expectedIssuer())
                 .set("original_uri", state.originalUri().toString())
                 .set("redirection_endpoint_uri", state.redirectionEndpointUri().toString())
+                .set("requested_scope", OidcScopeSupport.serializeScopes(state.requestedScopes()))
                 .set("created_at", state.createdAt().toString())
                 .set("expires_at", state.expiresAt().toString());
         if (state.nonce() != null) {
@@ -500,6 +501,8 @@ final class OidcCookieStateHandler {
                 json.stringValue("expected_issuer").orElseThrow(),
                 URI.create(json.stringValue("original_uri").orElseThrow()),
                 URI.create(json.stringValue("redirection_endpoint_uri").orElseThrow()),
+                OidcScopeSupport.parseScopeString(json.stringValue("requested_scope").orElseThrow(),
+                                                 "Authentication Request scope"),
                 Instant.parse(json.stringValue("created_at").orElseThrow()),
                 Instant.parse(json.stringValue("expires_at").orElseThrow()));
     }

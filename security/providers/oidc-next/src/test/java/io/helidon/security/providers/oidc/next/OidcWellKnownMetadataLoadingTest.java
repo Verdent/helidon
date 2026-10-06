@@ -402,6 +402,7 @@ class OidcWellKnownMetadataLoadingTest {
                 SetCookie stateCookie = OidcCookieStateHandler.create("tenant", tenant)
                         .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state,
                                 "nonce", "verifier", null, discoveryIssuer.toString(), URI.create("/resource"), callback,
+                                tenant.authorizationCode().orElseThrow().scopes(),
                                 now, now.plusSeconds(300)));
                 List<Future<AuthenticationResponse>> requests = new ArrayList<>();
                 for (int index = 0; index < 16; index++) {

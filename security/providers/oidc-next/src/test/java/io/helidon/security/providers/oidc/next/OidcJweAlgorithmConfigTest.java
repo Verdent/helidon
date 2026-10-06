@@ -65,7 +65,7 @@ class OidcJweAlgorithmConfigTest {
     private static final OidcAuthenticationRequestState REQUEST_STATE = new OidcAuthenticationRequestState(
             "default", "state-value", "nonce-value", "pkce-verifier", null, ISSUER,
             URI.create("https://rp.example/resource"), URI.create("https://rp.example/oidc/callback"),
-            VALIDATION_TIME.minusSeconds(1), VALIDATION_TIME.plusSeconds(300));
+            List.of("openid"), VALIDATION_TIME.minusSeconds(1), VALIDATION_TIME.plusSeconds(300));
 
     private static JwkRSA encryptionKey;
     private static OidcValidatedIdToken signedIdToken;

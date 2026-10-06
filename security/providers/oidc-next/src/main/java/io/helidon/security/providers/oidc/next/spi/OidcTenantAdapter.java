@@ -188,6 +188,9 @@ public interface OidcTenantAdapter extends NamedService {
      * Map or enrich a subject after its underlying credentials and claims have been validated. Applies to browser
      * sessions, JWT bearer tokens, and introspected bearer tokens. The adapter is responsible for the identity and
      * credential semantics of a replacement subject; throwing rejects authentication without issuing a session cookie.
+     * For browser sessions this hook runs before the initial session is stored and when authenticating a stored or
+     * refreshed session. Implementations must support repeated and concurrent invocations. Browser session mapping
+     * failures also remove existing session cookies.
      *
      * @param tenant selected tenant
      * @param subject core-mapped subject

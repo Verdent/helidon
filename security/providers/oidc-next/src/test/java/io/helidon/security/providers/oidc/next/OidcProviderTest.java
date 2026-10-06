@@ -71,6 +71,7 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
@@ -1134,7 +1135,14 @@ class OidcProviderTest {
             AuthenticationResponse rejected = provider.authenticate(request(null, environmentWithCookie(
                     cookie.name() + "=" + cookie.value())));
             assertAuthorizationCodeFlowUnavailable(rejected);
-            assertThat(rejected.responseHeaders().containsKey("Set-Cookie"), is(false));
+            List<SetCookie> removed = rejected.responseHeaders().getOrDefault("Set-Cookie", List.of()).stream()
+                    .map(SetCookie::parse).toList();
+            assertThat(removed.stream().map(SetCookie::name).toList(), hasItem(cookie.name()));
+            removed.forEach(removal -> {
+                assertThat(removal.value(), is(""));
+                assertThat(removal.maxAge().orElse(Duration.ZERO), is(Duration.ZERO));
+                assertThat(removal.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+            });
         }
     }
 

@@ -75,7 +75,6 @@ final class OidcAuthorizationResponseProcessor {
         String tenantId = request.tenantId();
         OidcAuthenticationRequestState state = request.state();
         OidcCookieStateHandler cookieStateHandler = request.cookieStateHandler();
-        List<SetCookie> stateRemovalCookie = cookieStateHandler.removeAuthenticationRequestCookies(responseCookies);
 
         /*
          * Spec: RFC 6749, 4.1.2 Authorization Response
@@ -86,8 +85,9 @@ final class OidcAuthorizationResponseProcessor {
         if (!state.state().equals(returnedState)) {
             return OidcAuthorizationResponseResult.invalid(
                     "Authorization Response state does not match Authentication Request state",
-                    stateRemovalCookie);
+                    List.of());
         }
+        List<SetCookie> stateRemovalCookie = cookieStateHandler.removeAuthenticationRequestCookies(responseCookies);
         if (now.isAfter(state.expiresAt())) {
             return OidcAuthorizationResponseResult.invalid("Authentication Request state has expired", stateRemovalCookie);
         }

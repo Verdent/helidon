@@ -27,13 +27,13 @@ import io.helidon.common.features.api.HelidonFlavor;
 module io.helidon.security.providers.oidc.next.idcs {
     requires static io.helidon.common.features.api;
 
-    requires io.helidon.common;
+    requires transitive io.helidon.common;
     requires io.helidon.common.parameters;
-    requires io.helidon.config;
+    requires transitive io.helidon.config;
     requires io.helidon.http;
     requires io.helidon.json;
-    requires io.helidon.security.providers.oidc.next;
-    requires io.helidon.webclient.api;
+    requires transitive io.helidon.security.providers.oidc.next;
+    requires transitive io.helidon.webclient.api;
 
     exports io.helidon.security.providers.oidc.next.idcs;
 

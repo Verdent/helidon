@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,6 +39,9 @@ import org.junit.jupiter.api.TestFactory;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -834,7 +838,7 @@ class OidcAuthorizationResponseProcessorTest {
     }
 
     @Test
-    void mismatchedAuthorizationResponseStateFailsAndClearsCookie() {
+    void mismatchedAuthorizationResponseStateFailsAndPreservesCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
         OidcProviderConfig config = providerConfig("default", tenant);
         OidcAuthenticationRequestState state = authenticationRequestState("default",
@@ -850,7 +854,49 @@ class OidcAuthorizationResponseProcessorTest {
 
         assertThat(result.invalid(), is(true));
         assertThat(result.description(), is("Authorization Response state does not match Authentication Request state"));
-        assertThat(result.stateCookies().size(), is(1));
+        assertThat(result.stateCookies(), empty());
+    }
+
+    @Test
+    void staleCallbackPreservesNewerChunkedStateAndTheMatchingCallbackConsumesIt() {
+        OidcTenantConfig base = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
+        OidcTenantConfig tenant = OidcTenantConfig.builder(base)
+                .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(2048).buildPrototype()).buildPrototype();
+        OidcProviderConfig config = providerConfig("default", tenant);
+        OidcAuthenticationRequestState newer = new OidcAuthenticationRequestState("default", OTHER_STATE,
+                "newer-nonce", "newer-verifier", null, ISSUER.toString(),
+                URI.create(ORIGINAL_URI + "?filter=" + "a".repeat(3000)), REDIRECTION_ENDPOINT_URI,
+                List.of("openid"), NOW, NOW.plusSeconds(60));
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create("default", tenant);
+        List<SetCookie> pieces = handler.createAuthenticationRequestCookies(newer, false, Map.of());
+        assertThat(pieces, hasSize(greaterThan(1)));
+        Map<String, List<String>> browserCookies = new LinkedHashMap<>();
+        for (SetCookie cookie : pieces) {
+            browserCookies.put(cookie.name(), List.of(cookie.value()));
+        }
+        Map<String, List<String>> originalCookies = Map.copyOf(browserCookies);
+        OidcAuthorizationResponseResult stale = process(config,
+                UriQuery.create("code=older-code&state=" + STATE), browserCookies, REDIRECTION_ENDPOINT_URI, NOW);
+        assertThat(stale.invalid(), is(true));
+        for (SetCookie update : stale.stateCookies()) {
+            if (update.value().isEmpty()) {
+                browserCookies.remove(update.name());
+            } else {
+                browserCookies.put(update.name(), List.of(update.value()));
+            }
+        }
+
+        OidcAuthorizationResponseResult accepted = process(config,
+                UriQuery.create("code=newer-code&state=" + OTHER_STATE), browserCookies, REDIRECTION_ENDPOINT_URI, NOW);
+
+        assertThat(accepted.stateValidated(), is(true));
+        assertThat(stale.stateCookies(), empty());
+        assertThat(browserCookies, is(originalCookies));
+        assertThat(accepted.authenticationRequestState().orElseThrow().state(), is(OTHER_STATE));
+        assertThat(accepted.stateCookies(), hasSize(pieces.size()));
+        for (SetCookie update : accepted.stateCookies()) {
+            assertThat(update.value(), is(""));
+        }
     }
 
     @Test

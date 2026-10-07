@@ -88,8 +88,10 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -888,6 +890,89 @@ class OidcFeatureRouteTest {
                 } finally {
                     client.closeResource();
                     rp.stop();
+                }
+            }
+        }
+    }
+
+    @Test
+    void newerLoginCompletesAfterApplyingRejectedOlderCallbackCookies(URI serverUri) {
+        for (int queryLength : List.of(16, 3000)) {
+            for (String staleParameter : List.of("code", "error")) {
+                OidcTenantConfig tenant = tenantConfig(serverUri,
+                        code -> code.redirectionEndpointUri(URI.create("/oidc/callback")));
+                try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                    WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                            .addFeature(OidcFeature.create(provider)).build().start();
+                    WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+                    try {
+                        Map<String, List<String>> browserCookies = new LinkedHashMap<>();
+                        List<UriQuery> requests = new ArrayList<>();
+                        URI newerOriginal = rpBaseUri(rp).resolve("/resource?filter=" + "b".repeat(queryLength));
+                        for (URI original : List.of(rpBaseUri(rp).resolve("/resource?login=older"), newerOriginal)) {
+                            String cookieHeader = String.join("; ", browserCookies.entrySet().stream()
+                                    .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                            AuthenticationResponse login = provider.authenticate(OidcProviderTest.request(null,
+                                    SecurityEnvironment.builder().targetUri(original).transport("http")
+                                            .header(HeaderNames.COOKIE.defaultCase(), cookieHeader).build()));
+                            assertThat(login.statusCode().orElseThrow(), is(303));
+                            requests.add(UriQuery.create(URI.create(login.responseHeaders().get("Location").getFirst())));
+                            applyBrowserCookieUpdates(browserCookies, login.responseHeaders().get("Set-Cookie"));
+                        }
+                        assertThat(requests.getFirst().get("state"), not(is(requests.getLast().get("state"))));
+                        OidcCookieStateHandler handler = OidcCookieStateHandler.create("default", tenant);
+                        OidcAuthenticationRequestState pending = handler.decodeAuthenticationRequestState(browserCookies)
+                                .orElseThrow();
+                        assertThat(pending.state(), is(requests.getLast().get("state")));
+                        assertThat(pending.originalUri(), is(URI.create(newerOriginal.getRawPath()
+                                + "?" + newerOriginal.getRawQuery())));
+                        if (queryLength == 3000) {
+                            assertThat(browserCookies, hasKey(tenant.cookies().authenticationRequestCookieName() + ".1"));
+                        }
+                        Map<String, List<String>> newerCookies = Map.copyOf(browserCookies);
+                        int tokenRequests = TOKEN_REQUESTS.get();
+                        String latestHeader = String.join("; ", browserCookies.entrySet().stream()
+                                .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                        List<String> staleUpdates;
+                        try (HttpClientResponse stale = client.get("/oidc/callback").followRedirects(false)
+                                .queryParam(staleParameter, staleParameter.equals("code") ? "older-code" : "access_denied")
+                                .queryParam("state", requests.getFirst().get("state"))
+                                .header(HeaderNames.COOKIE, latestHeader).request()) {
+                            assertThat(stale.status(), is(Status.BAD_REQUEST_400));
+                            assertThat(stale.headers().first(HeaderNames.LOCATION), is(Optional.empty()));
+                            assertThat(TOKEN_REQUESTS.get(), is(tokenRequests));
+                            staleUpdates = stale.headers().contains(HeaderNames.SET_COOKIE)
+                                    ? stale.headers().get(HeaderNames.SET_COOKIE).allValues() : List.of();
+                            applyBrowserCookieUpdates(browserCookies, staleUpdates);
+                        }
+                        tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(requests.getLast().get("nonce")))
+                                .toString();
+                        String callbackCookies = String.join("; ", browserCookies.entrySet().stream()
+                                .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                        try (HttpClientResponse accepted = client.get("/oidc/callback").followRedirects(false)
+                                .queryParam("code", "newer-code").queryParam("state", requests.getLast().get("state"))
+                                .header(HeaderNames.COOKIE, callbackCookies).request()) {
+                            assertThat(accepted.status(), is(Status.SEE_OTHER_303));
+                            assertThat(staleUpdates, empty());
+                            assertThat(browserCookies, is(newerCookies));
+                            assertThat(TOKEN_REQUESTS.get(), is(tokenRequests + 1));
+                            assertThat(rpBaseUri(rp).resolve(accepted.headers().get(HeaderNames.LOCATION).get()),
+                                       is(newerOriginal));
+                            applyBrowserCookieUpdates(browserCookies,
+                                                      accepted.headers().get(HeaderNames.SET_COOKIE).allValues());
+                        }
+                        assertThat(handler.decodeAuthenticationRequestState(browserCookies), is(Optional.empty()));
+                        String storedCookies = String.join("; ", browserCookies.entrySet().stream()
+                                .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                        AuthenticationResponse authenticated = provider.authenticate(OidcProviderTest.request(null,
+                                SecurityEnvironment.builder().targetUri(newerOriginal).transport("http")
+                                        .header(HeaderNames.COOKIE.defaultCase(), storedCookies).build()));
+                        assertThat(authenticated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                        assertThat(authenticated.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+                    } finally {
+                        client.closeResource();
+                        rp.stop();
+                    }
                 }
             }
         }
@@ -3304,6 +3389,17 @@ class OidcFeatureRouteTest {
                            .noneMatch(cookie -> cookie.startsWith(tenant.cookies().localAuthenticationCookieName()
                                                                            + "=")),
                    is(true));
+    }
+
+    private static void applyBrowserCookieUpdates(Map<String, List<String>> cookies, List<String> updates) {
+        for (String raw : updates) {
+            SetCookie update = SetCookie.parse(raw);
+            if (update.value().isEmpty()) {
+                cookies.remove(update.name());
+            } else {
+                cookies.put(update.name(), List.of(update.value()));
+            }
+        }
     }
 
     private static WebServer oidcFeatureServer(OidcProviderConfig config) {

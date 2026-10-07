@@ -29,9 +29,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -46,7 +49,7 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 
 final class OidcCookieStateHandler {
-    static final int MAX_SESSION_COOKIES = 16;
+    static final int MAX_COOKIE_CHUNKS = 16;
 
     private static final String PROTECTED_COOKIE_VERSION = "v1";
     private static final String ROUTED_AUTHENTICATION_REQUEST_VERSION = "r1.";
@@ -62,8 +65,8 @@ final class OidcCookieStateHandler {
     private final SecureRandom secureRandom;
 
     private OidcCookieStateHandler(OidcCookieConfig cookieConfig,
-                                   LazyValue<Optional<OidcCookieKeys>> keys,
-                                   SecureRandom secureRandom) {
+                                  LazyValue<Optional<OidcCookieKeys>> keys,
+                                  SecureRandom secureRandom) {
         this.cookieConfig = cookieConfig;
         this.keys = keys;
         this.secureRandom = secureRandom;
@@ -80,8 +83,8 @@ final class OidcCookieStateHandler {
     }
 
     static List<SetCookie> removeLocalAuthenticationResultCookies(OidcCookieConfig config) {
-        List<SetCookie> cookies = new ArrayList<>(MAX_SESSION_COOKIES);
-        for (int index = 0; index < MAX_SESSION_COOKIES; index++) {
+        List<SetCookie> cookies = new ArrayList<>(MAX_COOKIE_CHUNKS);
+        for (int index = 0; index < MAX_COOKIE_CHUNKS; index++) {
             cookies.add(removeCookie(sessionCookieName(config, index)));
         }
         return List.copyOf(cookies);
@@ -91,33 +94,8 @@ final class OidcCookieStateHandler {
         return config.localAuthenticationCookieName() + (index == 0 ? "" : "." + index);
     }
 
-    OidcCookieConfig cookieConfig() {
-        return cookieConfig;
-    }
-
-    SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state) {
-        return createAuthenticationRequestCookie(state, false);
-    }
-
-    SetCookie createAuthenticationRequestCookie(OidcAuthenticationRequestState state, boolean customState) {
-        String value = protect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, toJson(state).toString());
-        if (customState) {
-            // The hint is untrusted. The callback uses it only to select the tenant's protected cookie key;
-            // the decrypted tenant and the complete returned state must still match.
-            String tenantHint = encode(state.tenantId().getBytes(StandardCharsets.UTF_8));
-            if (tenantHint.length() > MAX_ROUTED_TENANT_HINT_LENGTH) {
-                throw new IllegalStateException("OIDC adapter tenant routing hint is too large");
-            }
-            value = ROUTED_AUTHENTICATION_REQUEST_VERSION + tenantHint + "." + value;
-        }
-        SetCookie cookie = cookieBuilder(cookieConfig.authenticationRequestCookieName(),
-                             value)
-                .maxAge(cookieConfig.authenticationRequestLifetime())
-                .build();
-        if (cookie.toString().length() > cookieConfig.maxCookieSize()) {
-            throw new AuthenticationRequestCookieException("OIDC authentication request cookie exceeds cookies.max-cookie-size");
-        }
-        return cookie;
+    static String authenticationRequestCookieName(OidcCookieConfig config, int index) {
+        return config.authenticationRequestCookieName() + (index == 0 ? "" : "." + index);
     }
 
     static Optional<String> authenticationRequestTenantHint(String cookieValue) {
@@ -141,110 +119,78 @@ final class OidcCookieStateHandler {
         }
     }
 
-    List<SetCookie> createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult result,
-                                                           Map<String, List<String>> currentCookies,
-                                                           Instant now) {
-        return localAuthenticationResultCookies(prepareLocalAuthenticationResult(result, currentCookies), now);
+    OidcCookieConfig cookieConfig() {
+        return cookieConfig;
     }
 
-    PreparedSession prepareLocalAuthenticationResult(OidcLocalAuthenticationResult result,
-                                                     Map<String, List<String>> currentCookies) {
-        String json = toJson(result).toString();
-        if (json.length() > cookieConfig.maxSessionSize()) {
-            throw new SessionCookieException("OIDC session exceeds cookies.max-session-size");
+    List<SetCookie> createAuthenticationRequestCookies(OidcAuthenticationRequestState state,
+                                                      boolean customState,
+                                                      Map<String, List<String>> currentCookies) {
+        String routing = "";
+        if (customState) {
+            String tenantHint = encode(state.tenantId().getBytes(StandardCharsets.UTF_8));
+            if (tenantHint.length() > MAX_ROUTED_TENANT_HINT_LENGTH) {
+                throw new IllegalStateException("OIDC adapter tenant routing hint is too large");
+            }
+            routing = ROUTED_AUTHENTICATION_REQUEST_VERSION + tenantHint + ".";
         }
-        byte[] payload = json.getBytes(StandardCharsets.UTF_8);
-        if (payload.length > cookieConfig.maxSessionSize()) {
-            throw new SessionCookieException("OIDC session exceeds cookies.max-session-size");
-        }
-        String encoding = "n";
         try {
-            if (cookieConfig.compression() == OidcCookieCompression.GZIP) {
-                ByteArrayOutputStream output = new ByteArrayOutputStream();
-                try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
-                    gzip.write(payload);
-                }
-                byte[] compressed = output.toByteArray();
-                if (compressed.length < payload.length) {
-                    payload = compressed;
-                    encoding = "g";
-                }
-            }
-            byte[] iv = new byte[AES_GCM_IV_BYTES];
-            secureRandom.nextBytes(iv);
-            String encodedIv = encode(iv);
-            int encodedLength = (int) (((long) payload.length + AES_GCM_TAG_BYTES) * 4 + 2) / 3;
-            for (int count = 1; count <= Math.min(cookieConfig.maxChunks(), MAX_SESSION_COOKIES); count++) {
-                String framing = "v2." + encoding + "." + count + "." + encodedIv + ".";
-                int[] capacities = new int[count];
-                int capacity = 0;
-                long headerSize = encodedLength;
-                long responseSize = encodedLength;
-                for (int index = 0; index < count; index++) {
-                    String prefix = framing + index + ".";
-                    int overhead = sessionCookie(index, prefix, result.expiresAt(),
-                                                 Duration.ofSeconds(Long.MAX_VALUE)).toString().length();
-                    capacities[index] = Math.max(0, cookieConfig.maxCookieSize() - overhead);
-                    capacity += capacities[index];
-                    responseSize += overhead + 14L;
-                    headerSize += sessionCookieName(cookieConfig, index).length() + 1L + prefix.length();
-                    if (index != 0) {
-                        headerSize += 2;
-                    }
-                }
-                List<String> retired = new ArrayList<>();
-                for (int index = count; index < MAX_SESSION_COOKIES; index++) {
-                    String name = sessionCookieName(cookieConfig, index);
-                    if (currentCookies.containsKey(name)) {
-                        retired.add(name);
-                        responseSize += removeCookie(name).toString().length() + 14L;
-                    }
-                }
-                if (capacity < encodedLength || headerSize > cookieConfig.maxTotalSize()
-                        || responseSize > cookieConfig.maxTotalSize()) {
-                    continue;
-                }
-                Cipher cipher = cipher(Cipher.ENCRYPT_MODE, iv, OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION);
-                cipher.updateAAD(framing.getBytes(StandardCharsets.US_ASCII));
-                String ciphertext = encode(cipher.doFinal(payload));
-                List<String> values = new ArrayList<>(count);
-                int offset = 0;
-                for (int index = 0; index < count; index++) {
-                    int end = Math.min(ciphertext.length(), offset + capacities[index]);
-                    values.add(framing + index + "." + ciphertext.substring(offset, end));
-                    offset = end;
-                }
-                return new PreparedSession(values, retired, result.expiresAt());
-            }
-            throw new SessionCookieException("OIDC session exceeds the configured cookie storage capacity");
-        } catch (IOException | GeneralSecurityException | DateTimeException e) {
-            throw new SessionCookieException("Could not protect the OIDC session", e);
+            PreparedCookies prepared = prepareCookies(toJson(state).toString(),
+                                                       OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST,
+                                                       routing, state.expiresAt(), currentCookies);
+            List<SetCookie> updates = protectedCookies(prepared, OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST,
+                                                       cookieConfig.authenticationRequestLifetime());
+            validateCookieUpdate(updates, currentCookies);
+            return updates;
+        } catch (SessionCookieException e) {
+            throw new AuthenticationRequestCookieException("OIDC authentication request exceeds cookie storage capacity", e);
         }
     }
 
-    List<SetCookie> localAuthenticationResultCookies(PreparedSession session, Instant now) {
+    List<SetCookie> createLocalAuthenticationResultCookies(OidcLocalAuthenticationResult result,
+                                                          Map<String, List<String>> currentCookies,
+                                                          Instant now) {
+        List<SetCookie> updates = localAuthenticationResultCookies(prepareLocalAuthenticationResult(result, currentCookies), now);
+        validateCookieUpdate(updates, currentCookies);
+        return updates;
+    }
+
+    PreparedCookies prepareLocalAuthenticationResult(OidcLocalAuthenticationResult result,
+                                                     Map<String, List<String>> currentCookies) {
+        return prepareCookies(toJson(result).toString(), OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION,
+                              "", result.expiresAt(), currentCookies);
+    }
+
+    List<SetCookie> localAuthenticationResultCookies(PreparedCookies session, Instant now) {
         Duration maxAge = Duration.between(now, session.expiresAt());
         if (maxAge.isNegative()) {
             maxAge = Duration.ZERO;
         }
-        List<SetCookie> cookies = new ArrayList<>();
-        for (int index = 0; index < session.values().size(); index++) {
-            SetCookie cookie = sessionCookie(index, session.values().get(index), session.expiresAt(), maxAge);
-            if (cookie.toString().length() > cookieConfig.maxCookieSize()) {
-                throw new SessionCookieException("OIDC session cookie exceeds cookies.max-cookie-size");
+        return protectedCookies(session, OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION, maxAge);
+    }
+
+    void validateCookieUpdate(List<SetCookie> updates, Map<String, List<String>> currentCookies) {
+        Map<String, List<String>> resulting = new HashMap<>(currentCookies);
+        long responseSize = 0;
+        for (SetCookie update : updates) {
+            int size = update.toString().length();
+            if (size > cookieConfig.maxCookieSize()) {
+                throw new SessionCookieException("OIDC cookie exceeds cookies.max-cookie-size");
             }
-            cookies.add(cookie);
+            responseSize += size + 14L;
+            if (update.value().isEmpty()) {
+                resulting.remove(update.name());
+            } else {
+                resulting.put(update.name(), List.of(update.value()));
+            }
         }
-        session.retiredNames().forEach(name -> cookies.add(removeCookie(name)));
-        long responseSize = cookies.stream().mapToLong(cookie -> cookie.toString().length() + 14L).sum();
-        if (responseSize > cookieConfig.maxTotalSize()) {
-            throw new SessionCookieException("OIDC session update exceeds the configured cookie header budget");
+        if (responseSize > cookieConfig.maxTotalSize() || cookieHeaderSize(resulting) > cookieConfig.maxTotalSize()) {
+            throw new SessionCookieException("OIDC cookie update exceeds cookies.max-total-size");
         }
-        return List.copyOf(cookies);
     }
 
     boolean localAuthenticationCookiesPresent(Map<String, List<String>> cookies) {
-        for (int index = 0; index < MAX_SESSION_COOKIES; index++) {
+        for (int index = 0; index < MAX_COOKIE_CHUNKS; index++) {
             if (cookies.containsKey(sessionCookieName(cookieConfig, index))) {
                 return true;
             }
@@ -281,8 +227,15 @@ final class OidcCookieStateHandler {
         return removeLocalAuthenticationResultCookies(cookieConfig);
     }
 
-    SetCookie removeAuthenticationRequestCookie() {
-        return removeCookie(cookieConfig.authenticationRequestCookieName());
+    List<SetCookie> removeAuthenticationRequestCookies(Map<String, List<String>> currentCookies) {
+        List<SetCookie> removed = new ArrayList<>();
+        for (int index = 0; index < MAX_COOKIE_CHUNKS; index++) {
+            String name = authenticationRequestCookieName(cookieConfig, index);
+            if (index == 0 || currentCookies.containsKey(name)) {
+                removed.add(removeCookie(name));
+            }
+        }
+        return List.copyOf(removed);
     }
 
     Optional<OidcAuthenticationRequestState> readAuthenticationRequestState(String cookieValue, Instant now) {
@@ -300,71 +253,25 @@ final class OidcCookieStateHandler {
     Optional<OidcLocalAuthenticationResult> readLocalAuthenticationResult(Map<String, List<String>> cookies,
                                                                          Instant now,
                                                                          OidcIdTokenDecryptor idTokenDecryptor) {
-        try {
-            List<String> baseValues = cookies.getOrDefault(sessionCookieName(cookieConfig, 0), List.of());
-            if (baseValues.size() != 1) {
-                return Optional.empty();
-            }
-            long size = 0;
-            int present = 0;
-            for (int index = 0; index < MAX_SESSION_COOKIES; index++) {
-                String name = sessionCookieName(cookieConfig, index);
-                List<String> values = cookies.getOrDefault(name, List.of());
-                if (values.size() > 1) {
-                    return Optional.empty();
-                }
-                if (!values.isEmpty()) {
-                    String value = values.getFirst();
-                    long length = name.length() + 1L + value.length();
-                    size += length + (present++ == 0 ? 0 : 2);
-                    if (length > cookieConfig.maxCookieSize() || size > cookieConfig.maxTotalSize()) {
-                        return Optional.empty();
-                    }
-                }
-            }
-            String base = baseValues.getFirst();
-            String[] first = sessionParts(base);
-            int count = Integer.parseInt(first[2]);
-            if (count < 1 || count > cookieConfig.maxChunks() || count > MAX_SESSION_COOKIES
-                    || !Integer.toString(count).equals(first[2])) {
-                return Optional.empty();
-            }
-            String framing = String.join(".", first[0], first[1], first[2], first[3]) + ".";
-            StringBuilder combined = new StringBuilder(framing).append("0.");
-            for (int index = 0; index < count; index++) {
-                List<String> values = cookies.getOrDefault(sessionCookieName(cookieConfig, index), List.of());
-                if (values.size() != 1) {
-                    return Optional.empty();
-                }
-                String value = values.getFirst();
-                String prefix = framing + index + ".";
-                if (!value.startsWith(prefix) || value.length() == prefix.length()) {
-                    return Optional.empty();
-                }
-                combined.append(value, prefix.length(), value.length());
-            }
-            return readLocalAuthenticationResult(combined.toString(), now, idTokenDecryptor);
-        } catch (RuntimeException _) {
-            return Optional.empty();
-        }
+        return combineCookies(cookies, OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION)
+                .flatMap(value -> readLocalAuthenticationResult(value, now, idTokenDecryptor));
+    }
+
+    Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(Map<String, List<String>> cookies) {
+        return combineCookies(cookies, OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST)
+                .flatMap(this::decodeAuthenticationRequestState);
     }
 
     Optional<OidcAuthenticationRequestState> decodeAuthenticationRequestState(String cookieValue) {
         try {
-            Optional<String> tenantHint = authenticationRequestTenantHint(cookieValue);
-            if (cookieValue.startsWith(ROUTED_AUTHENTICATION_REQUEST_VERSION) && tenantHint.isEmpty()) {
+            Optional<String> hint = authenticationRequestTenantHint(cookieValue);
+            if (cookieValue.startsWith(ROUTED_AUTHENTICATION_REQUEST_VERSION) && hint.isEmpty()) {
                 return Optional.empty();
             }
-            String protectedValue = tenantHint
-                    .map(_ -> cookieValue.substring(cookieValue.indexOf('.', ROUTED_AUTHENTICATION_REQUEST_VERSION.length()) + 1))
-                    .orElse(cookieValue);
-            JsonObject json = JsonParser.create(unprotect(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST, protectedValue))
-                    .readJsonObject();
-            OidcAuthenticationRequestState state = authenticationRequestStateFromJson(json);
-            if (tenantHint.isPresent() && !tenantHint.orElseThrow().equals(state.tenantId())) {
-                return Optional.empty();
-            }
-            return Optional.of(state);
+            OidcAuthenticationRequestState state = authenticationRequestStateFromJson(
+                    protectedPayload(cookieValue, OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST));
+            return hint.isPresent() && !hint.orElseThrow().equals(state.tenantId())
+                    ? Optional.empty() : Optional.of(state);
         } catch (RuntimeException _) {
             return Optional.empty();
         }
@@ -373,37 +280,9 @@ final class OidcCookieStateHandler {
     Optional<OidcLocalAuthenticationResult> decodeLocalAuthenticationResult(String cookieValue,
                                                                             OidcIdTokenDecryptor idTokenDecryptor) {
         try {
-            if (cookieValue.length() > cookieConfig.maxTotalSize()) {
-                return Optional.empty();
-            }
-            String[] parts = sessionParts(cookieValue);
-            int count = Integer.parseInt(parts[2]);
-            if (count < 1 || count > cookieConfig.maxChunks() || count > MAX_SESSION_COOKIES
-                    || !Integer.toString(count).equals(parts[2])
-                    || !parts[4].equals("0")) {
-                return Optional.empty();
-            }
-            byte[] iv = decode(parts[3]);
-            if (iv.length != AES_GCM_IV_BYTES) {
-                return Optional.empty();
-            }
-            Cipher cipher = cipher(Cipher.DECRYPT_MODE, iv, OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION);
-            String framing = String.join(".", parts[0], parts[1], parts[2], parts[3]) + ".";
-            cipher.updateAAD(framing.getBytes(StandardCharsets.US_ASCII));
-            byte[] payload = cipher.doFinal(decode(parts[5]));
-            if (parts[1].equals("g")) {
-                // Only authenticated payload reaches the decompressor. Read at most the configured bound plus one.
-                try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(payload))) {
-                    payload = gzip.readNBytes(cookieConfig.maxSessionSize() + 1);
-                }
-            }
-            if (payload.length > cookieConfig.maxSessionSize()) {
-                return Optional.empty();
-            }
-            String jsonText = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(payload)).toString();
-            JsonObject json = JsonParser.create(jsonText).readJsonObject();
-            return Optional.of(localAuthenticationResultFromJson(json, idTokenDecryptor));
-        } catch (RuntimeException | GeneralSecurityException | IOException _) {
+            return Optional.of(localAuthenticationResultFromJson(
+                    protectedPayload(cookieValue, OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION), idTokenDecryptor));
+        } catch (RuntimeException _) {
             return Optional.empty();
         }
     }
@@ -423,11 +302,11 @@ final class OidcCookieStateHandler {
                 .build();
     }
 
-    private static String[] sessionParts(String value) {
+    private static String[] cookieParts(String value) {
         String[] parts = value.split("\\.", 6);
         if (parts.length != 6 || !parts[0].equals("v2")
                 || !(parts[1].equals("n") || parts[1].equals("g"))) {
-            throw new IllegalArgumentException("Invalid OIDC session cookie format");
+            throw new IllegalArgumentException("Invalid OIDC protected cookie format");
         }
         return parts;
     }
@@ -446,11 +325,235 @@ final class OidcCookieStateHandler {
         return decoded;
     }
 
-    private SetCookie sessionCookie(int index, String value, Instant expiresAt, Duration maxAge) {
-        return cookieBuilder(sessionCookieName(cookieConfig, index), value)
-                .maxAge(maxAge)
-                .expires(expiresAt)
-                .build();
+    private long cookieHeaderSize(Map<String, List<String>> cookies) {
+        Set<String> names = new HashSet<>();
+        names.add(browserSessionGenerationCookieName());
+        for (int index = 0; index < MAX_COOKIE_CHUNKS; index++) {
+            names.add(sessionCookieName(cookieConfig, index));
+            names.add(authenticationRequestCookieName(cookieConfig, index));
+        }
+        long size = 0;
+        int count = 0;
+        for (String name : names) {
+            for (String value : cookies.getOrDefault(name, List.of())) {
+                size += name.length() + 1L + value.length() + (count++ == 0 ? 0 : 2);
+            }
+        }
+        return size;
+    }
+
+    private Optional<String> combineCookies(Map<String, List<String>> cookies, OidcCookieKeys.Purpose purpose) {
+        try {
+            if (cookieHeaderSize(cookies) > cookieConfig.maxTotalSize()) {
+                return Optional.empty();
+            }
+            List<String> baseValues = cookies.getOrDefault(protectedCookieName(purpose, 0), List.of());
+            if (baseValues.size() != 1) {
+                return Optional.empty();
+            }
+            long size = 0;
+            int present = 0;
+            for (int index = 0; index < MAX_COOKIE_CHUNKS; index++) {
+                String name = protectedCookieName(purpose, index);
+                List<String> values = cookies.getOrDefault(name, List.of());
+                if (values.size() > 1) {
+                    return Optional.empty();
+                }
+                if (!values.isEmpty()) {
+                    long length = name.length() + 1L + values.getFirst().length();
+                    size += length + (present++ == 0 ? 0 : 2);
+                    if (length > cookieConfig.maxCookieSize() || size > cookieConfig.maxTotalSize()) {
+                        return Optional.empty();
+                    }
+                }
+            }
+            String base = baseValues.getFirst();
+            int offset = routingPrefixLength(base, purpose);
+            String[] first = cookieParts(base.substring(offset));
+            int count = Integer.parseInt(first[2]);
+            if (count < 1 || count > cookieConfig.maxChunks() || count > MAX_COOKIE_CHUNKS
+                    || !Integer.toString(count).equals(first[2])) {
+                return Optional.empty();
+            }
+            String framing = base.substring(0, offset) + String.join(".", first[0], first[1], first[2], first[3]) + ".";
+            StringBuilder combined = new StringBuilder(framing).append("0.");
+            for (int index = 0; index < count; index++) {
+                List<String> values = cookies.getOrDefault(protectedCookieName(purpose, index), List.of());
+                if (values.size() != 1) {
+                    return Optional.empty();
+                }
+                String value = values.getFirst();
+                String prefix = framing + index + ".";
+                if (!value.startsWith(prefix) || value.length() == prefix.length()) {
+                    return Optional.empty();
+                }
+                combined.append(value, prefix.length(), value.length());
+            }
+            return Optional.of(combined.toString());
+        } catch (RuntimeException _) {
+            return Optional.empty();
+        }
+    }
+
+    private int routingPrefixLength(String value, OidcCookieKeys.Purpose purpose) {
+        if (purpose == OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST
+                && value.startsWith(ROUTED_AUTHENTICATION_REQUEST_VERSION)) {
+            authenticationRequestTenantHint(value).orElseThrow();
+            return value.indexOf('.', ROUTED_AUTHENTICATION_REQUEST_VERSION.length()) + 1;
+        }
+        return 0;
+    }
+
+    private JsonObject protectedPayload(String value, OidcCookieKeys.Purpose purpose) {
+        try {
+            if (value.length() > cookieConfig.maxTotalSize()) {
+                throw new IllegalArgumentException("OIDC protected cookie exceeds the aggregate budget");
+            }
+            int offset = routingPrefixLength(value, purpose);
+            String[] parts = cookieParts(value.substring(offset));
+            int count = Integer.parseInt(parts[2]);
+            if (count < 1 || count > cookieConfig.maxChunks() || count > MAX_COOKIE_CHUNKS
+                    || !Integer.toString(count).equals(parts[2]) || !parts[4].equals("0")) {
+                throw new IllegalArgumentException("Invalid OIDC protected cookie framing");
+            }
+            if (purpose == OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST && !parts[1].equals("n")) {
+                throw new IllegalArgumentException("Authentication Request cookies must not be compressed");
+            }
+            byte[] iv = decode(parts[3]);
+            if (iv.length != AES_GCM_IV_BYTES) {
+                throw new IllegalArgumentException("Invalid OIDC cookie IV");
+            }
+            Cipher cipher = cipher(Cipher.DECRYPT_MODE, iv, purpose);
+            String framing = value.substring(0, offset) + String.join(".", parts[0], parts[1], parts[2], parts[3]) + ".";
+            cipher.updateAAD(framing.getBytes(StandardCharsets.US_ASCII));
+            byte[] payload = cipher.doFinal(decode(parts[5]));
+            if (parts[1].equals("g")) {
+                try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(payload))) {
+                    payload = gzip.readNBytes(cookieConfig.maxSessionSize() + 1);
+                }
+            }
+            if (payload.length > cookieConfig.maxSessionSize()) {
+                throw new IllegalArgumentException("OIDC protected payload exceeds cookies.max-session-size");
+            }
+            return JsonParser.create(StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(payload)).toString())
+                    .readJsonObject();
+        } catch (GeneralSecurityException | IOException e) {
+            throw new IllegalArgumentException("Failed to read OIDC protected cookie", e);
+        }
+    }
+
+    private SetCookie protectedCookie(OidcCookieKeys.Purpose purpose, int index, String value,
+                                      Instant expiresAt, Duration maxAge) {
+        SetCookie.Builder builder = cookieBuilder(protectedCookieName(purpose, index), value).maxAge(maxAge);
+        if (purpose == OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION) {
+            builder.expires(expiresAt);
+        }
+        return builder.build();
+    }
+
+    private String protectedCookieName(OidcCookieKeys.Purpose purpose, int index) {
+        return switch (purpose) {
+        case AUTHENTICATION_REQUEST -> authenticationRequestCookieName(cookieConfig, index);
+        case LOCAL_AUTHENTICATION -> sessionCookieName(cookieConfig, index);
+        case BROWSER_SESSION_GENERATION -> throw new IllegalArgumentException("Generation cookies cannot be chunked");
+        };
+    }
+
+    private PreparedCookies prepareCookies(String json,
+                                           OidcCookieKeys.Purpose purpose,
+                                           String routing,
+                                           Instant expiresAt,
+                                           Map<String, List<String>> currentCookies) {
+        if (json.length() > cookieConfig.maxSessionSize()) {
+            throw new SessionCookieException("OIDC protected payload exceeds cookies.max-session-size");
+        }
+        byte[] payload = json.getBytes(StandardCharsets.UTF_8);
+        if (payload.length > cookieConfig.maxSessionSize()) {
+            throw new SessionCookieException("OIDC protected payload exceeds cookies.max-session-size");
+        }
+        String encoding = "n";
+        try {
+            if (purpose == OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION
+                    && cookieConfig.compression() == OidcCookieCompression.GZIP) {
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
+                    gzip.write(payload);
+                }
+                byte[] compressed = output.toByteArray();
+                if (compressed.length < payload.length) {
+                    payload = compressed;
+                    encoding = "g";
+                }
+            }
+            byte[] iv = new byte[AES_GCM_IV_BYTES];
+            secureRandom.nextBytes(iv);
+            String encodedIv = encode(iv);
+            int encodedLength = (int) (((long) payload.length + AES_GCM_TAG_BYTES) * 4 + 2) / 3;
+            for (int count = 1; count <= Math.min(cookieConfig.maxChunks(), MAX_COOKIE_CHUNKS); count++) {
+                String framing = routing + "v2." + encoding + "." + count + "." + encodedIv + ".";
+                int[] capacities = new int[count];
+                int capacity = 0;
+                long headerSize = encodedLength;
+                long responseSize = encodedLength;
+                for (int index = 0; index < count; index++) {
+                    String prefix = framing + index + ".";
+                    int overhead = protectedCookie(purpose, index, prefix, expiresAt,
+                                                     purpose == OidcCookieKeys.Purpose.LOCAL_AUTHENTICATION
+                                                             ? Duration.ofSeconds(Long.MAX_VALUE)
+                                                             : cookieConfig.authenticationRequestLifetime()).toString().length();
+                    capacities[index] = Math.max(0, cookieConfig.maxCookieSize() - overhead);
+                    capacity += capacities[index];
+                    responseSize += overhead + 14L;
+                    headerSize += protectedCookieName(purpose, index).length() + 1L + prefix.length();
+                    if (index != 0) {
+                        headerSize += 2;
+                    }
+                }
+                List<String> retired = new ArrayList<>();
+                for (int index = count; index < MAX_COOKIE_CHUNKS; index++) {
+                    String name = protectedCookieName(purpose, index);
+                    if (currentCookies.containsKey(name)) {
+                        retired.add(name);
+                        responseSize += removeCookie(name).toString().length() + 14L;
+                    }
+                }
+                if (capacity < encodedLength || headerSize > cookieConfig.maxTotalSize()
+                        || responseSize > cookieConfig.maxTotalSize()) {
+                    continue;
+                }
+                Cipher cipher = cipher(Cipher.ENCRYPT_MODE, iv, purpose);
+                cipher.updateAAD(framing.getBytes(StandardCharsets.US_ASCII));
+                String ciphertext = encode(cipher.doFinal(payload));
+                List<String> values = new ArrayList<>(count);
+                int offset = 0;
+                for (int index = 0; index < count; index++) {
+                    int end = Math.min(ciphertext.length(), offset + capacities[index]);
+                    values.add(framing + index + "." + ciphertext.substring(offset, end));
+                    offset = end;
+                }
+                return new PreparedCookies(values, retired, expiresAt);
+            }
+            throw new SessionCookieException("OIDC protected payload exceeds the configured cookie storage capacity");
+        } catch (IOException | GeneralSecurityException | DateTimeException e) {
+            throw new SessionCookieException("Could not protect the OIDC cookie payload", e);
+        }
+    }
+
+    private List<SetCookie> protectedCookies(PreparedCookies prepared, OidcCookieKeys.Purpose purpose, Duration maxAge) {
+        List<SetCookie> cookies = new ArrayList<>();
+        for (int index = 0; index < prepared.values().size(); index++) {
+            SetCookie cookie = protectedCookie(purpose, index, prepared.values().get(index), prepared.expiresAt(), maxAge);
+            if (cookie.toString().length() > cookieConfig.maxCookieSize()) {
+                throw new SessionCookieException("OIDC protected cookie exceeds cookies.max-cookie-size");
+            }
+            cookies.add(cookie);
+        }
+        prepared.retiredNames().forEach(name -> cookies.add(removeCookie(name)));
+        long responseSize = cookies.stream().mapToLong(cookie -> cookie.toString().length() + 14L).sum();
+        if (responseSize > cookieConfig.maxTotalSize()) {
+            throw new SessionCookieException("OIDC cookie update exceeds the configured cookie header budget");
+        }
+        return List.copyOf(cookies);
     }
 
     private JsonObject toJson(OidcAuthenticationRequestState state) {
@@ -588,24 +691,24 @@ final class OidcCookieStateHandler {
     record BrowserSessionGeneration(String value, SetCookie cookie) {
     }
 
-    record PreparedSession(List<String> values, List<String> retiredNames, Instant expiresAt) {
-        PreparedSession {
+    record PreparedCookies(List<String> values, List<String> retiredNames, Instant expiresAt) {
+        PreparedCookies {
             values = List.copyOf(values);
             retiredNames = List.copyOf(retiredNames);
-            if (values.isEmpty() || values.size() + retiredNames.size() > MAX_SESSION_COOKIES) {
-                throw new IllegalArgumentException("Invalid prepared session cookie set");
+            if (values.isEmpty() || values.size() + retiredNames.size() > MAX_COOKIE_CHUNKS) {
+                throw new IllegalArgumentException("Invalid prepared cookie set");
             }
         }
 
         @Override
         public String toString() {
-            return "PreparedSession[parts=" + values.size() + ", expiresAt=" + expiresAt + "]";
+            return "PreparedCookies[parts=" + values.size() + ", expiresAt=" + expiresAt + "]";
         }
     }
 
     static final class AuthenticationRequestCookieException extends IllegalStateException {
-        AuthenticationRequestCookieException(String message) {
-            super(message);
+        AuthenticationRequestCookieException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 

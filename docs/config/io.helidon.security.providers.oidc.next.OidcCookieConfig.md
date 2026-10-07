@@ -27,7 +27,7 @@ Cookie configuration used by stateful OIDC flows
 <td>
 <code>12288</code>
 </td>
-<td>Maximum aggregate session-cookie request-header contribution in bytes, including names and separators</td>
+<td>Maximum aggregate request-header contribution of this tenant's OIDC cookies in bytes, including names and separators</td>
 </tr>
 <tr>
 <td>
@@ -51,7 +51,7 @@ Cookie configuration used by stateful OIDC flows
 <td>
 <code>65536</code>
 </td>
-<td>Maximum UTF-8 session JSON size before compression and after authenticated decompression</td>
+<td>Maximum UTF-8 Authentication Request or session JSON size before compression and after authenticated decompression</td>
 </tr>
 <tr>
 <td>
@@ -87,7 +87,7 @@ Cookie configuration used by stateful OIDC flows
 <td>
 <code>4</code>
 </td>
-<td>Maximum local-authentication cookie pieces, including the base cookie, between 1 and 16</td>
+<td>Maximum cookie pieces in each Authentication Request or local authentication result, including the base cookie, between 1 and 16</td>
 </tr>
 <tr>
 <td>

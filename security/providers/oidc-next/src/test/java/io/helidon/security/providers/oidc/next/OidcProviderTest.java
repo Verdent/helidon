@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -72,9 +73,12 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
@@ -465,8 +469,26 @@ class OidcProviderTest {
     }
 
     @Test
-    void oversizedReturnUriRejectsLoginBeforeRedirect() {
+    void longReturnUriUsesBoundedStateCookieChunks() {
         OidcTenantConfig tenant = authorizationCodeTenant();
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                    .targetUri(URI.create("https://rp.example/resource?filter=" + "a".repeat(3000)))
+                    .path("/resource").transport("https").build()));
+            assertThat(response.statusCode().orElseThrow(), is(303));
+            String name = tenant.cookies().authenticationRequestCookieName();
+            List<SetCookie> stateCookies = response.responseHeaders().get("Set-Cookie").stream().map(SetCookie::parse)
+                    .filter(cookie -> cookie.name().equals(name) || cookie.name().startsWith(name + ".")).toList();
+            assertThat(stateCookies, hasSize(greaterThan(1)));
+            stateCookies.forEach(cookie -> assertThat(cookie.toString().length(),
+                                                     lessThanOrEqualTo(tenant.cookies().maxCookieSize())));
+        }
+    }
+
+    @Test
+    void oversizedReturnUriRejectsLoginBeforeRedirect() {
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies -> cookies.maxChunks(1)
+                .protection(protection -> protection.password("test-cookie-password"))));
         try (OidcProvider provider = provider(tenant)) {
             for (String query : List.of("a".repeat(3000), "%E2%82%AC".repeat(350))) {
                 AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
@@ -485,7 +507,8 @@ class OidcProviderTest {
 
     @Test
     void oversizedReturnUriPreservesInvalidSessionCleanup() {
-        OidcTenantConfig tenant = authorizationCodeTenant();
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies -> cookies.maxChunks(1)
+                .protection(protection -> protection.password("test-cookie-password"))));
         try (OidcProvider provider = provider(tenant)) {
             AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
                     .targetUri(URI.create("https://rp.example/resource?filter=" + "a".repeat(3000)))
@@ -497,6 +520,34 @@ class OidcProviderTest {
             List<SetCookie> removed = response.responseHeaders().getOrDefault("Set-Cookie", List.of()).stream()
                     .map(SetCookie::parse).toList();
             assertThat(removed.stream().map(SetCookie::name).toList(), hasItem(tenant.cookies().localAuthenticationCookieName()));
+            removed.forEach(cookie -> {
+                assertThat(cookie.value(), is(""));
+                assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+            });
+        }
+    }
+
+    @Test
+    void combinedLoginUpdateBudgetIncludesSessionCleanup() {
+        OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies ->
+                cookies.maxTotalSize(6000).protection(protection -> protection.password("test-cookie-password"))));
+        URI original = URI.create("https://rp.example/resource?filter=" + "a".repeat(3000));
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse accepted = provider.authenticate(request(null, SecurityEnvironment.builder()
+                    .targetUri(original).path("/resource").transport("https").build()));
+            assertThat(accepted.statusCode().orElseThrow(), is(303));
+            assertThat(accepted.responseHeaders().get("Set-Cookie"), hasSize(greaterThan(2)));
+
+            AuthenticationResponse rejected = provider.authenticate(request(null, SecurityEnvironment.builder()
+                    .targetUri(original).path("/resource").transport("https")
+                    .header("Cookie", tenant.cookies().localAuthenticationCookieName() + "=invalid-cookie").build()));
+            assertThat(rejected.statusCode().orElseThrow(), is(414));
+            assertThat(rejected.responseHeaders(), not(hasKey("Location")));
+            List<SetCookie> removed = rejected.responseHeaders().get("Set-Cookie").stream().map(SetCookie::parse).toList();
+            assertThat(removed, hasSize(16));
+            assertThat(removed.stream().map(SetCookie::name).toList(),
+                       is(OidcCookieStateHandler.removeLocalAuthenticationResultCookies(tenant.cookies())
+                                  .stream().map(SetCookie::name).toList()));
             removed.forEach(cookie -> {
                 assertThat(cookie.value(), is(""));
                 assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
@@ -978,7 +1029,7 @@ class OidcProviderTest {
         assertThat(responseCookies.size(), is(2));
         SetCookie cookie = SetCookie.parse(responseCookies.getFirst());
         assertThat(cookie.name(), is("__Host-helidon-oidc-state"));
-        assertThat(cookie.value().startsWith("v1."), is(true));
+        assertThat(cookie.value(), startsWith("v2."));
         assertThat(cookie.path().orElse(""), is("/"));
         assertThat(cookie.httpOnly(), is(true));
         assertThat(cookie.secure(), is(true));
@@ -1991,10 +2042,11 @@ class OidcProviderTest {
 
     private static OidcAuthenticationRequestState authenticationRequestState(AuthenticationResponse response,
                                                                              OidcTenantConfig tenant) {
-        SetCookie cookie = SetCookie.parse(response.responseHeaders().get("Set-Cookie").getFirst());
-        return OidcCookieStateHandler.create("default", tenant)
-                .readAuthenticationRequestState(cookie.value(), Instant.now())
-                .orElseThrow();
+        Map<String, List<String>> cookies = new HashMap<>();
+        response.responseHeaders().get("Set-Cookie").stream().map(SetCookie::parse)
+                .filter(cookie -> !cookie.value().isEmpty())
+                .forEach(cookie -> cookies.put(cookie.name(), List.of(cookie.value())));
+        return OidcCookieStateHandler.create("default", tenant).decodeAuthenticationRequestState(cookies).orElseThrow();
     }
 
     private static String tamperCookieValue(String value) {

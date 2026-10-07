@@ -358,7 +358,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tokenEndpointUri(tokenEndpointUri).jwksUri(serverUri.resolve("jwks"))
                         .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri).tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.maxChunks(1).protection(protection -> protection.password("test-cookie-password")))
                 .buildPrototype();
         try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder().putTenant("default", tenant)
                                                                 .buildPrototype())) {
@@ -1704,7 +1704,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(providerConfig);
         OidcRequestContext requestContext = new OidcRequestContext(OidcProviderTest.request(null, environment),
                                                                    tenantRuntimeRegistry);
-        return new OidcAuthenticationRequestFactory().create(requestContext);
+        return new OidcAuthenticationRequestFactory().create(requestContext, List.of());
     }
 
     private static WebClientConfig conventionalTlsWebClient() {

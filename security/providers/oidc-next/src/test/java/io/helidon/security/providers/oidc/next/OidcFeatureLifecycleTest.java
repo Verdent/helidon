@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -299,10 +300,10 @@ class OidcFeatureLifecycleTest {
                 Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
         Instant now = Instant.now();
         SetCookie cookie = OidcCookieStateHandler.create("tenant", config.tenants().get("tenant"))
-                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state, "nonce", "verifier",
+                .createAuthenticationRequestCookies(new OidcAuthenticationRequestState("tenant", state, "nonce", "verifier",
                         null, config.tenants().get("tenant").issuer().orElseThrow(), URI.create("/resource"), callback,
                         config.tenants().get("tenant").authorizationCode().orElseThrow().scopes(),
-                        now, now.plusSeconds(300)));
+                        now, now.plusSeconds(300)), false, Map.of()).getFirst();
         WebClient client = WebClient.create();
         try (HttpClientResponse response = client.get().uri(callback)
                 .queryParam("state", state).queryParam("error", "access_denied")

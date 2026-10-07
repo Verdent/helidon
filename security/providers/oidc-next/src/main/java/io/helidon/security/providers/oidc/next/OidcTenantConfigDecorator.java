@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -318,7 +319,7 @@ final class OidcTenantConfigDecorator
     }
 
     private static void validateCookies(OidcCookieConfig cookies, Optional<String> clientId) {
-        if (cookies.maxChunks() < 1 || cookies.maxChunks() > OidcCookieStateHandler.MAX_SESSION_COOKIES) {
+        if (cookies.maxChunks() < 1 || cookies.maxChunks() > OidcCookieStateHandler.MAX_COOKIE_CHUNKS) {
             throw new IllegalArgumentException("cookies.max-chunks must be between 1 and 16");
         }
         if (cookies.maxCookieSize() < cookies.localAuthenticationCookieName().length() + 160
@@ -336,26 +337,31 @@ final class OidcTenantConfigDecorator
         if (cookies.maxSessionSize() < 1 || cookies.maxSessionSize() > 1048576) {
             throw new IllegalArgumentException("cookies.max-session-size must be between 1 and 1048576");
         }
-        for (int index = 1; index < OidcCookieStateHandler.MAX_SESSION_COOKIES; index++) {
-            if (cookies.authenticationRequestCookieName().equals(OidcCookieStateHandler.sessionCookieName(cookies, index))) {
-                throw new IllegalArgumentException("Authentication-request cookie name overlaps the session chunk namespace");
-            }
+        if (cookies.authenticationRequestCookieName().equals(cookies.localAuthenticationCookieName())) {
+            throw new IllegalArgumentException("OIDC authentication request and local authentication cookie names "
+                                                       + "must be different");
+        }
+        String generationName = OidcCookieStateHandler.browserSessionGenerationCookieName(cookies);
+        if (cookies.authenticationRequestCookieName().equals(generationName)) {
+            throw new IllegalArgumentException("OIDC authentication request and derived browser-session-generation "
+                                                       + "cookie names must be different");
+        }
+        Set<String> sessionNames = new HashSet<>();
+        Set<String> stateNames = new HashSet<>();
+        for (int index = 0; index < OidcCookieStateHandler.MAX_COOKIE_CHUNKS; index++) {
+            sessionNames.add(OidcCookieStateHandler.sessionCookieName(cookies, index));
+            stateNames.add(OidcCookieStateHandler.authenticationRequestCookieName(cookies, index));
+        }
+        if (stateNames.stream().anyMatch(sessionNames::contains)) {
+            throw new IllegalArgumentException("Authentication-request cookie name overlaps the session chunk namespace");
         }
         validateCookieName(cookies.authenticationRequestCookieName(),
                            "cookies.authentication-request-cookie-name");
         validateCookieName(cookies.localAuthenticationCookieName(),
                            "cookies.local-authentication-cookie-name");
-        String browserSessionGenerationCookieName = OidcCookieStateHandler.browserSessionGenerationCookieName(cookies);
-        validateCookieName(browserSessionGenerationCookieName,
+        validateCookieName(generationName,
                            "derived browser-session-generation cookie name");
-        if (cookies.authenticationRequestCookieName().equals(cookies.localAuthenticationCookieName())) {
-            throw new IllegalArgumentException("OIDC authentication request and local authentication cookie names "
-                                                       + "must be different");
-        }
-        if (cookies.authenticationRequestCookieName().equals(browserSessionGenerationCookieName)) {
-            throw new IllegalArgumentException("OIDC authentication request and derived browser-session-generation "
-                                                       + "cookie names must be different");
-        }
+
         if (cookies.authenticationRequestLifetime().isZero()
                 || cookies.authenticationRequestLifetime().isNegative()) {
             throw new IllegalArgumentException("cookies.authentication-request-lifetime must be positive");

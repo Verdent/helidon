@@ -94,28 +94,30 @@ final class OidcProviderConfigDecorator
 
         OidcMixUpProtection.validateIssuerBindings(target.tenants(), target.issuerUniquenessValidationEnabled());
 
-        Map<String, String> sessionNamespaces = new HashMap<>();
+        Map<String, String> cookieNamespaces = new HashMap<>();
         for (OidcTenantConfig tenant : target.tenants().values()) {
             if (!tenant.enabled()) {
                 continue;
             }
-            String base = tenant.cookies().localAuthenticationCookieName();
-            for (int index = 0; index < OidcCookieStateHandler.MAX_SESSION_COOKIES; index++) {
-                String name = OidcCookieStateHandler.sessionCookieName(tenant.cookies(), index);
-                String existing = sessionNamespaces.putIfAbsent(name, base);
-                if (existing != null && !existing.equals(base)) {
-                    throw new IllegalArgumentException("OIDC tenant session cookie namespaces overlap");
+            OidcCookieConfig cookies = tenant.cookies();
+            for (int index = 0; index < OidcCookieStateHandler.MAX_COOKIE_CHUNKS; index++) {
+                String sessionName = OidcCookieStateHandler.sessionCookieName(cookies, index);
+                String sessionFamily = "session:" + cookies.localAuthenticationCookieName();
+                String existing = cookieNamespaces.putIfAbsent(sessionName, sessionFamily);
+                if (existing != null && !existing.equals(sessionFamily)) {
+                    throw new IllegalArgumentException("OIDC tenant cookie namespaces overlap");
+                }
+                String stateName = OidcCookieStateHandler.authenticationRequestCookieName(cookies, index);
+                String stateFamily = "state:" + cookies.authenticationRequestCookieName();
+                existing = cookieNamespaces.putIfAbsent(stateName, stateFamily);
+                if (existing != null && !existing.equals(stateFamily)) {
+                    throw new IllegalArgumentException("OIDC tenant cookie namespaces overlap");
                 }
             }
-        }
-        for (OidcTenantConfig tenant : target.tenants().values()) {
-            if (!tenant.enabled()) {
-                continue;
-            }
-            if (sessionNamespaces.containsKey(tenant.cookies().authenticationRequestCookieName())
-                    || sessionNamespaces.containsKey(
-                            OidcCookieStateHandler.browserSessionGenerationCookieName(tenant.cookies()))) {
-                throw new IllegalArgumentException("OIDC session cookie namespace overlaps a state or generation cookie");
+            String generation = OidcCookieStateHandler.browserSessionGenerationCookieName(cookies);
+            String existing = cookieNamespaces.putIfAbsent(generation, "generation:" + generation);
+            if (existing != null && !existing.equals("generation:" + generation)) {
+                throw new IllegalArgumentException("OIDC cookie namespace overlaps a generation cookie");
             }
         }
 

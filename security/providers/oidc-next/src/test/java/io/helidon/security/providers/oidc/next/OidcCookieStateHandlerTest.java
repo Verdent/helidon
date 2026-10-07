@@ -86,7 +86,7 @@ class OidcCookieStateHandlerTest {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
         OidcAuthenticationRequestState state = state();
         SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
-                .createAuthenticationRequestCookie(state);
+                .createAuthenticationRequestCookies(state, false, Map.of()).getFirst();
 
         assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
                            .readAuthenticationRequestState(cookie.value(), NOW)
@@ -111,14 +111,15 @@ class OidcCookieStateHandlerTest {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
         OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT_ID, tenant);
         OidcAuthenticationRequestState state = state();
-        String[] parts = handler.createAuthenticationRequestCookie(state).value().split("\\.");
+        String[] parts = handler.createAuthenticationRequestCookies(state, false, Map.of()).getFirst().value().split("\\.");
         OidcCookieKeys.KeyMaterial key = OidcCookieKeys.create(TENANT_ID, tenant).orElseThrow()
                 .keyMaterial(OidcCookieKeys.Purpose.AUTHENTICATION_REQUEST);
-        byte[] iv = Base64.getUrlDecoder().decode(parts[1]);
+        byte[] iv = Base64.getUrlDecoder().decode(parts[3]);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, key.key(), new GCMParameterSpec(128, iv));
         cipher.updateAAD(key.additionalAuthenticatedData());
-        JsonObject json = JsonParser.create(new String(cipher.doFinal(Base64.getUrlDecoder().decode(parts[2])),
+        cipher.updateAAD((String.join(".", parts[0], parts[1], parts[2], parts[3]) + ".").getBytes(StandardCharsets.US_ASCII));
+        JsonObject json = JsonParser.create(new String(cipher.doFinal(Base64.getUrlDecoder().decode(parts[5])),
                                                       StandardCharsets.UTF_8)).readJsonObject();
         Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
         SecureRandom random = new SecureRandom();
@@ -131,7 +132,9 @@ class OidcCookieStateHandlerTest {
             random.nextBytes(iv);
             cipher.init(Cipher.ENCRYPT_MODE, key.key(), new GCMParameterSpec(128, iv));
             cipher.updateAAD(key.additionalAuthenticatedData());
-            String cookie = parts[0] + "." + encoder.encodeToString(iv) + "."
+            String framing = "v2.n.1." + encoder.encodeToString(iv) + ".";
+            cipher.updateAAD(framing.getBytes(StandardCharsets.US_ASCII));
+            String cookie = framing + "0."
                     + encoder.encodeToString(cipher.doFinal(payload.build().toString().getBytes(StandardCharsets.UTF_8)));
             assertThat("requested_scope present=" + scopePresent, handler.decodeAuthenticationRequestState(cookie),
                        is(scopePresent ? Optional.of(state) : Optional.empty()));
@@ -146,7 +149,7 @@ class OidcCookieStateHandlerTest {
                 URI.create("https://rp.example/original"), URI.create("https://rp.example/oidc/callback"),
                 List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(60));
         SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
-                .createAuthenticationRequestCookie(withNoNonce, true);
+                .createAuthenticationRequestCookies(withNoNonce, true, Map.of()).getFirst();
         assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(cookie.value()), is(Optional.of(TENANT_ID)));
         assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
                            .readAuthenticationRequestState(cookie.value(), NOW).orElseThrow(),
@@ -166,21 +169,22 @@ class OidcCookieStateHandlerTest {
         OidcTenantConfig base = tenant(CLIENT_ID, PASSWORD);
         for (boolean customState : List.of(false, true)) {
             int size = OidcCookieStateHandler.create(TENANT_ID, base)
-                    .createAuthenticationRequestCookie(state, customState).toString()
+                    .createAuthenticationRequestCookies(state, customState, Map.of()).getFirst().toString()
                     .getBytes(StandardCharsets.US_ASCII).length;
             OidcTenantConfig exact = OidcTenantConfig.builder(base)
                     .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(size).buildPrototype()).buildPrototype();
             SetCookie accepted = OidcCookieStateHandler.create(TENANT_ID, exact)
-                    .createAuthenticationRequestCookie(state, customState);
+                    .createAuthenticationRequestCookies(state, customState, Map.of()).getFirst();
             assertThat(accepted.toString().getBytes(StandardCharsets.US_ASCII).length, is(size));
             assertThat(OidcCookieStateHandler.create(TENANT_ID, exact)
                                .readAuthenticationRequestState(accepted.value(), NOW),
                        is(Optional.of(state)));
 
             OidcTenantConfig tooSmall = OidcTenantConfig.builder(base)
-                    .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(size - 1).buildPrototype()).buildPrototype();
+                    .cookies(OidcCookieConfig.builder(base.cookies()).maxCookieSize(size - 1).maxChunks(1).buildPrototype())
+                    .buildPrototype();
             assertThrows(IllegalStateException.class, () -> OidcCookieStateHandler.create(TENANT_ID, tooSmall)
-                    .createAuthenticationRequestCookie(state, customState));
+                    .createAuthenticationRequestCookies(state, customState, Map.of()).getFirst());
         }
     }
 
@@ -241,7 +245,7 @@ class OidcCookieStateHandlerTest {
     void explicitSaltIsSharedByReplicasAndIsolatesDeployments() {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD, "AAAAAAAAAAAAAAAAAAAAAA");
         SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
-                .createAuthenticationRequestCookie(state());
+                .createAuthenticationRequestCookies(state(), false, Map.of()).getFirst();
 
         assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
                            .readAuthenticationRequestState(cookie.value(), NOW)

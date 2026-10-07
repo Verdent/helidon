@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import io.helidon.http.SetCookie;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.ProviderRequest;
 
@@ -157,8 +158,8 @@ final class OidcAuthenticationOrchestrator {
     private AuthenticationResponse authorizationCodeFlow(OidcRequestContext context,
                                                           List<String> localAuthenticationRemovalCookie) {
         try {
-            return OidcResponseFactory.authorizationCodeFlowInitiated(authenticationRequestFactory.create(context),
-                                                                      localAuthenticationRemovalCookie);
+            return OidcResponseFactory.authorizationCodeFlowInitiated(
+                    authenticationRequestFactory.create(context, localAuthenticationRemovalCookie));
         } catch (OidcCookieStateHandler.AuthenticationRequestCookieException _) {
             return OidcResponseFactory.authorizationCodeFlowTooLarge(localAuthenticationRemovalCookie);
         } catch (RuntimeException e) {
@@ -262,6 +263,8 @@ final class OidcAuthenticationOrchestrator {
                                                                            context.environment().time().toInstant())
                             .stream().map(Object::toString).toList()
                     : List.of();
+            cookieStateHandler.validateCookieUpdate(authenticationCookie.stream().map(SetCookie::parse).toList(),
+                                                   context.cookies());
         } catch (OidcCookieStateHandler.SessionCookieException _) {
             return LocalAuthenticationOutcome.response(
                     OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookies(cookieStateHandler)));

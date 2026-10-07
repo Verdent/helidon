@@ -75,7 +75,7 @@ final class OidcAuthorizationResponseProcessor {
         String tenantId = request.tenantId();
         OidcAuthenticationRequestState state = request.state();
         OidcCookieStateHandler cookieStateHandler = request.cookieStateHandler();
-        List<SetCookie> stateRemovalCookie = List.of(cookieStateHandler.removeAuthenticationRequestCookie());
+        List<SetCookie> stateRemovalCookie = cookieStateHandler.removeAuthenticationRequestCookies(responseCookies);
 
         /*
          * Spec: RFC 6749, 4.1.2 Authorization Response
@@ -262,7 +262,7 @@ final class OidcAuthorizationResponseProcessor {
         if (stateCookies.size() != 1) {
             return Optional.empty();
         }
-        return cookieStateHandler.decodeAuthenticationRequestState(stateCookies.getFirst())
+        return cookieStateHandler.decodeAuthenticationRequestState(cookies)
                 .filter(state -> tenantId.equals(state.tenantId()))
                 .map(state -> new ResolvedAuthenticationRequest(tenantId, cookieStateHandler, state));
     }

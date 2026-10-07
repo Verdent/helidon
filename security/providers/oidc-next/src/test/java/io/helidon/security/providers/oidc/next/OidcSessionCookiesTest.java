@@ -77,7 +77,7 @@ class OidcSessionCookiesTest {
         OidcTenantConfig tenant = tenant(_ -> { });
         OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT, tenant);
         OidcLocalAuthenticationResult original = session(6000);
-        OidcCookieStateHandler.PreparedSession prepared = handler.prepareLocalAuthenticationResult(original, Map.of());
+        OidcCookieStateHandler.PreparedCookies prepared = handler.prepareLocalAuthenticationResult(original, Map.of());
         List<SetCookie> cookies = handler.localAuthenticationResultCookies(prepared, NOW);
 
         assertThat(cookies.size() > 1, is(true));
@@ -123,8 +123,8 @@ class OidcSessionCookiesTest {
     void rejectsMixedEnvelopesAndTamperedCiphertext() {
         OidcTenantConfig tenant = tenant(_ -> { });
         OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT, tenant);
-        OidcCookieStateHandler.PreparedSession first = handler.prepareLocalAuthenticationResult(session(6000), Map.of());
-        OidcCookieStateHandler.PreparedSession second = handler.prepareLocalAuthenticationResult(session(6000), Map.of());
+        OidcCookieStateHandler.PreparedCookies first = handler.prepareLocalAuthenticationResult(session(6000), Map.of());
+        OidcCookieStateHandler.PreparedCookies second = handler.prepareLocalAuthenticationResult(session(6000), Map.of());
         Map<String, List<String>> cookies = cookieMap(handler.localAuthenticationResultCookies(first, NOW));
         cookies.put(NAME + ".1", List.of(second.values().get(1)));
         assertThat(read(handler, tenant, cookies), is(false));
@@ -208,7 +208,7 @@ class OidcSessionCookiesTest {
                 handler.localAuthenticationResultCookies(handler.prepareLocalAuthenticationResult(session(6000), Map.of()), NOW));
         original.put(NAME + ".1000000", List.of("not-our-cookie"));
         original.put("application", List.of("keep"));
-        OidcCookieStateHandler.PreparedSession small = handler.prepareLocalAuthenticationResult(session(1), original);
+        OidcCookieStateHandler.PreparedCookies small = handler.prepareLocalAuthenticationResult(session(1), original);
         List<SetCookie> update = handler.localAuthenticationResultCookies(small, NOW);
 
         assertThat(small.values().size(), is(1));

@@ -35,11 +35,12 @@ import java.util.stream.Stream;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
-import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonString;
+import io.helidon.json.JsonValue;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.CompositeProviderFlag;
@@ -78,6 +79,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
@@ -589,16 +591,20 @@ class OidcProviderTest {
             }
 
             @Override
-            public Parameters authorizationRequest(OidcTenantConfig tenant,
-                                                   String tenantId,
-                                                   SecurityEnvironment environment,
-                                                   Parameters parameters) {
+            public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                    String tenantId,
+                                                                    SecurityEnvironment environment,
+                                                                    OidcAuthorizationParameters parameters) {
                 assertThat(tenantId, is("default"));
-                Map<String, List<String>> values = parameters.toMap();
-                values.put("state", List.of("provider-" + parameters.get("state")));
-                values.put("nonce", List.of("provider-" + parameters.get("nonce")));
-                values.put("login_hint", List.of("alice@example.org"));
-                return Parameters.create("adapter-authorization-request", values);
+                OidcAuthorizationParameters.Builder values = OidcAuthorizationParameters.builder(parameters);
+                values.putParameter("state",
+                        List.of(JsonString.create("provider-"
+                                + OidcAuthorizationParameterSupport.requiredString(parameters, "state"))));
+                values.putParameter("nonce",
+                        List.of(JsonString.create("provider-"
+                                + OidcAuthorizationParameterSupport.requiredString(parameters, "nonce"))));
+                values.putParameter("login_hint", List.of(JsonString.create("alice@example.org")));
+                return values.buildPrototype();
             }
         };
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, config -> config.adapter(adapter));
@@ -632,6 +638,7 @@ class OidcProviderTest {
                 Map.entry("code_challenge", "unbound-challenge"),
                 Map.entry("code_challenge_method", "plain"),
                 Map.entry("response_type", "token"),
+                Map.entry("client_id", "other-client"),
                 Map.entry("redirect_uri", "https://other.example/callback"),
                 Map.entry("response_mode", "form_post"),
                 Map.entry("request_uri", "urn:example:untrusted-request"),
@@ -648,13 +655,13 @@ class OidcProviderTest {
                 }
 
                 @Override
-                public Parameters authorizationRequest(OidcTenantConfig tenant,
-                                                       String tenantId,
-                                                       SecurityEnvironment environment,
-                                                       Parameters parameters) {
-                    Map<String, List<String>> values = parameters.toMap();
-                    values.put(change.getKey(), List.of(change.getValue()));
-                    return Parameters.create("invalid-authorization-request", values);
+                public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                        String tenantId,
+                                                                        SecurityEnvironment environment,
+                                                                        OidcAuthorizationParameters parameters) {
+                    OidcAuthorizationParameters.Builder values = OidcAuthorizationParameters.builder(parameters);
+                    values.putParameter(change.getKey(), List.of(JsonString.create(change.getValue())));
+                    return values.buildPrototype();
                 }
             };
             try (OidcProvider provider = provider(authorizationCodeTenant(_ -> { }, tenant -> tenant.adapter(adapter)))) {
@@ -664,6 +671,96 @@ class OidcProviderTest {
                         .transport("https")
                         .build()));
                 assertAuthorizationCodeFlowUnavailable(response);
+            }
+        }
+    }
+
+    @Test
+    void typedAdapterCanOmitNonceAndRequestOfflineConsentWithoutPkce() {
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "optional-typed-parameters";
+            }
+
+            @Override
+            public String type() {
+                return "optional-typed-parameters";
+            }
+
+            @Override
+            public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                    String tenantId,
+                                                                    SecurityEnvironment environment,
+                                                                    OidcAuthorizationParameters parameters) {
+                Map<String, List<JsonValue>> values = new HashMap<>(parameters.parameters());
+                values.remove("nonce");
+                values.put("scope", List.of(JsonString.create("openid offline_access")));
+                values.put("prompt", List.of(JsonString.create("consent")));
+                values.put("response_mode", List.of(JsonString.create("query")));
+                return () -> values;
+            }
+        };
+        OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false),
+                builder -> builder.clientSecret("client-secret").adapter(adapter));
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                    .targetUri(ORIGINAL_URI).path("/resource").transport("https").build()));
+
+            assertThat(response.statusCode().orElseThrow(), is(303));
+            UriQuery query = UriQuery.create(URI.create(response.responseHeaders().get("Location").getFirst()));
+            assertThat(query.contains("nonce"), is(false));
+            assertThat(query.contains("code_challenge"), is(false));
+            assertThat(query.get("prompt"), is("consent"));
+            assertThat(query.get("response_mode"), is("query"));
+            OidcAuthenticationRequestState state = authenticationRequestState(response, tenant);
+            assertThat(state.nonce(), nullValue());
+            assertThat(state.pkceVerifier(), is(Optional.empty()));
+            assertThat(state.requestedScopes(), is(List.of("openid", "offline_access")));
+            assertThat(query.get("state"), is(state.state()));
+        }
+    }
+
+    @Test
+    void typedAdapterCannotAddPkceOrSkipOfflineConsent() {
+        for (Map.Entry<String, String> change : List.of(
+                Map.entry("code_challenge", "unbound-challenge"),
+                Map.entry("code_challenge_method", "S256"),
+                Map.entry("prompt", "login"),
+                Map.entry("scope", "openid offline_access"))) {
+            OidcTenantAdapter adapter = new OidcTenantAdapter() {
+                @Override
+                public String name() {
+                    return "unbound-typed-parameters";
+                }
+
+                @Override
+                public String type() {
+                    return "unbound-typed-parameters";
+                }
+
+                @Override
+                public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                        String tenantId,
+                                                                        SecurityEnvironment environment,
+                                                                        OidcAuthorizationParameters parameters) {
+                    Map<String, List<JsonValue>> values = new HashMap<>(parameters.parameters());
+                    values.put(change.getKey(), List.of(JsonString.create(change.getValue())));
+                    if (change.getKey().equals("prompt")) {
+                        values.put("scope", List.of(JsonString.create("openid offline_access")));
+                    }
+                    return () -> values;
+                }
+            };
+            OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false),
+                    builder -> builder.clientSecret("client-secret").adapter(adapter));
+            try (OidcProvider provider = provider(tenant)) {
+                AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
+                        .targetUri(ORIGINAL_URI).path("/resource").transport("https").build()));
+
+                assertAuthorizationCodeFlowUnavailable(response);
+                assertThat(response.responseHeaders().containsKey("Location"), is(false));
+                assertThat(response.responseHeaders().getOrDefault("Set-Cookie", List.of()), empty());
             }
         }
     }

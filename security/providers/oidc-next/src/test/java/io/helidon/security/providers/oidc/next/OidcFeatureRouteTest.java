@@ -51,6 +51,7 @@ import io.helidon.http.Status;
 import io.helidon.json.JsonArray;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
+import io.helidon.json.JsonString;
 import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.EndpointConfig;
@@ -804,13 +805,13 @@ class OidcFeatureRouteTest {
                     }
 
                     @Override
-                    public Parameters authorizationRequest(OidcTenantConfig tenant,
-                                                           String tenantId,
-                                                           SecurityEnvironment environment,
-                                                           Parameters parameters) {
-                        Map<String, List<String>> values = new LinkedHashMap<>(parameters.toMap());
-                        values.put("state", List.of("custom-state"));
-                        return Parameters.create("chunked-state-test", values);
+                    public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                            String tenantId,
+                                                                            SecurityEnvironment environment,
+                                                                            OidcAuthorizationParameters parameters) {
+                        OidcAuthorizationParameters.Builder values = OidcAuthorizationParameters.builder(parameters);
+                        values.putParameter("state", List.of(JsonString.create("custom-state")));
+                        return values.buildPrototype();
                     }
                 });
             }
@@ -3374,13 +3375,13 @@ class OidcFeatureRouteTest {
             }
 
             @Override
-            public Parameters authorizationRequest(OidcTenantConfig tenant,
-                                                     String tenantId,
-                                                     SecurityEnvironment environment,
-                                                     Parameters parameters) {
-                Map<String, List<String>> values = new LinkedHashMap<>(parameters.toMap());
-                values.put("scope", List.of(scope));
-                return Parameters.create("scope-test-authorization-request", values);
+            public OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                                    String tenantId,
+                                                                    SecurityEnvironment environment,
+                                                                    OidcAuthorizationParameters parameters) {
+                OidcAuthorizationParameters.Builder values = OidcAuthorizationParameters.builder(parameters);
+                values.putParameter("scope", List.of(JsonString.create(scope)));
+                return values.buildPrototype();
             }
         }));
         OidcTenantConfig tenant = tenantBuilder.buildPrototype();

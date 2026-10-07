@@ -185,6 +185,17 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                            + ", cause=" + cause);
     }
 
+    private static boolean rejectExpiredAccessToken(OidcLocalAuthenticationResult authentication,
+                                                   OidcCookieStateHandler cookieHandler,
+                                                   ServerResponse response) {
+        if (authentication.accessTokenExpiresAt().filter(expiry -> !expiry.isAfter(Instant.now())).isEmpty()) {
+            return false;
+        }
+        cookieHandler.removeLocalAuthenticationResultCookies().forEach(response.headers()::addCookie);
+        response.status(Status.BAD_GATEWAY_502).send("Access token expired during authentication");
+        return true;
+    }
+
     private void processAuthorizationResponse(ServerRequest request, ServerResponse response) {
         Map<String, List<String>> cookies = request.headers().cookies().toMap();
         OidcAuthorizationResponseResult result;
@@ -224,6 +235,8 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
                                                ServerResponse response) {
         OidcTenantContext tenantContext = result.tenantContext().orElseThrow();
         OidcAuthenticationRequestState state = result.authenticationRequestState().orElseThrow();
+        // expires_in starts when the OP generates its response; the request start is a conservative local reference.
+        Instant tokenRequestedAt = Instant.now();
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
                 .exchangeAuthorizationCode(result.authorizationCode().orElseThrow(),
                                            state.redirectionEndpointUri(),
@@ -267,15 +280,17 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         }
 
         OidcLocalAuthenticationResult localAuthenticationResult = OidcLocalAuthenticationResult.fromTokenResponse(
-                        tenantContext.tenantId(),
+                        state,
                         tokenResponse,
                         validatedIdToken,
-                        state.requestedScopes(),
                         userInfoResult.userInfo(),
+                        tokenRequestedAt,
                         Instant.now(),
-                        tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime())
-                .withBrowserSessionGeneration(state.browserSessionGeneration());
+                        tenantContext.cookieStateHandler().cookieConfig().localAuthenticationLifetime());
         OidcCookieStateHandler cookieHandler = tenantContext.cookieStateHandler();
+        if (rejectExpiredAccessToken(localAuthenticationResult, cookieHandler, response)) {
+            return;
+        }
         try {
             OidcSubjectMapper.map(localAuthenticationResult, tenantContext);
         } catch (RuntimeException e) {
@@ -294,6 +309,9 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
             List<SetCookie> updates = new ArrayList<>(result.stateCookies());
             updates.addAll(sessionCookies);
             cookieHandler.validateCookieUpdate(updates, requestCookies);
+            if (rejectExpiredAccessToken(localAuthenticationResult, cookieHandler, response)) {
+                return;
+            }
             sessionCookies.forEach(response.headers()::addCookie);
         } catch (OidcCookieStateHandler.SessionCookieException e) {
             LOGGER.log(System.Logger.Level.DEBUG, "OIDC session storage failed: " + OidcDiagnostics.safeExceptionType(e));

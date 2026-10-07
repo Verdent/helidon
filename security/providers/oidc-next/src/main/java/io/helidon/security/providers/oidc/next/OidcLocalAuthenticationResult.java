@@ -31,11 +31,11 @@ final class OidcLocalAuthenticationResult {
         this.state = Objects.requireNonNull(state);
     }
 
-    static OidcLocalAuthenticationResult fromTokenResponse(String tenantId,
+    static OidcLocalAuthenticationResult fromTokenResponse(OidcAuthenticationRequestState request,
                                                            OidcTokenResponse tokenResponse,
                                                            OidcValidatedIdToken idToken,
-                                                           List<String> requestedScopes,
                                                            Optional<JsonObject> userInfo,
+                                                           Instant tokenRequestedAt,
                                                            Instant createdAt,
                                                            Duration maxLifetime) {
         Instant idTokenExpiresAt = idToken.jwt().expirationTime().orElseThrow();
@@ -43,32 +43,26 @@ final class OidcLocalAuthenticationResult {
         Instant expiresAt = Duration.between(createdAt, idTokenExpiresAt).compareTo(maxLifetime) > 0
                 ? createdAt.plus(maxLifetime)
                 : idTokenExpiresAt;
+        Optional<Instant> accessTokenExpiresAt = tokenResponse.expiresIn()
+                .map(seconds -> OidcTokenLifetime.expiresAt(tokenRequestedAt, seconds));
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
-                .tenantId(tenantId)
+                .tenantId(request.tenantId())
                 .idToken(idToken)
                 .accessToken(tokenResponse.accessToken())
                 .tokenType(tokenResponse.tokenType())
                 .refreshToken(tokenResponse.refreshToken())
-                .scope(tokenResponse.scope().or(() -> requestedScope(requestedScopes)))
+                .browserSessionGeneration(request.browserSessionGeneration())
+                .scope(tokenResponse.scope().or(() -> requestedScope(request.requestedScopes())))
                 .userInfo(userInfo)
                 .createdAt(createdAt)
                 .expiresAt(expiresAt)
-                .accessTokenExpiresAt(tokenResponse.expiresIn().map(seconds -> OidcTokenLifetime.expiresAt(createdAt, seconds)))
+                .accessTokenExpiresAt(accessTokenExpiresAt)
                 .buildPrototype();
         return fromStoredValues(state);
     }
 
     static OidcLocalAuthenticationResult fromStoredValues(OidcLocalAuthenticationState state) {
         return new OidcLocalAuthenticationResult(state);
-    }
-
-    OidcLocalAuthenticationResult withBrowserSessionGeneration(Optional<String> browserSessionGeneration) {
-        if (browserSessionGeneration.isEmpty()) {
-            return this;
-        }
-        return fromStoredValues(OidcLocalAuthenticationState.builder(state)
-                                        .browserSessionGeneration(browserSessionGeneration)
-                                        .buildPrototype());
     }
 
     String tenantId() {

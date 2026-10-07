@@ -17,7 +17,9 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,7 @@ import io.helidon.config.Config;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
 import io.helidon.http.PathMatchers;
+import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpFeature;
@@ -284,11 +287,14 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
             return;
         }
         try {
-            cookieHandler.createLocalAuthenticationResultCookies(
-                            localAuthenticationResult,
-                            requestCookies,
-                            Instant.now())
-                    .forEach(response.headers()::addCookie);
+            Map<String, List<String>> remainingCookies = new HashMap<>(requestCookies);
+            result.stateCookies().forEach(cookie -> remainingCookies.remove(cookie.name()));
+            List<SetCookie> sessionCookies = cookieHandler.createLocalAuthenticationResultCookies(
+                    localAuthenticationResult, remainingCookies, Instant.now());
+            List<SetCookie> updates = new ArrayList<>(result.stateCookies());
+            updates.addAll(sessionCookies);
+            cookieHandler.validateCookieUpdate(updates, requestCookies);
+            sessionCookies.forEach(response.headers()::addCookie);
         } catch (OidcCookieStateHandler.SessionCookieException e) {
             LOGGER.log(System.Logger.Level.DEBUG, "OIDC session storage failed: " + OidcDiagnostics.safeExceptionType(e));
             cookieHandler.removeLocalAuthenticationResultCookies().forEach(response.headers()::addCookie);

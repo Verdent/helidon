@@ -102,11 +102,11 @@ final class OidcLogoutHandler {
                             response.headers().addCookie(cookie);
                         }
                     });
-                    String authenticationRequestCookieName = cookieStateHandler.cookieConfig()
-                            .authenticationRequestCookieName();
-                    if (changedCookieNames.add(authenticationRequestCookieName)) {
-                        response.headers().addCookie(cookieStateHandler.removeAuthenticationRequestCookie());
-                    }
+                    cookieStateHandler.removeAuthenticationRequestCookies(cookies).forEach(cookie -> {
+                        if (changedCookieNames.add(cookie.name())) {
+                            response.headers().addCookie(cookie);
+                        }
+                    });
                     String browserSessionGenerationCookieName =
                             cookieStateHandler.browserSessionGenerationCookieName();
                     if (changedCookieNames.add(browserSessionGenerationCookieName)) {

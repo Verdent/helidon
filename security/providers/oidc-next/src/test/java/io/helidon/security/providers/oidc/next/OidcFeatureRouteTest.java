@@ -464,7 +464,7 @@ class OidcFeatureRouteTest {
         Instant now = Instant.now();
         URI callbackUri = serverUri.resolve("oidc/callback");
         SetCookie stateCookie = OidcCookieStateHandler.create("default", tenantConfig())
-                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("default",
+                .createAuthenticationRequestCookies(new OidcAuthenticationRequestState("default",
                                                                                          STATE,
                                                                                          "nonce",
                                                                                          "pkce-verifier",
@@ -474,7 +474,8 @@ class OidcFeatureRouteTest {
                                                                                          callbackUri,
                                                                                          List.of("openid", "profile"),
                                                                                          now.minusSeconds(1),
-                                                                                         now.plusSeconds(60)));
+                                                                                         now.plusSeconds(60)), false, Map.of())
+                .getFirst();
 
         try (HttpClientResponse response = client.get("/oidc/callback")
                 .queryParam("error", "access_denied")
@@ -779,6 +780,113 @@ class OidcFeatureRouteTest {
         } finally {
             client.closeResource();
             rp.stop();
+        }
+    }
+
+    @Test
+    void chunkedStateCompletesCallbackRestoresFullUriAndIsRemovedOnLogout(URI serverUri) {
+        for (boolean customState : List.of(false, true)) {
+            OidcTenantConfig.Builder tenantBuilder = OidcTenantConfig.builder(tenantConfig(serverUri,
+                    code -> code.redirectionEndpointUri(URI.create("/oidc/callback"))))
+                    .logout(_ -> { });
+            if (customState) {
+                tenantBuilder.adapter(new OidcTenantAdapter() {
+                    @Override
+                    public String name() {
+                        return "chunked-state-test";
+                    }
+
+                    @Override
+                    public String type() {
+                        return "chunked-state-test";
+                    }
+
+                    @Override
+                    public Parameters authorizationRequest(OidcTenantConfig tenant,
+                                                           String tenantId,
+                                                           SecurityEnvironment environment,
+                                                           Parameters parameters) {
+                        Map<String, List<String>> values = new LinkedHashMap<>(parameters.toMap());
+                        values.put("state", List.of("custom-state"));
+                        return Parameters.create("chunked-state-test", values);
+                    }
+                });
+            }
+            OidcTenantConfig tenant = tenantBuilder.buildPrototype();
+            OidcProviderConfig config = OidcProviderConfig.builder().putTenant("chunked", tenant).buildPrototype();
+            try (OidcProvider provider = OidcProvider.create(config)) {
+                WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                        .addFeature(OidcFeature.create(provider)).build().start();
+                WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+                try {
+                    URI original = URI.create(rpBaseUri(rp) + "/resource?filter=" + "a".repeat(3000));
+                    AuthenticationResponse login = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder().targetUri(original).transport("http").build()));
+                    assertThat(login.statusCode().orElseThrow(), is(303));
+                    UriQuery authorization = UriQuery.create(URI.create(login.responseHeaders().get("Location").getFirst()));
+                    tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(authorization.get("nonce"))).toString();
+                    String stateName = tenant.cookies().authenticationRequestCookieName();
+                    List<SetCookie> stateCookies = login.responseHeaders().get("Set-Cookie").stream()
+                            .map(SetCookie::parse)
+                            .filter(cookie -> !cookie.name().endsWith("-generation"))
+                            .toList();
+                    assertThat(stateCookies, hasSize(greaterThan(1)));
+                    Map<String, List<String>> browserCookies = new LinkedHashMap<>();
+                    login.responseHeaders().get("Set-Cookie").stream().map(SetCookie::parse)
+                            .forEach(cookie -> browserCookies.put(cookie.name(), List.of(cookie.value())));
+                    String initialCookies = String.join("; ", browserCookies.entrySet().stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                    int tokenRequests = TOKEN_REQUESTS.get();
+                    String incompleteCookies = String.join("; ", browserCookies.entrySet().stream()
+                            .filter(entry -> !entry.getKey().equals(stateName + ".1"))
+                            .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                    try (HttpClientResponse callback = client.get("/oidc/callback").followRedirects(false)
+                            .queryParam("code", "authorization-code").queryParam("state", authorization.get("state"))
+                            .header(HeaderNames.COOKIE, incompleteCookies).request()) {
+                        assertThat(callback.status(), is(Status.BAD_REQUEST_400));
+                        assertThat(TOKEN_REQUESTS.get(), is(tokenRequests));
+                        assertThat(callback.headers().first(HeaderNames.SET_COOKIE), is(Optional.empty()));
+                    }
+                    try (HttpClientResponse callback = client.get("/oidc/callback").followRedirects(false)
+                            .queryParam("code", "authorization-code").queryParam("state", authorization.get("state"))
+                            .header(HeaderNames.COOKIE, initialCookies).request()) {
+                        assertThat(callback.status(), is(Status.SEE_OTHER_303));
+                        assertThat(rpBaseUri(rp).resolve(callback.headers().get(HeaderNames.LOCATION).get()), is(original));
+                        assertThat(TOKEN_REQUESTS.get(), is(tokenRequests + 1));
+                        List<String> updates = callback.headers().get(HeaderNames.SET_COOKIE).allValues();
+                        stateCookies.forEach(cookie -> assertRemovalCookie(updates, cookie.name()));
+                        updates.stream().map(SetCookie::parse).forEach(cookie -> {
+                            if (cookie.value().isEmpty()) {
+                                browserCookies.remove(cookie.name());
+                            } else {
+                                browserCookies.put(cookie.name(), List.of(cookie.value()));
+                            }
+                        });
+                    }
+                    String storedCookies = String.join("; ", browserCookies.entrySet().stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue().getFirst()).toList());
+                    AuthenticationResponse stored = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder().targetUri(original).transport("http")
+                                    .header(HeaderNames.COOKIE.defaultCase(), storedCookies).build()));
+                    assertThat(stored.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+
+                    // A pending login may coexist with a session; logout must clear observed orphaned pieces too.
+                    String pendingCookies = String.join("; ", stateCookies.stream().skip(1)
+                            .map(cookie -> cookie.name() + "=" + cookie.value()).toList());
+                    try (HttpClientResponse logout = client.post("/oidc/logout")
+                            .header(HeaderNames.ORIGIN, sameOrigin(rp))
+                            .header(HeaderNames.COOKIE, storedCookies + "; " + pendingCookies + "; " + stateName + ".15=orphan")
+                            .request()) {
+                        assertThat(logout.status(), is(Status.NO_CONTENT_204));
+                        List<String> updates = logout.headers().get(HeaderNames.SET_COOKIE).allValues();
+                        stateCookies.forEach(cookie -> assertRemovalCookie(updates, cookie.name()));
+                        assertRemovalCookie(updates, stateName + ".15");
+                    }
+                } finally {
+                    client.closeResource();
+                    rp.stop();
+                }
+            }
         }
     }
 
@@ -3356,7 +3464,7 @@ class OidcFeatureRouteTest {
         Instant now = Instant.now();
         List<String> requestedScopes = tenant.authorizationCode().orElseThrow().scopes();
         return OidcCookieStateHandler.create(tenantId, tenant)
-                .createAuthenticationRequestCookie(new OidcAuthenticationRequestState(tenantId,
+                .createAuthenticationRequestCookies(new OidcAuthenticationRequestState(tenantId,
                                                                                          state,
                                                                                          NONCE,
                                                                                          PKCE_VERIFIER,
@@ -3366,7 +3474,8 @@ class OidcFeatureRouteTest {
                                                                                          callbackUri,
                                                                                          requestedScopes,
                                                                                          now.minusSeconds(1),
-                                                                                         now.plusSeconds(60)));
+                                                                                         now.plusSeconds(60)), false, Map.of())
+                .getFirst();
     }
 
     private static String authorizationState(String tenantId, int requestMarker) {

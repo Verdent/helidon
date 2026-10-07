@@ -114,7 +114,7 @@ class OidcAuthorizationResponseProcessorTest {
         OidcAuthenticationRequestState state = authenticationRequestState("default", customState,
                                                                           REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createAuthenticationRequestCookie(state, true);
+                .createAuthenticationRequestCookies(state, true, Map.of()).getFirst();
         Map<String, List<String>> cookies = Map.of(cookie.name(), List.of(cookie.value()));
 
         OidcAuthorizationResponseResult accepted = process(config,
@@ -138,7 +138,7 @@ class OidcAuthorizationResponseProcessorTest {
         OidcAuthenticationRequestState state = authenticationRequestState("default", "custom-state",
                                                                           REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createAuthenticationRequestCookie(state, true);
+                .createAuthenticationRequestCookies(state, true, Map.of()).getFirst();
         String altered = cookie.value().replaceFirst("^r1\\.[^.]+\\.", "r1.dW5rbm93bg.");
 
         OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
@@ -153,7 +153,7 @@ class OidcAuthorizationResponseProcessorTest {
         OidcAuthenticationRequestState state = authenticationRequestState("default", "custom-state",
                                                                           REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60));
         SetCookie cookie = OidcCookieStateHandler.create("default", tenant)
-                .createAuthenticationRequestCookie(state, true);
+                .createAuthenticationRequestCookies(state, true, Map.of()).getFirst();
         AtomicInteger initializations = new AtomicInteger();
 
         OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
@@ -187,8 +187,8 @@ class OidcAuthorizationResponseProcessorTest {
         SetCookie firstCookie = stateCookie(defaultTenant, authenticationRequestState(
                 "default", OTHER_STATE, REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60)));
         SetCookie secondCookie = OidcCookieStateHandler.create("second", secondTenant)
-                .createAuthenticationRequestCookie(authenticationRequestState(
-                        "second", STATE, REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60)), true);
+                .createAuthenticationRequestCookies(authenticationRequestState(
+                        "second", STATE, REDIRECTION_ENDPOINT_URI, NOW.plusSeconds(60)), true, Map.of()).getFirst();
         AtomicInteger defaultInitializations = new AtomicInteger();
         AtomicInteger secondInitializations = new AtomicInteger();
 
@@ -1129,7 +1129,7 @@ class OidcAuthorizationResponseProcessorTest {
 
     private static SetCookie stateCookie(OidcTenantConfig tenantConfig, OidcAuthenticationRequestState state) {
         return OidcCookieStateHandler.create(state.tenantId(), tenantConfig)
-                .createAuthenticationRequestCookie(state);
+                .createAuthenticationRequestCookies(state, false, Map.of()).getFirst();
     }
 
     private static OidcAuthenticationRequestState authenticationRequestState(String tenantId,

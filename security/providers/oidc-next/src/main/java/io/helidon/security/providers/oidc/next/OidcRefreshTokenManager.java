@@ -234,11 +234,11 @@ final class OidcRefreshTokenManager {
 
     static final class RefreshResult {
         private final Optional<OidcLocalAuthenticationResult> authenticationResult;
-        private final Optional<OidcCookieStateHandler.PreparedSession> preparedSession;
+        private final Optional<OidcCookieStateHandler.PreparedCookies> preparedSession;
         private final Outcome outcome;
 
         private RefreshResult(Optional<OidcLocalAuthenticationResult> authenticationResult,
-                              Optional<OidcCookieStateHandler.PreparedSession> preparedSession,
+                              Optional<OidcCookieStateHandler.PreparedCookies> preparedSession,
                               Outcome outcome) {
             this.authenticationResult = Objects.requireNonNull(authenticationResult);
             this.preparedSession = Objects.requireNonNull(preparedSession);
@@ -252,7 +252,7 @@ final class OidcRefreshTokenManager {
             }
         }
 
-        Optional<OidcCookieStateHandler.PreparedSession> preparedSession() {
+        Optional<OidcCookieStateHandler.PreparedCookies> preparedSession() {
             return preparedSession;
         }
 
@@ -277,7 +277,7 @@ final class OidcRefreshTokenManager {
         }
 
         private static RefreshResult refreshed(OidcLocalAuthenticationResult authenticationResult,
-                                               OidcCookieStateHandler.PreparedSession preparedSession) {
+                                               OidcCookieStateHandler.PreparedCookies preparedSession) {
             return new RefreshResult(Optional.of(authenticationResult), Optional.of(preparedSession), Outcome.REFRESHED);
         }
 

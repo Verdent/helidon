@@ -24,8 +24,10 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 import io.helidon.common.parameters.Parameters;
@@ -56,7 +58,7 @@ final class OidcAuthenticationRequestFactory {
         };
     }
 
-    OidcAuthenticationRequest create(OidcRequestContext context) {
+    OidcAuthenticationRequest create(OidcRequestContext context, List<String> sessionRemovalCookies) {
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
@@ -153,8 +155,20 @@ final class OidcAuthenticationRequestFactory {
                 requestedScopes,
                 createdAt,
                 createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()));
-        SetCookie stateCookie = cookieStateHandler.createAuthenticationRequestCookie(requestState,
-                                                                                     !defaultState.equals(state));
+        List<SetCookie> cookieUpdates = new ArrayList<>();
+        sessionRemovalCookies.stream().map(SetCookie::parse).forEach(cookieUpdates::add);
+        Map<String, List<String>> remainingCookies = new HashMap<>(context.cookies());
+        cookieUpdates.forEach(cookie -> remainingCookies.remove(cookie.name()));
+        remainingCookies.put(browserSessionGeneration.cookie().name(), List.of(browserSessionGeneration.cookie().value()));
+        cookieUpdates.addAll(cookieStateHandler.createAuthenticationRequestCookies(
+                requestState, !defaultState.equals(state), remainingCookies));
+        cookieUpdates.add(browserSessionGeneration.cookie());
+        try {
+            cookieStateHandler.validateCookieUpdate(cookieUpdates, context.cookies());
+        } catch (OidcCookieStateHandler.SessionCookieException e) {
+            throw new OidcCookieStateHandler.AuthenticationRequestCookieException(
+                    "OIDC authentication request exceeds the cookie header budget", e);
+        }
         Parameters requestParameters = requestObjectParameters(tenantContext,
                                                                authorizationCode,
                                                                clientId,
@@ -168,8 +182,7 @@ final class OidcAuthenticationRequestFactory {
                 : authorizationUri(authorizationEndpointUri, requestParameters);
 
         return new OidcAuthenticationRequest(authorizationUri,
-                                             List.of(stateCookie.toString(),
-                                                     browserSessionGeneration.cookie().toString()));
+                                             cookieUpdates.stream().map(SetCookie::toString).toList());
     }
 
     private static byte[] sha256(String value) {

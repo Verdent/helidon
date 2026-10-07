@@ -32,6 +32,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -400,10 +401,10 @@ class OidcWellKnownMetadataLoadingTest {
                 String state = OidcAuthorizationState.create("tenant",
                         Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
                 SetCookie stateCookie = OidcCookieStateHandler.create("tenant", tenant)
-                        .createAuthenticationRequestCookie(new OidcAuthenticationRequestState("tenant", state,
+                        .createAuthenticationRequestCookies(new OidcAuthenticationRequestState("tenant", state,
                                 "nonce", "verifier", null, discoveryIssuer.toString(), URI.create("/resource"), callback,
                                 tenant.authorizationCode().orElseThrow().scopes(),
-                                now, now.plusSeconds(300)));
+                                now, now.plusSeconds(300)), false, Map.of()).getFirst();
                 List<Future<AuthenticationResponse>> requests = new ArrayList<>();
                 for (int index = 0; index < 16; index++) {
                     requests.add(executor.submit(() -> {

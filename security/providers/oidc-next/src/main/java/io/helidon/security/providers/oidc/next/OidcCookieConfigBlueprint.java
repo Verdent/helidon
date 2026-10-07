@@ -31,7 +31,8 @@ interface OidcCookieConfigBlueprint {
     /**
      * Authentication Request state cookie name.
      * <p>
-     * Must be a valid HTTP cookie token and must differ from {@link #localAuthenticationCookieName()}.
+     * Must be a valid HTTP cookie token. The base name and derived chunk names must not overlap local authentication
+     * cookies or the browser-session generation cookie.
      *
      * @return cookie name
      */
@@ -77,7 +78,8 @@ interface OidcCookieConfigBlueprint {
      * Maximum encoded size in bytes of one Authentication Request or local-authentication Set-Cookie field value,
      * including name and attributes.
      * Must leave room for the cookie framing and payload and must not exceed 4096.
-     * Authentication Requests exceeding this limit are rejected before redirecting to the OpenID Provider.
+     * Larger protected values are split into pieces within this limit, subject to {@link #maxChunks()}
+     * and {@link #maxTotalSize()}.
      *
      * @return maximum serialized cookie size
      */
@@ -86,8 +88,8 @@ interface OidcCookieConfigBlueprint {
     int maxCookieSize();
 
     /**
-     * Maximum local-authentication cookie pieces, including the base cookie, between 1 and 16.
-     * A value of one permits only single-cookie sessions. Applies to reads and writes.
+     * Maximum cookie pieces in each Authentication Request or local authentication result, including the base cookie,
+     * between 1 and 16. A value of one permits only single-cookie values. Applies to reads and writes.
      *
      * @return maximum cookie count
      */
@@ -96,12 +98,13 @@ interface OidcCookieConfigBlueprint {
     int maxChunks();
 
     /**
-     * Maximum aggregate session-cookie request-header contribution in bytes, including names and separators.
-     * Also bounds outgoing session Set-Cookie headers, including required deletion headers, and must allow clearing
+     * Maximum aggregate request-header contribution of this tenant's OIDC cookies in bytes, including names and separators.
+     * Includes authentication state, local authentication and browser generation. Also bounds outgoing login and session
+     * Set-Cookie updates, including required deletion headers, and must allow clearing
      * the fixed session cookie namespace. Must not exceed 65536.
-     * Other application, authentication-request, and browser-generation cookies need separate header headroom.
+     * Other application cookies and HTTP headers need separate header headroom.
      *
-     * @return maximum encoded session-cookie header size
+     * @return maximum encoded OIDC cookie header size
      */
     @Option.Configured
     @Option.DefaultInt(12288)
@@ -119,10 +122,10 @@ interface OidcCookieConfigBlueprint {
     OidcCookieCompression compression();
 
     /**
-     * Maximum UTF-8 session JSON size before compression and after authenticated decompression.
+     * Maximum UTF-8 Authentication Request or session JSON size before compression and after authenticated decompression.
      * Must be positive and no greater than 1048576 bytes. Applies even when compression is disabled.
      *
-     * @return maximum decoded session size
+     * @return maximum decoded protected payload size
      */
     @Option.Configured
     @Option.DefaultInt(65536)

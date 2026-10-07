@@ -16,7 +16,6 @@
 
 package io.helidon.security.providers.oidc.next;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import io.helidon.http.HeaderNames;
@@ -96,18 +95,14 @@ final class OidcResponseFactory {
                 .build();
     }
 
-    static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request,
-                                                                 List<String> localAuthenticationRemovalCookie) {
-        List<String> cookies = new ArrayList<>(3);
-        cookies.addAll(localAuthenticationRemovalCookie);
-        cookies.addAll(request.cookies());
+    static AuthenticationResponse authorizationCodeFlowInitiated(OidcAuthenticationRequest request) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE_FINISH)
                 .statusCode(Status.SEE_OTHER_303.code())
                 .description("Redirecting to OpenID Provider Authorization Endpoint")
                 .responseHeader(HeaderNames.LOCATION.defaultCase(), request.authorizationUri().toString())
                 .responseHeader(HeaderNames.SET_COOKIE.defaultCase(),
-                                List.copyOf(cookies))
+                                request.cookies())
                 .build();
     }
 

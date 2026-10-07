@@ -2566,10 +2566,11 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .buildPrototype();
 ```
 
-## Local Authentication Cookies
+## Authentication State and Local Authentication Cookies
 
-Authorization Code Flow stores one authenticated session in a bounded set of protected local authentication cookies.
-Small sessions use one cookie; larger sessions are automatically split after authenticated encryption and encoding.
+Authorization Code Flow stores authentication-request state and authenticated sessions in separate bounded sets of
+protected cookies. Small values use one cookie; larger values are automatically split after authenticated encryption
+and encoding.
 This is provider-neutral and does not change the tokens issued by the OpenID Provider.
 
 ```yaml
@@ -2598,25 +2599,29 @@ The additional settings are directly on `OidcCookieConfig`, with equivalent prog
 | Setting | Meaning |
 | --- | --- |
 | `max-cookie-size` | Maximum serialized bytes of each Authentication Request or session Set-Cookie field value, including its name and attributes. At most 4096; must leave room for framing and payload. |
-| `max-chunks` | Maximum physical cookies in one session, including the base, between 1 and 16. One disables multi-cookie sessions. Applies to reads and writes. |
-| `max-total-size` | Encoded session-cookie request-header budget, including names and separators. Also bounds outgoing session Set-Cookie headers, including required deletions. At most 65536; must accommodate clearing the fixed namespace. |
+| `max-chunks` | Maximum physical cookies in each Authentication Request or session, including the base, between 1 and 16. One disables splitting. Applies to reads and writes. |
+| `max-total-size` | Encoded request-header budget for this tenant's state, session and browser-generation cookies, including names and separators. Also bounds outgoing login and session Set-Cookie updates, including required deletions. At most 65536; must accommodate clearing the fixed namespace. |
 | `compression` | `NONE` or `GZIP`, which is used only when smaller. NONE affects new writes; authenticated GZIP sessions remain readable. No provider-specific defaults or detection. |
-| `max-session-size` | Maximum UTF-8 session JSON bytes before compression and after authenticated decompression, between 1 and 1048576. Applies even without compression. |
+| `max-session-size` | Maximum UTF-8 Authentication Request or session JSON bytes before compression and after authenticated decompression, between 1 and 1048576. Applies even without compression. |
 
-Leave header capacity for other application cookies, authentication-request state, browser generation, and other headers.
-Authentication Request state uses one protected cookie and preserves the complete original return path and query.
-The provider returns HTTP 414 before redirecting to the OpenID Provider if that cookie cannot fit `max-cookie-size`.
-It emits no new state or browser-generation cookie for the rejected request. Shorten the return URL or increase a
-smaller configured limit within the 4096-byte maximum. Session chunking and compression do not apply to request state.
+Leave header capacity for other application cookies and HTTP headers. Authentication Request state preserves the complete
+original return path and query and uses the same cookie size, count and aggregate limits as sessions. Request state is
+not compressed. The provider returns HTTP 414 before redirecting to the OpenID Provider if the complete protected state
+and required cookie updates cannot fit those limits. It emits no new state or browser-generation cookie for a rejected
+request. Shorten the return URL or adjust the existing cookie limits within browser and proxy capacity.
 The default 12-KiB budget is below Helidon's default 16-KiB HTTP/1 received-header limit, but smaller proxy limits must
 also be respected. Chunking does not reduce aggregate traffic or permit unlimited token sizes. Final serialized sizes,
 not raw token lengths, determine whether a session fits. Reducing configured limits can require reauthentication.
 
-The base cookie keeps the configured name; subsequent pieces use `.1` through `.15`. The finite namespace is reserved
-regardless of the configured count, and overlapping state/generation or different tenant session namespaces are rejected.
-The authenticated v2 framing binds the encoding, count, and update identity to the tenant/client/purpose-protected
-session. Missing, duplicate, mixed, or tampered required pieces cannot authenticate. Earlier unchunked v1 local-session
-values are not accepted by this format; authentication-request and generation cookies retain their existing format.
+Each base cookie keeps its configured name; subsequent pieces use `.1` through `.15`. Both finite namespaces are reserved
+regardless of the configured count. Overlapping state, session, generation, or differently named tenant cookie families
+are rejected. State and sessions share the authenticated v2 framing, which binds the encoding, count, update identity
+and any custom-state tenant hint to the tenant/client/purpose-protected payload. Missing, duplicate, mixed, or tampered
+required pieces cannot authenticate. Generation cookies remain separate single cookies.
+
+All state pieces share the authentication-request lifetime. A completed callback removes the observed state pieces;
+replacing a state value expires its observed obsolete pieces. Logout clears observed state pieces even if the base is
+missing. State and session keys remain separate, and the provider validates state, nonce and PKCE after reassembly.
 
 Every piece shares the absolute local session expiration. Shrinking or replacing a session explicitly expires observed
 obsolete pieces. Logout, expired/corrupt sessions, and terminal refresh failures clear the entire sixteen-slot namespace

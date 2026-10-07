@@ -86,7 +86,9 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -1307,6 +1309,7 @@ class OidcFeatureRouteTest {
                 lifetime.ifPresent(seconds -> json.set("expires_in", seconds));
                 tokenEndpointResponseBody = json.build().toString();
                 SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+                Instant beforeCallback = Instant.now();
                 try (HttpClientResponse response = client.get("/oidc/callback")
                         .followRedirects(false)
                         .queryParam("code", "authorization-code")
@@ -1322,9 +1325,15 @@ class OidcFeatureRouteTest {
                     OidcLocalAuthenticationResult stored = OidcCookieStateHandler.create("default", tenant)
                             .decodeLocalAuthenticationResult(cookie.value(), OidcIdTokenDecryptor.create(tenant))
                             .orElseThrow();
-                    Optional<Instant> expectedExpiry = lifetime.map(seconds -> seconds > 60
-                            ? Instant.MAX : stored.createdAt().plusSeconds(seconds));
-                    assertThat(stored.accessTokenExpiresAt(), is(expectedExpiry));
+                    if (lifetime.isEmpty()) {
+                        assertThat(stored.accessTokenExpiresAt(), is(Optional.empty()));
+                    } else if (lifetime.orElseThrow() > 60) {
+                        assertThat(stored.accessTokenExpiresAt(), is(Optional.of(Instant.MAX)));
+                    } else {
+                        Instant expiry = stored.accessTokenExpiresAt().orElseThrow();
+                        assertThat(expiry, greaterThanOrEqualTo(beforeCallback.plusSeconds(lifetime.orElseThrow())));
+                        assertThat(expiry, lessThanOrEqualTo(stored.createdAt().plusSeconds(lifetime.orElseThrow())));
+                    }
                     assertThat(stored.expiresAt(), is(stored.idToken().jwt().expirationTime().orElseThrow()));
                     assertThat(stored.expiresAt().isAfter(stored.createdAt()), is(true));
                 }

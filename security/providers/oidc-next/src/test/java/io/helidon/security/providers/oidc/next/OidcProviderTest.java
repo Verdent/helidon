@@ -1496,11 +1496,11 @@ class OidcProviderTest {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         String idToken = signedIdToken(it -> it.expirationTime(now.plusSeconds(3600)));
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromTokenResponse(
-                "default",
+                lifetimeAuthenticationRequest(now),
                 tokenResponse(idToken, 600L, null),
                 validatedIdToken(idToken),
-                List.of("openid", "profile"),
                 Optional.empty(),
+                now,
                 now,
                 Duration.ofSeconds(300));
 
@@ -1515,11 +1515,11 @@ class OidcProviderTest {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         String idToken = signedIdToken(it -> it.expirationTime(now.plusSeconds(120)));
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromTokenResponse(
-                "default",
+                lifetimeAuthenticationRequest(now),
                 tokenResponse(idToken, null, "openid"),
                 validatedIdToken(idToken),
-                List.of("openid", "profile"),
                 Optional.empty(),
+                now,
                 now,
                 Duration.ofSeconds(3600));
 
@@ -1538,16 +1538,31 @@ class OidcProviderTest {
         Instant idTokenExpiresAt = now.plusSeconds(120);
         String idToken = signedIdToken(it -> it.expirationTime(idTokenExpiresAt));
         OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromTokenResponse(
-                "default",
+                lifetimeAuthenticationRequest(now),
                 tokenResponse(idToken, Long.MAX_VALUE, "openid"),
                 validatedIdToken(idToken),
-                List.of("openid"),
                 Optional.empty(),
+                now,
                 now,
                 Duration.ofSeconds(Long.MAX_VALUE));
 
         assertThat(result.expiresAt(), is(idTokenExpiresAt));
         assertThat(result.accessTokenExpiresAt().orElseThrow(), is(Instant.MAX));
+    }
+
+    @Test
+    void localAuthenticationResultKeepsTokenAndSessionLifetimeReferencesSeparate() {
+        Instant requestedAt = Instant.parse("2026-10-07T10:00:00.123456789Z");
+        Instant createdAt = requestedAt.plusMillis(1600);
+        String idToken = signedIdToken(jwt -> jwt.issueTime(requestedAt).expirationTime(requestedAt.plusSeconds(3600)));
+        OidcLocalAuthenticationResult result = OidcLocalAuthenticationResult.fromTokenResponse(
+                lifetimeAuthenticationRequest(requestedAt), tokenResponse(idToken, 600L, null), validatedIdToken(idToken),
+                Optional.empty(), requestedAt, createdAt, Duration.ofSeconds(300));
+
+        assertThat(result.createdAt(), is(createdAt));
+        assertThat(result.expiresAt(), is(createdAt.plusSeconds(300)));
+        assertThat(result.accessTokenExpiresAt(), is(Optional.of(requestedAt.plusSeconds(600))));
+        assertThat(result.browserSessionGeneration(), is(Optional.of("generation")));
     }
 
     @Test
@@ -2047,6 +2062,11 @@ class OidcProviderTest {
                 .filter(cookie -> !cookie.value().isEmpty())
                 .forEach(cookie -> cookies.put(cookie.name(), List.of(cookie.value())));
         return OidcCookieStateHandler.create("default", tenant).decodeAuthenticationRequestState(cookies).orElseThrow();
+    }
+
+    private static OidcAuthenticationRequestState lifetimeAuthenticationRequest(Instant now) {
+        return new OidcAuthenticationRequestState("default", "state", "nonce", null, "generation", ISSUER.toString(),
+                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, List.of("openid", "profile"), now, now.plusSeconds(300));
     }
 
     private static String tamperCookieValue(String value) {

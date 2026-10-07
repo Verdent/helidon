@@ -20,6 +20,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -89,12 +90,30 @@ public final class SignedJwt {
      *                      the algorithms of JWK and JWT do not match, or in case of other mis-matches
      */
     public static SignedJwt sign(Jwt jwt, Jwk jwk) throws JwtException {
-        JsonObject headerJson = jwt.headerJsonObject();
-        JsonObject payloadJson = jwt.payloadJsonObject();
+        Objects.requireNonNull(jwt);
+        return sign(jwt.headers(), jwt.payloadJsonObject(), jwk);
+    }
+
+    /**
+     * Sign a JSON payload using explicit JWT headers and a signing key.
+     * The payload is serialized as supplied, without deriving or converting JWT profile claims.
+     * The caller supplies headers appropriate for the selected key and payload.
+     *
+     * @param headers JWT headers
+     * @param payload JSON payload
+     * @param jwk signing key
+     * @return signed token containing the supplied payload
+     * @throws JwtException if signing fails
+     */
+    public static SignedJwt sign(JwtHeaders headers, JsonObject payload, Jwk jwk) throws JwtException {
+        Objects.requireNonNull(headers);
+        Objects.requireNonNull(payload);
+        Objects.requireNonNull(jwk);
+        JsonObject headerJson = headers.headerJsonObject();
 
         // now serialize to string
         String headerJsonString = headerJson.toString();
-        String payloadJsonString = payloadJson.toString();
+        String payloadJsonString = payload.toString();
 
         String headerBase64 = encode(headerJsonString);
         String payloadBase64 = encode(payloadJsonString);
@@ -107,7 +126,7 @@ public final class SignedJwt {
 
         String tokenContent = signedString + '.' + signatureBase64;
 
-        return new SignedJwt(tokenContent, jwt.headers(), payloadJson, signedBytes, signature);
+        return new SignedJwt(tokenContent, headers, payload, signedBytes, signature);
     }
 
     private static SignedJwt sign(Jwt jwt, JwkKeys jwks, String alg) {

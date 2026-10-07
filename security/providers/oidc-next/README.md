@@ -1251,6 +1251,35 @@ defaults. A Code Flow `nonce` may be omitted by an extension, but keeping it is 
 when PKCE is enabled, and an allow-listed post-logout redirect; unsupported response modes and direct injection of
 `request`/`request_uri` are rejected. The extension must not log token, code, state, or cookie contents.
 
+`authorizationRequest` receives and returns `OidcAuthorizationParameters`, an immutable map of names to lists of
+semantic `JsonValue` occurrences. Use the generated builder to copy the defaults and supply typed values:
+
+```java
+return OidcAuthorizationParameters.builder(parameters)
+        .addParameter("max_age", JsonNumber.create(300))
+        .addParameter("claims", JsonObject.builder()
+                .set("userinfo", JsonObject.builder()
+                        .set("email", JsonObject.builder().set("essential", true).build())
+                        .build())
+                .build())
+        .putParameter("login_hint", List.of(JsonString.create("alice@example.org")))
+        .buildPrototype();
+```
+
+Ordinary OIDC parameters must be single strings; `max_age` is a non-negative whole-second number within the Java
+`long` range (integral decimal or exponent values are normalized to whole-second text), `claims` is one JSON object,
+and `authorization_details` is one JSON array of objects with a non-blank
+`type` string. Each `resource` occurrence is an absolute URI string without a fragment. A list represents repeated
+parameters; a `JsonArray` in that list represents one structured value. Query and plain PAR forms serialize structured
+values as JSON text; signed and encrypted Request Objects retain their JSON types. String contents are never inferred
+as numbers or JSON. Generic extensions may contain native JSON null, including nested nulls. The builder snapshots
+occurrence lists, and the core snapshots the adapter result again before binding checks. Parameter contents are masked
+in `toString()`.
+
+The core owns `request`, `request_uri`, `iss`, `aud`, `iat`, `exp`, `nbf`, and `jti`; adapters cannot supply these names.
+Self-Issued OP `registration` is outside the supported Authorization Code profile. Other request hooks use ordinary
+`Parameters` for their HTTP query or form values.
+
 Adapters are trusted security-sensitive code: response normalization and subject replacement may change what identity
 the application accepts. Baseline validation still runs on the resulting protocol values; an adapter cannot make an
 invalid ID Token signature valid, suppress a mismatch between the callback and protected transaction, or send the

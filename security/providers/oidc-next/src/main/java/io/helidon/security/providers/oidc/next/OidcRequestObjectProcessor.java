@@ -23,9 +23,9 @@ import java.util.UUID;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
-import io.helidon.common.parameters.Parameters;
+import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.EncryptedJwt;
-import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.JwtHeaders;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkEC;
@@ -33,9 +33,6 @@ import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.jwt.jwk.JwkRSA;
 
 final class OidcRequestObjectProcessor {
-    private static final String REQUEST = "request";
-    private static final String REQUEST_URI = "request_uri";
-
     private final OidcRequestObjectConfig requestObject;
     private final Jwk signingJwk;
     private final OidcJwkSetManager jwkSetManager;
@@ -114,7 +111,7 @@ final class OidcRequestObjectProcessor {
         return true;
     }
 
-    String process(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
+    String process(String clientId, String issuer, OidcAuthorizationParameters authorizationParameters, Instant now) {
         SignedJwt signedJwt = sign(clientId, issuer, authorizationParameters, now);
         if (requestObject.encryptionAlgorithm().isEmpty()) {
             return signedJwt.tokenContent();
@@ -194,7 +191,7 @@ final class OidcRequestObjectProcessor {
         return signingJwk;
     }
 
-    private SignedJwt sign(String clientId, String issuer, Parameters authorizationParameters, Instant now) {
+    private SignedJwt sign(String clientId, String issuer, OidcAuthorizationParameters authorizationParameters, Instant now) {
         /*
          * Spec: RFC 9101, 4 Request Object
          * https://www.rfc-editor.org/rfc/rfc9101.html#section-4
@@ -204,30 +201,19 @@ final class OidcRequestObjectProcessor {
          * Quote: "The JWT Claims Set is then signed or signed and encrypted."
          * Quote: "The `request` and `request_uri` parameters MUST NOT be included in Request Objects."
          */
-        Jwt.Builder jwt = Jwt.builder()
+        JwtHeaders.Builder headers = JwtHeaders.builder()
                 .algorithm(signingJwk.algorithm())
-                .type("JWT")
-                .issuer(clientId)
-                .addAudience(issuer)
-                .issueTime(now)
-                .expirationTime(now.plus(requestObject.lifetime()))
-                .jwtId(UUID.randomUUID().toString())
-                .serializeDerivedClaims(false);
-        Optional.ofNullable(signingJwk.keyId()).ifPresent(jwt::keyId);
-
-        for (String name : authorizationParameters.names()) {
-            if (REQUEST.equals(name) || REQUEST_URI.equals(name)) {
-                continue;
-            }
-            List<String> values = authorizationParameters.all(name);
-            if (values.size() == 1) {
-                jwt.addPayloadClaim(name, values.getFirst());
-            } else {
-                jwt.addPayloadClaim(name, values);
-            }
-        }
-
-        return SignedJwt.sign(jwt.build(), signingJwk);
+                .type("JWT");
+        Optional.ofNullable(signingJwk.keyId()).ifPresent(headers::keyId);
+        JsonObject payload = JsonObject.builder()
+                .from(OidcAuthorizationParameterSupport.payload(authorizationParameters))
+                .set("iss", clientId)
+                .setStrings("aud", List.of(issuer))
+                .set("iat", now.getEpochSecond())
+                .set("exp", now.plus(requestObject.lifetime()).getEpochSecond())
+                .set("jti", UUID.randomUUID().toString())
+                .build();
+        return SignedJwt.sign(headers.build(), payload, signingJwk);
     }
 
     private String encrypt(SignedJwt signedJwt) {

@@ -34,7 +34,10 @@ import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.SetCookie;
+import io.helidon.json.JsonString;
 import io.helidon.security.SecurityEnvironment;
+
+import static io.helidon.security.providers.oidc.next.OidcAuthorizationParameterSupport.requiredString;
 
 final class OidcAuthenticationRequestFactory {
     private static final int RANDOM_VALUE_BYTES = 32;
@@ -87,57 +90,53 @@ final class OidcAuthenticationRequestFactory {
         Instant createdAt = environment.time().toInstant();
 
         String clientId = tenantConfig.clientId().orElseThrow();
-        Parameters authorizationParameters = authorizationParameters(clientId,
-                                                                    redirectionEndpointUri,
-                                                                    authorizationCode,
-                                                                    defaultState,
-                                                                    defaultNonce,
-                                                                    pkceVerifier);
+        OidcAuthorizationParameters authorizationParameters = authorizationParameters(clientId,
+                                                                                      redirectionEndpointUri,
+                                                                                      authorizationCode,
+                                                                                      defaultState,
+                                                                                      defaultNonce,
+                                                                                      pkceVerifier);
         String state = defaultState;
         String nonce = defaultNonce;
         List<String> requestedScopes = authorizationCode.scopes();
         if (tenantConfig.adapter().isPresent()) {
-            authorizationParameters = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
-                                                                     .authorizationRequest(tenantConfig,
-                                                                                           tenantContext.tenantId(),
-                                                                                           environment,
-                                                                                           authorizationParameters),
-                                                               "OIDC adapter must return Authorization Request parameters");
-            if (!"code".equals(requiredParameter(authorizationParameters, "response_type"))
-                    || !clientId.equals(requiredParameter(authorizationParameters, "client_id"))
-                    || !redirectionEndpointUri.toString().equals(requiredParameter(authorizationParameters, "redirect_uri"))) {
+            OidcAuthorizationParameters adapted = Objects.requireNonNull(tenantConfig.adapter().orElseThrow()
+                    .authorizationRequest(tenantConfig, tenantContext.tenantId(), environment, authorizationParameters),
+                    "OIDC adapter must return Authorization Request parameters");
+            authorizationParameters = OidcAuthorizationParameters.builder(adapted).buildPrototype();
+            if (!"code".equals(requiredString(authorizationParameters, "response_type"))
+                    || !clientId.equals(requiredString(authorizationParameters, "client_id"))
+                    || !redirectionEndpointUri.toString().equals(requiredString(authorizationParameters, "redirect_uri"))) {
                 throw new IllegalStateException("OIDC adapter cannot change the configured Authorization Code flow binding");
             }
             // Provider-specific parameters are allowed, but the core must still send a valid OIDC Code request and
             // redeem the same PKCE challenge it sent. Request Object and PAR transport are owned by the core.
-            requestedScopes = OidcScopeSupport.parseScopeString(requiredParameter(authorizationParameters, "scope"),
+            requestedScopes = OidcScopeSupport.parseScopeString(requiredString(authorizationParameters, "scope"),
                                                                "Authorization Request scope");
             if (!requestedScopes.contains("openid")
-                    || authorizationParameters.contains("request")
-                    || authorizationParameters.contains("request_uri")
-                    || (authorizationParameters.contains("response_mode")
-                    && !"query".equals(requiredParameter(authorizationParameters, "response_mode")))) {
+                    || (authorizationParameters.parameters().containsKey("response_mode")
+                    && !"query".equals(requiredString(authorizationParameters, "response_mode")))) {
                 throw new IllegalStateException("OIDC adapter supplied unsupported Authorization Request parameters");
             }
             if (requestedScopes.contains(OFFLINE_ACCESS_SCOPE)
-                    && (!authorizationParameters.contains("prompt")
-                    || !List.of(requiredParameter(authorizationParameters, "prompt").split(" ")).contains(PROMPT_CONSENT))) {
+                    && (!authorizationParameters.parameters().containsKey("prompt")
+                    || !List.of(requiredString(authorizationParameters, "prompt").split(" ")).contains(PROMPT_CONSENT))) {
                 throw new IllegalStateException("OIDC adapter must request consent for offline access");
             }
             if (pkceVerifier != null) {
                 if (!codeChallenge(pkceVerifier, authorizationCode.pkceMethod())
-                        .equals(requiredParameter(authorizationParameters, "code_challenge"))
+                        .equals(requiredString(authorizationParameters, "code_challenge"))
                         || !authorizationCode.pkceMethod().wireName()
-                                .equals(requiredParameter(authorizationParameters, "code_challenge_method"))) {
+                                .equals(requiredString(authorizationParameters, "code_challenge_method"))) {
                     throw new IllegalStateException("OIDC adapter cannot change the configured PKCE binding");
                 }
-            } else if (authorizationParameters.contains("code_challenge")
-                    || authorizationParameters.contains("code_challenge_method")) {
+            } else if (authorizationParameters.parameters().containsKey("code_challenge")
+                    || authorizationParameters.parameters().containsKey("code_challenge_method")) {
                 throw new IllegalStateException("OIDC adapter cannot add PKCE without a matching code verifier");
             }
-            state = requiredParameter(authorizationParameters, "state");
-            nonce = authorizationParameters.contains("nonce")
-                    ? requiredParameter(authorizationParameters, "nonce") : null;
+            state = requiredString(authorizationParameters, "state");
+            nonce = authorizationParameters.parameters().containsKey("nonce")
+                    ? requiredString(authorizationParameters, "nonce") : null;
             if (state.isBlank() || nonce != null && nonce.isBlank()) {
                 throw new IllegalStateException("OIDC adapter supplied a blank state or nonce");
             }
@@ -200,12 +199,12 @@ final class OidcAuthenticationRequestFactory {
                 .encodeToString(bytes);
     }
 
-    private Parameters authorizationParameters(String clientId,
-                                               URI redirectionEndpointUri,
-                                               OidcAuthorizationCodeConfig authorizationCode,
-                                               String state,
-                                               String nonce,
-                                               String pkceVerifier) {
+    private OidcAuthorizationParameters authorizationParameters(String clientId,
+                                                                URI redirectionEndpointUri,
+                                                                OidcAuthorizationCodeConfig authorizationCode,
+                                                                String state,
+                                                                String nonce,
+                                                                String pkceVerifier) {
         /*
          * Spec: OpenID Connect Core 1.0, 3.1.2.1 Authentication Request
          * https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
@@ -215,16 +214,16 @@ final class OidcAuthenticationRequestFactory {
          * Quote: "Sufficient entropy MUST be present in the `nonce` values used to prevent attackers from guessing
          * values."
          */
-        Parameters.Builder parameters = Parameters.builder("oidc-authorization-request")
-                .add("response_type", "code")
-                .add("client_id", clientId)
-                .add("redirect_uri", redirectionEndpointUri.toString())
-                .add("scope", OidcScopeSupport.serializeScopes(authorizationCode.scopes()))
-                .add("state", state)
-                .add("nonce", nonce);
+        OidcAuthorizationParameters.Builder parameters = OidcAuthorizationParameters.builder()
+                .addParameter("response_type", JsonString.create("code"))
+                .addParameter("client_id", JsonString.create(clientId))
+                .addParameter("redirect_uri", JsonString.create(redirectionEndpointUri.toString()))
+                .addParameter("scope", JsonString.create(OidcScopeSupport.serializeScopes(authorizationCode.scopes())))
+                .addParameter("state", JsonString.create(state))
+                .addParameter("nonce", JsonString.create(nonce));
         List<String> prompts = prompts(authorizationCode);
         if (!prompts.isEmpty()) {
-            parameters.add("prompt", String.join(" ", prompts));
+            parameters.addParameter("prompt", JsonString.create(String.join(" ", prompts)));
         }
         if (!authorizationCode.resources().isEmpty()) {
             /*
@@ -234,7 +233,7 @@ final class OidcAuthenticationRequestFactory {
              * Quote: "Indicates the target service or resource to which access is being requested."
              * Quote: "the requested resource is applicable to the full authorization grant."
              */
-            authorizationCode.resources().forEach(resource -> parameters.add("resource", resource));
+            authorizationCode.resources().forEach(resource -> parameters.addParameter("resource", JsonString.create(resource)));
         }
         if (pkceVerifier != null) {
             /*
@@ -252,20 +251,21 @@ final class OidcAuthenticationRequestFactory {
              * "If the client is capable of using \"S256\", it MUST use \"S256\", as \"S256\" is Mandatory To
              * Implement (MTI) on the server."
              */
-            parameters.add("code_challenge", codeChallenge(pkceVerifier, authorizationCode.pkceMethod()))
-                    .add("code_challenge_method", authorizationCode.pkceMethod().wireName());
+            parameters.addParameter("code_challenge",
+                                    JsonString.create(codeChallenge(pkceVerifier, authorizationCode.pkceMethod())))
+                    .addParameter("code_challenge_method", JsonString.create(authorizationCode.pkceMethod().wireName()));
         }
 
-        return parameters.build();
+        return parameters.buildPrototype();
     }
 
     private Parameters requestObjectParameters(OidcTenantContext tenantContext,
                                                OidcAuthorizationCodeConfig authorizationCode,
                                                String clientId,
-                                               Parameters authorizationParameters,
+                                               OidcAuthorizationParameters authorizationParameters,
                                                Instant createdAt) {
         if (!OidcRequestObjectProcessor.shouldUse(authorizationCode, tenantContext.metadata())) {
-            return authorizationParameters;
+            return OidcAuthorizationParameterSupport.form(authorizationParameters);
         }
         String requestObject = tenantContext.requestObjectProcessor()
                 .orElseThrow(() -> new IllegalStateException(
@@ -287,9 +287,9 @@ final class OidcAuthenticationRequestFactory {
          * request syntax, since they are REQUIRED by OAuth 2.0."
          */
         return Parameters.builder("oidc-request-object-authorization-request")
-                .add("response_type", requiredParameter(authorizationParameters, "response_type"))
-                .add("client_id", requiredParameter(authorizationParameters, "client_id"))
-                .add("scope", requiredParameter(authorizationParameters, "scope"))
+                .add("response_type", requiredString(authorizationParameters, "response_type"))
+                .add("client_id", requiredString(authorizationParameters, "client_id"))
+                .add("scope", requiredString(authorizationParameters, "scope"))
                 .add("request", requestObject)
                 .build();
     }

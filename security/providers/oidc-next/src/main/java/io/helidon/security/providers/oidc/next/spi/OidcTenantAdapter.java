@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next.spi;
 
 import java.net.URI;
+import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.common.parameters.Parameters;
@@ -25,6 +26,7 @@ import io.helidon.json.JsonObject;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.Subject;
 import io.helidon.security.jwt.Jwt;
+import io.helidon.security.providers.oidc.next.OidcAuthorizationParameters;
 import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.webclient.api.WebClient;
@@ -57,6 +59,13 @@ public interface OidcTenantAdapter extends NamedService {
      * The {@code state} is required; {@code nonce} is optional only in Authorization Code Flow. The core retains its
      * configured client, redirect URI, {@code openid} scope, PKCE binding, and JAR/PAR transport requirements.
      * Other parameters, such as {@code prompt}, {@code login_hint}, or {@code acr_values}, can be added or changed.
+     * <p>
+     * Supply semantic JSON values: strings for ordinary OIDC parameters, a non-negative whole-second number for
+     * {@code max_age}, an object for {@code claims}, and an array of objects with a {@code type} string for
+     * {@code authorization_details}. Each list element is one occurrence, so repeated {@code resource} values are
+     * separate strings. Query and form transport serialize structured values as JSON; Request Objects retain their
+     * JSON types. The core snapshots the returned parameters before validating bindings and serializing transport.
+     * Request Object envelope claims and {@code request}/{@code request_uri} are reserved for the core.
      *
      * @param tenant selected tenant
      * @param tenantId tenant id
@@ -64,11 +73,14 @@ public interface OidcTenantAdapter extends NamedService {
      * @param parameters default authentication request parameters
      * @return final authentication request parameters
      */
-    default Parameters authorizationRequest(OidcTenantConfig tenant,
-                                            String tenantId,
-                                            SecurityEnvironment environment,
-                                            Parameters parameters) {
-        return parameters;
+    default OidcAuthorizationParameters authorizationRequest(OidcTenantConfig tenant,
+                                                             String tenantId,
+                                                             SecurityEnvironment environment,
+                                                             OidcAuthorizationParameters parameters) {
+        Objects.requireNonNull(tenant);
+        Objects.requireNonNull(tenantId);
+        Objects.requireNonNull(environment);
+        return Objects.requireNonNull(parameters);
     }
 
     /**

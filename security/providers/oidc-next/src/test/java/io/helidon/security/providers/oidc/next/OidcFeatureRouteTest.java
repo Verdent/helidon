@@ -561,7 +561,7 @@ class OidcFeatureRouteTest {
                                 assertThat(authentication.responseHeaders().isEmpty(), is(true));
                                 EndpointConfig outboundConfig = EndpointConfig.builder()
                                         .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                                                .clientCredentialsGrantEnabled(true).buildPrototype())
+                                                .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                                         .build();
                                 SecurityEnvironment outboundEnv = SecurityEnvironment.builder()
                                         .targetUri(URI.create("https://downstream.example/service")).build();

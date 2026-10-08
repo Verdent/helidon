@@ -161,6 +161,23 @@ class OidcTokenPropagationTest {
     }
 
     @Test
+    void endpointNoneStrategyKeepsMatchingTargetFallback() {
+        OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
+        ProviderRequest request = providerRequest(subject("api://orders"));
+        SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");
+        EndpointConfig endpoint = EndpointConfig.builder()
+                .customObject(OidcOutboundPolicyConfig.class,
+                              OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.NONE).buildPrototype())
+                .build();
+
+        assertThat(provider.isOutboundSupported(request, outboundEnv, endpoint), is(true));
+        var response = provider.outboundSecurity(request, outboundEnv, endpoint);
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                   is(List.of("Bearer " + ACCESS_TOKEN)));
+    }
+
+    @Test
     void tokenPropagationMatchesUppercaseHttpsUriScheme() {
         OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
@@ -226,7 +243,7 @@ class OidcTokenPropagationTest {
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
+                        .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION).audience("api://orders").buildPrototype())
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
@@ -247,7 +264,7 @@ class OidcTokenPropagationTest {
                 .build();
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
+                        .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION).audience("api://orders").buildPrototype())
                 .build();
 
         var response = provider.outboundSecurity(request, outboundEnv, outboundConfig);
@@ -346,7 +363,7 @@ class OidcTokenPropagationTest {
     void tokenPropagationRequiresAudienceWhenAudienceValidationIsEnabled() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenPropagationEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                                                .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("audience must be configured"));
@@ -362,7 +379,7 @@ class OidcTokenPropagationTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/orders/.*"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.token-propagation-enabled", "true"),
+                        Map.entry("outbound.0.strategy", "TOKEN_PROPAGATION"),
                         Map.entry("outbound.0.audience-validation-enabled", "false"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
@@ -386,7 +403,7 @@ class OidcTokenPropagationTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/orders/.*"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.token-propagation-enabled", "true"),
+                        Map.entry("outbound.0.strategy", "TOKEN_PROPAGATION"),
                         Map.entry("outbound.0.audience", "api://orders"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
@@ -472,7 +489,7 @@ class OidcTokenPropagationTest {
                     .buildPrototype();
             OutboundTarget target = OutboundTarget.builder("orders").addHost("localhost").addTransport("https")
                     .addPath("/orders/.*").customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                            .tokenPropagationEnabled(true).audience("api://orders").buildPrototype()).build();
+                            .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION).audience("api://orders").buildPrototype()).build();
             try (OidcProvider forwardingProvider = provider(tenant, target);
                  OidcProvider receivingProvider = provider(tenant)) {
                 SecurityEnvironment inbound = SecurityEnvironment.builder().targetUri(URI.create("https://service.example"))
@@ -503,7 +520,7 @@ class OidcTokenPropagationTest {
                             .transport("https").path("/orders/42").method("GET").build();
                     for (EndpointConfig policy : List.of(EndpointConfig.create(), EndpointConfig.builder()
                             .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                                    .tokenPropagationEnabled(true).audience("api://orders").buildPrototype())
+                                    .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION).audience("api://orders").buildPrototype())
                             .build())) {
                         var propagated = forwardingProvider.outboundSecurity(request, outbound, policy);
                         assertThat(propagated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
@@ -555,7 +572,7 @@ class OidcTokenPropagationTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audience("api://orders")
                                       .buildPrototype())
                 .build();
@@ -568,7 +585,7 @@ class OidcTokenPropagationTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audience("api://orders")
                                       .buildPrototype())
                 .build();
@@ -582,7 +599,7 @@ class OidcTokenPropagationTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audienceValidationEnabled(false)
                                       .buildPrototype())
                 .build();
@@ -596,7 +613,7 @@ class OidcTokenPropagationTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audience(audience)
                                       .buildPrototype())
                 .build();

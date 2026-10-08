@@ -29,7 +29,7 @@ class OidcOutboundPolicyConfigTest {
     @Test
     void clientCredentialsGrantValidatesResources() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
-                .clientCredentialsGrantEnabled(true)
+                .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                 .addClientCredentialsScope("inventory.read")
                 .addClientCredentialsResource("https://inventory.example.com")
                 .buildPrototype();
@@ -39,7 +39,7 @@ class OidcOutboundPolicyConfigTest {
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                                                           () -> OidcOutboundPolicyConfig.builder()
-                                                                  .clientCredentialsGrantEnabled(true)
+                                                                  .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                                                   .addClientCredentialsScope("inventory.read")
                                                                   .addClientCredentialsResource("inventory")
                                                                   .buildPrototype());
@@ -59,7 +59,7 @@ class OidcOutboundPolicyConfigTest {
                                        "urn:example:£")) {
             IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                                                               () -> OidcOutboundPolicyConfig.builder()
-                                                                      .clientCredentialsGrantEnabled(true)
+                                                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                                                       .addClientCredentialsResource(resource)
                                                                       .buildPrototype(),
                                                               resource);
@@ -79,7 +79,7 @@ class OidcOutboundPolicyConfigTest {
                                        "urn:example:%C2%A3",
                                        "file:///tmp/oidc-resource")) {
             OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
-                    .clientCredentialsGrantEnabled(true)
+                    .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                     .addClientCredentialsResource(resource)
                     .buildPrototype();
             assertThat(policy.clientCredentialsResources(), is(List.of(resource)));
@@ -89,7 +89,7 @@ class OidcOutboundPolicyConfigTest {
     @Test
     void tokenExchangeForResourceValidatesResource() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
-                .tokenExchangeEnabled(true)
+                .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                 .addTokenExchangeScope("orders.read")
                 .tokenExchangeResource("https://orders.example.com")
                 .buildPrototype();
@@ -99,7 +99,7 @@ class OidcOutboundPolicyConfigTest {
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                                                           () -> OidcOutboundPolicyConfig.builder()
-                                                                  .tokenExchangeEnabled(true)
+                                                                  .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                                                   .addTokenExchangeScope("orders.read")
                                                                   .tokenExchangeResource("https://orders.example.com#fragment")
                                                                   .buildPrototype());
@@ -109,7 +109,7 @@ class OidcOutboundPolicyConfigTest {
     @Test
     void tokenExchangeForAudienceUsesAudienceOnly() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
-                .tokenExchangeEnabled(true)
+                .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                 .addTokenExchangeScope("orders.read")
                 .tokenExchangeAudience("api://orders")
                 .buildPrototype();
@@ -122,7 +122,7 @@ class OidcOutboundPolicyConfigTest {
     @Test
     void tokenExchangeUsesResourceAndAudience() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
-                .tokenExchangeEnabled(true)
+                .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                 .addTokenExchangeScope("orders.read")
                 .tokenExchangeResource("https://orders.example.com")
                 .tokenExchangeAudience("api://orders")
@@ -134,13 +134,23 @@ class OidcOutboundPolicyConfigTest {
     }
 
     @Test
-    void ambiguousStrategyFailsAtConfigurationTime() {
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                                                          () -> OidcOutboundPolicyConfig.builder()
-                                                                  .tokenPropagationEnabled(true)
-                                                                  .clientCredentialsGrantEnabled(true)
-                                                                  .audience("api://orders")
-                                                                  .buildPrototype());
-        assertThat(exception.getMessage(), containsString("Only one OIDC outbound strategy"));
+    void oneStrategyIsSelectedPerPolicy() {
+        OidcOutboundPolicyConfig none = OidcOutboundPolicyConfig.create();
+        assertThat(none.strategy(), is(OidcOutboundStrategy.NONE));
+        assertThat(OidcOutboundPolicy.fromConfig(none).isEmpty(), is(true));
+
+        for (OidcOutboundStrategy strategy : List.of(OidcOutboundStrategy.TOKEN_PROPAGATION,
+                                                     OidcOutboundStrategy.CLIENT_CREDENTIALS,
+                                                     OidcOutboundStrategy.TOKEN_EXCHANGE)) {
+            OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder().strategy(strategy);
+            if (strategy == OidcOutboundStrategy.TOKEN_PROPAGATION) {
+                builder.audience("api://orders");
+            } else if (strategy == OidcOutboundStrategy.TOKEN_EXCHANGE) {
+                builder.tokenExchangeAudience("api://orders");
+            }
+            OidcOutboundPolicyConfig policy = builder.buildPrototype();
+            assertThat(policy.strategy(), is(strategy));
+            assertThat(OidcOutboundPolicy.fromConfig(policy).isPresent(), is(true));
+        }
     }
 }

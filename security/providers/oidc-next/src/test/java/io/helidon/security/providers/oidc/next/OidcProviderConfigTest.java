@@ -2775,7 +2775,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.token-endpoint-auth-method", "SELF_SIGNED_TLS_CLIENT_AUTH"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
                         Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"))))
                 .build();
 
         OidcProviderConfig missingTls = OidcProviderConfig.create(missingMutualTlsWebClientConfig);
@@ -3150,14 +3150,15 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void outboundTargetOperationsCannotBeAmbiguous() {
+    void clientCredentialsOptionsCannotBeUsedForAnotherOutboundStrategy() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenPropagationEnabled(true)
-                                                               .clientCredentialsGrantEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
+                                                               .audience("api://orders")
+                                                               .addClientCredentialsScope("orders.read")
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("Only one OIDC outbound strategy"));
+        assertThat(thrown.getMessage(), containsString("strategy must be CLIENT_CREDENTIALS"));
     }
 
     @Test
@@ -3244,7 +3245,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.token-endpoint-auth-method", "NONE"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", TOKEN_ENDPOINT_URI.toString()),
                         Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"))))
                 .build();
 
         OidcProviderConfig noAuthentication = OidcProviderConfig.create(noneAuthenticationConfig);
@@ -3259,7 +3260,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.client-secret", "client-secret-value"),
                         Map.entry("tenants.default.endpoints.token-endpoint-uri", "http://issuer.example/token"),
                         Map.entry("outbound.0.name", "api"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"))))
                 .build();
 
         OidcProviderConfig insecureEndpoint = OidcProviderConfig.create(insecureTokenEndpointConfig);
@@ -3303,7 +3304,7 @@ class OidcProviderConfigTest {
         assertThat(metadata, containsString("query-parameter-enabled"));
         assertThat(metadata, containsString("secure-transport-required"));
         assertThat(metadata, containsString("token-validation"));
-        assertThat(metadata, containsString("client-credentials-grant-enabled"));
+        assertThat(metadata, containsString("\"strategy\""));
         assertThat(metadata, containsString("pkce-required"));
         assertThat(metadata, containsString("audience-validation-enabled"));
         assertThat(metadata, containsString("tls-required"));
@@ -3454,7 +3455,7 @@ class OidcProviderConfigTest {
         return OutboundTarget.builder("api")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }

@@ -378,7 +378,7 @@ class OidcClientCredentialsAdmissionTest {
 
         private OutboundSecurityResponse request(String scope, String tenant, long timeShiftSeconds) {
             EndpointConfig endpoint = EndpointConfig.builder().customObject(OidcOutboundPolicyConfig.class,
-                    OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+                    OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                             .addClientCredentialsScope(scope).buildPrototype()).build();
             return provider.outboundSecurity(OidcProviderTest.request(null, SecurityEnvironment.builder()
                                                      .header("X-Test-Tenant", tenant).build()),

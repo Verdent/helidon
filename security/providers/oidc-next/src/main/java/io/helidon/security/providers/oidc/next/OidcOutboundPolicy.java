@@ -47,24 +47,14 @@ final class OidcOutboundPolicy {
 
     static Optional<OidcOutboundPolicy> fromConfig(OidcOutboundPolicyConfig config) {
         Objects.requireNonNull(config);
-        if (config.tokenPropagationEnabled()
-                || config.clientCredentialsGrantEnabled()
-                || config.tokenExchangeEnabled()) {
+        if (config.strategy() != OidcOutboundStrategy.NONE) {
             return Optional.of(new OidcOutboundPolicy(config));
         }
         return Optional.empty();
     }
 
-    boolean tokenPropagationEnabled() {
-        return config.tokenPropagationEnabled();
-    }
-
-    boolean clientCredentialsGrantEnabled() {
-        return config.clientCredentialsGrantEnabled();
-    }
-
-    boolean tokenExchangeEnabled() {
-        return config.tokenExchangeEnabled();
+    OidcOutboundStrategy strategy() {
+        return config.strategy();
     }
 
     Optional<String> audience() {

@@ -33,6 +33,7 @@ import io.helidon.security.Security;
 import io.helidon.security.providers.common.OutboundConfig;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundStrategy;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
@@ -348,7 +349,7 @@ class OidcOutboundFlowIT {
         return outboundTarget("propagation")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audience(audience)
                                       .buildPrototype())
                 .build();
@@ -358,7 +359,7 @@ class OidcOutboundFlowIT {
         return outboundTarget("client-credentials")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .addClientCredentialsScope("orders.read")
                                       .addClientCredentialsResource(DOWNSTREAM_RESOURCE)
                                       .buildPrototype())
@@ -369,7 +370,7 @@ class OidcOutboundFlowIT {
         return outboundTarget("token-exchange")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenExchangeEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                       .addTokenExchangeScope("orders.read")
                                       .tokenExchangeResource(DOWNSTREAM_RESOURCE)
                                       .tokenExchangeAudience(DOWNSTREAM_AUDIENCE)

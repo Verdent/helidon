@@ -257,7 +257,7 @@ class OidcTenantLifecycleTest {
                                                            SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
@@ -515,7 +515,7 @@ class OidcTenantLifecycleTest {
         ProviderRequest request = OidcProviderTest.request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 
@@ -546,7 +546,7 @@ class OidcTenantLifecycleTest {
                                                            SecurityEnvironment.create());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
         SecurityEnvironment outboundEnv = outboundEnvironment();
 

@@ -2006,7 +2006,7 @@ class OidcProviderTest {
         OidcProvider provider = providerWithTenant();
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicyConfig.builder()
-                                                               .tokenPropagationEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                                                .audience("api://orders")
                                                                .buildPrototype());
         SecurityEnvironment outboundEnv = outboundEnvironment();
@@ -2027,7 +2027,7 @@ class OidcProviderTest {
                                              .buildPrototype());
         ProviderRequest providerRequest = request(null, SecurityEnvironment.create());
         EndpointConfig outboundConfig = outboundConfig(OidcOutboundPolicyConfig.builder()
-                                                               .clientCredentialsGrantEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                                                .buildPrototype());
         SecurityEnvironment outboundEnv = outboundEnvironment();
 

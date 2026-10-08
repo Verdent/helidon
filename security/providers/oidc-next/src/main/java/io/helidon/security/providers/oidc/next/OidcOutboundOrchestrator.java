@@ -119,16 +119,12 @@ final class OidcOutboundOrchestrator {
             return OidcResponseFactory.tenantUnavailableForOutbound();
         }
         OidcOutboundPolicy policy = outboundPolicy.orElseThrow();
-        if (policy.tokenPropagationEnabled()) {
-            return propagateToken(providerRequest, outboundEnv, policy);
-        }
-        if (policy.clientCredentialsGrantEnabled()) {
-            return secureWithClientCredentials(tenantContext, outboundEnv, policy);
-        }
-        if (policy.tokenExchangeEnabled()) {
-            return secureWithTokenExchange(providerRequest, tenantContext, outboundEnv, policy);
-        }
-        return OutboundSecurityResponse.abstain();
+        return switch (policy.strategy()) {
+        case TOKEN_PROPAGATION -> propagateToken(providerRequest, outboundEnv, policy);
+        case CLIENT_CREDENTIALS -> secureWithClientCredentials(tenantContext, outboundEnv, policy);
+        case TOKEN_EXCHANGE -> secureWithTokenExchange(providerRequest, tenantContext, outboundEnv, policy);
+        case NONE -> OutboundSecurityResponse.abstain();
+        };
     }
 
     private static String safeTargetUri(SecurityEnvironment outboundEnv) {

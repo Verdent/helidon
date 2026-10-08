@@ -475,11 +475,12 @@ class OidcIdTokenValidatorTest {
             OidcValidationResult<OidcValidatedIdToken> result = validate(idToken, tenantConfig);
 
             assertThat(result.succeeded(), is(true));
-            assertFailure(validate(idToken,
-                                   tenantConfig(jwksUri,
-                                                tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
-                                                        .allowedAlgorithms(List.of(algorithm))))),
-                          "ID Token signature is invalid");
+            // An additional encryption-use JWK cannot verify the signature and does not make key selection ambiguous.
+            assertThat(validate(idToken,
+                                tenantConfig(jwksUri,
+                                             tenant -> tenant.idToken(idTokenConfig -> idTokenConfig
+                                                     .allowedAlgorithms(List.of(algorithm))))).succeeded(),
+                       is(true));
         }
     }
 

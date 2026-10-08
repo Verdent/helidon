@@ -260,7 +260,7 @@ class OidcJoseKeyPolicyTest {
     }
 
     @Test
-    void oidcSignatureWithoutKeyIdRequiresSingleKeyJwkSet() {
+    void oidcSignatureWithoutKeyIdUsesTheSoleEligibleVerificationKey() {
         Jwt jwt = Jwt.builder()
                 .algorithm("RS384")
                 .subject("subject")
@@ -276,15 +276,21 @@ class OidcJoseKeyPolicyTest {
                 .usage(Jwk.USE_ENCRYPTION)
                 .build();
 
-        assertThat(OidcJoseKeyPolicy.verifyOidcSignature(
+        assertThat(OidcJoseKeyPolicy.verifySignature(
                            signedJwt,
                            jwt,
                            JwkKeys.builder().addKey(eligible).build()).isValid(),
                    is(true));
-        assertThat(OidcJoseKeyPolicy.verifyOidcSignature(
+        assertThat(OidcJoseKeyPolicy.verifySignature(
                            signedJwt,
                            jwt,
                            JwkKeys.builder().addKey(eligible).addKey(encryptionOnly).build()).isValid(),
+                   is(true));
+        assertThat(OidcJoseKeyPolicy.verifySignature(
+                           signedJwt,
+                           jwt,
+                           JwkKeys.builder().addKey(eligible)
+                                   .addKey(rsa(minimumRsa, null, false, "also-eligible")).build()).isValid(),
                    is(false));
     }
 

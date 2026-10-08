@@ -46,6 +46,7 @@ import io.helidon.security.providers.oidc.next.OidcCookieConfig;
 import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
 import io.helidon.security.providers.oidc.next.OidcLogoutConfig;
 import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundStrategy;
 import io.helidon.security.providers.oidc.next.OidcTenantConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationConfig;
 import io.helidon.security.providers.oidc.next.OidcTokenValidationMethod;
@@ -538,20 +539,20 @@ abstract class OidcProviderContract {
 
     @Test
     void outboundTokenPropagationPreservesTheValidatedAccessToken() throws Exception {
-        assertOutbound(OidcOutboundPolicyConfig.builder().tokenPropagationEnabled(true)
+        assertOutbound(OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                 .audience(IdpAdapter.AUDIENCE).buildPrototype(), true, false);
     }
 
     @Test
     void outboundClientCredentialsAcquiresAndCachesItsOwnAccessToken() throws Exception {
-        assertOutbound(OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+        assertOutbound(OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                 .clientCredentialsScopes(List.of("resource.read")).buildPrototype(), false, true);
     }
 
     @Test
     void outboundTokenExchangeObtainsATokenForTheTargetAudience() throws Exception {
         require(IdpAdapter.Capability.TOKEN_EXCHANGE);
-        assertOutbound(OidcOutboundPolicyConfig.builder().tokenExchangeEnabled(true)
+        assertOutbound(OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                 .tokenExchangeAudience(IdpAdapter.AUDIENCE).tokenExchangeScopes(List.of("resource.read"))
                 .buildPrototype(), false, false);
     }

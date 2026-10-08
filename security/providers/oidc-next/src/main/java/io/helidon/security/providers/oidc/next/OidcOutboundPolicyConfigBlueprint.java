@@ -26,50 +26,29 @@ import io.helidon.builder.api.Prototype;
 /**
  * OIDC-specific outbound security policy for a configured target or an individual request.
  * Use this as a custom object on an {@link io.helidon.security.providers.common.OutboundTarget} or
- * {@link io.helidon.security.EndpointConfig}. Only one outbound strategy may be enabled per policy.
+ * {@link io.helidon.security.EndpointConfig}. Each policy selects at most one outbound strategy.
  */
 @Prototype.Blueprint(decorator = OidcOutboundPolicyConfigDecorator.class)
 @Prototype.Configured
 interface OidcOutboundPolicyConfigBlueprint {
     /**
-     * Whether Token Propagation is enabled for this outbound policy.
-     * Defaults to {@code false}.
+     * Outbound strategy for this policy. Defaults to {@link OidcOutboundStrategy#NONE NONE}.
      * <p>
-     * Propagation prepares the Authorization header only. Direct access with certificate-bound tokens requires matching
-     * mutual-TLS proof on the application's downstream connection; tenant {@code webclient.tls} does not configure it.
-     * The downstream client must supply the matching certificate and private-key proof when propagating
-     * certificate-bound access tokens; the tenant WebClient is used for Authorization Server calls, not downstream calls.
+     * {@code NONE} selects no strategy at this level. For an endpoint policy, a matching outbound target policy may
+     * still apply. Token Propagation prepares the Authorization header only; propagating certificate-bound access tokens
+     * also requires the downstream client to supply matching mutual-TLS certificate and private-key proof. Tenant
+     * {@code webclient.tls} configures Authorization Server calls, not the downstream connection.
      *
-     * @return whether Token Propagation is enabled
+     * @return selected outbound strategy
      */
     @Option.Configured
-    @Option.DefaultBoolean(false)
-    boolean tokenPropagationEnabled();
-
-    /**
-     * Whether Client Credentials Grant is enabled for this outbound policy; mutual TLS methods require enabled tenant
-     * {@code webclient.tls} and an HTTPS Token Endpoint or HTTPS well-known metadata.
-     * Defaults to {@code false}.
-     * <p>
-     * Configured outbound targets validate prerequisites for each enabled tenant at startup. Endpoint-level policies
-     * validate them when used: {@code client-id}, client authentication other than {@code NONE}, a
-     * {@code client-secret} for client-secret based authentication, {@code client-assertion.jwk} for
-     * {@code PRIVATE_KEY_JWT} or enabled tenant {@code webclient.tls} with private key plus certificate chain, an SSL
-     * context, or a custom TLS manager for mutual TLS authentication, and either {@code endpoints.token-endpoint-uri} or
-     * well-known metadata.
-     *
-     * @return whether Client Credentials Grant is enabled
-     */
-    @Description("Whether Client Credentials Grant is enabled for this outbound policy; mutual TLS methods require "
-            + "enabled tenant webclient.tls and an HTTPS Token Endpoint or HTTPS well-known metadata.")
-    @Option.Configured
-    @Option.DefaultBoolean(false)
-    boolean clientCredentialsGrantEnabled();
+    @Option.Default("NONE")
+    OidcOutboundStrategy strategy();
 
     /**
      * Access-token scopes requested by Client Credentials Grant for this outbound policy.
      * <p>
-     * This value is used only when {@code client-credentials-grant-enabled} is enabled on the same policy.
+     * This value is used only when {@link #strategy()} selects {@code CLIENT_CREDENTIALS}.
      * When configured, the scopes are serialized as a single OAuth {@code scope} token endpoint form parameter.
      *
      * @return Client Credentials Grant scopes
@@ -82,7 +61,7 @@ interface OidcOutboundPolicyConfigBlueprint {
     /**
      * Resource indicators requested by Client Credentials Grant for this outbound policy.
      * <p>
-     * This value is used only when {@code client-credentials-grant-enabled} is enabled on the same policy.
+     * This value is used only when {@link #strategy()} selects {@code CLIENT_CREDENTIALS}.
      * When configured, each value is sent as a separate OAuth {@code resource} token endpoint form parameter.
      *
      * @return Client Credentials Grant resource indicators
@@ -93,25 +72,9 @@ interface OidcOutboundPolicyConfigBlueprint {
     List<String> clientCredentialsResources();
 
     /**
-     * Whether RFC 8693 Token Exchange is enabled for this outbound policy.
-     * Defaults to {@code false}.
-     * <p>
-     * Token Exchange uses the current subject {@code TokenCredential} as {@code subject_token}, asks the tenant Token
-     * Endpoint for a downstream access token, and attaches the exchanged token as
-     * {@code Authorization: Bearer <access-token>}. The first implementation supports only access-token-to-Bearer
-     * access-token exchange.
-     *
-     * @return whether Token Exchange is enabled
-     */
-    @Description("Whether RFC 8693 Token Exchange is enabled for this outbound policy.")
-    @Option.Configured
-    @Option.DefaultBoolean(false)
-    boolean tokenExchangeEnabled();
-
-    /**
      * Access-token scopes requested by Token Exchange for this outbound policy.
      * <p>
-     * This value is used only when {@code token-exchange-enabled} is enabled on the same policy. When
+     * This value is used only when {@link #strategy()} selects {@code TOKEN_EXCHANGE}. When
      * configured, the scopes are serialized as a single OAuth {@code scope} token endpoint form parameter.
      *
      * @return Token Exchange scopes
@@ -124,7 +87,7 @@ interface OidcOutboundPolicyConfigBlueprint {
     /**
      * Target resource requested by Token Exchange for this outbound policy.
      * <p>
-     * This value is used only when {@code token-exchange-enabled} is enabled on the same policy. When
+     * This value is used only when {@link #strategy()} selects {@code TOKEN_EXCHANGE}. When
      * configured, it is sent as the RFC 8693 {@code resource} token endpoint form parameter.
      *
      * @return Token Exchange resource
@@ -136,7 +99,7 @@ interface OidcOutboundPolicyConfigBlueprint {
     /**
      * Target audience requested by Token Exchange for this outbound policy.
      * <p>
-     * This value is used only when {@code token-exchange-enabled} is enabled on the same policy. When
+     * This value is used only when {@link #strategy()} selects {@code TOKEN_EXCHANGE}. When
      * configured, it is sent as the RFC 8693 {@code audience} token endpoint form parameter. This is separate from
      * {@link #audience()}, which is a local Token Propagation audience check.
      *
@@ -149,7 +112,7 @@ interface OidcOutboundPolicyConfigBlueprint {
     /**
      * Expected access-token audience for Token Propagation to this outbound policy.
      * <p>
-     * This value is used only when {@code token-propagation-enabled} is enabled on the same policy.
+     * This value is used only when {@link #strategy()} selects {@code TOKEN_PROPAGATION}.
      *
      * @return expected audience
      */

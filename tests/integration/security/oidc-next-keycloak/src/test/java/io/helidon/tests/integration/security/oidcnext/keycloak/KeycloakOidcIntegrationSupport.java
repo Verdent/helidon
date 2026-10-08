@@ -50,6 +50,7 @@ import io.helidon.security.providers.oidc.next.OidcEndpointConfig;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcFeature;
 import io.helidon.security.providers.oidc.next.OidcOutboundPolicyConfig;
+import io.helidon.security.providers.oidc.next.OidcOutboundStrategy;
 import io.helidon.security.providers.oidc.next.OidcProvider;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcPushedAuthorizationRequestMode;
@@ -418,7 +419,7 @@ final class KeycloakOidcIntegrationSupport {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenPropagationEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                                       .audienceValidationEnabled(false)
                                       .buildPrototype())
                 .build();
@@ -432,7 +433,7 @@ final class KeycloakOidcIntegrationSupport {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }
@@ -445,7 +446,7 @@ final class KeycloakOidcIntegrationSupport {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenExchangeEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                       .tokenExchangeAudience(API_AUDIENCE)
                                       .buildPrototype())
                 .build();

@@ -26,40 +26,33 @@ final class OidcOutboundPolicyConfigDecorator
 
     @Override
     public void decorate(OidcOutboundPolicyConfig.BuilderBase<?, ?> target) {
-        int strategyCount = 0;
-        strategyCount += target.tokenPropagationEnabled() ? 1 : 0;
-        strategyCount += target.clientCredentialsGrantEnabled() ? 1 : 0;
-        strategyCount += target.tokenExchangeEnabled() ? 1 : 0;
-        if (strategyCount > 1) {
+        OidcOutboundStrategy strategy = target.strategy();
+        if (strategy != OidcOutboundStrategy.CLIENT_CREDENTIALS && !target.clientCredentialsScopes().isEmpty()) {
             throw new IllegalArgumentException(
-                    "Only one OIDC outbound strategy can be enabled on the same policy");
+                    "strategy must be CLIENT_CREDENTIALS when client-credentials-scopes is configured");
         }
-        if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsScopes().isEmpty()) {
+        if (strategy != OidcOutboundStrategy.CLIENT_CREDENTIALS && !target.clientCredentialsResources().isEmpty()) {
             throw new IllegalArgumentException(
-                    "client-credentials-grant-enabled must be enabled when client-credentials-scopes is configured");
+                    "strategy must be CLIENT_CREDENTIALS when client-credentials-resources is configured");
         }
-        if (!target.clientCredentialsGrantEnabled() && !target.clientCredentialsResources().isEmpty()) {
+        if (strategy != OidcOutboundStrategy.TOKEN_EXCHANGE && !target.tokenExchangeScopes().isEmpty()) {
             throw new IllegalArgumentException(
-                    "client-credentials-grant-enabled must be enabled when client-credentials-resources is configured");
+                    "strategy must be TOKEN_EXCHANGE when token-exchange-scopes is configured");
         }
-        if (!target.tokenExchangeEnabled() && !target.tokenExchangeScopes().isEmpty()) {
+        if (strategy != OidcOutboundStrategy.TOKEN_EXCHANGE && target.tokenExchangeResource().isPresent()) {
             throw new IllegalArgumentException(
-                    "token-exchange-enabled must be enabled when token-exchange-scopes is configured");
+                    "strategy must be TOKEN_EXCHANGE when token-exchange-resource is configured");
         }
-        if (!target.tokenExchangeEnabled() && target.tokenExchangeResource().isPresent()) {
+        if (strategy != OidcOutboundStrategy.TOKEN_EXCHANGE && target.tokenExchangeAudience().isPresent()) {
             throw new IllegalArgumentException(
-                    "token-exchange-enabled must be enabled when token-exchange-resource is configured");
-        }
-        if (!target.tokenExchangeEnabled() && target.tokenExchangeAudience().isPresent()) {
-            throw new IllegalArgumentException(
-                    "token-exchange-enabled must be enabled when token-exchange-audience is configured");
+                    "strategy must be TOKEN_EXCHANGE when token-exchange-audience is configured");
         }
         target.audience()
                 .filter(audience -> audience.isBlank() || !audience.equals(audience.strip()))
                 .ifPresent(_ -> {
                     throw new IllegalArgumentException("audience must not be blank or padded");
                 });
-        if (target.tokenPropagationEnabled()) {
+        if (strategy == OidcOutboundStrategy.TOKEN_PROPAGATION) {
             if (target.audienceValidationEnabled()) {
                 /*
                  * Spec: RFC 9700, 2.3 Privilege Restriction and 4.10.2 Audience-Restricted Access Tokens
@@ -82,7 +75,7 @@ final class OidcOutboundPolicyConfigDecorator
                 }
             }
         }
-        if (target.tokenExchangeEnabled()) {
+        if (strategy == OidcOutboundStrategy.TOKEN_EXCHANGE) {
             if (target.tokenExchangeResource().isEmpty() && target.tokenExchangeAudience().isEmpty()) {
                 throw new IllegalArgumentException(
                         "token-exchange-resource or token-exchange-audience must be configured when Token Exchange "

@@ -1227,7 +1227,7 @@ class OidcWellKnownMetadataLoadingTest {
                 .buildPrototype();
         OutboundTarget target = OutboundTarget.builder("api")
                 .customObject(OidcOutboundPolicyConfig.class,
-                              OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true).buildPrototype())
+                              OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("browser", browserTenant)
@@ -2671,7 +2671,7 @@ class OidcWellKnownMetadataLoadingTest {
         return OutboundTarget.builder("api")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }

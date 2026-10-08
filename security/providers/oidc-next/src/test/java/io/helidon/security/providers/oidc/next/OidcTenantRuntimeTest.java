@@ -318,7 +318,7 @@ class OidcTenantRuntimeTest {
                                                   .build());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
 
         assertThat(provider.authenticate(request).status(), is(SecurityResponse.SecurityStatus.ABSTAIN));
@@ -398,7 +398,7 @@ class OidcTenantRuntimeTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }

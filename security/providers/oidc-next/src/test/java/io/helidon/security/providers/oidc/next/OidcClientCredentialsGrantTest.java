@@ -895,7 +895,7 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/resource"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
         SecurityEnvironment outboundEnv = outboundEnvironment();
@@ -924,7 +924,7 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/resource"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"),
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"),
                         Map.entry("outbound.0.client-credentials-scopes.0", "orders.write"),
                         Map.entry("outbound.0.client-credentials-scopes.1", "orders.read"))))
                 .build();
@@ -953,7 +953,7 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/resource"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"),
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"),
                         Map.entry("outbound.0.client-credentials-resources.0", "https://orders.example.com"),
                         Map.entry("outbound.0.client-credentials-resources.1", "api://inventory"))))
                 .build();
@@ -982,7 +982,7 @@ class OidcClientCredentialsGrantTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/resource"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.client-credentials-grant-enabled", "true"))))
+                        Map.entry("outbound.0.strategy", "CLIENT_CREDENTIALS"))))
                 .build();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.create(config));
 
@@ -1168,7 +1168,7 @@ class OidcClientCredentialsGrantTest {
                 metadataResponseStatus = 503;
                 EndpointConfig first = clientCredentialsEndpointConfig();
                 EndpointConfig other = EndpointConfig.builder().customObject(OidcOutboundPolicyConfig.class,
-                        OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+                        OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                 .addClientCredentialsScope("other").buildPrototype()).build();
                 assertThat(outbound.secure(providerRequest(), outboundEnvironment(), first).status(),
                            is(SecurityResponse.SecurityStatus.FAILURE));
@@ -1486,7 +1486,7 @@ class OidcClientCredentialsGrantTest {
                 .buildPrototype());
         EndpointConfig outboundConfig = EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
 
         OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(),
@@ -1537,7 +1537,7 @@ class OidcClientCredentialsGrantTest {
                                                                .addClientCredentialsScope("orders.read")
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("client-credentials-grant-enabled"));
+        assertThat(thrown.getMessage(), containsString("strategy must be CLIENT_CREDENTIALS"));
     }
 
     @Test
@@ -1588,7 +1588,7 @@ class OidcClientCredentialsGrantTest {
                                                                .addClientCredentialsResource("https://orders.example.com")
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("client-credentials-grant-enabled"));
+        assertThat(thrown.getMessage(), containsString("strategy must be CLIENT_CREDENTIALS"));
     }
 
     private static void handleMetadata(ServerRequest request, ServerResponse response) {
@@ -1717,7 +1717,7 @@ class OidcClientCredentialsGrantTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }
@@ -1774,7 +1774,7 @@ class OidcClientCredentialsGrantTest {
 
     private static OidcOutboundPolicyConfig scopedTargetConfig(String... scopes) {
         OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
-                .clientCredentialsGrantEnabled(true);
+                .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS);
         for (String scope : scopes) {
             builder.addClientCredentialsScope(scope);
         }
@@ -1783,7 +1783,7 @@ class OidcClientCredentialsGrantTest {
 
     private static OidcOutboundPolicyConfig resourceTargetConfig(String... resources) {
         OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
-                .clientCredentialsGrantEnabled(true);
+                .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS);
         for (String resource : resources) {
             builder.addClientCredentialsResource(resource);
         }
@@ -1792,7 +1792,7 @@ class OidcClientCredentialsGrantTest {
 
     private static OidcOutboundPolicyConfig scopedResourceTargetConfig(List<String> scopes, List<String> resources) {
         OidcOutboundPolicyConfig.Builder builder = OidcOutboundPolicyConfig.builder()
-                .clientCredentialsGrantEnabled(true);
+                .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS);
         scopes.forEach(builder::addClientCredentialsScope);
         resources.forEach(builder::addClientCredentialsResource);
         return builder.buildPrototype();
@@ -1805,7 +1805,7 @@ class OidcClientCredentialsGrantTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .clientCredentialsGrantEnabled(true)
+                                      .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                       .buildPrototype())
                 .build();
     }
@@ -1829,7 +1829,7 @@ class OidcClientCredentialsGrantTest {
     private static EndpointConfig clientCredentialsEndpointConfig() {
         return EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class, OidcOutboundPolicyConfig.builder()
-                        .clientCredentialsGrantEnabled(true).buildPrototype())
+                        .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS).buildPrototype())
                 .build();
     }
 

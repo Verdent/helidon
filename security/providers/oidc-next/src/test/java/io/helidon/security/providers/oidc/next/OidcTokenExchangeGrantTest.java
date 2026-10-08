@@ -573,7 +573,7 @@ class OidcTokenExchangeGrantTest {
                         Map.entry("outbound.0.hosts.0", "api.example.com"),
                         Map.entry("outbound.0.paths.0", "/orders/.*"),
                         Map.entry("outbound.0.methods.0", "GET"),
-                        Map.entry("outbound.0.token-exchange-enabled", "true"),
+                        Map.entry("outbound.0.strategy", "TOKEN_EXCHANGE"),
                         Map.entry("outbound.0.token-exchange-scopes.0", "orders.read"),
                         Map.entry("outbound.0.token-exchange-resource", "https://orders.example.com"),
                         Map.entry("outbound.0.token-exchange-audience", "api://orders"))))
@@ -594,7 +594,7 @@ class OidcTokenExchangeGrantTest {
     void tokenExchangeRequiresResourceOrAudience() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenExchangeEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                                                .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-exchange-resource or token-exchange-audience"));
@@ -607,14 +607,14 @@ class OidcTokenExchangeGrantTest {
                                                                .addTokenExchangeScope("orders.read")
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("token-exchange-enabled"));
+        assertThat(thrown.getMessage(), containsString("strategy must be TOKEN_EXCHANGE"));
     }
 
     @Test
     void invalidTokenExchangeResourceIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenExchangeEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                                                .tokenExchangeResource("https://orders.example.com#read")
                                                                .buildPrototype());
 
@@ -625,7 +625,7 @@ class OidcTokenExchangeGrantTest {
     void paddedTokenExchangeAudienceIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenExchangeEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                                                .tokenExchangeAudience(" api://orders")
                                                                .buildPrototype());
 
@@ -633,15 +633,14 @@ class OidcTokenExchangeGrantTest {
     }
 
     @Test
-    void tokenExchangeIsMutuallyExclusiveWithOtherOutboundStrategies() {
+    void tokenExchangeOptionsRequireTheTokenExchangeStrategy() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                                                        () -> OidcOutboundPolicyConfig.builder()
-                                                               .tokenExchangeEnabled(true)
+                                                               .strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                                                                .tokenExchangeAudience("api://orders")
-                                                               .clientCredentialsGrantEnabled(true)
                                                                .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("Only one OIDC outbound strategy"));
+        assertThat(thrown.getMessage(), containsString("strategy must be TOKEN_EXCHANGE"));
     }
 
     @Test
@@ -810,7 +809,7 @@ class OidcTokenExchangeGrantTest {
 
     private static EndpointConfig clientCredentialsEndpointConfig(String scope) {
         return EndpointConfig.builder().customObject(OidcOutboundPolicyConfig.class,
-                OidcOutboundPolicyConfig.builder().clientCredentialsGrantEnabled(true)
+                OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                         .addClientCredentialsScope(scope).buildPrototype()).build();
     }
 
@@ -826,7 +825,7 @@ class OidcTokenExchangeGrantTest {
         return EndpointConfig.builder()
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenExchangeEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                       .addTokenExchangeScope("orders.read")
                                       .addTokenExchangeScope("orders.write")
                                       .tokenExchangeResource("https://orders.example.com")
@@ -843,7 +842,7 @@ class OidcTokenExchangeGrantTest {
                 .addMethod("GET")
                 .customObject(OidcOutboundPolicyConfig.class,
                               OidcOutboundPolicyConfig.builder()
-                                      .tokenExchangeEnabled(true)
+                                      .strategy(OidcOutboundStrategy.TOKEN_EXCHANGE)
                                       .addTokenExchangeScope("orders.read")
                                       .addTokenExchangeScope("orders.write")
                                       .tokenExchangeResource("https://orders.example.com")

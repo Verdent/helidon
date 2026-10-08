@@ -9,8 +9,8 @@ needed for a real deployment. A missing test or uncertain provider need is a que
 
 Summary: all 25 OIDC Next configuration blueprints and the optional IDCS adapter's four configured values have been
 examined by subtree. JWKS-01 identified a remote-key cache default that could trust removed keys indefinitely; the
-bounded refresh and failure policy is now implemented and tested. OUT-01 proposes simplifying the mutually exclusive
-outbound strategy flags. An internal refresh-cache tuning question needs separate workload evidence.
+bounded refresh and failure policy is implemented and tested. OUT-01 replaced mutually exclusive outbound strategy
+flags with one strategy selection. An internal refresh-cache tuning question needs separate workload evidence.
 
 ## Progress
 
@@ -21,7 +21,7 @@ outbound strategy flags. An internal refresh-cache tuning question needs separat
 | Endpoints, metadata, and JWK Set management | Reviewed below; JWKS-01 addressed and tested |
 | Authorization Code, Request Objects, client assertions, and ID Tokens | Reviewed below |
 | Protected resource, token validation, introspection, and token transport | Reviewed below |
-| Outbound policies and remote-work limits | Reviewed below; one simplification candidate |
+| Outbound policies and remote-work limits | Reviewed below; OUT-01 addressed |
 | UserInfo, logout, and end-session | Reviewed below |
 | Subject mapping and endpoint policy | Reviewed below |
 | Optional IDCS adapter values | Reviewed below |
@@ -230,18 +230,17 @@ targets themselves reuse Helidon's `OutboundTarget` rather than a second matcher
 
 | Option(s) | Actual role and reason to expose them | Decision |
 | --- | --- | --- |
-| `token-propagation-enabled`, `client-credentials-grant-enabled`, `token-exchange-enabled` (all false) | Three mutually exclusive strategy selectors. The decorator counts enabled flags and rejects multiple values. | Simplify: one `strategy` enum; see OUT-01 |
+| `strategy` (`NONE`) | One selector for Token Propagation, Client Credentials, or Token Exchange per policy. `NONE` at endpoint level preserves matching-target fallback; strategies remain independently selectable for different targets. | Keep; OUT-01 resolved |
 | `client-credentials-scopes`, `client-credentials-resources` | OAuth scope string and repeated RFC 8707 target-resource URIs for the new client-credentials grant; independently affect the request and token cache key. | Keep |
 | `token-exchange-scopes`, `token-exchange-resource`, `token-exchange-audience` | Distinct [RFC 8693 request parameters](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1); `resource` is a URI, `audience` can name a logical service. | Keep |
 | `audience`, `audience-validation-enabled` (true) | Local destination check before propagating an existing token, not the `audience` requested from Token Exchange or the current protected resource's inbound audience. Explicit false allows risk-accepted opaque propagation. | Keep safe default |
 | `remote-work.max-concurrent` (32), `max-queued` (128), `admission-timeout` (1 s) | Separately bound active remote calls, waiting callers, and waiting duration; one reusable implementation backs refresh, introspection, client credentials, and Token Exchange. Not outbound HTTP I/O timeouts. | Keep |
 
-OUT-01 (design simplification, no code changed): replace the three boolean selectors with one option, for example
-`strategy: NONE | TOKEN_PROPAGATION | CLIENT_CREDENTIALS | TOKEN_EXCHANGE`, default `NONE`. This preserves every valid
-current state, makes invalid multiple-strategy combinations unrepresentable, and makes configuration clearer. It
-requires updating YAML examples, the endpoint-programmatic builder, and the outbound-policy decorator/orchestrator
-together; evaluate as a focused follow-up before changing a public API. Do not collapse the grant's resource/audience
-values or the separate token-propagation audience check along with the selector.
+OUT-01 (resolved): `strategy: NONE | TOKEN_PROPAGATION | CLIENT_CREDENTIALS | TOKEN_EXCHANGE` replaces the three
+mutually exclusive booleans. `NONE` preserves the previous all-false behavior: no strategy at that level, so an
+endpoint policy can still fall back to a matching configured target. Incompatible strategy-specific settings remain
+configuration errors. Grant-specific scopes/resources and the independent token-propagation audience check remain
+separate settings.
 
 ## UserInfo, logout, and End Session
 
@@ -303,11 +302,9 @@ before changing the default; retaining the configurable scope supports least pri
 
 1. JWKS-01 is resolved in code and tests; verify real provider cache headers and rotation behavior when live test tenants
    are available. No offline cache guarantees immediate revocation of already-issued tokens.
-2. Consider OUT-01 as a focused public configuration simplification; verify no programmatic outbound policy needs
-   more than one strategy in a single policy (today such configurations are rejected).
-3. Only if a realistic workload calls for it, reconsider whether the completed-refresh retention/cache-capacity knobs
+2. Only if a realistic workload calls for it, reconsider whether the completed-refresh retention/cache-capacity knobs
    should remain public; no safe removal has been established.
-4. Confirm whether a narrower IDCS signing-key scope exists for the target tenant/registration before changing the
+3. Confirm whether a narrower IDCS signing-key scope exists for the target tenant/registration before changing the
    adapter's documented default. Do not assume it from synthetic tests.
-5. Once the shape is agreed, update the currently untracked and outdated `MIGRATION.md` separately and rerun live
+4. Once the shape is agreed, update the currently untracked and outdated `MIGRATION.md` separately and rerun live
    provider scenarios. No earlier review document was consulted for this audit.
